@@ -1,0 +1,54 @@
+{
+  "name": "@local/ffpr-dsh",
+  "version": "0.1.0",
+  "description": "FFPR-Agent for DeepSeek Harness: DeepSeek plays Final Fantasy Pixel Remaster",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "lib/**/*.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "engines": {
+    "dsh": "0.2.1-rc.2",
+    "node": ">=24"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
+      ]
+    }
+  },
+  "scripts": {
+    "postinstall": "node scripts/link-dsh.mjs",
+    "build": "tsc -p tsconfig.build.json && tsc -p tsconfig.client.json && node scripts/bundle-client.mjs",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm test"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.19.2",
+    "@types/ws": "8.18.1",
+    "eslint": "10.13.0",
+    "prettier": "3.9.10",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.0",
+    "ws": "8.22.0"
+  }
+}
