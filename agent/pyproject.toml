@@ -1,0 +1,27 @@
+[project]
+name = "ffpr-agent"
+version = "0.1.0"
+description = "FFPR-Agent on the dev box: laptop link, pilot skills, DeepSeek player, key log"
+requires-python = ">=3.12"
+dependencies = [
+    "ffpr-common",
+    "httpx>=0.27",
+    "websockets>=17.1",
+]
+
+[project.scripts]
+ffpr-laptop = "ffpr_agent.cli.laptop:main"
+ffpr-pilot = "ffpr_agent.cli.pilot:main"
+ffpr-ds = "ffpr_agent.cli.ds:main"
+ffpr-keylog = "ffpr_agent.logs.key_log:main"
+ffpr-probe = "ffpr_agent.logs.probe_report:main"
+ffpr-ds-log = "ffpr_agent.logs.ds_view:main"
+ffpr-ds-report = "ffpr_agent.logs.ds_report:main"
+ffpr-guide = "ffpr_agent.cli.guide:main"
+
+[tool.uv.sources]
+ffpr-common = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.8,<0.13"]
+build-backend = "uv_build"
