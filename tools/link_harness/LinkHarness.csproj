@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Runs the bridge's socket code (Outbox.cs, Link.cs) on the dev box, with stand-ins for the
+    game, so tools/tests/test_link_harness.py can test the LAN link against the real thing.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>FfprBridge</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../bridge/src/Outbox.cs" Link="Outbox.cs" />
+    <Compile Include="../../bridge/src/Link.cs" Link="Link.cs" />
+  </ItemGroup>
+
+</Project>
