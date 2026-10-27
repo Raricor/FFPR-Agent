@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Game files copied from the laptop for reverse engineering. Never commit them.
+.deps/
+
+# Local machine settings
+agent/laptop.env
+
+# Laptop setup bundle built by tools/bundle_laptop.py
+dist/
+bridge/bin/
+bridge/obj/
+tools/link_harness/bin/
+tools/link_harness/obj/
+
+# Parallel dsh porting copies (merged back into dsh/)
+dsh-port-*/
