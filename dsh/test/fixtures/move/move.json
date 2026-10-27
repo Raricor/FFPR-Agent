@@ -1,0 +1,901 @@
+{
+  "route": {
+    "points": [
+      [16, 23],
+      [16, 24],
+      [16, 25],
+      [15, 25],
+      [15, 24],
+      [15, 23],
+      [14, 23],
+      [13, 23]
+    ],
+    "empty": []
+  },
+  "landing": {
+    "near": [
+      [1, 2],
+      [0, 2]
+    ],
+    "anywhere": [
+      [0, 0],
+      [1, 2],
+      [0, 2]
+    ]
+  },
+  "cases": [
+    {
+      "name": "plan over terrain",
+      "out": {
+        "here": [1, 1],
+        "path": [
+          [1, 1],
+          [2, 1],
+          [3, 1],
+          [3, 2],
+          [3, 3]
+        ]
+      },
+      "calls": [
+        {
+          "kind": "send",
+          "op": "cells",
+          "fields": {
+            "r": 24
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "fields": {}
+        }
+      ],
+      "transcript": [
+        {
+          "kind": "send",
+          "op": "cells",
+          "reply": {
+            "cells": {
+              "origin": [0, 0],
+              "center": [1, 1],
+              "attr": [
+                [19, 19, 19, 19, 19],
+                [19, 16, 16, 16, 19],
+                [19, 19, 19, 16, 19],
+                [3, 3, 3, 16, 3]
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "reply": {
+            "sample": {
+              "field": {
+                "moveState": null
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "the drake lands",
+      "out": {
+        "ok": true,
+        "drake": [5, 6]
+      },
+      "calls": [
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Enter"],
+            "gap": 200
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "pos",
+          "fields": {},
+          "wait": 30
+        }
+      ],
+      "transcript": [
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {
+            "ok": true
+          }
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "reply": {
+            "sample": {
+              "field": {
+                "moveState": "LowFlying"
+              }
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "reply": {
+            "sample": {
+              "field": {
+                "moveState": "Ground"
+              }
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "reply": {
+            "sample": {
+              "field": {
+                "moveState": "Ground"
+              }
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "pos",
+          "reply": {
+            "pos": {
+              "cell": [5, 6]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "navigate goes on past the planning window",
+      "out": {
+        "out": [true, "到达 (10, 0)"],
+        "said": [
+          "  (0, 0) → (2, 0):2 格",
+          "  (2, 0) → (4, 0):2 格",
+          "  (4, 0) → (6, 0):2 格",
+          "  (6, 0) → (8, 0):2 格",
+          "  (8, 0) → (10, 0):2 格"
+        ]
+      },
+      "calls": [
+        {
+          "kind": "send",
+          "op": "pos",
+          "fields": {},
+          "wait": 30
+        },
+        {
+          "kind": "send",
+          "op": "pos",
+          "fields": {},
+          "wait": 30
+        },
+        {
+          "kind": "send",
+          "op": "cells",
+          "fields": {
+            "r": 24
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "walk",
+          "fields": {
+            "to": [2, 0],
+            "timeout": 30000
+          },
+          "wait": 40
+        },
+        {
+          "kind": "send",
+          "op": "pos",
+          "fields": {},
+          "wait": 30
+        },
+        {
+          "kind": "send",
+          "op": "cells",
+          "fields": {
+            "r": 24
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "walk",
+          "fields": {
+            "to": [4, 0],
+            "timeout": 30000
+          },
+          "wait": 40
+        },
+        {
+          "kind": "send",
+          "op": "pos",
+          "fields": {},
+          "wait": 30
+        },
+        {
+          "kind": "send",
+          "op": "cells",
+          "fields": {
+            "r": 24
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "walk",
+          "fields": {
+            "to": [6, 0],
+            "timeout": 30000
+          },
+          "wait": 40
+        },
+        {
+          "kind": "send",
+          "op": "pos",
+          "fields": {},
+          "wait": 30
+        },
+        {
+          "kind": "send",
+          "op": "cells",
+          "fields": {
+            "r": 24
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "walk",
+          "fields": {
+            "to": [8, 0],
+            "timeout": 30000
+          },
+          "wait": 40
+        },
+        {
+          "kind": "send",
+          "op": "pos",
+          "fields": {},
+          "wait": 30
+        },
+        {
+          "kind": "send",
+          "op": "cells",
+          "fields": {
+            "r": 24
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "walk",
+          "fields": {
+            "to": [10, 0],
+            "timeout": 30000
+          },
+          "wait": 40
+        },
+        {
+          "kind": "send",
+          "op": "pos",
+          "fields": {},
+          "wait": 30
+        },
+        {
+          "kind": "send",
+          "op": "cells",
+          "fields": {
+            "r": 24
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "fields": {}
+        }
+      ],
+      "transcript": [
+        {
+          "kind": "send",
+          "op": "pos",
+          "reply": {
+            "pos": {
+              "map": 1,
+              "cell": [0, 0]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "pos",
+          "reply": {
+            "pos": {
+              "map": 1,
+              "cell": [0, 0]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "cells",
+          "reply": {
+            "cells": {
+              "origin": [-2, -2],
+              "center": [0, 0],
+              "attr": [
+                [16, 16, 16, 16, 16],
+                [16, 16, 16, 16, 16],
+                [16, 16, 16, 16, 16],
+                [16, 16, 16, 16, 16],
+                [16, 16, 16, 16, 16]
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "reply": {
+            "sample": {
+              "field": {
+                "moveState": null
+              }
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "walk",
+          "reply": {
+            "ok": true,
+            "pos": {
+              "map": 1,
+              "cell": [2, 0]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "pos",
+          "reply": {
+            "pos": {
+              "map": 1,
+              "cell": [2, 0]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "cells",
+          "reply": {
+            "cells": {
+              "origin": [0, -2],
+              "center": [2, 0],
+              "attr": [
+                [16, 16, 16, 16, 16],
+                [16, 16, 16, 16, 16],
+                [16, 16, 16, 16, 16],
+                [16, 16, 16, 16, 16],
+                [16, 16, 16, 16, 16]
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "reply": {
+            "sample": {
+              "field": {
+                "moveState": null
+              }
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "walk",
+          "reply": {
+            "ok": true,
+            "pos": {
+              "map": 1,
+              "cell": [4, 0]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "pos",
+          "reply": {
+            "pos": {
+              "map": 1,
+              "cell": [4, 0]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "cells",
+          "reply": {
+            "cells": {
+              "origin": [2, -2],
+              "center": [4, 0],
+              "attr": [
+                [16, 16, 16, 16, 16],
+                [16, 16, 16, 16, 16],
+                [16, 16, 16, 16, 16],
+                [16, 16, 16, 16, 16],
+                [16, 16, 16, 16, 16]
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "reply": {
+            "sample": {
+              "field": {
+                "moveState": null
+              }
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "walk",
+          "reply": {
+            "ok": true,
+            "pos": {
+              "map": 1,
+              "cell": [6, 0]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "pos",
+          "reply": {
+            "pos": {
+              "map": 1,
+              "cell": [6, 0]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "cells",
+          "reply": {
+            "cells": {
+              "origin": [4, -2],
+              "center": [6, 0],
+              "attr": [
+                [16, 16, 16, 16, 16],
+                [16, 16, 16, 16, 16],
+                [16, 16, 16, 16, 16],
+                [16, 16, 16, 16, 16],
+                [16, 16, 16, 16, 16]
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "reply": {
+            "sample": {
+              "field": {
+                "moveState": null
+              }
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "walk",
+          "reply": {
+            "ok": true,
+            "pos": {
+              "map": 1,
+              "cell": [8, 0]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "pos",
+          "reply": {
+            "pos": {
+              "map": 1,
+              "cell": [8, 0]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "cells",
+          "reply": {
+            "cells": {
+              "origin": [6, -2],
+              "center": [8, 0],
+              "attr": [
+                [16, 16, 16, 16, 16],
+                [16, 16, 16, 16, 16],
+                [16, 16, 16, 16, 16],
+                [16, 16, 16, 16, 16],
+                [16, 16, 16, 16, 16]
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "reply": {
+            "sample": {
+              "field": {
+                "moveState": null
+              }
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "walk",
+          "reply": {
+            "ok": true,
+            "pos": {
+              "map": 1,
+              "cell": [10, 0]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "pos",
+          "reply": {
+            "pos": {
+              "map": 1,
+              "cell": [10, 0]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "cells",
+          "reply": {
+            "cells": {
+              "origin": [8, -2],
+              "center": [10, 0],
+              "attr": [
+                [16, 16, 16, 16, 16],
+                [16, 16, 16, 16, 16],
+                [16, 16, 16, 16, 16],
+                [16, 16, 16, 16, 16],
+                [16, 16, 16, 16, 16]
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "reply": {
+            "sample": {
+              "field": {
+                "moveState": null
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a blocked step closes that step",
+      "out": {
+        "out": [false, "在 (17, 19) 船走不过去,这里已是离 (17, 17) 最近的地方"],
+        "said": ["  (17, 19) → (17, 18):1 格", "  在 [17, 19] 被挡住(到 (17, 18) 这一步走不过去)"]
+      },
+      "calls": [
+        {
+          "kind": "send",
+          "op": "pos",
+          "fields": {},
+          "wait": 30
+        },
+        {
+          "kind": "send",
+          "op": "pos",
+          "fields": {},
+          "wait": 30
+        },
+        {
+          "kind": "send",
+          "op": "cells",
+          "fields": {
+            "r": 24
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "walk",
+          "fields": {
+            "to": [17, 18],
+            "timeout": 30000
+          },
+          "wait": 40
+        },
+        {
+          "kind": "send",
+          "op": "pos",
+          "fields": {},
+          "wait": 30
+        },
+        {
+          "kind": "send",
+          "op": "cells",
+          "fields": {
+            "r": 24
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "fields": {}
+        }
+      ],
+      "transcript": [
+        {
+          "kind": "send",
+          "op": "pos",
+          "reply": {
+            "pos": {
+              "map": 210,
+              "cell": [17, 19]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "pos",
+          "reply": {
+            "pos": {
+              "map": 210,
+              "cell": [17, 19]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "cells",
+          "reply": {
+            "cells": {
+              "origin": [17, 18],
+              "center": [17, 19],
+              "attr": [[16], [16], [16]]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "reply": {
+            "sample": {
+              "field": {
+                "moveState": null
+              }
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "walk",
+          "reply": {
+            "ok": false,
+            "error": "blocked",
+            "pos": {
+              "cell": [17, 19]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "pos",
+          "reply": {
+            "pos": {
+              "map": 210,
+              "cell": [17, 19]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "cells",
+          "reply": {
+            "cells": {
+              "origin": [17, 18],
+              "center": [17, 19],
+              "attr": [[16], [16], [16]]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "reply": {
+            "sample": {
+              "field": {
+                "moveState": null
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "occupied cells keep props off",
+      "out": [
+        [1, 2],
+        [3, 4]
+      ],
+      "calls": [
+        {
+          "kind": "send",
+          "op": "entities",
+          "fields": {
+            "kind": "TresureBox",
+            "max": 200
+          },
+          "wait": 30
+        },
+        {
+          "kind": "send",
+          "op": "entities",
+          "fields": {
+            "kind": "Npc",
+            "max": 200
+          },
+          "wait": 30
+        },
+        {
+          "kind": "send",
+          "op": "entities",
+          "fields": {
+            "kind": "RelayInteraction",
+            "max": 200
+          },
+          "wait": 30
+        },
+        {
+          "kind": "send",
+          "op": "entities",
+          "fields": {
+            "kind": "GotoMap",
+            "max": 200
+          },
+          "wait": 30
+        }
+      ],
+      "transcript": [
+        {
+          "kind": "send",
+          "op": "entities",
+          "reply": {
+            "entities": {
+              "entities": [
+                {
+                  "cell": [1, 2],
+                  "active": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "entities",
+          "reply": {
+            "entities": {
+              "entities": [
+                {
+                  "cell": [1, 2],
+                  "active": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "entities",
+          "reply": {
+            "entities": {
+              "entities": [
+                {
+                  "cell": [5, 6],
+                  "active": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "entities",
+          "reply": {
+            "entities": {
+              "entities": [
+                {
+                  "cell": [3, 4]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+{
+  "ps_quote": [
+    {
+      "text": "C:/ffpr/it's",
+      "expected": "'C:/ffpr/it''s'"
+    },
+    {
+      "text": "plain",
+      "expected": "'plain'"
+    }
+  ],
+  "encode_ps": [
+    {
+      "script": "Write-Host '你好' \"x\"",
+      "expected": "WwBDAG8AbgBzAG8AbABlAF0AOgA6AE8AdQB0AHAAdQB0AEUAbgBjAG8AZABpAG4AZwAgAD0AIABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAA7ACAAJABPAHUAdABwAHUAdABFAG4AYwBvAGQAaQBuAGcAIAA9ACAAWwBUAGUAeAB0AC4ARQBuAGMAbwBkAGkAbgBnAF0AOgA6AFUAVABGADgAOwAgACQAUAByAG8AZwByAGUAcwBzAFAAcgBlAGYAZQByAGUAbgBjAGUAIAA9ACAAJwBTAGkAbABlAG4AdABsAHkAQwBvAG4AdABpAG4AdQBlACcAOwAgACQARQByAHIAbwByAEEAYwB0AGkAbwBuAFAAcgBlAGYAZQByAGUAbgBjAGUAIAA9ACAAJwBTAHQAbwBwACcACgBXAHIAaQB0AGUALQBIAG8AcwB0ACAAJwBgT31ZJwAgACIAeAAiAA=="
+    }
+  ],
+  "prelude": "[Console]::OutputEncoding = [Text.Encoding]::UTF8; $OutputEncoding = [Text.Encoding]::UTF8; $ProgressPreference = 'SilentlyContinue'; $ErrorActionPreference = 'Stop'\n",
+  "decode_clixml": [
+    {
+      "input": "#< CLIXML\r\n<Objs Version=\"1.1.0.1\" xmlns=\"http://schemas.microsoft.com/powershell/2004/04\"><S S=\"Error\">Get-Service : 找不到任何服务名称为“sshd”的服务。_x000D__x000A_</S><S S=\"Error\">+ Get-Service sshd &amp; more_x000D__x000A_</S><S S=\"warning\">注意一下_x000D__x000A_</S></Objs>",
+      "expected": "Get-Service : 找不到任何服务名称为“sshd”的服务。\n+ Get-Service sshd & more\n警告:注意一下\n"
+    },
+    {
+      "input": "plain text\n",
+      "expected": "plain text\n"
+    }
+  ],
+  "session_request": [
+    {
+      "file": "steam://rungameid/1173810",
+      "args": [],
+      "cwd": null,
+      "wait": false,
+      "keys": ["args", "cwd", "file", "id", "wait"],
+      "id_length": 12
+    }
+  ],
+  "secure_root_script": "$root = 'C:/ffpr'\nNew-Item -ItemType Directory -Force $root | Out-Null\n$me = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value\n$desktop = ([Security.Principal.NTAccount]'MIFEITECH\\yangwt').Translate([Security.Principal.SecurityIdentifier]).Value\n& icacls.exe $root /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' \"*${me}:(OI)(CI)F\" \"*${desktop}:(OI)(CI)M\" | Out-Null\nif ($LASTEXITCODE) { throw \"icacls 失败,退出码 $LASTEXITCODE\" }",
+  "deployed_script": "'C:/ffpr/deploy/laptop/FfprCommon.psm1'",
+  "target": "ffpr@192.168.8.230",
+  "ssh": [
+    "ssh",
+    "-i",
+    "/home/dev/.ssh/ffpr_laptop_ed25519",
+    "-o",
+    "IdentitiesOnly=yes",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "ConnectTimeout=10",
+    "-o",
+    "WarnWeakCrypto=no",
+    "-o",
+    "ControlMaster=auto",
+    "-o",
+    "ControlPersist=300",
+    "-o",
+    "ControlPath=/root/.ssh/ffpr-cm-%C",
+    "ffpr@192.168.8.230"
+  ],
+  "scp": [
+    "scp",
+    "-i",
+    "/home/dev/.ssh/ffpr_laptop_ed25519",
+    "-o",
+    "IdentitiesOnly=yes",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "ConnectTimeout=10",
+    "-o",
+    "WarnWeakCrypto=no",
+    "-o",
+    "ControlMaster=auto",
+    "-o",
+    "ControlPersist=300",
+    "-o",
+    "ControlPath=/root/.ssh/ffpr-cm-%C",
+    "-r"
+  ],
+  "options": [
+    "-i",
+    "/home/dev/.ssh/ffpr_laptop_ed25519",
+    "-o",
+    "IdentitiesOnly=yes",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "ConnectTimeout=10",
+    "-o",
+    "WarnWeakCrypto=no",
+    "-o",
+    "ControlMaster=auto",
+    "-o",
+    "ControlPersist=300",
+    "-o",
+    "ControlPath=/root/.ssh/ffpr-cm-%C"
+  ]
+}

@@ -1,0 +1,76 @@
+{
+  "pick": [
+    {
+      "names": ["攻击", "黑魔法", "道具", null],
+      "wanted": "攻击",
+      "out": 0
+    },
+    {
+      "names": ["攻击", "黑魔法", "道具", null],
+      "wanted": "魔法",
+      "out": 1
+    },
+    {
+      "names": ["火", "冰", "雷"],
+      "wanted": "雷",
+      "out": 2
+    },
+    {
+      "names": ["攻击", "黑魔法", "道具", null],
+      "wanted": "召唤",
+      "out": null
+    }
+  ],
+  "steer": [
+    {
+      "name": "list",
+      "count": 8,
+      "columns": 1,
+      "keys": ["Up", "Down"],
+      "target": 5,
+      "out": true,
+      "pressed": ["Down", "Down", "Down", "Down", "Down"],
+      "at": 5
+    },
+    {
+      "name": "row",
+      "count": 5,
+      "columns": 1,
+      "keys": ["Left", "Right"],
+      "target": 3,
+      "out": true,
+      "pressed": ["Down", "Right", "Right", "Right"],
+      "at": 3
+    },
+    {
+      "name": "grid",
+      "count": 12,
+      "columns": 2,
+      "keys": ["Up", "Down", "Left", "Right"],
+      "target": 5,
+      "out": true,
+      "pressed": ["Down", "Down", "Down", "Left"],
+      "at": 5
+    },
+    {
+      "name": "stuck",
+      "count": 4,
+      "columns": 1,
+      "keys": [],
+      "target": 2,
+      "out": false,
+      "pressed": ["Down", "Right"],
+      "at": 0
+    },
+    {
+      "name": "unreadable",
+      "count": 4,
+      "columns": 1,
+      "keys": [],
+      "target": 2,
+      "out": false,
+      "pressed": [],
+      "at": 0
+    }
+  ]
+}
