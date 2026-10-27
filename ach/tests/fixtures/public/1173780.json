@@ -1,0 +1,118 @@
+{
+ "achievementpercentages": {
+  "achievements": [
+   {
+    "name": "monster_hunt_100",
+    "percent": "82.3"
+   },
+   {
+    "name": "scenario_1",
+    "percent": "80.5"
+   },
+   {
+    "name": "monster_hunt_300",
+    "percent": "76.0"
+   },
+   {
+    "name": "total_gil_10000",
+    "percent": "75.2"
+   },
+   {
+    "name": "picture_book_12",
+    "percent": "74.7"
+   },
+   {
+    "name": "monster_hunt_500",
+    "percent": "72.2"
+   },
+   {
+    "name": "scenario_2",
+    "percent": "69.9"
+   },
+   {
+    "name": "treasure_box_23",
+    "percent": "66.4"
+   },
+   {
+    "name": "total_gil_50000",
+    "percent": "66.2"
+   },
+   {
+    "name": "total_gil_100000",
+    "percent": "63.3"
+   },
+   {
+    "name": "scenario_3",
+    "percent": "62.6"
+   },
+   {
+    "name": "scenario_4",
+    "percent": "61.8"
+   },
+   {
+    "name": "scenario_5",
+    "percent": "58.1"
+   },
+   {
+    "name": "picture_book_64",
+    "percent": "57.6"
+   },
+   {
+    "name": "treasure_box_117",
+    "percent": "56.3"
+   },
+   {
+    "name": "scenario_6",
+    "percent": "55.5"
+   },
+   {
+    "name": "scenario_7",
+    "percent": "54.5"
+   },
+   {
+    "name": "scenario_8",
+    "percent": "54.1"
+   },
+   {
+    "name": "scenario_9",
+    "percent": "53.4"
+   },
+   {
+    "name": "scenario_10",
+    "percent": "48.8"
+   },
+   {
+    "name": "area_visit",
+    "percent": "44.9"
+   },
+   {
+    "name": "word_master",
+    "percent": "41.4"
+   },
+   {
+    "name": "scenario_11",
+    "percent": "40.4"
+   },
+   {
+    "name": "magic_skill_master",
+    "percent": "27.8"
+   },
+   {
+    "name": "equip_skill_master",
+    "percent": "25.5"
+   },
+   {
+    "name": "treasure_box_234",
+    "percent": "22.2"
+   },
+   {
+    "name": "picture_book_128",
+    "percent": "20.2"
+   },
+   {
+    "name": "all_achievement",
+    "percent": "17.7"
+   }
+  ]
+ }
+}

@@ -1,0 +1,16 @@
+[project]
+name = "ffpr-ach"
+version = "0.1.0"
+description = "FFPR-Agent achievement recorder: Steam unlock state plus per-save progress"
+requires-python = ">=3.12"
+dependencies = ["ffpr-common", "httpx>=0.27"]
+
+[project.scripts]
+ffpr-ach = "ffpr_ach.cli:main"
+
+[tool.uv.sources]
+ffpr-common = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.8,<0.13"]
+build-backend = "uv_build"

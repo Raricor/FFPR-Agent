@@ -1,0 +1,126 @@
+{
+ "achievementpercentages": {
+  "achievements": [
+   {
+    "name": "scenario_1",
+    "percent": "83.1"
+   },
+   {
+    "name": "monster_hunt_100",
+    "percent": "79.4"
+   },
+   {
+    "name": "picture_book_19",
+    "percent": "77.2"
+   },
+   {
+    "name": "treasure_box_34",
+    "percent": "74.4"
+   },
+   {
+    "name": "total_gil_10000",
+    "percent": "73.1"
+   },
+   {
+    "name": "scenario_3",
+    "percent": "68.2"
+   },
+   {
+    "name": "scenario_4",
+    "percent": "64.8"
+   },
+   {
+    "name": "monster_hunt_500",
+    "percent": "63.3"
+   },
+   {
+    "name": "total_gil_100000",
+    "percent": "61.8"
+   },
+   {
+    "name": "scenario_5",
+    "percent": "59.5"
+   },
+   {
+    "name": "scenario_6",
+    "percent": "58.7"
+   },
+   {
+    "name": "picture_book_98",
+    "percent": "56.9"
+   },
+   {
+    "name": "treasure_box_171",
+    "percent": "56.0"
+   },
+   {
+    "name": "scenario_7",
+    "percent": "55.8"
+   },
+   {
+    "name": "total_gil_500000",
+    "percent": "54.5"
+   },
+   {
+    "name": "scenario_8",
+    "percent": "53.0"
+   },
+   {
+    "name": "scenario_9",
+    "percent": "51.1"
+   },
+   {
+    "name": "monster_hunt_1000",
+    "percent": "50.6"
+   },
+   {
+    "name": "scenario_11",
+    "percent": "46.1"
+   },
+   {
+    "name": "scenario_10",
+    "percent": "43.8"
+   },
+   {
+    "name": "get_weapon",
+    "percent": "39.5"
+   },
+   {
+    "name": "all_summon",
+    "percent": "37.0"
+   },
+   {
+    "name": "level_all_70",
+    "percent": "28.3"
+   },
+   {
+    "name": "scenario_12",
+    "percent": "20.6"
+   },
+   {
+    "name": "treasure_box_342",
+    "percent": "18.1"
+   },
+   {
+    "name": "area_visit",
+    "percent": "17.5"
+   },
+   {
+    "name": "all_hidden_summon",
+    "percent": "15.6"
+   },
+   {
+    "name": "get_hidden_item",
+    "percent": "15.2"
+   },
+   {
+    "name": "picture_book_197",
+    "percent": "13.6"
+   },
+   {
+    "name": "all_achievement",
+    "percent": "12.5"
+   }
+  ]
+ }
+}

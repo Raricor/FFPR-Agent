@@ -1,0 +1,162 @@
+{
+ "achievementpercentages": {
+  "achievements": [
+   {
+    "name": "scenario_1",
+    "percent": "88.8"
+   },
+   {
+    "name": "scenario_2",
+    "percent": "83.8"
+   },
+   {
+    "name": "monster_hunt_100",
+    "percent": "79.7"
+   },
+   {
+    "name": "total_gil_10000",
+    "percent": "76.4"
+   },
+   {
+    "name": "picture_book_30",
+    "percent": "73.8"
+   },
+   {
+    "name": "scenario_3",
+    "percent": "73.0"
+   },
+   {
+    "name": "treasure_box_21",
+    "percent": "72.5"
+   },
+   {
+    "name": "scenario_4",
+    "percent": "68.0"
+   },
+   {
+    "name": "scenario_5",
+    "percent": "63.2"
+   },
+   {
+    "name": "total_gil_100000",
+    "percent": "61.7"
+   },
+   {
+    "name": "scenario_6",
+    "percent": "61.3"
+   },
+   {
+    "name": "job_master_1",
+    "percent": "59.7"
+   },
+   {
+    "name": "scenario_7",
+    "percent": "58.0"
+   },
+   {
+    "name": "scenario_8",
+    "percent": "56.6"
+   },
+   {
+    "name": "monster_hunt_1000",
+    "percent": "56.3"
+   },
+   {
+    "name": "job_master_5",
+    "percent": "52.1"
+   },
+   {
+    "name": "scenario_9",
+    "percent": "50.6"
+   },
+   {
+    "name": "total_gil_500000",
+    "percent": "50.0"
+   },
+   {
+    "name": "scenario_10",
+    "percent": "48.7"
+   },
+   {
+    "name": "picture_book_151",
+    "percent": "48.2"
+   },
+   {
+    "name": "treasure_box_112",
+    "percent": "47.8"
+   },
+   {
+    "name": "scenario_11",
+    "percent": "46.7"
+   },
+   {
+    "name": "magic_learning_10",
+    "percent": "44.1"
+   },
+   {
+    "name": "monster_hunt_2000",
+    "percent": "42.5"
+   },
+   {
+    "name": "get_hidden_job",
+    "percent": "39.6"
+   },
+   {
+    "name": "get_sealed_weapon",
+    "percent": "38.5"
+   },
+   {
+    "name": "scenario_12",
+    "percent": "35.3"
+   },
+   {
+    "name": "job_master_15",
+    "percent": "34.7"
+   },
+   {
+    "name": "piano_master",
+    "percent": "31.0"
+   },
+   {
+    "name": "level_all_50",
+    "percent": "26.2"
+   },
+   {
+    "name": "ultimate_dragon",
+    "percent": "25.4"
+   },
+   {
+    "name": "ultimate_omega",
+    "percent": "24.9"
+   },
+   {
+    "name": "job_master_22",
+    "percent": "20.6"
+   },
+   {
+    "name": "area_visit",
+    "percent": "18.2"
+   },
+   {
+    "name": "magic_learning_30",
+    "percent": "15.7"
+   },
+   {
+    "name": "get_hidden_item",
+    "percent": "14.8"
+   },
+   {
+    "name": "treasure_box_225",
+    "percent": "12.4"
+   },
+   {
+    "name": "picture_book_302",
+    "percent": "10.8"
+   },
+   {
+    "name": "all_achievement",
+    "percent": "9.5"
+   }
+  ]
+ }
+}
