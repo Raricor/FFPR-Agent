@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     由开发机通过计划任务 FFPR-Agent-Session 启动。工作方式：
-    1. 开发机把命令写成 C:\ffpr\session\pilot\<id>.cmd.json;
+    1. 开发机把命令写成 C:\ffpr\session\pilot\<id>.cmd.json(FF5;其他作品是 session\pilot-<作品>,每作一个助手);
     2. 这里执行命令，把结果写回 <id>.result.json。
 
     只给游戏窗口按键：每按一个键之前，都检查当前前台窗口是不是游戏;不是就停下并报 not_focused,
@@ -25,7 +25,8 @@
 param(
     [ValidateSet('ff1', 'ff2', 'ff3', 'ff4', 'ff5', 'ff6')][string]$Game = 'ff5',
     [int]$IdleMinutes = 30,
-    [int]$BridgePort = 47800,
+    # 0 means the game's own bridge port (bridge 0.10.0): 47800 for FF5, 4780N for FFN.
+    [int]$BridgePort = 0,
     # The LAN link's settings; its token also opens the bridge's local key channel (0.9.0).
     [string]$LinkFile = 'C:\ffpr\bridge.json',
     # Ask Windows to keep the display on while the agent runs. Off by default: whether the
@@ -105,7 +106,10 @@ foreach ($c in [char[]]'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789') { $KeyCodes["$c"]
 foreach ($n in 1..12) { $KeyCodes["F$n"] = (0x6F + $n), $false }
 
 $exeName = (Get-GameExe (Find-GameDir $Game)).BaseName
-$dir = Join-Path (Get-FfprRoot) 'session\pilot'
+# 10-28: one agent per game, so six can run at once. FF5 keeps the old folder (the Python
+# player and the dsh FF5 player both use it).
+$dir = Join-Path (Get-FfprRoot) $(if ($Game -eq 'ff5') { 'session\pilot' } else { "session\pilot-$Game" })
+if ($BridgePort -eq 0) { $BridgePort = if ($Game -eq 'ff5') { 47800 } else { 47800 + [int]$Game.Substring(2) } }
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
 
 function Get-GameWindow {
