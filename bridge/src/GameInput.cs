@@ -1,7 +1,8 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using Il2CppInterop.Runtime;
 using Unity.Collections;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.Controls;
@@ -35,6 +36,12 @@ internal static class GameInput
         ["Down"] = pad => pad.dpad.down,
         ["Left"] = pad => pad.dpad.left,
         ["Right"] = pad => pad.dpad.right,
+        // 10-28: the rest of the pad, for screens with more actions (FF3's random name is "Q").
+        ["PadWest"] = pad => pad.buttonWest,
+        ["PadL1"] = pad => pad.leftShoulder,
+        ["PadR1"] = pad => pad.rightShoulder,
+        ["PadStart"] = pad => pad.startButton,
+        ["PadSelect"] = pad => pad.selectButton,
     };
 
     /// <summary>Where a StateEvent's state data starts: the 20-byte InputEvent, then the FourCC.</summary>
@@ -45,7 +52,14 @@ internal static class GameInput
     private static readonly ConcurrentDictionary<string, long> HeldUntil = new();
     private static Gamepad _pad;
 
-    public static bool Knows(string name) => Buttons.ContainsKey(name);
+    /// <summary>
+    /// 10-28: the naming boxes (FF2's new game, FF6's every new member) are text fields that read
+    /// only the real keyboard, so no gamepad button closes them. "TextEnter" is the Enter key for
+    /// the field being typed in: it ends input the way Enter does, keeping the name shown.
+    /// </summary>
+    public const string TextEnter = "TextEnter";
+
+    public static bool Knows(string name) => Buttons.ContainsKey(name) || name == TextEnter;
 
     public static void Enqueue(string name, bool down) => Pending.Enqueue((name, down));
 
@@ -90,10 +104,17 @@ internal static class GameInput
         {
             return;
         }
-        var pad = Pad();
         while (Pending.TryDequeue(out var item))
         {
-            Send(pad, Buttons[item.Name](pad), item.Down);
+            if (item.Name == TextEnter)
+            {
+                if (item.Down)
+                {
+                    SubmitText();
+                }
+                continue;
+            }
+            Send(Pad(), Buttons[item.Name](Pad()), item.Down);
         }
     }
 
@@ -134,5 +155,21 @@ internal static class GameInput
         var mask = (byte)(1 << (int)(bit % 8));
         state[bit / 8] = down ? (byte)(state[bit / 8] | mask) : (byte)(state[bit / 8] & ~mask);
         InputSystem.QueueEvent(eventPtr);
+    }
+
+    /// <summary>Enter for the focused text field: UGUI's DeactivateInputField sends onEndEdit.</summary>
+    private static void SubmitText()
+    {
+        foreach (var found in UnityEngine.Object.FindObjectsOfType(Il2CppType.Of<UnityEngine.UI.InputField>()))
+        {
+            var field = found.TryCast<UnityEngine.UI.InputField>();
+            if (field != null && field.isFocused)
+            {
+                Plugin.Logger.LogInfo($"文字输入框按了 Enter:{field.text}");
+                field.DeactivateInputField();
+                return;
+            }
+        }
+        Plugin.Logger.LogInfo("TextEnter:没有正在输入的文字框");
     }
 }

@@ -112,11 +112,13 @@ internal static class Keyboard
             {
                 return Failed($"bad_key:{spec}", sent);
             }
-            if (!Codes.TryGetValue(m.Groups["name"].Value, out var code))
-            {
-                return Failed($"unknown_key:{m.Groups["name"].Value}", sent);
-            }
             var name = m.Groups["name"].Value;
+            // TextEnter and the Pad* buttons exist only in the game (GameInput): no virtual-key code.
+            (ushort Vk, bool Extended) code = default;
+            if (!(inGame && GameInput.Knows(name)) && !Codes.TryGetValue(name, out code))
+            {
+                return Failed($"unknown_key:{name}", sent);
+            }
             if (inGame && !GameInput.Knows(name))
             {
                 return Failed($"no_game_button:{name}", sent);
