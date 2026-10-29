@@ -1,12 +1,14 @@
 /**
  * What DeepSeek is told: the system prompt, the tool definitions, and text renderings of
  * terrain and battles. Ported from ffpr_agent/ds/prompt.py; the tool definitions stay in the
- * OpenAI function format as data, and the plugin converts them when it registers tools.
+ * OpenAI function format as data, and the plugin converts them when it registers tools. Task 21
+ * turned the two personas into per-game functions; FF5's text is unchanged.
  */
 
 import { floorDiv, floorMod, truthy } from "./values.ts";
 import { cellKey } from "./nav.ts";
 import type { CellGrid } from "./nav.ts";
+import { byKey } from "./games.ts";
 import { describeElements } from "./elements.ts";
 import type { ElementKnowledge } from "./elements.ts";
 import { statuses } from "./skills/gambit.ts";
@@ -24,7 +26,7 @@ export const TERRAIN: ReadonlyMap<number, readonly [string, string]> = new Map([
   [15, ["p", "沙地"]],
 ]);
 
-export const TACTICIAN_PROMPT = `你是《最终幻想5 像素重制版》的战术官,只管事实单里的这一张地图。
+const TACTICIAN_PROMPT_FF5 = `你是《最终幻想5 像素重制版》的战术官,只管事实单里的这一张地图。
 你不走路、不按键、不操作游戏:读事实单,按需用 guide 查攻略,用 atlas 看走过的地图,
 然后交回结构化结果。
 
@@ -74,7 +76,7 @@ export const TACTICIAN_PROMPT = `你是《最终幻想5 像素重制版》的战
 
 只交结构化结果,不要在结果里重复事实单。`;
 
-export const SYSTEM_PROMPT = `你在玩《最终幻想5 像素重制版》(中文版),通过工具操作游戏。
+const SYSTEM_PROMPT_FF5 = `你在玩《最终幻想5 像素重制版》(中文版),通过工具操作游戏。
 
 目标:{goal}
 
@@ -129,6 +131,170 @@ export const SYSTEM_PROMPT = `你在玩《最终幻想5 像素重制版》(中�
 - 发现重要的东西(入口位置、走不通的路、地标)用 remember 记下来。
 - 完成目标或者确定做不到时调用 done。
 {hint}`;
+
+/** Titles as the games name themselves in Chinese; FF5's prompt keeps its old wording. */
+const GAME_NAMES: Readonly<Record<string, string>> = {
+  ff1: "最终幻想",
+  ff2: "最终幻想II",
+  ff3: "最终幻想III",
+  ff4: "最终幻想IV",
+  ff5: "最终幻想5",
+  ff6: "最终幻想VI",
+};
+
+/** What each of the five newly started games needs the player to know (task 21, user's text). */
+const FIVE_GAME_POINTS: Readonly<Record<string, string>> = {
+  ff1: `- 四个光之战士，职业在开局定好;剧情后半有一次转职。
+- 魔法按 1–8 级分，每级每人最多学 3 种，在城镇的白魔法店、黑魔法店买，只有对应职业能学。
+- 第一个目标：科内利亚的国王要你去西北的混沌神殿救公主。`,
+  ff2: `- 没有等级：挨打多了涨 HP,用武器涨那种武器的熟练度，用魔法涨 MP 和那种魔法的熟练度。
+- 关键词：有人说出新词时，游戏会让你「记住」;要在对的人那里「询问」这个词，剧情才会往下走。选项里出现记住、询问时照剧情选。
+- 开头那场战斗打不赢，全灭以后剧情会接着走，这是正常的。
+- 对话旁出现「询问 / 记忆 / 贵重物品 / 离开」菜单时，这是关键词菜单：用 press 选「记忆」([Down, Enter])记住对话里的红字关键词，再选「离开」退出;有人提到你记住的关键词时，用「询问」问他。`,
+  ff3: `- 四个洋葱剑士。拿到水晶以后可以转职，但这里还不能用工具转职，先用初始职业打。
+- 开局在祭坛洞窟里，先找出口。有的地方要变小(迷你)或变青蛙才进得去，攻略和剧情会提示。`,
+  ff4: `- 主角塞西尔，队友由剧情决定，会加入也会离开;不能转职，每人的能力固定。
+- 战斗是即时的(ATB),行动要快;队伍变动时注意看重要事件里的入队离队。`,
+  ff6: `- 角色很多，剧情会把队伍分成几路;魔法靠魔石(幻兽)学。
+- 开局在炭坑都市纳尔谢，先跟着剧情走。`,
+};
+
+/** Lines only FF5 can use: the drake, jobs, the guide, and its combat magic. */
+const FF5_ONLY_SYSTEM_LINES: readonly RegExp[] = [
+  /^- 骑飞龙时/u,
+  /^ {2}迷宫入口时会自动在附近平原降落/u,
+  /^ {2}下来以后飞龙停在降落点/u,
+  /^- 换职业用 change_job/u,
+  /^ {2}魔法是全队共用的/u,
+  /^- 有攻略可查\(guide\)/u,
+  /^ {2}工具结果里「攻略/u,
+  /^- 规则表里的「最强」/u,
+  /^ {2}条件可以用 enemy\.weak/u,
+  /^ {2}enemy\.name\.喧嚣鬼/u,
+  /^- 中文版的魔法名/u,
+  /^- 魔法要先在魔法店/u,
+];
+
+function dropLines(text: string, patterns: readonly RegExp[]): string {
+  return text
+    .split("\n")
+    .filter((line) => !patterns.some((pattern) => pattern.test(line)))
+    .join("\n");
+}
+
+function fiveGameSystemPrompt(name: string, points: string, saveSlot: number): string {
+  let text = SYSTEM_PROMPT_FF5.replace(
+    "你在玩《最终幻想5 像素重制版》(中文版),通过工具操作游戏。",
+    `你在玩《${name} 像素重制版》(中文版),通过工具操作游戏。`,
+  )
+    .replace("规则:\n", `这一作的要点:\n${points}\n\n规则:\n`)
+    .replace(
+      "菜单里你能做的:存档用 save_game,用魔法回 HP 用 cast(只在地图上)。",
+      "菜单里你能做的:存档用 save_game。",
+    )
+    .replace(";地图上也可以用 cast 解毒。", "。")
+    .replace("看魔法店和武器防具店有没有新东西", "看武器防具店有没有新东西")
+    .replace(";笔记里有攻略查到的提醒。", "。")
+    .replace(
+      "{hint}",
+      `存档只写 ${saveSlot} 号存档位;游戏已经开好新游戏、过了起名,` +
+        "从现在的位置开始玩;第一次能存档时就用 save_game 存档。\n{hint}",
+    );
+  text = dropLines(text, FF5_ONLY_SYSTEM_LINES);
+  return text;
+}
+
+/** FF5 writes slot 3; the five games that started fresh write slot 20 (task 21). */
+function saveSlotFor(game: string): number {
+  return byKey(game).key === "ff5" ? 3 : 20;
+}
+
+/** The first layer's persona for one game; FF5's text is byte-for-byte the old constant. */
+export function systemPrompt(game: string, saveSlot = saveSlotFor(game)): string {
+  const info = byKey(game);
+  if (info.key === "ff5") return SYSTEM_PROMPT_FF5;
+  const name = GAME_NAMES[info.key];
+  const points = FIVE_GAME_POINTS[info.key];
+  if (name === undefined || points === undefined) {
+    throw new Error(`没有 ${info.label} 的玩家提示词`);
+  }
+  return fiveGameSystemPrompt(name, points, saveSlot);
+}
+
+/**
+ * The second layer's persona for one game. The five games cannot read their battle magic list
+ * through the bridge, so their rule tables may only attack, defend or use an item (task 21).
+ */
+export function tacticianPrompt(game: string): string {
+  const info = byKey(game);
+  if (info.key === "ff5") return TACTICIAN_PROMPT_FF5;
+  const name = GAME_NAMES[info.key];
+  if (name === undefined) throw new Error(`没有 ${info.label} 的战术官提示词`);
+  const text = TACTICIAN_PROMPT_FF5.replace(
+    "你是《最终幻想5 像素重制版》的战术官",
+    `你是《${name} 像素重制版》的战术官`,
+  )
+    .replace(
+      "你不走路、不按键、不操作游戏:读事实单,按需用 guide 查攻略,用 atlas 看走过的地图,\n" +
+        "然后交回结构化结果。",
+      "你不走路、不按键、不操作游戏:读事实单,按需用 atlas 看走过的地图," + "然后交回结构化结果。",
+    )
+    .replace("  可以在 ask_up 里建议换职业:写清楚谁换成什么、为什么。\n", "")
+    .replace("(比如缺眼药,回卡纳克买)", "(比如缺眼药,回城买)")
+    .replace(
+      "  做不到的规则会被跳过(没学会的魔法、MP 不够、没有倒下的人可以复活,都算做不到)。",
+      "  做不到的规则会被跳过(没有这种指令、没有这种道具、没有倒下的人可以复活,都算做不到)。",
+    )
+    .replace(
+      "- 先说复活、回复、治状态,最后再攻击。复活优先用白魔法:复活或道具:不死鸟之尾;\n" +
+        "  回复用白魔法:治疗(或 治疗+),治状态用对应的魔法或道具。",
+      "- 先说复活、回复、治状态,最后再攻击。复活用道具:不死鸟之尾;" + "回复和治状态都用道具。",
+    )
+    .replace(
+      "- do:「攻击」「防御」,或「指令:魔法名」,如「白魔法:治疗」「黑魔法:闪雷」,\n" +
+        "  或「道具:道具名」,如「道具:不死鸟之尾」(复活)、「道具:恢复药」。\n" +
+        "  魔法名后加 + 表示用这一系里学会的、MP 够的最高级,如「白魔法:治疗+」(会用救疗);\n" +
+        "  「黑魔法:最强」用最高级的攻击魔法(烈炎、冰冻、震雷)。",
+      "- do 只能写「攻击」「防御」,或「道具:道具名」,如「道具:不死鸟之尾」(复活)、" +
+        "「道具:恢复药」。\n" +
+        "  这一作的魔法和特技暂时不能写进规则表:桥插件在这几作里读不到战斗中的魔法列表。",
+    )
+    .replace(
+      "- target:敌人(默认)、自己、hp最低的同伴、倒下的同伴、状态:毒(有这个状态的同伴)、\n" +
+        "  敌人:怪名(第一只叫这个名字的活敌人,如 敌人:喧嚣鬼)、敌人:hp最低、\n" +
+        "  敌人:弱冰(第一只弱冰的活敌人)。",
+      "- target:敌人(默认)、自己、hp最低的同伴、倒下的同伴、状态:毒(有这个状态的同伴)、\n" +
+        "  敌人:怪名(第一只叫这个名字的活敌人,如 敌人:喧嚣鬼)、敌人:hp最低。",
+    )
+    .replace(
+      "- 只能用角色自己职业的指令:白魔法师用白魔法,黑魔法师用黑魔法;其他职业用攻击、防御或道具。\n" +
+        "- 事实单里列了会的法术时,规则表可以直接写具体法术(如「白魔法:救疗」);" +
+        "「最强」「X+」照样能用。\n" +
+        "- 「最强」和「X+」会看当前目标的属性:避开它吸收、无效的属性,优先打弱点;\n" +
+        "  写死的属性魔法碰上吸收也会跳过、交给下一条规则。\n" +
+        "- 条件里可以用 enemy.weak.冰(有几只敌人弱冰)、enemy.absorbs.冰(有几只敌人吸收冰)。\n" +
+        "  属性词汇:火、冰、雷、水、风、土、圣、毒。\n" +
+        "- 用事实单里的弱点和攻略说明写;敌人吸收的属性不要用。治状态要的道具包里没有," +
+        "就写进 ask_up。\n" +
+        "- 遇敌表里各种怪的弱点、吸收不一样时,用 enemy.name.X 和 敌人:X 分开写;\n" +
+        "  绝不用某只怪吸收的属性打它。某只怪什么法术都打不动,就写物理攻击或道具," +
+        "目标写 敌人:X。",
+      "- 遇敌表里各种怪不一样时,用 enemy.name.X 和 敌人:X 分开写。",
+    )
+    .replace('"do": "白魔法:解毒"', '"do": "道具:解毒药"')
+    .replace(
+      "- 状态异常都要有对应规则:毒→白魔法:解毒 或 道具:解毒药;黑暗→道具:眼药;\n" +
+        "  石化→道具:金针;青蛙→道具:少女之吻;迷你→道具:木槌;沉默→道具:回音草。",
+      "- 状态异常都要有对应规则,用道具治:毒→道具:解毒药;黑暗→道具:眼药;\n" +
+        "  石化→道具:金针;青蛙→道具:少女之吻;迷你→道具:木槌;沉默→道具:回音草。\n" +
+        "  这几作的道具名可能不同,以游戏里的道具名为准。",
+    )
+    .replace(
+      "- 从事实单的攻略里找这张图的那一段,写清楚:机关和开关的顺序、传送带会把人带到哪、",
+      "- 从事实单的地图记录里找这张图的那一段,写清楚:机关和开关的顺序、传送带会把人带到哪、",
+    );
+  return dropLines(text, [/^ {2}可以在 ask_up 里建议换职业/u]);
+}
 
 export const TOOLS = [
   {
@@ -535,6 +701,46 @@ export const TOOLS = [
     },
   },
 ] as const;
+
+/**
+ * The extra tool the five newly started games get (task 22): a menu no other tool understands,
+ * like FF2's keyword menu next to a dialog. FF5's tool list stays exactly as ported.
+ */
+export const PRESS_TOOL = {
+  type: "function",
+  function: {
+    name: "press",
+    description:
+      "按手柄键。只在其他工具都处理不了的界面上用(比如 FF2 对话旁的「询问/记忆/贵重物品/离开」菜单)," +
+      "按完会返回当前状态。",
+    parameters: {
+      type: "object",
+      properties: {
+        keys: {
+          type: "array",
+          description: "1–6 个按键,依次按下",
+          minItems: 1,
+          maxItems: 6,
+          items: {
+            type: "string",
+            enum: [
+              "Enter",
+              "Backspace",
+              "Up",
+              "Down",
+              "Left",
+              "Right",
+              "Tab",
+              "PadStart",
+              "PadWest",
+            ],
+          },
+        },
+      },
+      required: ["keys"],
+    },
+  },
+} as const;
 
 /** Python's str() for the loose JSON in a battle or party entry. */
 function pyText(value: unknown): string {

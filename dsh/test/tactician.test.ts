@@ -8,25 +8,26 @@ import type { SubagentActivationSpec } from "@deepseek-ai/dsh-subagent";
 import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
 import { apply } from "../src/index.ts";
 import { Atlas } from "../src/engine/atlas.ts";
-import { TACTICIAN_PROMPT } from "../src/engine/prompt.ts";
+import { tacticianPrompt } from "../src/engine/prompt.ts";
 import * as gambit from "../src/engine/skills/gambit.ts";
 import { Config } from "../src/plugin/config.ts";
 import {
   callTactician,
   TACTICIAN_OUTPUT_SCHEMA,
-  TACTICIAN_PRESET,
+  tacticianPreset,
   tacticianTools,
   type TacticianStarter,
 } from "../src/plugin/tactician.ts";
 
 void test("the tactician has a complete rule-table persona and a required schema", () => {
-  assert.match(TACTICIAN_PROMPT, /你是《最终幻想5 像素重制版》的战术官/);
-  assert.match(TACTICIAN_PROMPT, /walker_notes/);
-  assert.match(TACTICIAN_PROMPT, /ask_up/);
-  assert.match(TACTICIAN_PROMPT, /enemy\.weak\.冰/);
-  assert.match(TACTICIAN_PROMPT, /最强/);
-  assert.match(TACTICIAN_PROMPT, /事实单里列了会的法术时/);
-  assert.match(TACTICIAN_PROMPT, /300 字以内/);
+  const prompt = tacticianPrompt("ff5");
+  assert.match(prompt, /你是《最终幻想5 像素重制版》的战术官/);
+  assert.match(prompt, /walker_notes/);
+  assert.match(prompt, /ask_up/);
+  assert.match(prompt, /enemy\.weak\.冰/);
+  assert.match(prompt, /最强/);
+  assert.match(prompt, /事实单里列了会的法术时/);
+  assert.match(prompt, /300 字以内/);
   assert.deepEqual(TACTICIAN_OUTPUT_SCHEMA.required, ["tactics", "walker_notes", "ask_up"]);
 });
 
@@ -50,11 +51,17 @@ void test("the tactician call uses the spawn preset, the caller delivery and the
       });
     },
   };
-  const plan = await callTactician(starter, agent, controller.signal, "### 地图\n地图 260 火力船");
+  const plan = await callTactician(
+    starter,
+    agent,
+    controller.signal,
+    "ff5",
+    "### 地图\n地图 260 火力船",
+  );
   assert.ok(seen);
   assert.equal(seen.provider, "spawn");
   assert.equal(seen.label, "战术官 地图 260");
-  assert.equal(seen.request.agentPreset, TACTICIAN_PRESET);
+  assert.equal(seen.request.agentPreset, tacticianPreset("ff5"));
   assert.equal(seen.request.parent, agent);
   assert.equal(seen.request.outputSchema, TACTICIAN_OUTPUT_SCHEMA);
   assert.equal(seen.delivery, "caller");
@@ -74,7 +81,7 @@ void test("a tactician that stops with an error is a Chinese failure", async () 
     },
   };
   await assert.rejects(
-    callTactician(starter, {} as Agent, new AbortController().signal, "地图 1"),
+    callTactician(starter, {} as Agent, new AbortController().signal, "ff5", "地图 1"),
     /战术官没有完成\(error\):模型坏了/,
   );
 });
@@ -129,8 +136,20 @@ void test("the tactician role registers only guide and atlas, with a complete pe
   created[0]?.({ agent: { id: "tactician", ctx: agentCtx } as unknown as Agent });
   assert.deepEqual(names, ["guide", "atlas"]);
   assert.deepEqual(allow, { allow: [] });
-  assert.equal(persona, TACTICIAN_PROMPT);
+  assert.equal(persona, tacticianPrompt("ff5"));
   assert.equal(suppressed, true);
+});
+
+void test("a five-game tactician gets only atlas and no FF5 persona", () => {
+  const tools = tacticianTools(null, new Atlas(), "ff6");
+  assert.deepEqual(
+    tools.map((tool) => tool.name),
+    ["atlas"],
+  );
+  assert.match(tacticianPrompt("ff6"), /你是《最终幻想VI 像素重制版》的战术官/);
+  assert.equal(tacticianPrompt("ff6").includes("白魔法"), false);
+  assert.equal(tacticianPreset("ff6"), "ffpr-tactician-ff6");
+  assert.equal(tacticianPreset("ff5"), "ffpr-tactician");
 });
 
 void test("the tactician's tools are read-only and answer without a game", async () => {

@@ -22,8 +22,8 @@ import type { Laptop } from "../engine/laptop.ts";
 import { AsyncLock } from "../engine/lock.ts";
 import { DEPS } from "../engine/paths.ts";
 import { createPilot, ensureAgent } from "../engine/link-pilot.ts";
-import { SYSTEM_PROMPT } from "../engine/prompt.ts";
-import type { Config } from "./config.ts";
+import { systemPrompt } from "../engine/prompt.ts";
+import { gameDefaults, type Config } from "./config.ts";
 import { formatNotes, formatTactician, notesContext, tacticianContext } from "./notes-prompt.ts";
 import { callTactician } from "./tactician.ts";
 import { gameToolDefinitions, type GameToolHost } from "./tools.ts";
@@ -53,11 +53,10 @@ export interface PlayerLog {
 }
 
 /** The system prompt text, with the Python placeholders filled for dsh. */
-export function buildSystemPrompt(): string {
-  return SYSTEM_PROMPT.replace(
-    "目标:{goal}",
-    "目标:用户在对话里给你的目标;用户没说就接着之前的进度玩。",
-  ).replace("{hint}", "");
+export function buildSystemPrompt(game: string, saveSlot?: number): string {
+  return systemPrompt(game, saveSlot)
+    .replace("目标:{goal}", "目标:用户在对话里给你的目标;用户没说就接着之前的进度玩。")
+    .replace("{hint}", "");
 }
 
 /** Python's opening: what the player sees now, then the long strategy window. */
@@ -104,10 +103,14 @@ export async function startEngine(
   signal?: AbortSignal,
 ): Promise<PlayerEngine> {
   const laptop = await loadLaptop(config.laptopEnv, signal);
+  const defaults = gameDefaults(config.game);
   const bridge = await BridgeLink.load({
     secretsFile: config.secretsFile,
     laptopEnv: config.laptopEnv,
     url: config.bridgeUrl,
+    // laptop.env's BRIDGE_URL names FF5's port; the other games use their own port.
+    port: defaults.bridgePort,
+    laptopUrl: defaults.game.key === "ff5",
     signal,
   });
   const stop = new AbortController();
@@ -117,10 +120,12 @@ export async function startEngine(
   const game = await Game.create({
     laptop,
     game: config.game,
+    saveSlot: config.saveSlot,
     notesFile: config.notesFile,
     events,
     atlasFile: config.atlasFile,
     tacticsFile: config.tacticsFile,
+    elementsFile: config.elementsFile,
     tacticianBoss: config.tacticianBoss,
     signal,
   });
@@ -196,7 +201,8 @@ export function gameToolHost(
 ): GameToolHost {
   const lock = new AsyncLock();
   return {
-    pilot: (signal) => createPilot(engine.laptop, engine.bridge, signal),
+    pilot: (signal) =>
+      createPilot(engine.laptop, engine.bridge, signal, { game: engine.game.game }),
     run: async (name, args, pilot, signal, agent) => {
       signal.throwIfAborted();
       return lock.run(async () => {
@@ -223,8 +229,8 @@ export function installPlayer(ctx: Context, engine: PlayerEngine, log: PlayerLog
   const host = gameToolHost(engine, (call) => {
     binding = call;
   });
-  const tools = gameToolDefinitions(host);
-  const personaText = buildSystemPrompt();
+  const tools = gameToolDefinitions(host, engine.game.game, engine.game.saveSlot);
+  const personaText = buildSystemPrompt(engine.game.game, engine.game.saveSlot);
   const disposers = new Map<string, () => Promise<void>>();
 
   // The tactician runs under the same agent and cancellation as the tool call that needed it.
@@ -232,7 +238,13 @@ export function installPlayer(ctx: Context, engine: PlayerEngine, log: PlayerLog
     if (binding?.agent === undefined) {
       throw new Error("这次工具调用没有主智能体,叫不了战术官");
     }
-    return await callTactician(ctx.subagents, binding.agent, binding.signal, facts);
+    return await callTactician(
+      ctx.subagents,
+      binding.agent,
+      binding.signal,
+      engine.game.game,
+      facts,
+    );
   });
 
   ctx.effect(() => {

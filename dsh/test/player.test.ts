@@ -40,6 +40,27 @@ void test("the game tools are the Python tools without done, with raw JSON Schem
   }
 });
 
+void test("the five new games do not get FF5's game operations", () => {
+  const ff5 = gameToolDefinitions(host());
+  const ff6 = gameToolDefinitions(host(), "ff6", 20);
+  const names = (definitions: readonly { name: string }[]): string[] =>
+    definitions.map((tool) => tool.name);
+  for (const gone of ["change_job", "board", "land", "cast", "guide"]) {
+    assert.ok(names(ff5).includes(gone), `FF5 应该有 ${gone}`);
+    assert.equal(names(ff6).includes(gone), false, `FF6 不该有 ${gone}`);
+  }
+  assert.equal(ff5.length, 26);
+  assert.equal(ff6.length, 22);
+  assert.match(
+    String(ff6.find((tool) => tool.name === "save_game")?.description),
+    /存档到 20 号存档位/,
+  );
+  assert.match(
+    String(ff5.find((tool) => tool.name === "save_game")?.description),
+    /存档到 3 号存档位/,
+  );
+});
+
 void test("the waiting tools get their longer budgets", () => {
   assert.equal(timeoutFor("advance_story"), 850_000);
   assert.equal(timeoutFor("fight"), 1_100_000);
@@ -103,7 +124,7 @@ void test("the tool call's signal reaches the Pilot", async () => {
 void test("the prompt has the dsh goal text and no placeholders", async () => {
   const { buildSystemPrompt, openingMessage, withOpening } =
     await import("../src/plugin/player.ts");
-  const prompt = buildSystemPrompt();
+  const prompt = buildSystemPrompt("ff5", 3);
   assert.match(prompt, /目标:用户在对话里给你的目标;用户没说就接着之前的进度玩。/);
   assert.equal(prompt.includes("{goal}"), false);
   assert.equal(prompt.includes("{hint}"), false);

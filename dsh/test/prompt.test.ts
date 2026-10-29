@@ -10,7 +10,8 @@ import {
   FLOOR_MARKS,
   renderFloor,
   renderTerrain,
-  SYSTEM_PROMPT,
+  systemPrompt,
+  tacticianPrompt,
   TERRAIN,
   TOOLS,
 } from "../src/engine/prompt.ts";
@@ -64,17 +65,71 @@ function floorMarks(
   return new Map(items.map((item) => [cellKey(item.cell[0], item.cell[1]), item.mark]));
 }
 
-void test("the system prompt and tool definitions keep the ported text", () => {
-  // The new enemy conditions are an addition over the Python fixture (task 19).
-  const restored = SYSTEM_PROMPT.replace(
-    "、\n  enemy.name.喧嚣鬼(有几只活敌人叫这个名字);目标可以写敌人:喧嚣鬼、敌人:hp最低、敌人:弱冰。",
-    "。",
-  );
-  assert.equal(restored, fixture.systemPrompt);
-  assert.ok(SYSTEM_PROMPT.includes("enemy.name.喧嚣鬼"));
-  assert.ok(SYSTEM_PROMPT.includes("敌人:hp最低"));
-  assert.ok(SYSTEM_PROMPT.includes("目标:{goal}") && SYSTEM_PROMPT.endsWith("{hint}"));
+const ff5System = await readFile(
+  join(import.meta.dirname, "fixtures", "prompt", "system-prompt-ff5.txt"),
+  "utf8",
+);
+const ff5Tactician = await readFile(
+  join(import.meta.dirname, "fixtures", "prompt", "tactician-prompt-ff5.txt"),
+  "utf8",
+);
+
+void test("the FF5 prompts and tool definitions keep the ported text", () => {
+  assert.equal(systemPrompt("ff5", 3), ff5System);
+  assert.equal(tacticianPrompt("ff5"), ff5Tactician);
+  assert.ok(ff5System.includes("enemy.name.喧嚣鬼"));
+  assert.ok(ff5System.includes("敌人:hp最低"));
+  assert.ok(ff5System.includes("目标:{goal}") && ff5System.endsWith("{hint}"));
   assert.deepEqual(TOOLS, fixture.tools);
+});
+
+void test("the five new games get their own points, save slot and no FF5-only lines", () => {
+  const cases = [
+    ["ff1", "最终幻想", "四个光之战士"],
+    ["ff2", "最终幻想II", "没有等级"],
+    ["ff3", "最终幻想III", "四个洋葱剑士"],
+    ["ff4", "最终幻想IV", "主角塞西尔"],
+    ["ff6", "最终幻想VI", "角色很多"],
+  ] as const;
+  for (const [key, name, point] of cases) {
+    const text = systemPrompt(key, 20);
+    assert.ok(text.startsWith(`你在玩《${name} 像素重制版》(中文版)`), key);
+    assert.ok(text.includes("这一作的要点:"), key);
+    assert.ok(text.includes(point), key);
+    assert.ok(text.includes("20 号存档位"), key);
+    assert.ok(text.includes("过了起名"), key);
+    // The five games have no drake, jobs, guide, cast or combat magic (task 21).
+    for (const forbidden of [
+      "飞龙",
+      "board",
+      "land",
+      "change_job",
+      "cast",
+      "guide",
+      "魔法要先在魔法店",
+      "中文版的魔法名",
+      "规则表里的「最强」",
+      "X+",
+      "enemy.weak.",
+    ]) {
+      assert.equal(text.includes(forbidden), false, `${key} 不该有 ${forbidden}`);
+    }
+  }
+});
+
+void test("the five tacticians may only attack, defend or use an item", () => {
+  for (const key of ["ff1", "ff2", "ff3", "ff4", "ff6"]) {
+    const text = tacticianPrompt(key);
+    assert.ok(text.includes("do 只能写「攻击」「防御」,或「道具:道具名」"), key);
+    assert.ok(text.includes("这一作的魔法和特技暂时不能写进规则表"), key);
+    assert.ok(text.includes("以游戏里的道具名为准"), key);
+    assert.equal(text.includes("白魔法"), false, key);
+    assert.equal(text.includes("黑魔法"), false, key);
+    assert.equal(text.includes("最强"), false, key);
+    assert.equal(text.includes("X+"), false, key);
+    assert.equal(text.includes("属性"), false, key);
+    assert.equal(text.includes("换职业"), false, key);
+  }
 });
 
 void test("the terrain symbols and floor marks keep Python's order", () => {
@@ -128,7 +183,7 @@ void test("renderFloor clips the view to the map edges", () => {
 });
 
 void test("the prompt tells the model that 最强 avoids absorbs and prefers weaknesses", () => {
-  assert.ok(SYSTEM_PROMPT.includes("enemy.weak.冰") && SYSTEM_PROMPT.includes("enemy.absorbs.冰"));
+  assert.ok(ff5System.includes("enemy.weak.冰") && ff5System.includes("enemy.absorbs.冰"));
   const fight = TOOLS.find((tool) => tool.function.name === "fight");
   const tactics = TOOLS.find((tool) => tool.function.name === "set_tactics");
   assert.ok(fight?.function.description.includes("避开它吸收、无效的属性"));

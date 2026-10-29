@@ -13,16 +13,20 @@ import type { ObjectJsonSchema, ToolDefinition } from "@deepseek-ai/dsh-tools";
 import { Atlas } from "../engine/atlas.ts";
 import { describeError } from "../engine/errors.ts";
 import { readTacticianPlan, type TacticianPlan } from "../engine/facts.ts";
+import { byKey } from "../engine/games.ts";
 import { Guide } from "../engine/guide/kb.ts";
-import { TACTICIAN_PROMPT, TOOLS } from "../engine/prompt.ts";
+import { tacticianPrompt, TOOLS } from "../engine/prompt.ts";
 import { isRecord } from "../engine/values.ts";
 import type { Config } from "./config.ts";
 
 /** One tactician invocation's limit; the player's tool budgets add room for it. */
 export const TACTICIAN_TIMEOUT_MS = 180_000;
 
-/** The preset id the player starts for the second layer. */
-export const TACTICIAN_PRESET = "ffpr-tactician";
+/** The preset id the player starts for its own game's second layer (task 21). */
+export function tacticianPreset(game: string): string {
+  const key = byKey(game).key;
+  return key === "ff5" ? "ffpr-tactician" : `ffpr-tactician-${key}`;
+}
 
 /** The schema dsh-subagent validates the tactician's structured result against. */
 export const TACTICIAN_OUTPUT_SCHEMA: ObjectJsonSchema = {
@@ -71,6 +75,7 @@ export async function callTactician(
   starter: TacticianStarter,
   agent: Agent,
   signal: AbortSignal,
+  game: string,
   facts: string,
 ): Promise<TacticianPlan> {
   const map = /地图[:：]?\s*(\d+)/u.exec(facts)?.[1] ?? "?";
@@ -81,7 +86,7 @@ export async function callTactician(
       provider: "spawn",
       label: `战术官 地图 ${map}`,
       request: {
-        agentPreset: TACTICIAN_PRESET,
+        agentPreset: tacticianPreset(game),
         prompt,
         parent: agent,
         outputSchema: TACTICIAN_OUTPUT_SCHEMA,
@@ -110,13 +115,16 @@ export async function callTactician(
   return readTacticianPlan(result.structured);
 }
 
-/** Register the tactician preset's two read-only tools, loaded once from the shared files. */
+/** Register the tactician preset's read-only tools, loaded once from this game's files. */
 export async function installTactician(ctx: Context, config: Config, log: Log): Promise<void> {
+  const ff5 = byKey(config.game).key === "ff5";
   let guide: Guide | null = null;
-  try {
-    guide = await Guide.load();
-  } catch (error) {
-    log.warn(`战术官读不了攻略,guide 工具只会报错:${describeError(error)}`);
+  if (ff5) {
+    try {
+      guide = await Guide.load();
+    } catch (error) {
+      log.warn(`战术官读不了攻略,guide 工具只会报错:${describeError(error)}`);
+    }
   }
   let atlas: Atlas;
   try {
@@ -125,11 +133,12 @@ export async function installTactician(ctx: Context, config: Config, log: Log): 
     log.warn(`战术官读不了地图记录,atlas 工具会是空的:${describeError(error)}`);
     atlas = new Atlas(config.atlasFile);
   }
-  const tools = tacticianTools(guide, atlas);
+  const tools = tacticianTools(guide, atlas, config.game);
+  const prompt = tacticianPrompt(config.game);
   const disposers = new Map<string, () => Promise<void>>();
 
   ctx.on("agent/created", ({ agent }) => {
-    disposers.set(agent.id, registerTacticianAgent(agent, tools));
+    disposers.set(agent.id, registerTacticianAgent(agent, tools, prompt));
   });
   ctx.on("agent/disposed", ({ agent }) => {
     disposers.delete(agent.id);
@@ -142,16 +151,17 @@ export async function installTactician(ctx: Context, config: Config, log: Log): 
   });
 }
 
-/** The two tool definitions the tactician sees; no game, no pilot, both read-only. */
-export function tacticianTools(guide: Guide | null, atlas: Atlas): ToolDefinition[] {
+/** The read-only tools the tactician sees; the five new games have no guide (task 21). */
+export function tacticianTools(guide: Guide | null, atlas: Atlas, game = "ff5"): ToolDefinition[] {
   const sources = new Map(TOOLS.map((tool) => [tool.function.name, tool.function]));
   const guideSource = sources.get("guide");
   const atlasSource = sources.get("atlas");
   if (guideSource === undefined || atlasSource === undefined) {
     throw new Error("提示词里没有 guide 或 atlas 工具定义");
   }
-  return [
-    {
+  const tools: ToolDefinition[] = [];
+  if (byKey(game).key === "ff5") {
+    tools.push({
       name: "guide",
       description: guideSource.description,
       parameters: guideSource.parameters,
@@ -174,23 +184,24 @@ export function tacticianTools(guide: Guide | null, atlas: Atlas): ToolDefinitio
         }
       },
       output: textOutput,
+    });
+  }
+  tools.push({
+    name: "atlas",
+    description: atlasSource.description,
+    parameters: atlasSource.parameters,
+    execute(_args, exec) {
+      try {
+        exec.signal.throwIfAborted();
+        return Promise.resolve(atlas.describe());
+      } catch (error) {
+        exec.signal.throwIfAborted();
+        return Promise.resolve(`工具出错:${describeError(error)}`);
+      }
     },
-    {
-      name: "atlas",
-      description: atlasSource.description,
-      parameters: atlasSource.parameters,
-      execute(_args, exec) {
-        try {
-          exec.signal.throwIfAborted();
-          return Promise.resolve(atlas.describe());
-        } catch (error) {
-          exec.signal.throwIfAborted();
-          return Promise.resolve(`工具出错:${describeError(error)}`);
-        }
-      },
-      output: textOutput,
-    },
-  ];
+    output: textOutput,
+  });
+  return tools;
 }
 
 const textOutput: ToolDefinition["output"] = {
@@ -203,6 +214,7 @@ const textOutput: ToolDefinition["output"] = {
 function registerTacticianAgent(
   agent: Agent,
   tools: readonly ToolDefinition[],
+  prompt: string,
 ): () => Promise<void> {
   return agent.ctx.effect(() => {
     const owned: (() => void)[] = [];
@@ -212,7 +224,7 @@ function registerTacticianAgent(
       agent.ctx.systemPrompt.section({
         name: PERSONA_PREFIX_SECTION,
         order: agent.ctx.systemPrompt.getSectionOrder("DEPLOYMENT_PERSONA_PREFIX"),
-        text: TACTICIAN_PROMPT,
+        text: prompt,
         complete: true,
       }),
     );
