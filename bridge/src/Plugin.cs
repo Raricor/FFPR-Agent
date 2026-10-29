@@ -21,17 +21,33 @@ namespace FfprBridge;
 public sealed class Plugin : BasePlugin
 {
     public const string Guid = "ffpr.agent.bridge";
-    public const string Version = "0.9.1";
+    public const string Version = "0.10.0";
 
     internal static ManualLogSource Logger;
     internal static Outbox Outbox;
     internal static ConfigEntry<float> SampleInterval;
     internal static ConfigEntry<bool> TrackMessageLookups;
 
+    // 10-28: Steam runs several of the six games at once, so each listens on its own port:
+    // 4780N for FFN, except FF5, the AI player's game, which keeps 47800.
+#if FF1
+    private const int DefaultPort = 47801;
+#elif FF2
+    private const int DefaultPort = 47802;
+#elif FF3
+    private const int DefaultPort = 47803;
+#elif FF4
+    private const int DefaultPort = 47804;
+#elif FF6
+    private const int DefaultPort = 47806;
+#else
+    private const int DefaultPort = 47800;
+#endif
+
     public override void Load()
     {
         Logger = Log;
-        var port = Config.Bind("Bridge", "Port", 47800, "WebSocket 端口(127.0.0.1 和局域网共用),0 表示不开");
+        var port = Config.Bind("Bridge", "Port", DefaultPort, "WebSocket 端口(127.0.0.1 和局域网共用),0 表示不开");
         var linkFile = Config.Bind(
             "Bridge", "LinkFile", @"C:\ffpr\bridge.json", "局域网连接的设置(地址、允许的客户端、令牌);没有这个文件就只听本机");
         SampleInterval = Config.Bind("Probe", "SampleIntervalSeconds", 1.0f, "状态采样间隔");

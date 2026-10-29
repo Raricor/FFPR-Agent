@@ -84,11 +84,16 @@ internal static partial class GameState
             ["location"] = u.CurrentLocation,
             ["locationText"] = Text(u.CurrentLocation),
             ["gil"] = u.OwendGil,
+#if !(FF1 || FF2 || FF3)
+            // 10-28: FF1-FF3 keep no total gil, and only FF5 counts wins.
             ["totalGil"] = u.TotalGil,
+#endif
             ["playTime"] = Math.Round(u.PlayTime, 1),
             ["steps"] = u.Steps,
             ["battles"] = u.BattleCount,
+#if FF5
             ["wins"] = u.WinCount,
+#endif
             ["escapes"] = u.EscapeCount,
             ["kills"] = u.MonstersKilledCount,
             ["chests"] = u.OpenChestCount,

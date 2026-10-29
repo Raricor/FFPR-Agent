@@ -58,6 +58,12 @@ internal static partial class GameState
         {
             o["save"] = null;
         }
+        if (o["save"] == null)
+        {
+            // 10-28: at the title, the boxes per place still come from the master data, so a game
+            // with no save yet can be mapped (open counts are then meaningless: only `total`).
+            o["treasure"] = Read(() => Treasure());
+        }
         try
         {
             o["bestiary"] = BestiaryProgress();
@@ -293,12 +299,16 @@ internal static partial class GameState
             ["playTime"] = Read(() => (int)Math.Round(u.PlayTime)),
             ["saveCount"] = Read(() => u.SaveCompleteCount),
             ["gil"] = Read(() => u.OwendGil),
+#if !(FF1 || FF2 || FF3)
             ["totalGil"] = Read(() => u.TotalGil),
+#endif
             ["kills"] = Read(() => u.MonstersKilledCount),
             ["battles"] = Read(() => u.BattleCount),
             ["chests"] = Read(() => Last.Map.TresureBoxUtility.GetOpenChestCount()),
             ["openChestCount"] = Read(() => u.OpenChestCount),
-            ["hiddenItems"] = Read(() => Last.Map.TresureBoxUtility.GetOpenHiddenItemCount(false)),
+            // Each game's own default: FF5 isIncludeZeroCount = false, FF6 isFlagDuplicate = true,
+            // FF1-FF4 take no argument.
+            ["hiddenItems"] = Read(() => Last.Map.TresureBoxUtility.GetOpenHiddenItemCount()),
             ["treasure"] = Read(() => Treasure()),
             ["members"] = Read(() => Members(owned)),
             ["releasedJobs"] = Read(() => ReleasedJobs(u)),
@@ -488,6 +498,7 @@ internal static partial class GameState
         return flags;
     }
 
+#if FF5
     private static Serial.Template.Management.JobInfomationProvider Provider()
     {
         try
@@ -519,6 +530,12 @@ internal static partial class GameState
             return null;
         }
     }
+#else
+    // Job mastery is FF5's (and FF3's, once its assemblies are in): elsewhere `mastered` is null.
+    private static object Provider() => null;
+
+    private static JsonNode Mastered(object provider, Last.Data.User.OwnedCharacterData character, int jobId) => null;
+#endif
 
     private sealed class BestiaryRow
     {

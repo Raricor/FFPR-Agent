@@ -20,7 +20,11 @@ internal static partial class GameState
         {
             return null;
         }
-        var o = new JsonObject { ["active"] = b.isBattle, ["ar"] = b.isArBattle };
+        var o = new JsonObject { ["active"] = b.isBattle };
+#if !(FF2 || FF3 || FF4)
+        // 10-28: FF2-FF4 have no AR battles.
+        o["ar"] = b.isArBattle;
+#endif
         if (b.isBattle)
         {
             var info = b.BattleStatusControl?.BattleStatusControlInfo;
@@ -208,7 +212,9 @@ internal static partial class GameState
     }
 
     private static Last.UI.KeyInput.BattleCommandSelectController _commandMenu;
+#if FF5
     private static Serial.FF5.UI.KeyInput.BattleQuantityAbilityInfomationController _abilityMenu;
+#endif
     private static Last.UI.KeyInput.BattleMenuController _battleMenu;
     private static Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppReferenceArray<UnityEngine.Object> _targetMenus;
     private static float _nextTargetSearch;
@@ -325,6 +331,7 @@ internal static partial class GameState
             o["commands"] = commands;
             o["cursor"] = menu.selectCursor?.Index;
         }
+#if FF5
         var abilities = Active(ref _abilityMenu);
         if (abilities != null)
         {
@@ -374,6 +381,7 @@ internal static partial class GameState
             }
             o["shown"] = shown;
         }
+#endif
         return o;
     }
 }

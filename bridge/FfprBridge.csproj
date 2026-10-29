@@ -19,12 +19,14 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <Game Condition="'$(Game)' == ''">ff5</Game>
     <DepsDir>$(MSBuildThisFileDirectory)..\.deps\$(Game)\</DepsDir>
+    <!-- FF5, FF6, ...: code that uses one game's own (Serial.FFn) classes sits under #if. -->
+    <DefineConstants>$(DefineConstants);$(Game.ToUpperInvariant())</DefineConstants>
     <OutputPath>bin\$(Game)\$(Configuration)\</OutputPath>
   </PropertyGroup>
 
   <ItemGroup>
     <CoreRef Include="0Harmony;BepInEx.Core;BepInEx.Unity.IL2CPP;Il2CppInterop.Runtime;Il2CppInterop.Common" />
-    <InteropRef Include="Assembly-CSharp;Il2Cppmscorlib;Il2CppSystem;Il2CppSystem.Core;UnityEngine;UnityEngine.CoreModule;UnityEngine.UI;Unity.InputSystem" />
+    <InteropRef Include="Assembly-CSharp;Il2Cppmscorlib;Il2CppSystem;Il2CppSystem.Core;UnityEngine;UnityEngine.CoreModule;UnityEngine.UI;Unity.InputSystem;UnityEngine.ScreenCaptureModule" />
     <Reference Include="@(CoreRef)" HintPath="$(DepsDir)core\%(Identity).dll" Private="false" />
     <Reference Include="@(InteropRef)" HintPath="$(DepsDir)interop\%(Identity).dll" Private="false" />
   </ItemGroup>
