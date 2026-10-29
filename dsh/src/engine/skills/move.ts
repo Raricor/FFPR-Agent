@@ -21,6 +21,7 @@ import { isRecord, record, records, text, truthy, type Json } from "../values.ts
 import { eventBaseName } from "../view.ts";
 import type { BattleHooks } from "./battle.ts";
 import { regular } from "./battle.ts";
+import { FIELD_HELP_STUCK, dismissFieldHelp } from "./screens.ts";
 
 type Say = (line: string) => void;
 
@@ -31,6 +32,8 @@ type Say = (line: string) => void;
 export interface MoveState {
   drake: Cell | null;
   battle?: BattleHooks;
+  /** Save slot a wipe loads during a walk; the Game sets it from its config. */
+  saveSlot?: number;
   /** Records a way found by walking (a conveyor ride) in the atlas; the Game wires it in. */
   link?: (mapId: unknown, from: Cell, to: Cell, how: string) => Promise<void>;
 }
@@ -97,7 +100,12 @@ export async function walkLeg(
     const pos = record(result.pos);
     if (truthy(result.ok)) return result;
     if (truthy(pos.battle) || pos.state === "Battle") {
-      say(`  途中遇敌,${await regular(pilot, state.battle ?? {}, say)}`);
+      say(`  途中遇敌,${await regular(pilot, state.battle ?? {}, say, state.saveSlot)}`);
+    } else if (pos.state === "FieldHelp") {
+      // First visit to a map: the walk stops on the hint overlay. Close it and walk on.
+      const help = await dismissFieldHelp(pilot);
+      if (help === "stuck") return { ok: false, error: FIELD_HELP_STUCK, pos };
+      if (help === "closed") say("  关掉了操作提示");
     } else if (pos.state === "Gimmick" || String(result.error).includes("Gimmick")) {
       await pilot.send("wait", { timeout: 30000 }, 40_000);
     } else {
@@ -637,6 +645,10 @@ export async function openAt(
   say: Say = () => undefined,
   state: MoveState = { drake: null },
 ): Promise<string> {
+  // A first-visit FieldHelp would swallow the Enter meant for the chest or clerk.
+  const firstHelp = await dismissFieldHelp(pilot);
+  if (firstHelp === "stuck") return FIELD_HELP_STUCK;
+  let helpNote = firstHelp === "closed" ? "关掉了操作提示\n" : "";
   const [here] = await plan(pilot, target, false);
   if (here === null) return "地图还在切换,稍后再试";
   // plan() lets its goal through; a spot must not be an occupied cell.
@@ -673,11 +685,18 @@ export async function openAt(
         continue;
       }
     }
+    const help = await dismissFieldHelp(pilot);
+    if (help === "stuck") return FIELD_HELP_STUCK;
+    if (help === "closed") helpNote = "关掉了操作提示\n";
     const result = await pilot.send("keys", { keys: [`${best.direction}:60`, "Enter"], gap: 250 });
     if (!truthy(result.ok)) return `没按成:${show(result.error)}`;
     const story = await pilot.send("story", { pageMs: 2500, timeout: 600000 }, 620_000);
     const via = best.rank === 0 ? "隔着柜台" : "";
-    return `站在 ${cellText(spot)} ${via}面朝${best.direction}按了确认,之后翻了 ${show(story.pages)} 页对话`;
+    return (
+      helpNote +
+      `站在 ${cellText(spot)} ${via}面朝${best.direction}按了确认,` +
+      `之后翻了 ${show(story.pages)} 页对话`
+    );
   }
   return failure;
 }
