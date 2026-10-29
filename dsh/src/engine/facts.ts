@@ -12,10 +12,11 @@ import { describeElements, type ElementKnowledge } from "./elements.ts";
 import type { KeyEvents } from "./events.ts";
 import type { Guide } from "./guide/kb.ts";
 import type { Pilot } from "./pilot.ts";
+import { FF5_PROFILE } from "./profiles/ff5.ts";
 import type { Tactics } from "./tactics.ts";
 import { formationLines, encounterMonsters, parseEncounters } from "./encounters.ts";
 import { enemyFacts } from "./tactics-view.ts";
-import type { MonsterCache, MonsterInfo } from "./bestiary.ts";
+import { elementNames, type MonsterCache, type MonsterInfo } from "./bestiary.ts";
 import * as gambit from "./skills/gambit.ts";
 import * as battle from "./skills/battle.ts";
 import { isRecord, num, records, record, text, type Json } from "./values.ts";
@@ -213,9 +214,13 @@ async function encounterText(game: FactsGame, trigger: FactsTrigger): Promise<st
     if (info.number !== null) byBook.set(info.number, info);
     if (info.name !== null && !byName.has(info.name)) byName.set(info.name, info);
   }
+  // The tactician only plays FF5.
+  const names = elementNames(monsters ?? [], FF5_PROFILE.elements);
   const rows = encounterMonsters(table).map((monster) => {
     const info = monster.book === null ? byName.get(monster.name) : byBook.get(monster.book);
-    return info === undefined ? `- ${monster.name}` : `- ${monster.name}: ${enemyFacts(info)}`;
+    return info === undefined
+      ? `- ${monster.name}`
+      : `- ${monster.name}: ${enemyFacts(info, names)}`;
   });
   return ["### 这里的遇敌表", ...lines, ...rows].join("\n");
 }

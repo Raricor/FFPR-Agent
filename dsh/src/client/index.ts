@@ -1,7 +1,8 @@
 /**
- * FF5 achievement panel for the right sidebar (task 14). The server computes every word; this
- * bundle only polls /api/ffpr/achievements and lays the AchievementView out for a narrow column.
- * It has no imports: React and the client services come from the loader.
+ * FFPR achievement and strategy panels for the right sidebar (tasks 14–20). The server computes
+ * every word and every title; this bundle only polls /api/ffpr/achievements and
+ * /api/ffpr/tactics and lays the views out for a narrow column. It has no imports: React and the
+ * client services come from the loader.
  */
 
 const TAB_ID = "@local/ffpr-dsh";
@@ -61,6 +62,8 @@ type TreasureView =
   | { readonly message: string }
   | {
       readonly header: string;
+      /** FF1/FF2 have no hidden items, so their hidden column is absent. */
+      readonly hidden: boolean;
       readonly warning?: string;
       readonly places: readonly AchievementViewPlace[];
     };
@@ -99,8 +102,10 @@ interface MapTacticsView {
 }
 
 interface TacticsPanelView {
+  readonly title: string;
   readonly status: string;
   readonly current: MapTacticsView | null;
+  readonly message: string | null;
   readonly boss: {
     readonly title: string;
     readonly table: RuleTableView;
@@ -410,26 +415,15 @@ function treasureBlock(treasure: TreasureView, onlyMissing: boolean): unknown {
   }
   const places = onlyMissing ? treasure.places.filter((place) => !place.done) : treasure.places;
   if (places.length > 0) {
-    const rows = places.map(
-      (place) =>
-        [
-          place.name,
-          place.chests,
-          place.hidden,
-          h(
-            "span",
-            {
-              style: {
-                color: lostColor(place.lost),
-              },
-            },
-            place.lost,
-          ),
-        ] as const,
-    );
-    parts.push(
-      h("div", { style: { marginTop: 4 } }, table(["地点", "宝箱", "隐藏", "不可回收"], rows)),
-    );
+    const lost = (place: AchievementViewPlace): unknown =>
+      h("span", { style: { color: lostColor(place.lost) } }, place.lost);
+    const rows = treasure.hidden
+      ? places.map((place) => [place.name, place.chests, place.hidden, lost(place)] as const)
+      : places.map((place) => [place.name, place.chests, lost(place)] as const);
+    const headers = treasure.hidden
+      ? ["地点", "宝箱", "隐藏", "不可回收"]
+      : ["地点", "宝箱", "不可回收"];
+    parts.push(h("div", { style: { marginTop: 4 } }, table(headers, rows)));
   }
   return h("div", null, ...parts);
 }
@@ -469,10 +463,10 @@ function resultColor(result: string): string {
 }
 
 function enemyBlock(enemies: readonly EnemyView[], note: string): unknown {
-  const parts: unknown[] = [
-    h("div", { style: { marginTop: 8, fontWeight: 600 } }, "敌人"),
-    h("div", { style: { fontSize: 11, opacity: 0.7 } }, note),
-  ];
+  const parts: unknown[] = [h("div", { style: { marginTop: 8, fontWeight: 600 } }, "敌人")];
+  if (note !== "") {
+    parts.push(h("div", { style: { fontSize: 11, opacity: 0.7 } }, note));
+  }
   for (const enemy of enemies) {
     const summary: unknown[] = [enemy.label];
     if (enemy.facts !== "") {
@@ -509,10 +503,10 @@ function enemyBlock(enemies: readonly EnemyView[], note: string): unknown {
 }
 
 function mapTacticsBlock(view: MapTacticsView): unknown {
-  const parts: unknown[] = [
-    h("div", { style: { fontWeight: 600 } }, view.name),
-    h("div", { style: { opacity: 0.8 } }, view.summary),
-  ];
+  const parts: unknown[] = [h("div", { style: { fontWeight: 600 } }, view.name)];
+  if (view.summary !== "") {
+    parts.push(h("div", { style: { opacity: 0.8 } }, view.summary));
+  }
   for (const table of view.tables) {
     parts.push(rulesBlock(table, table.inUse));
   }
@@ -625,7 +619,7 @@ function Panel(): unknown {
   });
 
   const rows = view === null ? [] : onlyMissing ? view.rows.filter((row) => !row.done) : view.rows;
-  const children: unknown[] = [panelHeader(view?.title ?? "FF5 成就", reload)];
+  const children: unknown[] = [panelHeader(view?.title ?? "FFPR 成就", reload)];
   if (view !== null) {
     for (const line of view.summary) {
       children.push(h("div", { style: { marginTop: 2 } }, line));
@@ -722,7 +716,7 @@ function Panel(): unknown {
 
 function TacticsPanel(): unknown {
   const { data: view, error, at, reload } = usePolling(loadTactics, REFRESH_MS);
-  const children: unknown[] = [panelHeader("FF5 策略", reload)];
+  const children: unknown[] = [panelHeader(view?.title ?? "FFPR 策略", reload)];
   if (error !== null) {
     children.push(h("div", { style: { color: "#d9822b", marginTop: 4 } }, error));
   }
@@ -730,6 +724,9 @@ function TacticsPanel(): unknown {
     children.push(h("div", { style: { marginTop: 4 } }, view.status));
   } else if (error === null) {
     children.push(h("div", { style: { marginTop: 4, opacity: 0.7 } }, "正在读取策略…"));
+  }
+  if (view?.message !== null && view?.message !== undefined) {
+    children.push(h("div", { style: { marginTop: 4, opacity: 0.8 } }, view.message));
   }
   children.push(h("div", { style: { opacity: 0.65, marginTop: 2 } }, `更新于 ${clock(at)}`));
   if (view !== null) children.push(strategyBlock(view));
@@ -799,12 +796,12 @@ function apply(ctx: ClientContext): void {
       ctx.sidebarRightTabs.register({
         id: TAB_ID,
         kind: TAB_KIND,
-        title: () => "FF5 成就",
+        title: () => "FFPR 成就",
         guide: [
           {
             id: "open",
             order: 70,
-            title: () => "FF5 成就",
+            title: () => "FFPR 成就",
             description: () => "当前存档的成就和宝箱进度",
           },
         ],
@@ -816,12 +813,12 @@ function apply(ctx: ClientContext): void {
       ctx.sidebarRightTabs.register({
         id: TACTICS_TAB_ID,
         kind: TACTICS_KIND,
-        title: () => "FF5 策略",
+        title: () => "FFPR 策略",
         guide: [
           {
             id: "open",
             order: 71,
-            title: () => "FF5 策略",
+            title: () => "FFPR 策略",
             description: () => "当前地图的战斗策略和敌人",
           },
         ],

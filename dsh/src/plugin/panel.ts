@@ -13,11 +13,14 @@ import { parseEncounters, type EncounterTable } from "../engine/encounters.ts";
 import { describeError } from "../engine/errors.ts";
 import { CalledProcessError } from "../engine/laptop.ts";
 import { LinkError } from "../engine/bridge.ts";
+import { byKey } from "../engine/games.ts";
 import { createPilot } from "../engine/link-pilot.ts";
+import { profileFor } from "../engine/profiles/index.ts";
+import type { GameProfile } from "../engine/profiles/types.ts";
 import { heldItems } from "../engine/skills/battle.ts";
 import { tacticsView, type TacticsPanelView } from "../engine/tactics-view.ts";
-import { num, record, records, truthy } from "../engine/values.ts";
-import { readAchievementView, type CommandPilotFactory } from "./commands.ts";
+import { num, record, records, text, truthy } from "../engine/values.ts";
+import { currentGame, readAchievementView, type CommandPilotFactory } from "./commands.ts";
 import type { PlayerEngine } from "./player.ts";
 
 export const ACHIEVEMENTS_ROUTE = "/api/ffpr/achievements";
@@ -51,12 +54,19 @@ export function achievementRoute(
 }
 
 function defaultTacticsPilot(engine: PlayerEngine, signal: AbortSignal) {
-  return createPilot(engine.laptop, engine.bridge, signal);
+  return createPilot(engine.laptop, engine.bridge, signal, { game: engine.game.game });
+}
+
+/** The configured game's profile: what a down bridge or an unknown product falls back to. */
+function configuredProfile(engine: PlayerEngine): GameProfile {
+  return profileFor(byKey(engine.game.game).key);
 }
 
 function downView(engine: PlayerEngine, status = "连不上桥插件，游戏可能没开"): TacticsPanelView {
   return {
     ...tacticsView({
+      profile: configuredProfile(engine),
+      strategy: true,
       mapId: null,
       party: [],
       inBattle: false,
@@ -87,13 +97,22 @@ export async function readTacticsView(
   if (engine.bridge === undefined) return downView(engine);
   const pilot = pilotFor(engine, signal);
   try {
+    const game = await currentGame(engine, signal);
+    const profile = profileFor(game.key);
+    // Only the configured game (ff5 today) has the AI player and its rule tables.
+    const strategy = game.key === byKey(engine.game.game).key;
     const sample = record((await pilot.query("sample")).sample);
     const mapId = num(record(sample.user).mapId) ?? null;
     const areaId = num(record(sample.user).areaId) ?? null;
+    // Same naming as the player's map listing (game.ts): area, then location.
+    const placeName = [record(sample.user).areaText, record(sample.user).locationText]
+      .map((value) => text(value))
+      .filter((value): value is string => value !== undefined && value !== "")
+      .join(" ");
     const party = records(sample.party);
     let items: Record<string, number> = {};
     try {
-      items = await heldItems(pilot);
+      if (strategy) items = await heldItems(pilot);
     } catch {
       // Without the bag the simulation only misses item rules; the page is still worth showing.
       signal.throwIfAborted();
@@ -105,8 +124,10 @@ export async function readTacticsView(
       // Bridges before 0.8.0 have no `encounters`; the enemy list then uses the other sources.
       signal.throwIfAborted();
     }
-    const monsters = monsterCache === undefined ? null : await monsterCache.load(pilot, signal);
-    const bestiary = bestiaryCache === undefined ? null : await bestiaryCache.load(pilot, signal);
+    const monsters =
+      monsterCache === undefined ? null : await monsterCache.load(pilot, signal, game.key);
+    const bestiary =
+      bestiaryCache === undefined ? null : await bestiaryCache.load(pilot, signal, game.key);
     let pos: Record<string, unknown> = {};
     try {
       pos = record((await pilot.send("pos")).pos);
@@ -117,8 +138,11 @@ export async function readTacticsView(
     const inBattle =
       truthy(pos.battle) || pos.state === "Battle" || truthy(record(sample.battle).active);
     return tacticsView({
+      profile,
+      strategy,
       mapId,
       areaId,
+      placeName,
       party,
       inBattle,
       tactics: engine.game.tactics,

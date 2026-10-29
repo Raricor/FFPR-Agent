@@ -5,8 +5,10 @@
 
 import type { BossPlanRecord } from "./game.ts";
 import { isElement, type ElementKnowledge } from "./elements.ts";
-import { attributeName, type MonsterInfo } from "./bestiary.ts";
+import { attributeName, elementNames, type MonsterInfo } from "./bestiary.ts";
 import { describeError } from "./errors.ts";
+import { byKey } from "./games.ts";
+import type { GameProfile } from "./profiles/types.ts";
 import { isRecord, num, records, text } from "./values.ts";
 import type { Tactics, TacticsEntry } from "./tactics.ts";
 import * as gambit from "./skills/gambit.ts";
@@ -38,8 +40,11 @@ export interface MapTacticsView {
 }
 
 export interface TacticsPanelView {
+  readonly title: string;
   readonly status: string;
   readonly current: MapTacticsView | null;
+  /** Set when this game has no AI player (only the configured game does). */
+  readonly message: string | null;
   readonly boss: {
     readonly title: string;
     readonly table: RuleTableView;
@@ -55,7 +60,12 @@ export interface BestiaryEntryView {
 }
 
 export interface TacticsViewInput {
+  readonly profile: GameProfile;
+  /** Whether the running game is the configured one: only it has tables and an AI player. */
+  readonly strategy: boolean;
   readonly mapId: number | null;
+  /** The game's own name for where the player is (sample `user.locationText`), if any. */
+  readonly placeName?: string;
   readonly areaId: number | null;
   readonly party: readonly unknown[];
   readonly inBattle: boolean;
@@ -153,7 +163,8 @@ function ruleTable(table: unknown, title: string, inUse: boolean): RuleTableView
 }
 
 function mapName(input: TacticsViewInput, mapId: number): string {
-  const name = input.mapNameOf(mapId);
+  // The atlas is FF5's; another game names its place itself (the sample's location).
+  const name = input.strategy ? input.mapNameOf(mapId) : (input.placeName ?? "");
   return name !== "" ? name : `地图 ${mapId}`;
 }
 
@@ -187,23 +198,26 @@ function notesOf(info: { readonly walkerNotes: string; readonly askUp: string } 
   return notes;
 }
 
-export function enemyFacts(info: MonsterInfo | undefined): string {
+export function enemyFacts(
+  info: MonsterInfo | undefined,
+  names: ReadonlyMap<number, string>,
+): string {
   if (info === undefined) return "";
   const parts: string[] = [];
   if (info.hp !== null) parts.push(`HP ${info.hp}`);
-  const names = (types: readonly number[]): string[] => {
+  const ofTypes = (types: readonly number[]): string[] => {
     const out: string[] = [];
     for (const attribute of info.attributes) {
-      const name = attributeName(attribute.id);
+      const name = attributeName(attribute.id, names);
       if (attribute.type !== null && types.includes(attribute.type) && name !== null) {
         if (name !== "" && !out.includes(name)) out.push(name);
       }
     }
     return out;
   };
-  const weak = names([1, 401]);
-  const absorbs = names([4, 403]);
-  const immune = names([3]);
+  const weak = ofTypes([1, 401]);
+  const absorbs = ofTypes([4, 403]);
+  const immune = ofTypes([3]);
   if (weak.length > 0) parts.push(`弱：${weak.join("、")}`);
   if (absorbs.length > 0) parts.push(`吸收：${absorbs.join("、")}`);
   if (immune.length > 0) parts.push(`无效：${immune.join("、")}`);
@@ -247,8 +261,12 @@ function enemyNumbers(
       else add(monster.book, monster.name);
     }
   }
-  for (const name of input.encountered(mapId)) addName(name);
-  for (const name of input.tactics.monstersSeen(mapId)) addName(name);
+  // Encounter memory, tables and the atlas are the AI player's game's (FF5): map ids repeat
+  // across games, so another game would get FF5's monsters for its own map 1.
+  if (input.strategy) {
+    for (const name of input.encountered(mapId)) addName(name);
+    for (const name of input.tactics.monstersSeen(mapId)) addName(name);
+  }
   if (includeArea && input.areaId !== null) {
     for (const entry of input.bestiaryEntries ?? []) {
       if (entry.number !== null && entry.areas.includes(input.areaId)) {
@@ -259,10 +277,15 @@ function enemyNumbers(
   return found;
 }
 
+function enemyLabel(number: number | null, name: string): string {
+  return number !== null ? `No.${String(number).padStart(3, "0")} ${name}`.trim() : name;
+}
+
 function enemyPlans(
   input: TacticsViewInput,
   enemies: readonly { number: number | null; name: string }[],
   table: unknown,
+  names: ReadonlyMap<number, string>,
 ): EnemyView[] {
   const normalized = gambit.normalize(table);
   const playerRows: gambit.Json[] = records(input.party).map((member) => ({
@@ -281,6 +304,13 @@ function enemyPlans(
       infoByName.set(info.name, info);
     }
   }
+  // Without strategy tables (another game) only the facts matter; no first action is simulated.
+  if (table === null) {
+    return enemies.map(({ number, name }) => {
+      const info = infoByNumber.get(number ?? -1) ?? infoByName.get(name);
+      return { label: enemyLabel(number, name), facts: enemyFacts(info, names), plan: [] };
+    });
+  }
   return enemies.map(({ number, name }) => {
     const info = infoByNumber.get(number ?? -1) ?? infoByName.get(name);
     // Without monster data the enemy still has to be alive, or the rules see an empty field.
@@ -296,17 +326,17 @@ function enemyPlans(
     const weak = new Set(
       enemyAttributes
         .filter((attribute) => attribute.type === 1 || attribute.type === 401)
-        .map((attribute) => attributeName(attribute.id) ?? ""),
+        .map((attribute) => attributeName(attribute.id, names) ?? ""),
     );
     const absorbs = new Set(
       enemyAttributes
         .filter((attribute) => attribute.type === 4 || attribute.type === 403)
-        .map((attribute) => attributeName(attribute.id) ?? ""),
+        .map((attribute) => attributeName(attribute.id, names) ?? ""),
     );
     const immune = new Set(
       enemyAttributes
         .filter((attribute) => attribute.type === 3)
-        .map((attribute) => attributeName(attribute.id) ?? ""),
+        .map((attribute) => attributeName(attribute.id, names) ?? ""),
     );
     const resistances = {
       weak: [...weak].filter(isElement),
@@ -361,33 +391,37 @@ function enemyPlans(
       plans.push(`${actor}：${label}${suffix}`);
     }
     return {
-      label: number !== null ? `No.${String(number).padStart(3, "0")} ${name}`.trim() : name,
-      facts: enemyFacts(info),
+      label: enemyLabel(number, name),
+      facts: enemyFacts(info, names),
       plan: plans,
     };
   });
 }
 
 function mapView(input: TacticsViewInput, mapId: number, includeArea: boolean): MapTacticsView {
-  const entry = input.tactics.maps.get(String(mapId));
+  const entry = input.strategy ? input.tactics.maps.get(String(mapId)) : undefined;
   const tables = entry?.tables ?? [];
   const current =
     tables.length === 0
       ? 0
       : (((entry?.current ?? 0) % tables.length) + tables.length) % tables.length;
   const hasTables = tables.length > 0;
-  const summary = hasTables
-    ? `${tables.length} 套策略，正在用第 ${current + 1} 套`
-    : "没有专属策略，普通战斗用默认规则(按职业)";
-  const views = hasTables
-    ? tables.map((table, index) =>
-        ruleTable(
-          table,
-          `策略 ${index + 1}${index === current ? "(正在用)" : ""}`,
-          index === current,
-        ),
-      )
-    : [ruleTable(gambit.defaultTable(input.party), "默认规则(按职业)", true)];
+  const summary = !input.strategy
+    ? ""
+    : hasTables
+      ? `${tables.length} 套策略，正在用第 ${current + 1} 套`
+      : "没有专属策略，普通战斗用默认规则(按职业)";
+  const views = !input.strategy
+    ? []
+    : hasTables
+      ? tables.map((table, index) =>
+          ruleTable(
+            table,
+            `策略 ${index + 1}${index === current ? "(正在用)" : ""}`,
+            index === current,
+          ),
+        )
+      : [ruleTable(gambit.defaultTable(input.party), "默认规则(按职业)", true)];
   const infoByNumber = new Map<number, MonsterInfo>();
   for (const info of input.monsters ?? []) {
     if (info.number !== null) infoByNumber.set(info.number, info);
@@ -416,8 +450,13 @@ function mapView(input: TacticsViewInput, mapId: number, includeArea: boolean): 
       }
     }
   }
-  const activeTable = hasTables ? (tables[current] ?? {}) : gambit.defaultTable(input.party);
+  const activeTable = !input.strategy
+    ? null
+    : hasTables
+      ? (tables[current] ?? {})
+      : gambit.defaultTable(input.party);
   const useArea = includeArea && mapId !== 1 && input.areaId !== 0;
+  const names = elementNames(input.monsters ?? [], input.profile.elements);
   const enemies = enemyPlans(
     input,
     enemyNumbers(
@@ -431,6 +470,7 @@ function mapView(input: TacticsViewInput, mapId: number, includeArea: boolean): 
       infoByName,
     ),
     activeTable,
+    names,
   );
   const formations = includeArea ? formationLines(input.encounters) : [];
   return {
@@ -439,15 +479,16 @@ function mapView(input: TacticsViewInput, mapId: number, includeArea: boolean): 
     summary,
     tables: views,
     results: entry === undefined ? [] : resultsOf(entry),
-    notes: notesOf(input.tacticianInfoFor(mapId)),
+    notes: input.strategy ? notesOf(input.tacticianInfoFor(mapId)) : [],
     enemies,
-    enemyNote: "按全员满 HP、第一回合、只有这一只敌人推演",
+    enemyNote: input.strategy ? "按全员满 HP、第一回合、只有这一只敌人推演" : "",
     formations,
   };
 }
 
 /** All data the sidebar's 策略 page needs, already sorted and worded. */
 export function tacticsView(input: TacticsViewInput): TacticsPanelView {
+  const title = `${byKey(input.profile.key).label} 策略`;
   const current = input.mapId === null ? null : mapView(input, input.mapId, true);
   const status =
     input.mapId === null
@@ -457,13 +498,16 @@ export function tacticsView(input: TacticsViewInput): TacticsPanelView {
     .map((key) => Number(key))
     .filter((mapId) => Number.isFinite(mapId))
     .sort((left, right) => left - right);
-  const others = ids
-    .filter(
-      (mapId) =>
-        mapId !== input.mapId && (input.tactics.maps.get(String(mapId))?.tables.length ?? 0) > 0,
-    )
-    .map((mapId) => mapView(input, mapId, false));
-  const plan = input.lastBossPlan();
+  const others = input.strategy
+    ? ids
+        .filter(
+          (mapId) =>
+            mapId !== input.mapId &&
+            (input.tactics.maps.get(String(mapId))?.tables.length ?? 0) > 0,
+        )
+        .map((mapId) => mapView(input, mapId, false))
+    : [];
+  const plan = input.strategy ? input.lastBossPlan() : null;
   const boss =
     plan === null
       ? null
@@ -472,5 +516,12 @@ export function tacticsView(input: TacticsViewInput): TacticsPanelView {
           table: ruleTable(plan.table, "首领战规则", true),
           result: plan.result,
         };
-  return { status, current, boss, others };
+  return {
+    title,
+    status,
+    current,
+    boss,
+    others,
+    message: input.strategy ? null : "这一作还没有 AI 玩家，没有战斗策略",
+  };
 }

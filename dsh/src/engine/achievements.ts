@@ -6,253 +6,10 @@
  */
 
 import type { Pilot } from "./pilot.ts";
-import { formatMonsterDetails, monsterStatus, type MonsterInfo } from "./bestiary.ts";
+import { elementNames, formatMonsterDetails, monsterStatus, type MonsterInfo } from "./bestiary.ts";
+import { byKey } from "./games.ts";
+import type { AchievementInfo, GameProfile, OneTimePlace } from "./profiles/types.ts";
 import { isRecord, list, num, text } from "./values.ts";
-
-export interface AchievementInfo {
-  readonly api: string;
-  readonly name: string;
-  readonly description: string;
-  readonly hidden: boolean;
-}
-
-/** The 39 Steam achievements of FF5, in the public page's order. */
-export const ACHIEVEMENTS: readonly AchievementInfo[] = [
-  {
-    api: "all_achievement",
-    name: "ＦＦ５大师！",
-    description: "获得了所有成就。",
-    hidden: false,
-  },
-  {
-    api: "scenario_1",
-    name: "旅行的决心",
-    description: "救助了蕾娜和加拉夫并一同踏上了旅程。",
-    hidden: true,
-  },
-  {
-    api: "scenario_2",
-    name: "风之心“探求”",
-    description: "领取了风之水晶的力量。",
-    hidden: true,
-  },
-  {
-    api: "scenario_3",
-    name: "水之心“怜悯”",
-    description: "领取了水之水晶的力量。",
-    hidden: true,
-  },
-  {
-    api: "scenario_4",
-    name: "火之心“勇气”",
-    description: "领取了火之水晶的力量。",
-    hidden: true,
-  },
-  {
-    api: "scenario_5",
-    name: "梦幻黑陆行鸟",
-    description: "发现了黑陆行鸟。",
-    hidden: true,
-  },
-  {
-    api: "scenario_6",
-    name: "古代文明的遗物",
-    description: "获得了飞空艇。",
-    hidden: true,
-  },
-  {
-    api: "scenario_7",
-    name: "土之心“希望”",
-    description: "领取了土之水晶的力量。",
-    hidden: true,
-  },
-  {
-    api: "scenario_8",
-    name: "前往另一个世界",
-    description: "来到了加拉夫的世界。",
-    hidden: true,
-  },
-  {
-    api: "scenario_9",
-    name: "被托付的心愿",
-    description: "获得了潜水艇。",
-    hidden: true,
-  },
-  {
-    api: "scenario_10",
-    name: "被继承之心",
-    description: "可露儿继承了加拉夫的力量。",
-    hidden: true,
-  },
-  {
-    api: "scenario_11",
-    name: "回到原来的世界",
-    description: "打倒了艾克斯迪司，回到了原来的世界。",
-    hidden: true,
-  },
-  {
-    api: "scenario_12",
-    name: "四颗心",
-    description: "打倒了新生艾克斯迪司，为世界夺回了和平。",
-    hidden: true,
-  },
-  {
-    api: "get_sealed_weapon",
-    name: "传说中的武器",
-    description: "获得了所有12件被封印的武器。",
-    hidden: false,
-  },
-  {
-    api: "get_hidden_job",
-    name: "模仿师格格",
-    description: "获得了隐藏职业。",
-    hidden: false,
-  },
-  {
-    api: "ultimate_omega",
-    name: "最强兵器",
-    description: "打倒了欧米茄。",
-    hidden: false,
-  },
-  {
-    api: "ultimate_dragon",
-    name: "最强之龙",
-    description: "打倒了神龙。",
-    hidden: false,
-  },
-  {
-    api: "piano_master",
-    name: "钢琴大师",
-    description: "掌握了钢琴。",
-    hidden: false,
-  },
-  {
-    api: "magic_learning_10",
-    name: "学习·初级",
-    description: "通过学习学会了10种青魔法。",
-    hidden: false,
-  },
-  {
-    api: "magic_learning_30",
-    name: "学习·高级",
-    description: "通过学习学会了所有青魔法。",
-    hidden: false,
-  },
-  {
-    api: "job_master_1",
-    name: "职业新人",
-    description: "掌握了某种职业。",
-    hidden: false,
-  },
-  {
-    api: "job_master_5",
-    name: "职业挑战者",
-    description: "掌握了5种职业。",
-    hidden: false,
-  },
-  {
-    api: "job_master_15",
-    name: "职业高手",
-    description: "掌握了15种职业。",
-    hidden: false,
-  },
-  {
-    api: "job_master_22",
-    name: "职业大师",
-    description: "掌握了所有职业。",
-    hidden: false,
-  },
-  {
-    api: "level_all_50",
-    name: "身经百战的强者们",
-    description: "全员达到了50级。",
-    hidden: false,
-  },
-  {
-    api: "total_gil_10000",
-    name: "中产",
-    description: "累计获得了10000金币。",
-    hidden: false,
-  },
-  {
-    api: "total_gil_100000",
-    name: "富人",
-    description: "累计获得了100000金币。",
-    hidden: false,
-  },
-  {
-    api: "total_gil_500000",
-    name: "大富豪",
-    description: "累计获得了500000金币。",
-    hidden: false,
-  },
-  {
-    api: "monster_hunt_100",
-    name: "见习战士",
-    description: "打倒了100只怪物。",
-    hidden: false,
-  },
-  {
-    api: "monster_hunt_1000",
-    name: "熟练战士",
-    description: "打倒了1000只怪物。",
-    hidden: false,
-  },
-  {
-    api: "monster_hunt_2000",
-    name: "传说战士",
-    description: "打倒了2000只怪物。",
-    hidden: false,
-  },
-  {
-    api: "picture_book_30",
-    name: "魔物图鉴·基础知识篇",
-    description: "怪物图鉴的完成率达到了10%。",
-    hidden: false,
-  },
-  {
-    api: "picture_book_151",
-    name: "魔物图鉴·战斗解析篇",
-    description: "怪物图鉴的完成率达到了50%。",
-    hidden: false,
-  },
-  {
-    api: "picture_book_302",
-    name: "魔物图鉴·完全攻略篇",
-    description: "怪物图鉴的完成率达到了100%。",
-    hidden: false,
-  },
-  {
-    api: "treasure_box_21",
-    name: "新手宝物猎人",
-    description: "宝箱的回收率达到了10%。",
-    hidden: false,
-  },
-  {
-    api: "treasure_box_112",
-    name: "老练宝物猎人",
-    description: "宝箱的回收率达到了50%。",
-    hidden: false,
-  },
-  {
-    api: "treasure_box_225",
-    name: "传奇宝物猎人",
-    description: "宝箱的回收率达到了100%。",
-    hidden: false,
-  },
-  {
-    api: "get_hidden_item",
-    name: "道具猎人",
-    description: "获得了所有隐藏道具。",
-    hidden: false,
-  },
-  {
-    api: "area_visit",
-    name: "探求的冒险者",
-    description: "造访了所有地方。",
-    hidden: false,
-  },
-];
 
 /**
  * TreasureBox.TreasureType: which rows are chests and which are hidden items. 10-27 live dump:
@@ -394,6 +151,8 @@ export type AchievementTreasureView =
   | { readonly message: string }
   | {
       readonly header: string;
+      /** Whether the game has any hidden items: FF1/FF2 do not, so their hidden column is gone. */
+      readonly hidden: boolean;
       /** Missed-chest sentence, absent when no chest is lost for good. */
       readonly warning?: string;
       readonly places: readonly AchievementViewPlace[];
@@ -411,8 +170,7 @@ export interface AchievementView {
 
 const STEAM_PLATFORM = 1; // AchievementManager.Platform.Steam
 const ALL_ACHIEVEMENTS = "all_achievement";
-/** 10-27 live dump: 封印之间 holds 12 hidden-item boxes, the 12 sealed weapons. */
-const SEALED_WEAPONS_AREA = 55;
+const HIDDEN_ITEMS_ACHIEVEMENT = "get_hidden_item";
 
 /**
  * An API name split into its stat and tier. Steam's tiered achievements share one stat row per
@@ -596,15 +354,17 @@ export function parseAchievements(reply: unknown): AchievementsData {
 
 /** One successful bestiary read, cached for the plugin process (task 18: static areas). */
 export class BestiaryAreaCache {
-  private cached: AchievementBestiary | null = null;
+  /** One read per game, like MonsterCache. */
+  private readonly cached = new Map<string, AchievementBestiary>();
 
-  async load(pilot: Pilot, signal: AbortSignal): Promise<AchievementBestiary | null> {
-    if (this.cached !== null) return this.cached;
+  async load(pilot: Pilot, signal: AbortSignal, game = ""): Promise<AchievementBestiary | null> {
+    const known = this.cached.get(game);
+    if (known !== undefined) return known;
     try {
       const reply = await pilot.query("achievements");
       const bestiary = parseAchievements(reply).bestiary;
       if (bestiary === null) return null;
-      this.cached = bestiary;
+      this.cached.set(game, bestiary);
       return bestiary;
     } catch {
       signal.throwIfAborted();
@@ -697,15 +457,11 @@ function hiddenItems(
   );
 }
 
-function sealedWeapons(
-  _definition: AchievementDefinition,
-  data: AchievementsData,
-): SaveProgress | null {
-  const count = treasureCount(
-    data,
-    TREASURE_KINDS.hidden,
-    (row) => row.area === SEALED_WEAPONS_AREA,
-  );
+/** One place's treasure of one kind, for a profile's area goal (FF5: the sealed weapons). */
+function areaGoal(data: AchievementsData, profile: GameProfile, api: string): SaveProgress | null {
+  const goal = profile.areaGoals.find((item) => item.api === api);
+  if (goal === undefined) return null;
+  const count = treasureCount(data, TREASURE_KINDS[goal.kind], (row) => row.area === goal.area);
   return count === null ? null : progress(count.open, count.total);
 }
 
@@ -730,7 +486,6 @@ const SAVE_RULES: Readonly<Record<string, SaveRule>> = {
     progress(data.save?.kills, targetOf(definition, api)),
   ChestComplete: (definition, data, api) => progress(data.save?.chests, targetOf(definition, api)),
   HiddenItems: hiddenItems,
-  SpecificItems: sealedWeapons,
   MemberLevel: memberLevel,
   JobMasters: jobMasters,
   Scenario: scenario,
@@ -760,13 +515,19 @@ function makeRow(
   };
 }
 
-function achievementRow(info: AchievementInfo, data: AchievementsData): AchievementProgress {
+function achievementRow(
+  info: AchievementInfo,
+  data: AchievementsData,
+  profile: GameProfile,
+): AchievementProgress {
   const definition = steamDefinition(data.defs, info.api);
   const rule = definition?.typeName === null ? undefined : SAVE_RULES[definition?.typeName ?? ""];
+  const goal = data.save === null ? null : areaGoal(data, profile, info.api);
   const progressValue =
-    definition === undefined || rule === undefined || data.save === null
+    goal ??
+    (definition === undefined || rule === undefined || data.save === null
       ? null
-      : rule(definition, data, info.api);
+      : rule(definition, data, info.api));
   return makeRow(info, definition, progressValue, accountFor(data, info.api)?.achieved ?? null);
 }
 
@@ -786,15 +547,16 @@ function allRow(
   return makeRow(info, definition, progressValue, steam);
 }
 
-/** One row per Steam achievement, in the Steam page's order. */
-export function progressRows(data: AchievementsData): AchievementProgress[] {
-  const others = ACHIEVEMENTS.filter((info) => info.api !== ALL_ACHIEVEMENTS).map((info) =>
-    achievementRow(info, data),
-  );
-  return ACHIEVEMENTS.map((info) =>
+/** One row per Steam achievement of the profile, in the Steam page's order. */
+export function progressRows(data: AchievementsData, profile: GameProfile): AchievementProgress[] {
+  const achievements = profile.achievements;
+  const others = achievements
+    .filter((info) => info.api !== ALL_ACHIEVEMENTS)
+    .map((info) => achievementRow(info, data, profile));
+  return achievements.map((info) =>
     info.api === ALL_ACHIEVEMENTS
       ? allRow(info, others, data)
-      : (others.find((row) => row.api === info.api) ?? achievementRow(info, data)),
+      : (others.find((row) => row.api === info.api) ?? achievementRow(info, data, profile)),
   );
 }
 
@@ -854,37 +616,6 @@ function treasureCell(rows: readonly AchievementTreasure[], kind: number): strin
   return `${formatNumber(open)} / ${formatNumber(total)}${open >= total ? " ✓" : ""}`;
 }
 
-interface OneTimePlace {
-  readonly area: number;
-  /** Until when its boxes can still be taken, for the warning. */
-  readonly until: string;
-  /** The first story achievement certainly after the deadline; without one the row only warns. */
-  readonly past?: string;
-}
-
-/**
- * Places whose boxes are lost for good after a story point, from the Steam missables guide
- * (.deps/knowledge/ff5, read 10-27); area ids from the 10-27 live dump. `past` is the nearest
- * story flag we can read that the deadline is surely behind, so a set flag never misjudges a box
- * that can still be taken; between the deadline and that flag the row still only warns.
- */
-const ONE_TIME_PLACES: ReadonlyMap<number, OneTimePlace> = new Map(
-  (
-    [
-      { area: 71, until: "打倒塔顶首领前", past: "scenario_3" }, // 沃尔斯塔: the water crystal is at the top
-      { area: 24, until: "火力船首领后的 10 分钟逃脱里", past: "scenario_5" }, // 卡纳克城
-      { area: 34, until: "打倒首领前", past: "scenario_7" }, // 隆卡遗迹: the earth crystal
-      { area: 57, until: "打倒首领前", past: "scenario_10" }, // 屏障之塔
-      { area: 79, until: "离开森林前", past: "scenario_11" }, // 慕亚大森林
-      { area: 86, until: "离开森林前", past: "scenario_11" }, // 慕亚大森林, the changed forest
-      { area: 40, until: "打倒十三层的艾克斯迪司前", past: "scenario_11" }, // 艾克斯迪司城
-      { area: 28, until: "打倒金字塔首领前" }, // 古代图书馆
-      { area: 67, until: "打倒首领前" }, // 两歧塔 黑塔
-      { area: 68, until: "打倒首领前" }, // 两歧塔 白塔
-    ] satisfies OneTimePlace[]
-  ).map((place) => [place.area, place]),
-);
-
 function storyPassed(data: AchievementsData, api: string): boolean {
   const definition = steamDefinition(data.defs, api);
   return definition !== undefined && scenario(definition, data)?.current === 1;
@@ -897,11 +628,15 @@ interface Lost {
 }
 
 /** The boxes of these rows that are gone for good, and the warning for the ones still open. */
-function lostBoxes(rows: readonly AchievementTreasure[], data: AchievementsData): Lost {
+function lostBoxes(
+  rows: readonly AchievementTreasure[],
+  data: AchievementsData,
+  places: ReadonlyMap<number, OneTimePlace>,
+): Lost {
   let missed = 0;
   let until: string | null = null;
   for (const row of rows) {
-    const place = row.area === null ? undefined : ONE_TIME_PLACES.get(row.area);
+    const place = row.area === null ? undefined : places.get(row.area);
     const left = (row.total ?? 0) - (row.open ?? 0);
     if (place === undefined || row.open === null || left <= 0) continue;
     if (place.past !== undefined && storyPassed(data, place.past)) missed += left;
@@ -910,8 +645,12 @@ function lostBoxes(rows: readonly AchievementTreasure[], data: AchievementsData)
   return { missed, until };
 }
 
-function lostCell(rows: readonly AchievementTreasure[], data: AchievementsData): string {
-  const { missed, until } = lostBoxes(rows, data);
+function lostCell(
+  rows: readonly AchievementTreasure[],
+  data: AchievementsData,
+  places: ReadonlyMap<number, OneTimePlace>,
+): string {
+  const { missed, until } = lostBoxes(rows, data, places);
   if (missed > 0) return `已错过 ${formatNumber(missed)}`;
   return until === null ? "—" : `限时:${until}`;
 }
@@ -938,21 +677,29 @@ function byPlace(treasure: readonly AchievementTreasure[]): Map<string, Achievem
   return places;
 }
 
-function treasureView(data: AchievementsData): AchievementTreasureView {
+function treasureView(data: AchievementsData, profile: GameProfile): AchievementTreasureView {
   const save = data.save;
   if (save?.treasure == null) {
     return { message: "桥插件还读不到按地点的宝箱数" };
   }
   const treasure = save.treasure;
+  const placesByArea = new Map(profile.oneTimePlaces.map((place) => [place.area, place]));
+  // FF1/FF2 have no hidden items at all and no 道具猎人 achievement; the profile check also keeps
+  // the column when a fixture's live dump happens to hold no type-2 row (the FF5 tests).
+  const hasHidden =
+    treasure.some((row) => row.type === TREASURE_KINDS.hidden) ||
+    profile.achievements.some((info) => info.api === HIDDEN_ITEMS_ACHIEVEMENT);
   const chestTotal = treasureTotal(treasure, TREASURE_KINDS.chest);
   const hiddenTotal = treasureTotal(treasure, TREASURE_KINDS.hidden);
-  const header =
-    `宝箱和隐藏道具(按地点) 宝箱 ` +
-    `${treasureOpen(treasure, TREASURE_KINDS.chest, save.chests)} / ${formatNumber(chestTotal)} · ` +
-    `隐藏道具 ${treasureOpen(treasure, TREASURE_KINDS.hidden, save.hiddenItems)} / ${formatNumber(hiddenTotal)}`;
+  const chests = `宝箱 ${treasureOpen(treasure, TREASURE_KINDS.chest, save.chests)} / ${formatNumber(chestTotal)}`;
+  const header = hasHidden
+    ? `宝箱和隐藏道具(按地点) ${chests} · ` +
+      `隐藏道具 ${treasureOpen(treasure, TREASURE_KINDS.hidden, save.hiddenItems)} / ${formatNumber(hiddenTotal)}`
+    : `宝箱(按地点) ${chests}`;
   const missedChests = lostBoxes(
     treasure.filter((row) => row.type === TREASURE_KINDS.chest),
     data,
+    placesByArea,
   ).missed;
   const warning =
     missedChests > 0
@@ -962,10 +709,12 @@ function treasureView(data: AchievementsData): AchievementTreasureView {
     name,
     chests: treasureCell(rows, TREASURE_KINDS.chest),
     hidden: treasureCell(rows, TREASURE_KINDS.hidden),
-    lost: lostCell(rows, data),
+    lost: lostCell(rows, data, placesByArea),
     done: rows.every((row) => row.total !== null && row.open !== null && row.open >= row.total),
   }));
-  return warning === undefined ? { header, places } : { header, warning, places };
+  return warning === undefined
+    ? { header, hidden: hasHidden, places }
+    : { header, hidden: hasHidden, warning, places };
 }
 
 /** The notes under the achievement table; empty when none of them applies. */
@@ -1007,6 +756,7 @@ function monsterLabel(entry: AchievementBestiaryEntry): string {
 /** One row per place name, with all entries and their details/status. */
 function bestiaryView(
   data: AchievementsData,
+  profile: GameProfile,
   monsters: readonly MonsterInfo[] | null,
   guide: MonsterGuide | null,
 ): AchievementBestiaryView {
@@ -1016,6 +766,7 @@ function bestiaryView(
   for (const info of monsters ?? []) {
     if (info.number !== null) infoByNumber.set(info.number, info);
   }
+  const names = elementNames(monsters ?? [], profile.elements);
   const statusByNumber = new Map<number, string | null>();
   for (const entry of bestiary.entries) {
     const number = entry.number ?? 0;
@@ -1023,7 +774,12 @@ function bestiaryView(
       number,
       entry.registered === true
         ? null
-        : monsterStatus(number, entry.areas, (api) => storyPassed(data, api)),
+        : monsterStatus(
+            number,
+            entry.areas,
+            (api) => storyPassed(data, api),
+            profile.bestiaryMissables,
+          ),
     );
   }
   const missedTotal = bestiary.entries.filter(
@@ -1068,7 +824,9 @@ function bestiaryView(
           registered: entry.registered === true,
           status,
           details:
-            info === undefined ? [] : formatMonsterDetails(info, habitats, guideNote, status),
+            info === undefined
+              ? []
+              : formatMonsterDetails(info, habitats, guideNote, status, names),
         };
       });
       const missed = monstersInPlace.filter((monster) => monster.status === "不可再获得").length;
@@ -1084,12 +842,13 @@ function bestiaryView(
 /** The structured content behind `/ach` and the sidebar panel. */
 export function achievementView(
   data: AchievementsData,
+  profile: GameProfile,
   monsters: readonly MonsterInfo[] | null = null,
   guide: MonsterGuide | null = null,
 ): AchievementView {
-  const rows = progressRows(data);
+  const rows = progressRows(data, profile);
   const total = rows.length;
-  const title = "FF5 成就 · 当前存档";
+  const title = `${byKey(profile.key).label} 成就 · 当前存档`;
   let summary: string[];
   if (data.save === null) {
     summary = ["还没读档，只能看 Steam 的解锁情况。"];
@@ -1115,8 +874,8 @@ export function achievementView(
       steam: row.steam,
     })),
     notes: data.save === null ? [] : achievementNotes(rows, data.save),
-    bestiary: bestiaryView(data, monsters, guide),
-    treasure: treasureView(data),
+    bestiary: bestiaryView(data, profile, monsters, guide),
+    treasure: treasureView(data, profile),
   };
 }
 
@@ -1164,15 +923,24 @@ function formatView(view: AchievementView): string {
     if ("message" in treasure) {
       lines.push("", treasure.message);
     } else {
-      lines.push(
-        "",
-        treasure.header.replace("宝箱和隐藏道具(按地点)", "**宝箱和隐藏道具(按地点)**"),
-      );
+      const heading = treasure.hidden
+        ? treasure.header.replace("宝箱和隐藏道具(按地点)", "**宝箱和隐藏道具(按地点)**")
+        : treasure.header.replace("宝箱(按地点)", "**宝箱(按地点)**");
+      lines.push("", heading);
       if (treasure.warning !== undefined) lines.push(treasure.warning);
       if (treasure.places.length > 0) {
-        lines.push("", "| 地点 | 宝箱 | 隐藏道具 | 不可回收 |", "| --- | --- | --- | --- |");
-        for (const place of treasure.places) {
-          lines.push(`| ${cell(place.name)} | ${place.chests} | ${place.hidden} | ${place.lost} |`);
+        if (treasure.hidden) {
+          lines.push("", "| 地点 | 宝箱 | 隐藏道具 | 不可回收 |", "| --- | --- | --- | --- |");
+          for (const place of treasure.places) {
+            lines.push(
+              `| ${cell(place.name)} | ${place.chests} | ${place.hidden} | ${place.lost} |`,
+            );
+          }
+        } else {
+          lines.push("", "| 地点 | 宝箱 | 不可回收 |", "| --- | --- | --- |");
+          for (const place of treasure.places) {
+            lines.push(`| ${cell(place.name)} | ${place.chests} | ${place.lost} |`);
+          }
         }
       }
     }
@@ -1181,6 +949,13 @@ function formatView(view: AchievementView): string {
 }
 
 /** Markdown for `/ach`: the save's progress next to Steam's unlocked flag for each achievement. */
-export function formatAchievements(data: AchievementsData | AchievementView): string {
-  return formatView("defs" in data ? achievementView(data) : data);
+export function formatAchievements(data: AchievementsData, profile: GameProfile): string;
+export function formatAchievements(data: AchievementView): string;
+export function formatAchievements(
+  data: AchievementsData | AchievementView,
+  profile?: GameProfile,
+): string {
+  if (!("defs" in data)) return formatView(data);
+  if (profile === undefined) throw new Error("格式化成就需要作品资料");
+  return formatView(achievementView(data, profile));
 }

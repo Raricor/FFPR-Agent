@@ -8,7 +8,10 @@ import {
   type TacticsViewInput,
 } from "../src/engine/tactics-view.ts";
 import type { MonsterInfo } from "../src/engine/bestiary.ts";
+import { profileFor } from "../src/engine/profiles/index.ts";
 import type { Json } from "../src/engine/values.ts";
+
+const FF5 = profileFor("ff5");
 
 const TABLE_A: Json = {
   巴兹: [
@@ -26,6 +29,8 @@ function tacticsWith(entries: Record<string, TacticsEntry>): Tactics {
 
 function input(overrides: Partial<TacticsViewInput> = {}): TacticsViewInput {
   return {
+    profile: FF5,
+    strategy: true,
     mapId: 64,
     areaId: null,
     encounters: null,
@@ -193,8 +198,8 @@ const MONSTERS: readonly MonsterInfo[] = [
     resistanceAttribute: 0,
     resistanceCondition: 0,
     attributes: [
-      { id: 1, type: 1 },
-      { id: 2, type: 4 },
+      { id: 1, name: null, type: 1 },
+      { id: 2, name: null, type: 4 },
     ],
     conditions: [],
     drops: [],
@@ -361,13 +366,52 @@ void test("a strongest spell with nothing that can hit the enemy says so", () =>
   const sealed: MonsterInfo = {
     ...first,
     attributes: [
-      { id: 1, type: 3 },
-      { id: 2, type: 4 },
+      { id: 1, name: null, type: 3 },
+      { id: 2, name: null, type: 4 },
     ],
   };
   const view = tacticsView(enemyInput({ monsters: [sealed, ...rest] }));
   const enemy = view.current?.enemies[0];
   assert.deepEqual(enemy?.plan, ["法利斯：黑魔法:最强(没有能打它的法术)"]);
+});
+
+void test("a game without an AI player shows only the encounter table and the facts", () => {
+  // FF5's encounter memory and atlas say 乙怪 and 火力船 for map 64; FF6's map 64 is elsewhere.
+  const view = tacticsView(
+    enemyInput({
+      profile: profileFor("ff6"),
+      strategy: false,
+      placeName: "纳尔什",
+      bestiaryEntries: [],
+      tactics: tacticsWith({ "64": { tables: [], current: 0, results: [], monsters: ["丙怪"] } }),
+      tacticianInfoFor: () => ({ mapId: 64, walkerNotes: "先开开关", askUp: "缺眼药" }),
+      lastBossPlan: () => ({
+        mapId: 64,
+        table: TABLE_B,
+        result: "首领战由战术官写表,代码照表打:战斗结束",
+        at: "2026-10-27T12:00:00.000Z",
+      }),
+      encounters: {
+        monsterSet: 3,
+        parties: [{ id: 67, rate: 1000, notEscape: false, monsters: [{ name: "甲怪", book: 38 }] }],
+      },
+    }),
+  );
+  assert.equal(view.title, "FF6 策略");
+  assert.equal(view.message, "这一作还没有 AI 玩家，没有战斗策略");
+  assert.equal(view.status, "当前地图：纳尔什");
+  assert.equal(view.boss, null);
+  assert.deepEqual(view.others, []);
+  assert.ok(view.current);
+  assert.deepEqual(view.current.tables, []);
+  assert.deepEqual(view.current.results, []);
+  assert.deepEqual(view.current.notes, []);
+  assert.deepEqual(view.current.formations, ["甲怪 · 100%"]);
+  assert.equal(view.current.enemyNote, "");
+  assert.deepEqual(view.current.enemies, [
+    // FF6 names its elements in its own data; this fixture has no sentence, so no FF5 names.
+    { label: "No.038 甲怪", facts: "HP 240 · 弱：属性 1 · 吸收：属性 2", plan: [] },
+  ]);
 });
 
 void test("the game's encounter table leads the enemy list, on the world map too", () => {

@@ -6,10 +6,13 @@
  */
 
 import type { Pilot } from "./pilot.ts";
+import type { MissableRule } from "./profiles/types.ts";
 import { isRecord, list, num, text } from "./values.ts";
 
 export interface MonsterAttribute {
   readonly id: number | null;
+  /** The bridge's sentence for weak rows ("对冰属性抵抗力低"), or null. */
+  readonly name: string | null;
   readonly type: number | null;
 }
 
@@ -32,86 +35,11 @@ export interface MonsterInfo {
   readonly steals: readonly string[];
 }
 
-export interface MissableRule {
-  readonly numbers: readonly number[];
-  readonly areas: readonly number[];
-  readonly until: string;
-  /** The first story achievement certainly after the deadline, when one is known. */
-  readonly past?: string;
-}
-
-/**
- * 10-27: area ids are reused across worlds — 71 is Walse Tower and later the sunken Walse
- * Tower — so these rules are only trusted when every recorded area is one the guide names.
- * A set `past` flag whose areas include somewhere else means the game disagrees with the
- * guide: leave the monster unmarked rather than call it lost.
- */
-export const BESTIARY_MISSABLES: readonly MissableRule[] = [
-  { numbers: [191, 192], areas: [11], until: "离开托纳运河前", past: "scenario_3" },
-  {
-    numbers: [233],
-    areas: [15],
-    until: "北山首领战里让玛基莎把它召唤出来",
-    past: "scenario_3",
-  },
-  { numbers: [28, 29], areas: [71], until: "打倒沃尔斯塔顶的首领前", past: "scenario_3" },
-  {
-    numbers: [27],
-    areas: [66, 71],
-    until: "打倒两歧塔首领前(沃尔斯塔之后还有一次机会)",
-  },
-  {
-    numbers: [41, 42, 43, 44, 238],
-    areas: [24],
-    until: "火力船首领后的 10 分钟逃脱里",
-    past: "scenario_5",
-  },
-  {
-    numbers: [62, 64, 65, 66, 67, 68, 69],
-    areas: [34],
-    until: "打倒隆卡遗迹首领前",
-    past: "scenario_7",
-  },
-  { numbers: [76, 77, 78, 79], areas: [54], until: "大桥的战斗结束前", past: "scenario_10" },
-  {
-    numbers: [263],
-    areas: [0],
-    until: "泽扎的船队上，等吉尔伽美什召唤它再打倒吉尔伽美什",
-    past: "scenario_10",
-  },
-  {
-    numbers: [106, 107, 108, 109, 110, 111, 112],
-    areas: [57],
-    until: "打倒屏障之塔首领前",
-    past: "scenario_10",
-  },
-  { numbers: [122], areas: [79, 86], until: "慕亚大森林变化前", past: "scenario_11" },
-  {
-    numbers: [71, 72],
-    areas: [40],
-    until: "艾克斯迪司城地下室，解除幻术前",
-    past: "scenario_11",
-  },
-  {
-    numbers: [
-      30, 82, 121, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 158, 255, 271, 272,
-      273,
-    ],
-    areas: [40],
-    until: "打倒十三层的艾克斯迪司前",
-    past: "scenario_11",
-  },
-  {
-    numbers: [162, 163, 164, 165, 166, 167],
-    areas: [66, 67, 68],
-    until: "打倒两歧塔首领前",
-  },
-];
-
 function parseAttribute(value: unknown): MonsterAttribute | null {
   if (!isRecord(value)) return null;
   return {
     id: num(value.id) ?? null,
+    name: text(value.name) ?? null,
     type: num(value.type) ?? null,
   };
 }
@@ -163,26 +91,50 @@ function unique(values: readonly string[]): string[] {
 }
 
 /**
- * AttributeGroup ids to element names. The bridge's `name` is no use: 10-27 only the weak rows
- * carried one, and it was a sentence ("对冰属性抵抗力低"); every id's name was read off those.
+ * The bridge's sentence for a weak row: FF5 says "对冰属性抵抗力低" or "对毒抵抗力低", FF6 says
+ * "弱点是火属性" (10-28 dump; same ids, 1 fire to 8 wind).
  */
-export function attributeName(id: number | null): string | null {
-  if (id === null) return null;
-  return ELEMENTS.get(id) ?? `属性 ${id}`;
+const WEAK_NAME = /^(?:对(.+?)(?:属性)?抵抗力低|弱点是(.+?)(?:属性)?)$/;
+
+/**
+ * AttributeGroup ids to element names, read from the sentences on the weak rows (task 20), then
+ * the game's own table for ids no sentence names. On the 10-27 dump only weak rows carried a
+ * name, and it was a sentence like "对冰属性抵抗力低".
+ */
+export function elementNames(
+  monsters: readonly MonsterInfo[],
+  known: Readonly<Record<number, string>>,
+): ReadonlyMap<number, string> {
+  const names = new Map<number, string>();
+  for (const monster of monsters) {
+    for (const attribute of monster.attributes) {
+      if (attribute.id === null || attribute.name === null) continue;
+      const match = WEAK_NAME.exec(attribute.name);
+      const name = match?.[1] ?? match?.[2];
+      if (name !== undefined && name !== "" && !names.has(attribute.id)) {
+        names.set(attribute.id, name);
+      }
+    }
+  }
+  for (const [id, name] of Object.entries(known)) {
+    if (!names.has(Number(id))) names.set(Number(id), name);
+  }
+  return names;
 }
 
-const ELEMENTS: ReadonlyMap<number, string> = new Map([
-  [1, "火"],
-  [2, "冰"],
-  [3, "雷"],
-  [4, "土"],
-  [5, "水"],
-  [6, "毒"],
-  [7, "圣"],
-  [8, "风"],
-]);
+/** The element name from `elementNames`, else the number: never another game's name. */
+export function attributeName(
+  id: number | null,
+  names?: ReadonlyMap<number, string>,
+): string | null {
+  if (id === null) return null;
+  return names?.get(id) ?? `属性 ${id}`;
+}
 
-function resistanceLines(attributes: readonly MonsterAttribute[]): string[] {
+function resistanceLines(
+  attributes: readonly MonsterAttribute[],
+  names: ReadonlyMap<number, string> | null,
+): string[] {
   const sections: readonly (readonly [number, string])[] = [
     [1, "弱点"],
     [401, "双倍弱点"],
@@ -194,12 +146,12 @@ function resistanceLines(attributes: readonly MonsterAttribute[]): string[] {
   ];
   const lines: string[] = [];
   for (const [type, label] of sections) {
-    const names = unique(
+    const chosen = unique(
       attributes
         .filter((attribute) => attribute.type === type)
-        .map((attribute) => attributeName(attribute.id) ?? ""),
+        .map((attribute) => attributeName(attribute.id, names ?? undefined) ?? ""),
     );
-    if (names.length > 0) lines.push(`${label}：${names.join("、")}`);
+    if (chosen.length > 0) lines.push(`${label}：${chosen.join("、")}`);
   }
   return lines;
 }
@@ -210,6 +162,7 @@ export function formatMonsterDetails(
   habitats: readonly string[],
   guideNote: string | null,
   status: string | null,
+  names: ReadonlyMap<number, string> | null,
 ): string[] {
   const lines: string[] = [];
   const stats: string[] = [];
@@ -221,7 +174,7 @@ export function formatMonsterDetails(
   if (info.gil !== null) stats.push(`金钱 ${info.gil}`);
   if (info.boss === true) stats.push("首领");
   if (stats.length > 0) lines.push(stats.join(" · "));
-  const resistances = resistanceLines(info.attributes);
+  const resistances = resistanceLines(info.attributes, names);
   if (resistances.length > 0) lines.push(resistances.join(" · "));
   const conditions = unique(info.conditions);
   if (conditions.length > 0) {
@@ -251,8 +204,9 @@ export function monsterStatus(
   number: number,
   areas: readonly number[],
   storyPassed: (api: string) => boolean,
+  rules: readonly MissableRule[],
 ): string | null {
-  const rule = BESTIARY_MISSABLES.find((item) => item.numbers.includes(number));
+  const rule = rules.find((item) => item.numbers.includes(number));
   if (rule === undefined) return null;
   const agrees = areas.length > 0 && areas.every((area) => rule.areas.includes(area));
   const past = rule.past !== undefined && storyPassed(rule.past);
@@ -263,15 +217,21 @@ export function monsterStatus(
 
 /** One successful static read, shared by `/ach` and the panel route. */
 export class MonsterCache {
-  private cached: readonly MonsterInfo[] | null = null;
+  /** One read per game: the web app can outlive a switch from FF5 to FF6 (task 20). */
+  private readonly cached = new Map<string, readonly MonsterInfo[]>();
 
-  async load(pilot: Pilot, signal?: AbortSignal): Promise<readonly MonsterInfo[] | null> {
-    if (this.cached !== null) return this.cached;
+  async load(
+    pilot: Pilot,
+    signal?: AbortSignal,
+    game = "",
+  ): Promise<readonly MonsterInfo[] | null> {
+    const known = this.cached.get(game);
+    if (known !== undefined) return known;
     try {
       const reply = await pilot.query("monsters");
       const monsters = parseMonsters(reply);
       if (monsters.length === 0) return null;
-      this.cached = monsters;
+      this.cached.set(game, monsters);
       return monsters;
     } catch (error) {
       if (signal !== undefined) signal.throwIfAborted();

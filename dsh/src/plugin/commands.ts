@@ -14,10 +14,13 @@ import {
 } from "../engine/achievements.ts";
 import { LinkError } from "../engine/bridge.ts";
 import { describeError } from "../engine/errors.ts";
+import { GAMES, byKey, type Game } from "../engine/games.ts";
 import { CalledProcessError } from "../engine/laptop.ts";
 import { type MonsterCache } from "../engine/bestiary.ts";
 import { createPilot } from "../engine/link-pilot.ts";
 import type { Pilot } from "../engine/pilot.ts";
+import { profileFor } from "../engine/profiles/index.ts";
+import { record, text } from "../engine/values.ts";
 import type { PlayerEngine } from "./player.ts";
 
 const BRIDGE_DOWN = "连不上桥插件，游戏可能没开";
@@ -26,7 +29,21 @@ const BRIDGE_DOWN = "连不上桥插件，游戏可能没开";
 export type CommandPilotFactory = (engine: PlayerEngine, signal: AbortSignal) => Pilot;
 
 function defaultPilot(engine: PlayerEngine, signal: AbortSignal): Pilot {
-  return createPilot(engine.laptop, engine.bridge, signal);
+  return createPilot(engine.laptop, engine.bridge, signal, { game: engine.game.game });
+}
+
+/**
+ * The game the bridge is running (task 20): the hello record's product name, matched against
+ * games.ts. A bridge that cannot be reached or names no known title falls back to the
+ * configured game; the caller handles the link error itself.
+ */
+export async function currentGame(engine: PlayerEngine, signal: AbortSignal): Promise<Game> {
+  const configured = byKey(engine.game.game);
+  if (engine.bridge === undefined) return configured;
+  const health = record(await engine.bridge.health(signal));
+  const product = text(record(health.hello).product);
+  if (product === undefined) return configured;
+  return GAMES.find((game) => game.title === product) ?? configured;
 }
 
 export type AchievementRead =
@@ -43,11 +60,16 @@ export async function readAchievementView(
   if (engine.bridge === undefined) return { ok: false, error: BRIDGE_DOWN };
   const pilot = pilotFor(engine, signal);
   try {
+    const profile = profileFor((await currentGame(engine, signal)).key);
     const reply = await pilot.query("achievements");
     const data = parseAchievements(reply);
-    const monsters = monsterCache === undefined ? null : await monsterCache.load(pilot, signal);
-    const guide = (engine as Partial<PlayerEngine>).game?.guide ?? null;
-    return { ok: true, view: achievementView(data, monsters, guide) };
+    const monsters =
+      monsterCache === undefined ? null : await monsterCache.load(pilot, signal, profile.key);
+    // The guide knowledge is FF5's (.deps/knowledge/ff5): its notes go by bestiary number, so
+    // another game would get FF5's monster under the same number.
+    const guide =
+      profile.key === "ff5" ? ((engine as Partial<PlayerEngine>).game?.guide ?? null) : null;
+    return { ok: true, view: achievementView(data, profile, monsters, guide) };
   } catch (error) {
     signal.throwIfAborted();
     if (error instanceof LinkError || error instanceof CalledProcessError) {

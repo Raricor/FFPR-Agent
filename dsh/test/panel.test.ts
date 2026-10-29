@@ -5,6 +5,7 @@ import type { ConnectionFetchRoute } from "@deepseek-ai/dsh-client-connection";
 import { BestiaryAreaCache } from "../src/engine/achievements.ts";
 import type { BridgeLink } from "../src/engine/bridge.ts";
 import { Tactics } from "../src/engine/tactics.ts";
+import { currentGame } from "../src/plugin/commands.ts";
 import { installPanel, TACTICS_ROUTE } from "../src/plugin/panel.ts";
 import type { PlayerEngine } from "../src/plugin/player.ts";
 import { FakePilot } from "./fake-pilot.ts";
@@ -23,17 +24,25 @@ const REPLY = {
   },
 };
 
+/** A bridge whose only job is the hello product currentGame reads. */
+function linkWith(product = "FINAL FANTASY V"): BridgeLink {
+  return {
+    health: () => Promise.resolve({ ok: true, hello: { product } }),
+  } as unknown as BridgeLink;
+}
+
 function engine(): PlayerEngine {
-  return { bridge: {} as BridgeLink } as unknown as PlayerEngine;
+  return { bridge: linkWith(), game: { game: "ff5" } } as unknown as PlayerEngine;
 }
 
 function tacticsEngine(
   tactics: Tactics,
-  bridge: BridgeLink | undefined = {} as BridgeLink,
+  bridge: BridgeLink | undefined = linkWith(),
 ): PlayerEngine {
   return {
     bridge,
     game: {
+      game: "ff5",
       tactics,
       mapNameOf: (mapId: number) => (mapId === 64 ? "火力船 机房" : ""),
       tacticianInfoFor: () => null,
@@ -87,6 +96,20 @@ function fakeContext(hasConnection: boolean): FakeServer {
   } as unknown as Context;
   return { ctx, routes, disposers };
 }
+
+void test("currentGame reads the hello product and falls back to the configured game", async () => {
+  const signal = new AbortController().signal;
+  const ff6: PlayerEngine = {
+    bridge: linkWith("FINAL FANTASY VI"),
+    game: { game: "ff5" },
+  } as unknown as PlayerEngine;
+  assert.equal((await currentGame(ff6, signal)).key, "ff6");
+  const unknown = {
+    bridge: linkWith("SOME OTHER GAME"),
+    game: { game: "ff4" },
+  } as unknown as PlayerEngine;
+  assert.equal((await currentGame(unknown, signal)).key, "ff4");
+});
 
 void test("the panel route returns the view with no-store and an ISO timestamp", async () => {
   const server = fakeContext(true);

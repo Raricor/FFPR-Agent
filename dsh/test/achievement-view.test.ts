@@ -5,6 +5,9 @@ import {
   formatAchievements,
   parseAchievements,
 } from "../src/engine/achievements.ts";
+import { profileFor } from "../src/engine/profiles/index.ts";
+
+const FF5 = profileFor("ff5");
 
 const REPLY = {
   achievements: {
@@ -36,7 +39,7 @@ const REPLY = {
 
 void test("achievementView carries the table, notes and treasure as data", () => {
   const data = parseAchievements(REPLY);
-  const view = achievementView(data);
+  const view = achievementView(data, FF5);
   assert.equal(view.title, "FF5 成就 · 当前存档");
   assert.deepEqual(view.summary, ["游戏时间 21:13:05,存过 25 次", view.summary[1]]);
   assert.match(view.summary[1] ?? "", /^本档达成 \d+ \/ 39 · Steam 已解锁 1 \/ 39$/);
@@ -64,11 +67,11 @@ void test("achievementView carries the table, notes and treasure as data", () =>
   assert.deepEqual(view.treasure.places, [
     { name: "卡纳克城", chests: "3 / 5", hidden: "0 / 1", lost: "—", done: false },
   ]);
-  assert.equal(formatAchievements(data), formatAchievements(view));
+  assert.equal(formatAchievements(data, FF5), formatAchievements(view));
 });
 
 void test("a save-less view has one summary line and no treasure table", () => {
-  const view = achievementView(parseAchievements({ achievements: { save: null } }));
+  const view = achievementView(parseAchievements({ achievements: { save: null } }), FF5);
   assert.deepEqual(view.summary, ["还没读档，只能看 Steam 的解锁情况。"]);
   assert.deepEqual(view.treasure, { message: "桥插件还读不到按地点的宝箱数" });
   assert.ok(view.rows.every((row) => row.save === "—"));
@@ -90,7 +93,7 @@ void test("one number in two areas is counted in both", () => {
       areas: { "8": "风之神殿", "12": "卡纳克城", "20": "沃尔斯" },
     }),
   );
-  const view = achievementView(data);
+  const view = achievementView(data, FF5);
   assert.ok(!("message" in view.bestiary));
   if ("message" in view.bestiary) return;
   assert.equal(view.bestiary.header, "魔物图鉴(全账号共用) 已登记 3 / 4");
@@ -120,7 +123,7 @@ void test("one number in two areas is counted in both", () => {
       ],
     },
   ]);
-  const text = formatAchievements(data);
+  const text = formatAchievements(data, FF5);
   assert.ok(text.includes("魔物图鉴(全账号共用) 已登记 3 / 4"));
   assert.ok(text.includes("| 地点 | 已登记 | 未登记 | 不可再获得 |"));
   assert.ok(text.includes("| 风之神殿 | 1 / 2 | No.010 风形魔 |  |"));
@@ -134,7 +137,7 @@ void test("two areas with one bestiary name share a row", () => {
       areas: { "8": "风之神殿", "12": "风之神殿" },
     }),
   );
-  const view = achievementView(data);
+  const view = achievementView(data, FF5);
   assert.ok(!("message" in view.bestiary));
   if ("message" in view.bestiary) return;
   assert.deepEqual(view.bestiary.areas, [
@@ -148,10 +151,10 @@ void test("two areas with one bestiary name share a row", () => {
 });
 
 void test("a missing bestiary says the bridge cannot read it", () => {
-  const view = achievementView(parseAchievements(bestiaryReply(null)));
+  const view = achievementView(parseAchievements(bestiaryReply(null)), FF5);
   assert.deepEqual(view.bestiary, { message: "桥插件还读不到图鉴" });
   assert.ok(
-    formatAchievements(parseAchievements(bestiaryReply(null))).includes("桥插件还读不到图鉴"),
+    formatAchievements(parseAchievements(bestiaryReply(null)), FF5).includes("桥插件还读不到图鉴"),
   );
 });
 
@@ -163,6 +166,7 @@ void test("area 0 without a name is the world map", () => {
         areas: { "0": null },
       }),
     ),
+    FF5,
   );
   assert.ok(!("message" in view.bestiary));
   if ("message" in view.bestiary) return;
@@ -220,7 +224,7 @@ function missableReply(registered: boolean): Record<string, unknown> {
 }
 
 void test("an unregistered missable carries its status and introduction into the view", () => {
-  const view = achievementView(parseAchievements(missableReply(false)), [MONSTER_28], {
+  const view = achievementView(parseAchievements(missableReply(false)), FF5, [MONSTER_28], {
     monsterNote: (book) => (book === 28 ? "Beware the wind." : ""),
   });
   assert.ok(!("message" in view.bestiary));
@@ -232,15 +236,92 @@ void test("an unregistered missable carries its status and introduction into the
   assert.ok(monster.details.includes("出没：沃尔斯塔"));
   assert.ok(monster.details.includes("攻略：Beware the wind."));
   assert.equal(monster.details.at(-1), "不可再获得");
-  const text = formatAchievements(parseAchievements(missableReply(false)));
+  const text = formatAchievements(parseAchievements(missableReply(false)), FF5);
   assert.ok(text.includes("| 地点 | 已登记 | 未登记 | 不可再获得 |"));
   assert.ok(text.includes("| 沃尔斯塔 | 0 / 1 · 已错过 1 | No.028 风形魔 | No.028 |"));
 });
 
 void test("a registered monster is never marked missable", () => {
-  const view = achievementView(parseAchievements(missableReply(true)), [MONSTER_28]);
+  const view = achievementView(parseAchievements(missableReply(true)), FF5, [MONSTER_28]);
   assert.ok(!("message" in view.bestiary));
   if ("message" in view.bestiary) return;
   assert.equal(view.bestiary.header, "魔物图鉴(全账号共用) 已登记 1 / 1");
   assert.equal(view.bestiary.areas[0]?.monsters[0]?.status, null);
+});
+
+void test("FF6's profile lists all 37 achievements under its own title", () => {
+  const data = parseAchievements({
+    achievements: {
+      defs: [
+        {
+          id: 1,
+          api: "scenario_1",
+          type: 1,
+          typeName: "Scenario",
+          value: 1,
+          condition: 6,
+          platform: 1,
+        },
+      ],
+      account: [{ api: "scenario_1", achieved: true, current: 1, max: 1 }],
+      save: {
+        playTime: 3600,
+        saveCount: 3,
+        chests: 2,
+        hiddenItems: 1,
+        flags: { "6": [1, 0, 0, 0] },
+        treasure: [
+          { area: 12, name: "南费加罗镇", type: 1, total: 5, open: 2 },
+          { area: 12, name: "南费加罗镇", type: 2, total: 1, open: 1 },
+        ],
+      },
+      bestiary: {
+        entries: [{ number: 1, name: "魔导装甲", registered: true, areas: [12] }],
+        areas: { "12": "南费加罗镇" },
+      },
+    },
+  });
+  const view = achievementView(data, profileFor("ff6"));
+  assert.equal(view.title, "FF6 成就 · 当前存档");
+  assert.equal(view.rows.length, 37);
+  assert.equal(view.rows[0]?.name, "ＦＦ６大师！");
+  assert.equal(view.rows.find((row) => row.name === "魔导少女")?.save, "✓");
+  assert.ok(!("message" in view.treasure));
+  if ("message" in view.treasure) return;
+  assert.equal(view.treasure.header, "宝箱和隐藏道具(按地点) 宝箱 2 / 5 · 隐藏道具 1 / 1");
+  assert.deepEqual(view.treasure.places, [
+    { name: "南费加罗镇", chests: "2 / 5", hidden: "1 / 1 ✓", lost: "—", done: false },
+  ]);
+  assert.ok(!("message" in view.bestiary));
+  if ("message" in view.bestiary) return;
+  assert.equal(view.bestiary.header, "魔物图鉴(全账号共用) 已登记 1 / 1");
+  const text = formatAchievements(data, profileFor("ff6"));
+  assert.ok(text.includes("**FF6 成就 · 当前存档**(游戏时间 01:00:00,存过 3 次)"));
+  assert.ok(text.includes("| 南费加罗镇 | 2 / 5 | 1 / 1 ✓ | — |"));
+  assert.ok(text.includes("魔物图鉴(全账号共用) 已登记 1 / 1"));
+});
+
+void test("FF1 has no hidden items, so its treasure table has no hidden column", () => {
+  const data = parseAchievements({
+    achievements: {
+      defs: [],
+      account: [],
+      save: {
+        chests: 2,
+        hiddenItems: 0,
+        treasure: [{ area: 1, name: "柯内利亚", type: 1, total: 5, open: 2 }],
+      },
+    },
+  });
+  const view = achievementView(data, profileFor("ff1"));
+  assert.equal(view.title, "FF1 成就 · 当前存档");
+  assert.ok(!("message" in view.treasure));
+  if ("message" in view.treasure) return;
+  assert.equal(view.treasure.hidden, false);
+  assert.equal(view.treasure.header, "宝箱(按地点) 宝箱 2 / 5");
+  const text = formatAchievements(data, profileFor("ff1"));
+  assert.ok(text.includes("**宝箱(按地点)** 宝箱 2 / 5"));
+  assert.ok(text.includes("| 地点 | 宝箱 | 不可回收 |"));
+  assert.equal(text.includes("隐藏道具"), false);
+  assert.ok(text.includes("| 柯内利亚 | 2 / 5 | — |"));
 });

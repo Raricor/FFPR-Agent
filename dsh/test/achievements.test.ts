@@ -3,6 +3,9 @@ import test from "node:test";
 import type { Context } from "@deepseek-ai/cordis";
 import type { CommandDefinition, CommandInvocation } from "@deepseek-ai/dsh-commands";
 import { formatAchievements, parseAchievements, progressRows } from "../src/engine/achievements.ts";
+import { profileFor } from "../src/engine/profiles/index.ts";
+
+const FF5 = profileFor("ff5");
 import { LinkError } from "../src/engine/bridge.ts";
 import type { BridgeLink } from "../src/engine/bridge.ts";
 import type { PlayerEngine } from "../src/plugin/player.ts";
@@ -179,7 +182,7 @@ function reply(
 }
 
 function rowFor(api: string) {
-  const row = progressRows(parseAchievements(reply())).find((item) => item.api === api);
+  const row = progressRows(parseAchievements(reply()), FF5).find((item) => item.api === api);
   assert.ok(row, `no row for ${api}`);
   return row;
 }
@@ -193,13 +196,13 @@ void test("a raised scenario flag is done and a clear one is not", () => {
     { current: rowFor("scenario_2").current, done: rowFor("scenario_2").done },
     { current: 0, done: false },
   );
-  const text = formatAchievements(parseAchievements(reply()));
+  const text = formatAchievements(parseAchievements(reply()), FF5);
   assert.ok(text.includes("| 旅行的决心 | 救助了蕾娜和加拉夫并一同踏上了旅程。 | ✓ | ✓ |"));
   assert.ok(text.includes("| 风之心“探求” | 领取了风之水晶的力量。 | 未达成 |"));
 });
 
 void test("the save's chest count can trail Steam's unlocked flag", () => {
-  const text = formatAchievements(parseAchievements(reply()));
+  const text = formatAchievements(parseAchievements(reply()), FF5);
   assert.ok(text.includes("| 新手宝物猎人 | 宝箱的回收率达到了10%。 | 22 / 21 ✓ | ✓ |"));
   assert.ok(text.includes("| 老练宝物猎人 | 宝箱的回收率达到了50%。 | 22 / 112 | ✓ |"));
 });
@@ -209,7 +212,7 @@ void test("the bestiary is marked as account-wide", () => {
   assert.equal(row.current, 45);
   assert.equal(row.done, true);
   assert.equal(row.accountWide, true);
-  const text = formatAchievements(parseAchievements(reply()));
+  const text = formatAchievements(parseAchievements(reply()), FF5);
   assert.ok(text.includes("45 / 30 ✓(全账号)"));
   assert.ok(text.includes("图鉴全账号共用，没有本档进度"));
 });
@@ -218,13 +221,13 @@ void test("a type outside the save table is unreadable and says so", () => {
   const row = rowFor("magic_learning_10");
   assert.equal(row.current, null);
   assert.equal(row.done, false);
-  const text = formatAchievements(parseAchievements(reply()));
+  const text = formatAchievements(parseAchievements(reply()), FF5);
   assert.ok(text.includes("桥插件还读不到这些成就的本档进度"));
   assert.equal(text.includes("击杀：本档 312 只;Steam 的击杀数是全账号累计的"), true);
 });
 
 void test("no save shows only Steam's flags and a dash in the save column", () => {
-  const text = formatAchievements(parseAchievements(reply({ save: null })));
+  const text = formatAchievements(parseAchievements(reply({ save: null })), FF5);
   assert.ok(text.includes("还没读档，只能看 Steam 的解锁情况。"));
   assert.ok(text.includes("| 旅行的决心 | 救助了蕾娜和加拉夫并一同踏上了旅程。 | — | ✓ |"));
   assert.equal(text.includes("还没读档，只能看 Steam 的解锁情况。\n本档达成"), false);
@@ -233,7 +236,7 @@ void test("no save shows only Steam's flags and a dash in the save column", () =
 void test("no account data still formats the save's progress", () => {
   const data = parseAchievements(reply({ account: null }));
   assert.equal(data.account, null);
-  const text = formatAchievements(data);
+  const text = formatAchievements(data, FF5);
   assert.ok(text.includes("Steam 进度读不到"));
   assert.ok(text.includes("本档达成"));
 });
@@ -253,7 +256,7 @@ void test("a missing master value falls back to the number at the end of the API
       },
     ],
   });
-  const row = progressRows(parseAchievements(noValue)).find(
+  const row = progressRows(parseAchievements(noValue), FF5).find(
     (item) => item.api === "treasure_box_225",
   );
   assert.ok(row);
@@ -306,7 +309,7 @@ function liveShape(): Record<string, unknown> {
 }
 
 void test("a tier is matched to its stat row by target, and other platforms are ignored", () => {
-  const rows = progressRows(parseAchievements(liveShape()));
+  const rows = progressRows(parseAchievements(liveShape()), FF5);
   assert.equal(rows.length, 39);
   const gil = rows.filter((row) => row.api.startsWith("total_gil_"));
   assert.deepEqual(
@@ -320,7 +323,7 @@ void test("a tier is matched to its stat row by target, and other platforms are 
 });
 
 void test("all achievements counts the other rows, not its own account flag", () => {
-  const row = progressRows(parseAchievements(liveShape())).find(
+  const row = progressRows(parseAchievements(liveShape()), FF5).find(
     (item) => item.api === "all_achievement",
   );
   assert.ok(row);
@@ -329,7 +332,7 @@ void test("all achievements counts the other rows, not its own account flag", ()
 });
 
 void test("hidden items aim at every hidden item and sealed weapons at 封印之间", () => {
-  const rows = progressRows(parseAchievements(liveShape()));
+  const rows = progressRows(parseAchievements(liveShape()), FF5);
   const hidden = rows.find((row) => row.api === "get_hidden_item");
   const sealed = rows.find((row) => row.api === "get_sealed_weapon");
   assert.deepEqual([hidden?.current, hidden?.target], [5, 55]);
@@ -337,7 +340,7 @@ void test("hidden items aim at every hidden item and sealed weapons at 封印之
 });
 
 void test("two areas with one name share a row", () => {
-  const text = formatAchievements(parseAchievements(liveShape()));
+  const text = formatAchievements(parseAchievements(liveShape()), FF5);
   assert.ok(text.includes("| 慕亚大森林 | 3 / 24 | — |"));
   assert.equal(text.split("慕亚大森林").length, 2);
 });
@@ -345,11 +348,11 @@ void test("two areas with one name share a row", () => {
 void test("an achievement listed once per platform shows once, from Steam's row", () => {
   const android = { ...DEFS[2], id: 103, value: 99, platform: 2 };
   const data = parseAchievements(reply({ defs: [android, ...DEFS] }));
-  const rows = progressRows(data).filter((row) => row.api === "treasure_box_21");
+  const rows = progressRows(data, FF5).filter((row) => row.api === "treasure_box_21");
   assert.equal(rows.length, 1);
   assert.equal(rows[0]?.target, 21);
-  const once = formatAchievements(parseAchievements(reply()));
-  assert.equal(formatAchievements(data).split("\n")[1], once.split("\n")[1]);
+  const once = formatAchievements(parseAchievements(reply()), FF5);
+  assert.equal(formatAchievements(data, FF5).split("\n")[1], once.split("\n")[1]);
 });
 
 void test("missing fields stay null instead of throwing", () => {
@@ -367,7 +370,7 @@ void test("missing fields stay null instead of throwing", () => {
 });
 
 function treasureText(treasure: unknown, save: Record<string, unknown> = SAVE): string {
-  return formatAchievements(parseAchievements(reply({ save: { ...save, treasure } })));
+  return formatAchievements(parseAchievements(reply({ save: { ...save, treasure } })), FF5);
 }
 
 void test("one place can hold both chests and hidden items", () => {
@@ -421,12 +424,20 @@ void test("missing treasure data says the bridge cannot read it", () => {
   assert.equal(text.includes("| 地点 | 宝箱 | 隐藏道具 |"), false);
   const absent = formatAchievements(
     parseAchievements(reply({ save: { ...SAVE, treasure: undefined } })),
+    FF5,
   );
   assert.ok(absent.includes("桥插件还读不到按地点的宝箱数"));
 });
 
 function engineWith(bridge: BridgeLink | undefined): PlayerEngine {
-  return { bridge } as unknown as PlayerEngine;
+  return { bridge, game: { game: "ff5" } } as unknown as PlayerEngine;
+}
+
+/** A bridge whose only job is the hello record currentGame reads (product null = title screen). */
+function linkWith(product: string | null = "FINAL FANTASY V"): BridgeLink {
+  return {
+    health: () => Promise.resolve({ ok: true, hello: product === null ? null : { product } }),
+  } as unknown as BridgeLink;
 }
 
 interface Registered {
@@ -459,7 +470,7 @@ function invocation(): CommandInvocation {
 void test("/ach registers on ctx and answers with the formatted table", async () => {
   const { ctx, registered } = fakeContext();
   const pilot = new FakePilot().onQuery("achievements", reply());
-  installCommands(ctx, engineWith({} as BridgeLink), () => pilot);
+  installCommands(ctx, engineWith(linkWith()), () => pilot);
   const definition = registered.definitions[0];
   assert.ok(definition);
   assert.equal(definition.name, "ach");
@@ -495,7 +506,7 @@ class FailingPilot extends FakePilot {
 
 void test("/ach turns a link failure into the same error", async () => {
   const { ctx, registered } = fakeContext();
-  installCommands(ctx, engineWith({} as BridgeLink), () => new FailingPilot());
+  installCommands(ctx, engineWith(linkWith()), () => new FailingPilot());
   const definition = registered.definitions[0];
   assert.ok(definition);
   assert.deepEqual(await definition.handler(invocation()), {
@@ -531,6 +542,7 @@ function oneTimeText(waterCrystal: number, walseOpen: number): string {
         },
       },
     }),
+    FF5,
   );
 }
 
