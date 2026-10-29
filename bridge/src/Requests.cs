@@ -1,5 +1,7 @@
-using System;
+﻿using System;
+using System.IO;
 using System.Linq;
+using BepInEx;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Last.Management;
@@ -20,6 +22,9 @@ namespace FfprBridge;
 ///   {"id": 9, "op": "battlemenu"}       whose turn, the command list and cursor, open magic list
 ///   {"id": 10, "op": "shop"}            shop command menu, products with prices, cursors, quantity
 ///   {"id": 11, "op": "menu"}            field menu: commands, sub-menu, magic/item/equip lists, targets
+///   {"id": 12, "op": "title"}           title menu: commands (greyed out or not), cursor
+///   {"id": 13, "op": "shot"}            save this frame as a PNG; the reply names the file
+///   {"id": 14, "op": "textinput"}       text fields on screen (naming boxes): text, focused
 /// </summary>
 internal static class Requests
 {
@@ -86,6 +91,15 @@ internal static class Requests
                 case "saveui":
                     reply["saveui"] = GameState.SaveUi();
                     break;
+                case "title":
+                    reply["title"] = GameState.Title();
+                    break;
+                case "shot":
+                    reply["shot"] = Shot();
+                    break;
+                case "textinput":
+                    reply["textinput"] = GameState.TextInput();
+                    break;
                 case "encounters":
                     reply["encounters"] = GameState.Encounters();
                     break;
@@ -108,6 +122,27 @@ internal static class Requests
             reply["error"] = $"{e.GetType().Name}: {e.Message}";
         }
         return Emit.Serialize(reply);
+    }
+
+    /// <summary>
+    /// 10-28: six games run minimized at once, and the pilot agent's screenshot has to bring a
+    /// window to the front. Unity writes the frame itself at the end of this frame; the reply
+    /// only names the file under BepInEx\ffpr\shots (read it over SSH a moment later).
+    /// </summary>
+    private static JsonObject Shot()
+    {
+        var dir = Path.Combine(Paths.BepInExRootPath, "ffpr", "shots");
+        Directory.CreateDirectory(dir);
+        foreach (var old in new DirectoryInfo(dir).GetFiles("*.png"))
+        {
+            if (old.CreationTimeUtc < DateTime.UtcNow.AddHours(-1))
+            {
+                old.Delete();
+            }
+        }
+        var file = Path.Combine(dir, $"shot-{DateTime.Now:yyyyMMdd-HHmmss-fff}.png");
+        UnityEngine.ScreenCapture.CaptureScreenshot(file);
+        return new JsonObject { ["file"] = file };
     }
 }
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text.Json.Nodes;
 using Il2CppInterop.Runtime;
@@ -129,11 +129,16 @@ internal static partial class GameState
     private static bool Shown(UnityEngine.Component c) => c != null && c.gameObject.activeInHierarchy;
 
     private static Last.UI.KeyInput.MainMenuController _mainMenu;
+#if FF5
+    // FF5's own (Serial.FF5) and template (Serial.Template) windows; other games have their own.
     private static Serial.Template.UI.KeyInput.StatusWindowControllerBase _menuParty;
     private static Serial.FF5.UI.KeyInput.AbilityWindowController _magicMenu;
+#endif
     private static Last.UI.KeyInput.ItemWindowController _itemMenu;
     private static Last.UI.KeyInput.EquipmentWindowController _equipMenu;
+#if FF5
     private static Serial.FF5.UI.KeyInput.JobChangeWindowController _jobMenu;
+#endif
 
     /// <summary>
     /// The field menu when it is open: its commands and cursor, the sub-menu showing, the
@@ -167,6 +172,7 @@ internal static partial class GameState
             o["commands"] = commands;
             o["cursor"] = commandMenu.selectCursor?.Index;
         }
+#if FF5
         var party = Active(ref _menuParty);
         if (party != null)
         {
@@ -177,6 +183,7 @@ internal static partial class GameState
         {
             o["magic"] = MagicMenu(magic);
         }
+#endif
         var item = Active(ref _itemMenu);
         if (item != null)
         {
@@ -187,14 +194,17 @@ internal static partial class GameState
         {
             o["equipment"] = EquipmentMenu(equip);
         }
+#if FF5
         var job = Active(ref _jobMenu);
         if (job != null)
         {
             o["job"] = JobMenu(job);
         }
+#endif
         return o;
     }
 
+#if FF5
     /// <summary>
     /// 0.7.5: the job change window. The grid cells are JobChangeWindowView.jobContentList,
     /// in screen order; each cell shows its name in JobContentView.jobNameText and whether it
@@ -281,7 +291,9 @@ internal static partial class GameState
         o["popup"] = popupNode;
         return o;
     }
+#endif
 
+#if FF5
     private static JsonObject MagicMenu(Serial.FF5.UI.KeyInput.AbilityWindowController magic)
     {
         var o = new JsonObject
@@ -352,6 +364,7 @@ internal static partial class GameState
         }
         return o;
     }
+#endif
 
     private static JsonObject ItemMenu(Last.UI.KeyInput.ItemWindowController item)
     {
@@ -407,7 +420,10 @@ internal static partial class GameState
                 {
                     ["slot"] = row?.Slot.ToString(),
                     ["item"] = row?.Data?.Name,
+#if !(FF1 || FF2 || FF3)
+                    // 10-28: FF1-FF3's equipment rows have no enabled flag.
                     ["enabled"] = row?.IsEnable,
+#endif
                 });
             }
             o["slots"] = slots;
@@ -489,5 +505,58 @@ internal static partial class GameState
             ["cursor"] = list.selectCursor?.Index,
             ["slots"] = slots,
         };
+    }
+
+    private static Last.UI.KeyInput.TitleMenuCommandController _title;
+
+    /// <summary>The title menu (New Game, Continue, ...): commands as shown, the cursor.</summary>
+    /// <remarks>10-28: the other five games had no way to tell, minimized, whether Continue is
+    /// there to pick; `defaultColor` false is how the game greys a command out.</remarks>
+    public static JsonObject Title()
+    {
+        var title = Active(ref _title);
+        if (title == null)
+        {
+            return new JsonObject { ["open"] = false };
+        }
+        var commands = new JsonArray();
+        var list = title.activeContents;
+        for (var i = 0; list != null && i < list.Count; i++)
+        {
+            var c = list[i];
+            commands.Add(new JsonObject
+            {
+                ["id"] = c?.CommandId.ToString(),
+                ["name"] = c?.nameText?.text,
+                ["defaultColor"] = c?.IsDefaultColor,
+            });
+        }
+        return new JsonObject
+        {
+            ["open"] = true,
+            ["commands"] = commands,
+            ["cursor"] = title.selectCursor?.Index,
+        };
+    }
+
+    /// <summary>The text fields on screen (naming boxes): their text, and which one is typed in.</summary>
+    public static JsonObject TextInput()
+    {
+        var fields = new JsonArray();
+        foreach (var found in UnityEngine.Object.FindObjectsOfType(Il2CppType.Of<UnityEngine.UI.InputField>()))
+        {
+            var field = found.TryCast<UnityEngine.UI.InputField>();
+            if (field == null || !field.gameObject.activeInHierarchy)
+            {
+                continue;
+            }
+            fields.Add(new JsonObject
+            {
+                ["name"] = field.gameObject.name,
+                ["text"] = field.text,
+                ["focused"] = field.isFocused,
+            });
+        }
+        return new JsonObject { ["open"] = fields.Count > 0, ["fields"] = fields };
     }
 }
