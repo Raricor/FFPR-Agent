@@ -1,0 +1,182 @@
+[
+  {
+    "api_name": "all_achievement",
+    "name": "ＦＦ４大师！",
+    "description": "获得了所有成就。",
+    "hidden": false
+  },
+  {
+    "api_name": "scenario_1",
+    "name": "烧毁与决意",
+    "description": "迷雾村被摧毁了。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_3",
+    "name": "被托付光明之人",
+    "description": "登上试炼之山，成为了圣骑士。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_4",
+    "name": "跨越悲伤",
+    "description": "打倒了水之凯纳槽。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_5",
+    "name": "夺回的爱与羁绊",
+    "description": "打倒了风之巴尔巴莉希娅。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_6",
+    "name": "前往地底世界",
+    "description": "到达了地底世界。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_7",
+    "name": "化悲痛为力量",
+    "description": "打倒了炎之卢比坎特。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_8",
+    "name": "前往月亮",
+    "description": "获得了魔导船，到达了月亮世界。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_9",
+    "name": "再战",
+    "description": "再次打倒了四天王。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_10",
+    "name": "前往蓝星",
+    "description": "打倒了泽罗姆斯，为世界取回了和平。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_11",
+    "name": "传说中的圣剑",
+    "description": "获得了王者之剑。",
+    "hidden": false
+  },
+  {
+    "api_name": "scenario_12",
+    "name": "传说中的尾巴",
+    "description": "用粉色尾巴交换了精金铠。",
+    "hidden": false
+  },
+  {
+    "api_name": "get_weapon",
+    "name": "获得释放的力量",
+    "description": "得到了所有被封印的装备。",
+    "hidden": false
+  },
+  {
+    "api_name": "all_summon",
+    "name": "召唤大师",
+    "description": "学会了除隐藏召唤魔法外的所有召唤魔法。",
+    "hidden": false
+  },
+  {
+    "api_name": "all_hidden_summon",
+    "name": "召唤收藏家",
+    "description": "学会了所有隐藏召唤魔法。",
+    "hidden": false
+  },
+  {
+    "api_name": "level_all_70",
+    "name": "身经百战的强者们",
+    "description": "全员达到了70级。",
+    "hidden": false
+  },
+  {
+    "api_name": "monster_hunt_100",
+    "name": "见习战士",
+    "description": "打倒了100只怪物。",
+    "hidden": false
+  },
+  {
+    "api_name": "monster_hunt_500",
+    "name": "熟练战士",
+    "description": "打倒了500只怪物。",
+    "hidden": false
+  },
+  {
+    "api_name": "monster_hunt_1000",
+    "name": "传说战士",
+    "description": "打倒了1000只怪物。",
+    "hidden": false
+  },
+  {
+    "api_name": "picture_book_19",
+    "name": "魔物图鉴·基础知识篇",
+    "description": "怪物图鉴的完成率达到了10%。",
+    "hidden": false
+  },
+  {
+    "api_name": "picture_book_98",
+    "name": "魔物图鉴·战斗解析篇",
+    "description": "怪物图鉴的完成率达到了50%。",
+    "hidden": false
+  },
+  {
+    "api_name": "picture_book_197",
+    "name": "魔物图鉴·完全攻略篇",
+    "description": "怪物图鉴的完成率达到了100%。",
+    "hidden": false
+  },
+  {
+    "api_name": "total_gil_10000",
+    "name": "中产",
+    "description": "累计获得了10000金币。",
+    "hidden": false
+  },
+  {
+    "api_name": "total_gil_100000",
+    "name": "富人",
+    "description": "累计获得了100000金币。",
+    "hidden": false
+  },
+  {
+    "api_name": "total_gil_500000",
+    "name": "大富豪",
+    "description": "累计获得了500000金币。",
+    "hidden": false
+  },
+  {
+    "api_name": "treasure_box_34",
+    "name": "新手宝物猎人",
+    "description": "宝箱的回收率达到了10%。",
+    "hidden": false
+  },
+  {
+    "api_name": "treasure_box_171",
+    "name": "老练宝物猎人",
+    "description": "宝箱的回收率达到了50%。",
+    "hidden": false
+  },
+  {
+    "api_name": "treasure_box_342",
+    "name": "传奇宝物猎人",
+    "description": "宝箱的回收率达到了100%。",
+    "hidden": false
+  },
+  {
+    "api_name": "get_hidden_item",
+    "name": "道具猎人",
+    "description": "获得了所有隐藏道具。",
+    "hidden": false
+  },
+  {
+    "api_name": "area_visit",
+    "name": "探求的冒险者",
+    "description": "造访了所有地方。",
+    "hidden": false
+  }
+]
