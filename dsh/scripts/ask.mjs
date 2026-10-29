@@ -5,7 +5,9 @@
 //   node scripts/ask.mjs --session <id> "继续"      another prompt in that session
 //   node scripts/ask.mjs --show <id>                print a session's events only
 //   node scripts/ask.mjs --brief <id>               tool calls, results and replies, one line each
+//   node scripts/ask.mjs --cancel <id>              stop that session's running turn
 //   node scripts/ask.mjs --command "/ach"           new session, run one slash command, print it
+//   FFPR_PRESET=ffpr-ff6 node scripts/ask.mjs "…"   the same with another game's player
 //
 // It talks to the web API the way a browser does (dsh-client-connection): GET /connect with the
 // startup token from ~/.dsh/logs/web-ffpr.log for an API cookie, then unary POST /api/<endpoint>
@@ -22,6 +24,8 @@ const WEB_LOG = join(homedir(), ".dsh", "logs", "web-ffpr.log");
 const SESSIONS = join(homedir(), ".dsh", "sessions");
 const CWD = "/root/data/mediaflow/FFPR-Agent";
 const CLIP = 600; // characters of each event shown
+// Which player preset new sessions use: ffpr is FF5, ffpr-ffN the others (task 21).
+const PRESET = process.env.FFPR_PRESET || "ffpr";
 // Play runs take hours; quick checks a few minutes. FFPR_ASK_MINUTES sets how long to wait.
 const TURN_TIMEOUT_MS = Number(process.env.FFPR_ASK_MINUTES || 15) * 60 * 1000;
 const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
@@ -131,11 +135,16 @@ if (argv[0] === "--show") {
   show(argv[1]);
 } else if (argv[0] === "--brief") {
   brief(argv[1]);
+} else if (argv[0] === "--cancel") {
+  // Stop a running turn (dsh-api-session-controller `session/cancel`), e.g. before restarting
+  // that session's game underneath it.
+  const cookie = await connect();
+  console.log(await call(cookie, "session/cancel", { request: { sessionId: argv[1] } }));
 } else if (argv[0] === "--command") {
   // Slash commands answer in the call itself (dsh-commands' `commands/execute` remote).
   const cookie = await connect();
   const { sessionId } = await call(cookie, "session/create", {
-    request: { cwd: CWD, agentPreset: "ffpr" },
+    request: { cwd: CWD, agentPreset: PRESET },
   });
   const execution = await call(cookie, "commands/execute", {
     agentId: sessionId,
@@ -153,7 +162,7 @@ if (argv[0] === "--show") {
     throw new Error("usage: ask.mjs [--session <id>] <prompt>");
   const cookie = await connect();
   sessionId ??= (
-    await call(cookie, "session/create", { request: { cwd: CWD, agentPreset: "ffpr" } })
+    await call(cookie, "session/create", { request: { cwd: CWD, agentPreset: PRESET } })
   ).sessionId;
   const before = Math.max(-1, ...events(sessionId).map((e) => e.seq ?? -1));
   await call(cookie, "session/prompt", {

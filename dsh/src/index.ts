@@ -47,6 +47,9 @@ export async function apply(ctx: Context, config: ConfigValue): Promise<void> {
     engine.bridge?.close();
   });
   installPlayer(ctx, engine, log);
+  // 10-28 (task 21): six player presets load at once, and dsh refuses a second fetch route or
+  // command of the same name, so only the FF5 player serves /ach and the panel for now.
+  if (config.game !== "ff5") return;
   const monsterCache = new MonsterCache();
   const bestiaryCache = new BestiaryAreaCache();
   installCommands(ctx, engine, undefined, monsterCache);

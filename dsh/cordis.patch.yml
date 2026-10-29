@@ -1,5 +1,6 @@
-# The two agent presets of the split control plan (§4.12): the "FF5 玩家" first layer and the
-# "FF5 战术官" second layer. A profile picks one with agent-preset-registry's `default`.
+# The twelve agent presets of task 21: one DeepSeek player and one tactician per game. Each
+# player's plugin config names its `game`; each tactician names the same game and `role`.
+# A profile picks one with agent-preset-registry's `default`.
 - insert:
     # The right-sidebar panel (task 14): dsh-client-modules serves a client bundle only for a
     # root loader entry named by the exact package, and this one does nothing on the host.
@@ -17,7 +18,8 @@
         plugins:
           - id: ffpr
             name: "@local/ffpr-dsh"
-            config: {}
+            config:
+              game: ff5
           - id: compaction
             name: cordis:group
             group: true
@@ -40,6 +42,232 @@
             name: "@local/ffpr-dsh"
             config:
               role: tactician
+              game: ff5
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+            config:
+              - id: compaction-basic
+                name: "@deepseek-ai/dsh-compaction-basic"
+              - id: command-compact
+                name: "@deepseek-ai/dsh-command-compact"
+    - id: preset-ffpr-ff1
+      name: "@deepseek-ai/dsh-agent-preset"
+      config:
+        id: ffpr-ff1
+        name: FF1 玩家
+        description: DeepSeek 玩《最终幻想 像素重制版》
+        order: 2
+        plugins:
+          - id: ffpr
+            name: "@local/ffpr-dsh"
+            config:
+              game: ff1
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+            config:
+              - id: compaction-basic
+                name: "@deepseek-ai/dsh-compaction-basic"
+              - id: command-compact
+                name: "@deepseek-ai/dsh-command-compact"
+    - id: preset-ffpr-tactician-ff1
+      name: "@deepseek-ai/dsh-agent-preset"
+      config:
+        id: ffpr-tactician-ff1
+        name: FF1 战术官
+        description: 为一张地图写战斗规则表和走法说明
+        order: 3
+        plugins:
+          - id: ffpr-tactician
+            name: "@local/ffpr-dsh"
+            config:
+              role: tactician
+              game: ff1
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+            config:
+              - id: compaction-basic
+                name: "@deepseek-ai/dsh-compaction-basic"
+              - id: command-compact
+                name: "@deepseek-ai/dsh-command-compact"
+    - id: preset-ffpr-ff2
+      name: "@deepseek-ai/dsh-agent-preset"
+      config:
+        id: ffpr-ff2
+        name: FF2 玩家
+        description: DeepSeek 玩《最终幻想II 像素重制版》
+        order: 4
+        plugins:
+          - id: ffpr
+            name: "@local/ffpr-dsh"
+            config:
+              game: ff2
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+            config:
+              - id: compaction-basic
+                name: "@deepseek-ai/dsh-compaction-basic"
+              - id: command-compact
+                name: "@deepseek-ai/dsh-command-compact"
+    - id: preset-ffpr-tactician-ff2
+      name: "@deepseek-ai/dsh-agent-preset"
+      config:
+        id: ffpr-tactician-ff2
+        name: FF2 战术官
+        description: 为一张地图写战斗规则表和走法说明
+        order: 5
+        plugins:
+          - id: ffpr-tactician
+            name: "@local/ffpr-dsh"
+            config:
+              role: tactician
+              game: ff2
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+            config:
+              - id: compaction-basic
+                name: "@deepseek-ai/dsh-compaction-basic"
+              - id: command-compact
+                name: "@deepseek-ai/dsh-command-compact"
+    - id: preset-ffpr-ff3
+      name: "@deepseek-ai/dsh-agent-preset"
+      config:
+        id: ffpr-ff3
+        name: FF3 玩家
+        description: DeepSeek 玩《最终幻想III 像素重制版》
+        order: 6
+        plugins:
+          - id: ffpr
+            name: "@local/ffpr-dsh"
+            config:
+              game: ff3
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+            config:
+              - id: compaction-basic
+                name: "@deepseek-ai/dsh-compaction-basic"
+              - id: command-compact
+                name: "@deepseek-ai/dsh-command-compact"
+    - id: preset-ffpr-tactician-ff3
+      name: "@deepseek-ai/dsh-agent-preset"
+      config:
+        id: ffpr-tactician-ff3
+        name: FF3 战术官
+        description: 为一张地图写战斗规则表和走法说明
+        order: 7
+        plugins:
+          - id: ffpr-tactician
+            name: "@local/ffpr-dsh"
+            config:
+              role: tactician
+              game: ff3
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+            config:
+              - id: compaction-basic
+                name: "@deepseek-ai/dsh-compaction-basic"
+              - id: command-compact
+                name: "@deepseek-ai/dsh-command-compact"
+    - id: preset-ffpr-ff4
+      name: "@deepseek-ai/dsh-agent-preset"
+      config:
+        id: ffpr-ff4
+        name: FF4 玩家
+        description: DeepSeek 玩《最终幻想IV 像素重制版》
+        order: 8
+        plugins:
+          - id: ffpr
+            name: "@local/ffpr-dsh"
+            config:
+              game: ff4
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+            config:
+              - id: compaction-basic
+                name: "@deepseek-ai/dsh-compaction-basic"
+              - id: command-compact
+                name: "@deepseek-ai/dsh-command-compact"
+    - id: preset-ffpr-tactician-ff4
+      name: "@deepseek-ai/dsh-agent-preset"
+      config:
+        id: ffpr-tactician-ff4
+        name: FF4 战术官
+        description: 为一张地图写战斗规则表和走法说明
+        order: 9
+        plugins:
+          - id: ffpr-tactician
+            name: "@local/ffpr-dsh"
+            config:
+              role: tactician
+              game: ff4
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+            config:
+              - id: compaction-basic
+                name: "@deepseek-ai/dsh-compaction-basic"
+              - id: command-compact
+                name: "@deepseek-ai/dsh-command-compact"
+    - id: preset-ffpr-ff6
+      name: "@deepseek-ai/dsh-agent-preset"
+      config:
+        id: ffpr-ff6
+        name: FF6 玩家
+        description: DeepSeek 玩《最终幻想VI 像素重制版》
+        order: 10
+        plugins:
+          - id: ffpr
+            name: "@local/ffpr-dsh"
+            config:
+              game: ff6
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+            config:
+              - id: compaction-basic
+                name: "@deepseek-ai/dsh-compaction-basic"
+              - id: command-compact
+                name: "@deepseek-ai/dsh-command-compact"
+    - id: preset-ffpr-tactician-ff6
+      name: "@deepseek-ai/dsh-agent-preset"
+      config:
+        id: ffpr-tactician-ff6
+        name: FF6 战术官
+        description: 为一张地图写战斗规则表和走法说明
+        order: 11
+        plugins:
+          - id: ffpr-tactician
+            name: "@local/ffpr-dsh"
+            config:
+              role: tactician
+              game: ff6
           - id: compaction
             name: cordis:group
             group: true
