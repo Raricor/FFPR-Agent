@@ -11,7 +11,7 @@
 | `collect-assemblies.ps1` | 把逆向需要的文件放到 `C:\ffpr\staging` | 开发机通过 SSH 运行 |
 | `run-in-session.ps1` | 计划任务实际执行的脚本 | 计划任务自动运行 |
 | `pilot-agent.ps1` | 试玩助手:在你的桌面上替开发机按键、截图,只在游戏位于前台时按键;也在本地走格子、打普通战斗、翻剧情 | 开发机用 `ffpr-pilot start`(或 `restart`)启动 |
-| `allow-bridge-lan.ps1` | 加一条防火墙规则:只允许开发机所在主机连游戏里桥插件的局域网端口(分层控制方案 §5.3) | 你,管理员权限,只运行一次 |
+| `allow-bridge-lan.ps1` | 加防火墙规则:只允许开发机所在主机连游戏里桥插件的局域网端口(分层控制方案 §5.3)。不带参数就给装了的每一作各加一条，端口是那一作的(FF5 47800,FFN 4780N);`-Game ffN` 只加一作 | 你,管理员权限，端口变了再运行一次 |
 | `wait-title.ps1` | 等游戏带着指定版本的桥插件到达标题画面,再列出 BepInEx 日志里桥插件的几行 | `ffpr-pilot restart` 自动运行 |
 | `FfprCommon.psm1` | 公共函数(找 Steam 库、找游戏目录等) | 被其他脚本引入 |
 
