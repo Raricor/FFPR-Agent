@@ -47,3 +47,27 @@ for (const item of fixture.cases) {
     assert.deepEqual(recordedCalls(pilot), item.calls);
   });
 }
+
+void test("a save whose cursor cannot reach slot 20 does not press confirm", async () => {
+  const pilot = new FakePilot();
+  pilot.on("pos", { pos: { state: "Player", saves: 2 } });
+  pilot.on("keys", { ok: true });
+  pilot.on("leave", { ok: true, presses: 1 });
+  pilot.onQuery("menu", {
+    menu: {
+      open: true,
+      commands: [{ id: "Items" }, { id: "Save", enabled: true }],
+      cursor: 1,
+    },
+  });
+  pilot.onQuery("saveui", {
+    saveui: {
+      open: true,
+      cursor: 0,
+      slots: [21, 22, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+    },
+  });
+  assert.deepEqual(await saveGame(pilot, 20), [false, "光标没能移到存档位 20"]);
+  // Tab, Enter (open the list); no confirm on the wrong slot.
+  assert.deepEqual(pilot.keys(), [["Tab"], ["Enter"]]);
+});

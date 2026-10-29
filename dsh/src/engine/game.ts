@@ -10,6 +10,8 @@ import type { Laptop } from "./laptop.ts";
 import { MonsterCache } from "./bestiary.ts";
 import { Atlas } from "./atlas.ts";
 import { Elements } from "./elements.ts";
+import { byKey } from "./games.ts";
+import { DEPS } from "./paths.ts";
 import {
   areaOf,
   buildFacts,
@@ -43,8 +45,9 @@ import * as battle from "./skills/battle.ts";
 import type { BattleHooks } from "./skills/battle.ts";
 import type { MoveState } from "./skills/move.ts";
 import * as save from "./skills/save.ts";
+import * as screens from "./skills/screens.ts";
 import * as shop from "./skills/shop.ts";
-import { stateScript, parseState } from "./state-script.ts";
+import { cursorPath, stateScript, parseState } from "./state-script.ts";
 import * as nav from "./nav.ts";
 import type { Cell } from "./nav.ts";
 import * as view from "./view.ts";
@@ -80,7 +83,9 @@ export function shopSelling(guide: Guide | null, area: string, item: string): st
 
 export interface GameOptions {
   readonly laptop: Laptop;
-  readonly game?: string;
+  readonly game: string;
+  /** save_game writes this slot and a wipe loads it; 3 for FF5, 20 for the other five. */
+  readonly saveSlot: number;
   readonly notesFile?: string;
   readonly events?: KeyEvents;
   readonly atlasFile?: string;
@@ -163,6 +168,7 @@ export interface BossPlanRecord {
 export class Game {
   readonly laptop: Laptop;
   readonly game: string;
+  readonly saveSlot: number;
   readonly notesFile: string | undefined;
   readonly events: KeyEvents | undefined;
   readonly atlas: Atlas;
@@ -195,6 +201,7 @@ export class Game {
   private constructor(
     laptop: Laptop,
     game: string,
+    saveSlot: number,
     notesFile: string | undefined,
     events: KeyEvents | undefined,
     atlas: Atlas,
@@ -206,6 +213,7 @@ export class Game {
   ) {
     this.laptop = laptop;
     this.game = game;
+    this.saveSlot = saveSlot;
     this.notesFile = notesFile;
     this.events = events;
     this.atlas = atlas;
@@ -224,6 +232,7 @@ export class Game {
       elements: this.elements,
     };
     this.moveState.battle = this.hooks;
+    this.moveState.saveSlot = this.saveSlot;
     this.moveState.link = (mapId, from, to, how) => this.atlas.link(mapId, from, to, how);
     this.handlers = new Map<string, ToolHandler>([
       ["walk_to", (args, pilot) => this.travel(args, pilot)],
@@ -233,6 +242,7 @@ export class Game {
       ["look_around", (_args, pilot) => this.toolLookAround(pilot)],
       ["interact", (args, pilot) => this.toolInteract(args, pilot)],
       ["advance_story", (_args, pilot) => this.toolAdvanceStory(pilot)],
+      ["press", (args, pilot) => this.toolPress(args, pilot)],
       ["choose", (args, pilot) => this.toolChoose(args, pilot)],
       ["fight", (args, pilot) => this.toolFight(args, pilot)],
       ["sell", (args, pilot) => this.toolSell(args, pilot)],
@@ -257,18 +267,25 @@ export class Game {
 
   static async create(options: GameOptions): Promise<Game> {
     const signal = options.signal;
+    const game = byKey(options.game).key;
     const atlas = await Atlas.load(options.atlasFile, signal);
     const tactics = await Tactics.load(options.tacticsFile, signal);
-    const guide = await Guide.load(undefined, signal);
+    // The guide knowledge is FF5's (.deps/knowledge/ff5): using it for another game would give
+    // that game FF5's shops and monster notes under the same names.
+    const guide = game === "ff5" ? await Guide.load(undefined, signal) : null;
+    const elementsFile =
+      options.elementsFile ??
+      (game === "ff5" ? undefined : join(DEPS, "ds", `elements-${game}.json`));
     const elements = await Elements.load(
-      options.elementsFile,
+      elementsFile,
       guide?.ludo ?? [],
       signal,
       guide?.bestiary ?? new Map(),
     );
-    const game = new Game(
+    const created = new Game(
       options.laptop,
-      options.game ?? "ff5",
+      game,
+      options.saveSlot,
       options.notesFile,
       options.events,
       atlas,
@@ -278,8 +295,9 @@ export class Game {
       options.tactician,
       options.tacticianBoss ?? true,
     );
-    game.notes = options.notesFile === undefined ? [] : await loadNotes(options.notesFile, signal);
-    return game;
+    created.notes =
+      options.notesFile === undefined ? [] : await loadNotes(options.notesFile, signal);
+    return created;
   }
 
   /** Install the second layer after the plugin has built its tool-call binding. */
@@ -314,7 +332,7 @@ export class Game {
       if (sample !== null) return view.summarize(sample, this.events.takeRecent().slice(-8));
     }
     const stateText = await pilot.runPs(stateScript(this.laptop, this.game));
-    const [sample, events] = await parseState(stateText);
+    const [sample, events] = await parseState(stateText, cursorPath(this.game));
     const kept = events.filter((event) => event.type !== "pos.change");
     return view.summarize(sample, kept.slice(-8));
   }
@@ -382,7 +400,7 @@ export class Game {
       this.lastBoss = { mapId, table, result: fought, at: new Date().toISOString() };
       return [outcome.text, fought].filter((part) => part !== "").join("\n");
     }
-    return `(途中遇敌,${await battle.regular(pilot, this.hooks, () => undefined)})`;
+    return `(途中遇敌,${await battle.regular(pilot, this.hooks, () => undefined, this.saveSlot)})`;
   }
 
   /**
@@ -412,7 +430,7 @@ export class Game {
         if (isAbortError(error)) throw error;
         return { text: `战术官没有回答:${describeError(error)}`, tables: [] };
       }
-      problems = tacticianProblems(plan.tables);
+      problems = tacticianProblems(plan.tables, this.game);
       if (problems.length === 0) break;
       if (attempt < 2) {
         facts +=
@@ -422,7 +440,9 @@ export class Game {
       }
     }
     if (plan === null) return { text: "战术官没有交回结果", tables: [] };
-    const good = plan.tables.filter((table) => gambit.check(table).length === 0).slice(0, 3);
+    const good = plan.tables
+      .filter((table) => gambit.check(table, this.game).length === 0)
+      .slice(0, 3);
     this.tacticianInfoByMap.set(trigger.mapId, {
       walkerNotes: plan.walkerNotes,
       askUp: plan.askUp,
@@ -884,7 +904,9 @@ export class Game {
   }
 
   private async travel(args: Json, pilot: Pilot): Promise<HandlerResult> {
-    const legs: string[] = [];
+    const help = await screens.dismissFieldHelp(pilot);
+    if (help === "stuck") return { text: screens.FIELD_HELP_STUCK, early: true };
+    const legs = help === "closed" ? ["关掉了操作提示"] : [];
     const goal: Cell = [integer(args.x), integer(args.y)];
     let message: string;
     if ((await move.flying(pilot)) && (await this.worldEntrance(pilot, goal))) {
@@ -996,9 +1018,42 @@ export class Game {
   }
 
   private async toolAdvanceStory(pilot: Pilot): Promise<HandlerResult> {
-    const result = await pilot.send("story", { pageMs: 3000, timeout: 600000 }, 620_000);
-    const why = result.stop || result.error;
-    return { text: `翻了 ${show(result.pages)} 页,停下原因:${show(why)}` };
+    // FF5 is the running game: its paging stays the pilot agent's story op, unchanged.
+    if (this.game === "ff5") {
+      const result = await pilot.send("story", { pageMs: 3000, timeout: 600000 }, 620_000);
+      const why = result.stop || result.error;
+      return { text: `翻了 ${show(result.pages)} 页,停下原因:${show(why)}` };
+    }
+    const outcome = await screens.advanceStory(pilot);
+    const notes = outcome.notes.length > 0 ? outcome.notes.join("\n") + "\n" : "";
+    if (outcome.stop === "stuck") {
+      return {
+        text:
+          notes +
+          "画面没有变化，可能是工具认不出的界面,停下不再按键。\n" +
+          `当前状态:${outcome.detail}`,
+        early: true,
+      };
+    }
+    if (outcome.stop === "fieldhelp") {
+      return {
+        text: notes + `${screens.FIELD_HELP_STUCK}\n当前状态:${outcome.detail}`,
+        early: true,
+      };
+    }
+    return { text: `${notes}翻了 ${outcome.pages} 页,停下原因:${outcome.stop}` };
+  }
+
+  private async toolPress(args: Json, pilot: Pilot): Promise<HandlerResult> {
+    // Only the five newly started games get this tool; the gamepad keys are sent through the
+    // same virtual pad the other presses use (bridge 0.10.0).
+    const keys = screens.pressKeys(args.keys);
+    await screens.pressOnScreen(pilot, keys);
+    // Early: an unrecognised screen should not run charts, hints or tactician triggers.
+    return {
+      text: `已按 ${keys.join("、")}\n当前状态:\n${await this.observe(pilot)}`,
+      early: true,
+    };
   }
 
   private async toolChoose(args: Json, pilot: Pilot): Promise<HandlerResult> {
@@ -1021,7 +1076,7 @@ export class Game {
 
   private async toolFight(args: Json, pilot: Pilot): Promise<HandlerResult> {
     const plan = gambit.normalize(record(args.plan));
-    const problems = gambit.check(plan);
+    const problems = gambit.check(plan, this.game);
     if (problems.length > 0) {
       // Sent back before a key is pressed (§4.6): the battle waits for a full table.
       return { text: "规则表没有通过检查,请改好再交:\n" + problems.join("\n"), early: true };
@@ -1079,7 +1134,7 @@ export class Game {
   }
 
   private async toolSaveGame(pilot: Pilot): Promise<HandlerResult> {
-    const [, detail] = await save.saveGame(pilot, 3);
+    const [, detail] = await save.saveGame(pilot, this.saveSlot);
     return { text: detail };
   }
 
@@ -1109,7 +1164,7 @@ export class Game {
       .filter((table) => truthy(table))
       .map((table) => gambit.normalize(record(table)));
     const problems = tables.flatMap((table, index) =>
-      gambit.check(table).map((problem) => `第 ${index + 1} 套:${problem}`),
+      gambit.check(table, this.game).map((problem) => `第 ${index + 1} 套:${problem}`),
     );
     if (tables.length === 0 || problems.length > 0) {
       return {
@@ -1171,12 +1226,12 @@ function isAbortError(error: unknown): boolean {
 }
 
 /** What makes a tactician table unusable, numbered by table (1-based). */
-export function tacticianProblems(tables: readonly Json[]): string[] {
+export function tacticianProblems(tables: readonly Json[], game = "ff5"): string[] {
   const problems: string[] = [];
   if (tables.length === 0) problems.push("一套规则表都没有");
   if (tables.length > 3) problems.push(`最多 3 套,这次交了 ${tables.length} 套`);
   for (const [index, table] of tables.entries()) {
-    problems.push(...gambit.check(table).map((problem) => `第 ${index + 1} 套:${problem}`));
+    problems.push(...gambit.check(table, game).map((problem) => `第 ${index + 1} 套:${problem}`));
   }
   return problems;
 }

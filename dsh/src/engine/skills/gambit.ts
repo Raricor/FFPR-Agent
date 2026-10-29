@@ -14,6 +14,7 @@
  */
 
 import { isRecord, num, truthy } from "../values.ts";
+import { byKey } from "../games.ts";
 import {
   ELEMENTS,
   isElement,
@@ -78,6 +79,9 @@ export const SELF = "自己";
 export const WEAKEST = "hp最低的同伴";
 export const FALLEN = "倒下的同伴";
 export const AILING = "状态";
+
+/** Actions the bridge can carry out in the five games without a readable magic list (task 21). */
+export const SIMPLE_ACTIONS: readonly string[] = ["攻击", "防御", "道具"];
 
 // Written with or without spaces ("hp 最低的同伴"); no target means the game's default.
 export const TARGETS: ReadonlyMap<string, string> = new Map([
@@ -444,10 +448,12 @@ export function choose(
 /**
  * What is wrong with a table, as the completeness check reports it (§4.6); [] when fine. It
  * checks what code can know before a battle: shape, vocabulary, targets, a last rule without a
- * condition for everyone.
+ * condition for everyone. In the five games whose battle magic list the bridge cannot read
+ * (task 21), only 攻击, 防御 and 道具 are accepted as actions.
  */
-export function check(table: unknown): string[] {
+export function check(table: unknown, game = "ff5"): string[] {
   const problems: string[] = [];
+  const simpleActions = byKey(game).key !== "ff5";
   let rulesByActor: Json | null = null;
   if (isRecord(table)) {
     const inner = "battle" in table ? table.battle : table;
@@ -467,6 +473,17 @@ export function check(table: unknown): string[] {
       if (!isRecord(rule) || !truthy(rule.do)) {
         problems.push(`${actor} 第 ${index} 条:缺少 do`);
         continue;
+      }
+      if (simpleActions) {
+        const action = pyString(rule.do);
+        const separator = action.indexOf(":");
+        const command = (separator < 0 ? action : action.slice(0, separator)).trim();
+        if (!SIMPLE_ACTIONS.includes(command)) {
+          problems.push(
+            `${actor} 第 ${index} 条:「${action}」不能用;` +
+              "这一作只能用攻击、防御、道具:道具名(桥插件读不到战斗中的魔法列表)",
+          );
+        }
       }
       if (truthy(rule.if)) {
         try {

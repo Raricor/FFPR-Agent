@@ -18,12 +18,32 @@ async function temporaryGame(notesFile?: string): Promise<Game> {
   const directory = await mkdtemp(join(tmpdir(), "ffpr-game-"));
   return await Game.create({
     laptop: LAPTOP,
+    game: "ff5",
+    saveSlot: 3,
     notesFile,
     atlasFile: join(directory, "atlas.json"),
     tacticsFile: join(directory, "tactics.json"),
     elementsFile: join(directory, "elements.json"),
   });
 }
+
+void test("the engine carries its configured save slot into saves and wipes", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-save-slot-"));
+  try {
+    const game = await Game.create({
+      laptop: LAPTOP,
+      game: "ff6",
+      saveSlot: 20,
+      atlasFile: join(directory, "atlas.json"),
+      tacticsFile: join(directory, "tactics.json"),
+      elementsFile: join(directory, "elements.json"),
+    });
+    assert.equal(game.saveSlot, 20);
+    assert.equal(game.moveState.saveSlot, 20);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 void test("notes persist and can be forgotten", async () => {
   const directory = await mkdtemp(join(tmpdir(), "ffpr-notes-"));
@@ -140,6 +160,8 @@ void test("the opening carries the window and a tool result carries the news", a
 
   const game = await Game.create({
     laptop: LAPTOP,
+    game: "ff5",
+    saveSlot: 3,
     events,
     atlasFile: join(tmpdir(), "ffpr-game-no-atlas.json"),
     tacticsFile: join(tmpdir(), "ffpr-game-no-tactics.json"),
@@ -181,6 +203,8 @@ void test("the simple tools answer through the pilot, one after another", async 
   events.feed(sample(2, 60, ["巴兹", "蕾娜"]));
   const game = await Game.create({
     laptop: LAPTOP,
+    game: "ff5",
+    saveSlot: 3,
     events,
     atlasFile: join(tmpdir(), `ffpr-game-atlas-${process.pid}.json`),
     tacticsFile: join(tmpdir(), `ffpr-game-tactics-${process.pid}.json`),

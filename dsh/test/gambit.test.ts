@@ -419,3 +419,14 @@ void test("check accepts the new enemy targets and rejects empty names or bad el
   assert.ok(check({ 巴兹: [{ do: "攻击", target: "敌人:" }, { do: "攻击" }] }).length > 0);
   assert.ok(check({ 巴兹: [{ do: "攻击", target: "敌人:弱光" }, { do: "攻击" }] }).length > 0);
 });
+
+void test("the five new games only allow attack, defend and items in a rule table", () => {
+  const magic = check({ 蒂娜: [{ do: "白魔法:治疗" }, { do: "攻击" }] }, "ff6");
+  assert.equal(magic.length, 1);
+  assert.match(magic[0] ?? "", /白魔法:治疗/);
+  assert.match(magic[0] ?? "", /只能用攻击、防御、道具/);
+  assert.deepEqual(check({ 蒂娜: [{ do: "道具:恢复药" }, { do: "攻击" }] }, "ff6"), []);
+  assert.deepEqual(check({ 蒂娜: [{ do: "防御" }] }, "ff6"), []);
+  // FF5 keeps its magic rules.
+  assert.deepEqual(check({ 蕾娜: [{ do: "白魔法:治疗" }, { do: "攻击" }] }, "ff5"), []);
+});

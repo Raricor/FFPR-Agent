@@ -109,6 +109,8 @@ async function harness(
   const events = eventsWith(live);
   const game = await Game.create({
     laptop: LAPTOP,
+    game: "ff5",
+    saveSlot: 3,
     events,
     atlasFile: join(directory, "atlas.json"),
     tacticsFile: join(directory, "tactics.json"),
