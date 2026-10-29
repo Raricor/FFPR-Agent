@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { LinkError } from "../src/engine/bridge.ts";
 import {
+  agentDir,
   agentRunning,
   createPilot,
   ensureAgent,
@@ -107,12 +108,19 @@ for (const item of cases) {
   });
 }
 
+void test("agentDir keeps FF5's path and gives each new game its own", () => {
+  assert.equal(agentDir(LAPTOP, "ff5"), "C:/ffpr/session/pilot");
+  assert.equal(agentDir(LAPTOP, "FF6"), "C:/ffpr/session/pilot-ff6");
+  assert.equal(agentDir(LAPTOP, "ff1"), "C:/ffpr/session/pilot-ff1");
+});
+
 void test("createPilot asks the bridge over the LAN link and records the time", async () => {
   const directory = await mkdtemp(join(tmpdir(), "ffpr-pilot-"));
   try {
     const link = new FakeLink({ ok: true, pos: { map: 238 } });
     const pilot = createPilot(laptop(), link, SIGNAL, {
       timingFile: join(directory, "timing.jsonl"),
+      game: "ff5",
     });
     assert.deepEqual(await pilot.send("pos"), { ok: true, pos: { map: 238 } });
     assert.equal(link.calls[0]?.method, "query");
@@ -139,10 +147,10 @@ void test("createPilot falls back to SSH and rests the link after a LinkError", 
       { stdout: '{"ok":true,"pos":{"map":3}}' },
     ]);
     const machine = laptop();
-    const first = createPilot(machine, link, SIGNAL, { timingFile: timing });
+    const first = createPilot(machine, link, SIGNAL, { timingFile: timing, game: "ff5" });
     assert.deepEqual(await first.send("pos"), { ok: true, pos: { map: 2 } });
     // Each tool call gets its own Pilot; the 30 second rest is shared per laptop.
-    const second = createPilot(machine, link, SIGNAL, { timingFile: timing });
+    const second = createPilot(machine, link, SIGNAL, { timingFile: timing, game: "ff5" });
     assert.deepEqual(await second.send("pos"), { ok: true, pos: { map: 3 } });
     assert.equal(link.calls.length, 1, "the second call must skip the resting link");
     assert.equal((await readSshLog(log)).length, 2);
@@ -164,6 +172,7 @@ void test("FFPR_LINK=off sends everything over SSH", async () => {
     const pilot = createPilot(laptop(), link, SIGNAL, {
       timingFile: join(directory, "timing.jsonl"),
       env: { FFPR_LINK: "off" },
+      game: "ff5",
     });
     assert.deepEqual(await pilot.send("pos"), { ok: true, pos: { map: 2 } });
     assert.equal(link.calls.length, 0);
@@ -174,7 +183,7 @@ void test("FFPR_LINK=off sends everything over SSH", async () => {
 
 void test("pilot.query passes the bridge reply through and defaults to {}", async () => {
   const link = new FakeLink({ ok: true, pos: { map: 238 } });
-  const pilot = createPilot(laptop(), link, SIGNAL, { timingFile: "/dev/null" });
+  const pilot = createPilot(laptop(), link, SIGNAL, { timingFile: "/dev/null", game: "ff5" });
   assert.deepEqual(await pilot.query("pos"), { ok: true, pos: { map: 238 } });
   link.reply = {};
   assert.deepEqual(await pilot.query("pos"), {});
@@ -183,7 +192,10 @@ void test("pilot.query passes the bridge reply through and defaults to {}", asyn
 
 void test("pilot.sleep ends when the tool call's signal aborts", async () => {
   const controller = new AbortController();
-  const pilot = createPilot(laptop(), undefined, controller.signal, { timingFile: "/dev/null" });
+  const pilot = createPilot(laptop(), undefined, controller.signal, {
+    timingFile: "/dev/null",
+    game: "ff5",
+  });
   const pending = pilot.sleep(10_000);
   setTimeout(() => {
     controller.abort();
@@ -199,14 +211,14 @@ void test("agentRunning is true when SSH answers and false on a nonzero exit", a
   const first = await mkdtemp(join(tmpdir(), "ffpr-pilot-"));
   try {
     await useFakeSsh(first, [{ stdout: "{}" }]);
-    assert.equal(await agentRunning(LAPTOP), true);
+    assert.equal(await agentRunning(LAPTOP, "ff5"), true);
   } finally {
     await rm(first, { recursive: true, force: true });
   }
   const second = await mkdtemp(join(tmpdir(), "ffpr-pilot-"));
   try {
     await useFakeSsh(second, [{ stdout: "", stderr: "", code: 1 }]);
-    assert.equal(await agentRunning(LAPTOP), false);
+    assert.equal(await agentRunning(LAPTOP, "ff5"), false);
   } finally {
     await rm(second, { recursive: true, force: true });
   }

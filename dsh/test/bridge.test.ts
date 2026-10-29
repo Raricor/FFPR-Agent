@@ -379,3 +379,35 @@ async function waitFor(check: () => boolean): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
 }
+
+void test("the five new games ignore laptop.env's FF5 URL and use their own port", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-bridge-"));
+  try {
+    const secretsFile = join(directory, "secrets.env");
+    const laptopEnv = join(directory, "laptop.env");
+    await writeFile(secretsFile, "BRIDGE_TOKEN=x\n", "utf8");
+    await writeFile(
+      laptopEnv,
+      "LAPTOP_HOST=192.0.2.10\nBRIDGE_URL=http://192.0.2.11:47805\n",
+      "utf8",
+    );
+    const ff6 = await BridgeLink.load({
+      secretsFile,
+      laptopEnv,
+      port: 47806,
+      laptopUrl: false,
+    });
+    assert.ok(ff6);
+    assert.equal(ff6.url, "http://192.0.2.10:47806");
+    const ff5 = await BridgeLink.load({
+      secretsFile,
+      laptopEnv,
+      port: 47800,
+      laptopUrl: true,
+    });
+    assert.ok(ff5);
+    assert.equal(ff5.url, "http://192.0.2.11:47805");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

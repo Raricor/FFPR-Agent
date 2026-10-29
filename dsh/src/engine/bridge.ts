@@ -20,6 +20,10 @@ export interface BridgeLoadOptions {
   laptopEnv: string;
   /** Explicit address; the spike uses it for a fake bridge. */
   url?: string;
+  /** The port this game's bridge listens on (task 21: FF5 47800, FFN 4780N). */
+  port?: number;
+  /** Whether laptop.env's BRIDGE_URL applies; it names FF5's port, so only FF5 reads it. */
+  laptopUrl?: boolean;
   signal?: AbortSignal;
 }
 
@@ -60,8 +64,9 @@ export class BridgeLink {
   }
 
   /**
-   * Build a link from the two config files. The explicit URL wins, then BRIDGE_URL, then the
-   * default port on LAPTOP_HOST. Without BRIDGE_TOKEN there is no link and callers skip the bridge.
+   * Build a link from the two config files. The explicit URL wins, then (FF5 only) BRIDGE_URL,
+   * then LAPTOP_HOST with this game's port. Without BRIDGE_TOKEN there is no link and callers
+   * skip the bridge.
    */
   static async load(options: BridgeLoadOptions): Promise<BridgeLink | undefined> {
     const secrets = await readEnvFile(options.secretsFile, options.signal);
@@ -70,13 +75,13 @@ export class BridgeLink {
     const explicit = options.url?.trim();
     if (explicit) return new BridgeLink(explicit, token);
     const laptop = await readEnvFile(options.laptopEnv, options.signal);
-    const configured = laptop.BRIDGE_URL?.trim();
+    const configured = options.laptopUrl === false ? undefined : laptop.BRIDGE_URL?.trim();
     if (configured) return new BridgeLink(configured, token);
     const host = laptop.LAPTOP_HOST?.trim();
     if (!host) {
       throw new Error(`laptop.env 里缺少 LAPTOP_HOST,也没有配置 BRIDGE_URL:${options.laptopEnv}`);
     }
-    return new BridgeLink(`http://${host}:${DEFAULT_PORT}`, token);
+    return new BridgeLink(`http://${host}:${options.port ?? DEFAULT_PORT}`, token);
   }
 
   /** One /v1/query round trip; reconnects once when the socket drops or times out. */

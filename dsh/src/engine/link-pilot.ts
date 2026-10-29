@@ -23,6 +23,7 @@ import {
   sessionRequest,
 } from "./laptop.ts";
 import type { Laptop } from "./laptop.ts";
+import { byKey } from "./games.ts";
 import { DEPS } from "./paths.ts";
 import type { Fields, Pilot, Reply } from "./pilot.ts";
 import { isRecord, pyRound, record, text, truthy } from "./values.ts";
@@ -54,13 +55,17 @@ export interface PilotLink {
 }
 
 export interface PilotOptions {
+  /** The game this pilot plays: FF5 keeps the Python agent's directory, the others get their own. */
+  readonly game: string;
   /** Test seams; production uses TIMING under .deps and the process environment. */
   timingFile?: string;
   env?: NodeJS.ProcessEnv;
 }
 
-export function agentDir(laptop: Laptop): string {
-  return `${laptop.root}/session/pilot`;
+/** FF5's pilot agent keeps the Python path; the five new games each get their own directory. */
+export function agentDir(laptop: Laptop, game: string): string {
+  const key = byKey(game).key;
+  return key === "ff5" ? `${laptop.root}/session/pilot` : `${laptop.root}/session/pilot-${key}`;
 }
 
 /**
@@ -71,10 +76,11 @@ export function createPilot(
   laptop: Laptop,
   link: PilotLink | undefined,
   signal: AbortSignal,
-  options: PilotOptions = {},
+  options: PilotOptions,
 ): Pilot {
   const timingFile = options.timingFile ?? TIMING;
   const env = options.env ?? process.env;
+  const game = byKey(options.game).key;
 
   const send = async (
     op: string,
@@ -99,7 +105,7 @@ export function createPilot(
         LINK_REST_UNTIL.set(laptop, performance.now() + LINK_REST_SECONDS * 1000);
       }
     }
-    result ??= await sendSsh(laptop, op, waitMs, fields, signal);
+    result ??= await sendSsh(laptop, op, game, waitMs, fields, signal);
     await recordTime(timingFile, op, via, started);
     return result;
   };
@@ -169,6 +175,7 @@ export async function throughLink(
 export async function sendSsh(
   laptop: Laptop,
   op: string,
+  game: string,
   waitMs = DEFAULT_WAIT_MS,
   fields: Fields = {},
   signal?: AbortSignal,
@@ -176,7 +183,7 @@ export async function sendSsh(
   const cid = process.hrtime.bigint().toString();
   const body = JSON.stringify({ op, ...fields });
   const script =
-    `$dir = ${psQuote(agentDir(laptop))}\n` +
+    `$dir = ${psQuote(agentDir(laptop, game))}\n` +
     "if (-not (Test-Path (Join-Path $dir 'agent.json'))) {" +
     " throw '试玩助手没有运行:先运行 ffpr-pilot start' }\n" +
     `$tmp = Join-Path $dir '${cid}.tmp'\n` +
@@ -201,13 +208,14 @@ export async function sendSsh(
 export async function fetchShot(
   laptop: Laptop,
   result: Reply,
+  game: string,
   signal?: AbortSignal,
 ): Promise<string | null> {
   if (!truthy(result.shot)) return null;
   await mkdir(SHOTS, { recursive: true });
   const id = text(result.id) ?? String(result.id);
   const local = join(SHOTS, `${id}.png`);
-  const remote = `${laptop.user}@${laptop.host}:${agentDir(laptop)}/${id}.png`;
+  const remote = `${laptop.user}@${laptop.host}:${agentDir(laptop, game)}/${id}.png`;
   await runScp(laptop, remote, local, { signal });
   return local;
 }
@@ -225,7 +233,7 @@ export async function startAgent(
 ): Promise<Reply> {
   await runPs(
     laptop,
-    `$dir = ${psQuote(agentDir(laptop))}\n` +
+    `$dir = ${psQuote(agentDir(laptop, game))}\n` +
       "New-Item -ItemType Directory -Force $dir | Out-Null\n" +
       // Not -ErrorAction SilentlyContinue: a failed last statement makes powershell exit 1.
       "$agent = Join-Path $dir 'agent.json'\n" +
@@ -243,7 +251,7 @@ export async function startAgent(
     try {
       // Ask the agent itself: `send` answers status from the bridge over the LAN link, which is
       // up without the agent (10-21: restart returned with no agent running).
-      return await sendSsh(laptop, "status", 10_000, {}, signal);
+      return await sendSsh(laptop, "status", game, 10_000, {}, signal);
     } catch (error) {
       if (!(error instanceof CalledProcessError)) throw error;
       if (performance.now() > deadline) throw error;
@@ -252,9 +260,13 @@ export async function startAgent(
   }
 }
 
-export async function agentRunning(laptop: Laptop, signal?: AbortSignal): Promise<boolean> {
+export async function agentRunning(
+  laptop: Laptop,
+  game: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
   try {
-    await sendSsh(laptop, "status", 10_000, {}, signal);
+    await sendSsh(laptop, "status", game, 10_000, {}, signal);
     return true;
   } catch (error) {
     if (error instanceof CalledProcessError) return false;
@@ -268,7 +280,7 @@ export async function ensureAgent(
   game: string,
   signal?: AbortSignal,
 ): Promise<boolean> {
-  if (await agentRunning(laptop, signal)) return false;
+  if (await agentRunning(laptop, game, signal)) return false;
   await startAgent(laptop, game, 30, false, signal);
   return true;
 }

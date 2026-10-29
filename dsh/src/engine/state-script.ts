@@ -16,7 +16,13 @@ import { isRecord, records as recordsOf, type Json } from "./values.ts";
 import { parseTail, TAIL_BYTES } from "./view.ts";
 
 const PILOT = join(DEPS, "pilot");
+/** FF5's cursor keeps the Python path; each of the other games reads its own file. */
 export const CURSOR = join(PILOT, "state-cursor.json");
+
+export function cursorPath(game: string): string {
+  const key = byKey(game).key;
+  return key === "ff5" ? CURSOR : join(PILOT, `state-cursor-${key}.json`);
+}
 
 /** PowerShell that prints the newest probe file's name, then its last TAIL_BYTES. */
 export function stateScript(laptop: Laptop, game: string): string {
