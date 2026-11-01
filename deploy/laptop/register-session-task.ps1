@@ -7,7 +7,7 @@
     这个计划任务以你的身份、在你的桌面会话里运行 run-in-session.ps1:开发机先写好请求文件,
     再用 schtasks /run 触发它。
 
-    由你本人在「以管理员身份运行」的 PowerShell 里执行一次(修改任务权限需要管理员):
+    由你本人在「以管理员身份运行」的 PowerShell 里运行(首次和每次更新本脚本后;修改任务权限需要管理员):
 
         powershell -ExecutionPolicy Bypass -File C:\ffpr\deploy\laptop\register-session-task.ps1
 
@@ -25,8 +25,27 @@ Import-Module (Join-Path $PSScriptRoot 'FfprCommon.psm1') -Force
 
 $runner = Join-Path $PSScriptRoot 'run-in-session.ps1'
 $ps = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
-$action = New-ScheduledTaskAction -Execute $ps `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$runner`""
+
+# 2026-10-29: Windows 11's default terminal is Windows Terminal, which ignores
+# `powershell.exe -WindowStyle Hidden`; every trigger flashed a console window (13 times in an
+# hour). conhost.exe --headless (Windows 10 1809 / build 17763+) gives PowerShell a console but
+# no window, and Windows Terminal does not take it over. Older systems keep the old action.
+$conhost = Join-Path $env:SystemRoot 'System32\conhost.exe'
+$build = 0
+try {
+    $build = [int](Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' `
+        -Name CurrentBuildNumber -ErrorAction Stop).CurrentBuildNumber
+} catch {
+    $build = [Environment]::OSVersion.Version.Build
+}
+if ((Test-Path $conhost) -and ($build -ge 17763)) {
+    $action = New-ScheduledTaskAction -Execute $conhost `
+        -Argument "--headless `"$ps`" -NoProfile -ExecutionPolicy Bypass -File `"$runner`""
+} else {
+    $action = New-ScheduledTaskAction -Execute $ps `
+        -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$runner`""
+    Write-Host '这台系统没有 conhost.exe 或版本低于 Windows 10 1809(build 17763),计划任务仍用原来的写法,触发时可能会闪一下窗口。'
+}
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" `
     -LogonType Interactive -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
