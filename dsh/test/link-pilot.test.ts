@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { LinkError } from "../src/engine/bridge.ts";
+import { CalledProcessError } from "../src/engine/laptop.ts";
 import {
   agentDir,
   agentRunning,
@@ -91,7 +92,14 @@ class FakeLink implements PilotLink {
 for (const item of cases) {
   void test(`throughLink matches Python: ${item.name}`, async () => {
     const link = new FakeLink(item.reply);
-    const result = await throughLink(link, item.op, item.fields, item.wait * 1000, SIGNAL);
+    const result = await throughLink(
+      link,
+      item.op,
+      item.fields,
+      item.wait * 1000,
+      SIGNAL,
+      "FF5 玩家",
+    );
     assert.deepEqual(result, item.expected);
     assert.deepEqual(
       link.calls.map((call) => ({
@@ -101,12 +109,29 @@ for (const item of cases) {
         fields: call.fields,
       })),
       // 10-27: TS presses the bridge's virtual gamepad ("via": "game"); Python, frozen, does not.
+      // 0.12.0 also names the sender in "from"; the old bridge ignores it.
       item.op === "keys"
-        ? item.calls.map((call) => ({ ...call, fields: { ...call.fields, via: "game" } }))
+        ? item.calls.map((call) => ({
+            ...call,
+            fields: { ...call.fields, via: "game", from: "FF5 玩家" },
+          }))
         : item.calls,
     );
   });
 }
+
+void test("keys commands say who pressed the keys", async () => {
+  const link = new FakeLink({ ok: true, sent: 1 });
+  const pilot = createPilot(laptop(), link, SIGNAL, {
+    timingFile: "/dev/null",
+    game: "ff3",
+  });
+  assert.deepEqual(await pilot.send("keys", { keys: ["Enter"] }), { ok: true, sent: 1 });
+  const call = link.calls[0];
+  assert.ok(call);
+  assert.equal(call.op, "keys");
+  assert.equal(call.fields.from, "FF3 玩家");
+});
 
 void test("agentDir keeps FF5's path and gives each new game its own", () => {
   assert.equal(agentDir(LAPTOP, "ff5"), "C:/ffpr/session/pilot");
@@ -252,10 +277,127 @@ void test("ensureAgent leaves a running agent alone", async () => {
   }
 });
 
-async function useFakeSsh(
-  directory: string,
-  responses: readonly { stdout?: string; stderr?: string; code?: number }[],
-): Promise<string> {
+const AGENT_GONE = { stderr: "试玩助手没有运行:先运行 ffpr-pilot start", code: 1 };
+
+void test("a send that finds the agent gone restarts it once and retries", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-pilot-"));
+  try {
+    const log = await useFakeSsh(directory, [
+      AGENT_GONE, // the send itself
+      AGENT_GONE, // ensureAgent's status check
+      { stdout: "" }, // startAgent clears agent.json
+      { stdout: "" }, // runInSession fires the task
+      { stdout: '{"state":"started"}' }, // runInSession polls the task status
+      { stdout: '{"ok":true,"focused":true}' }, // startAgent's status check
+      { stdout: '{"ok":true,"pos":{"map":2}}' }, // the one retry
+    ]);
+    const messages: string[] = [];
+    const pilot = createPilot(laptop(), undefined, SIGNAL, {
+      timingFile: join(directory, "timing.jsonl"),
+      game: "ff1",
+      log: (message) => messages.push(message),
+    });
+    assert.deepEqual(await pilot.send("pos"), { ok: true, pos: { map: 2 } });
+    assert.deepEqual(messages, ["试玩助手不在，已重新启动"]);
+    assert.equal(countStarts(await readSshLog(log)), 1);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("two calls that find the agent gone share one restart", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-pilot-"));
+  try {
+    // The first caller's status check stays in flight (delayMs) long enough for the second
+    // caller to fail and join its restart.
+    const first = await fakeSsh(directory, "first", [
+      AGENT_GONE,
+      { ...AGENT_GONE, delayMs: 1000 },
+      { stdout: "" },
+      { stdout: "" },
+      { stdout: '{"state":"started"}' },
+      { stdout: '{"ok":true,"focused":true}' },
+      { stdout: '{"ok":true,"pos":{"map":1}}' },
+    ]);
+    const second = await fakeSsh(directory, "second", [
+      AGENT_GONE,
+      { stdout: '{"ok":true,"pos":{"map":2}}' },
+    ]);
+    const messages: string[] = [];
+    const record = (message: string): number => messages.push(message);
+    const one = createPilot(first.laptop, undefined, SIGNAL, {
+      timingFile: "/dev/null",
+      game: "ff2",
+      log: record,
+    });
+    const two = createPilot(second.laptop, undefined, SIGNAL, {
+      timingFile: "/dev/null",
+      game: "ff2",
+      log: record,
+    });
+    const pending = one.send("pos");
+    await waitForSshCalls(first.log, 2);
+    const other = two.send("pos");
+    assert.deepEqual(await pending, { ok: true, pos: { map: 1 } });
+    assert.deepEqual(await other, { ok: true, pos: { map: 2 } });
+    assert.deepEqual(messages, ["试玩助手不在，已重新启动"]);
+    assert.equal(countStarts(await readSshLog(first.log)), 1);
+    // The waiting caller never ran ensureAgent or startAgent of its own.
+    assert.equal(countStarts(await readSshLog(second.log)), 0);
+    assert.equal((await readSshLog(second.log)).length, 2);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("a timeout is reported without restarting the agent", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-pilot-"));
+  try {
+    const log = await useFakeSsh(directory, [{ stderr: "等待试玩助手超时", code: 1 }]);
+    const messages: string[] = [];
+    const pilot = createPilot(laptop(), undefined, SIGNAL, {
+      timingFile: "/dev/null",
+      game: "ff3",
+      log: (message) => messages.push(message),
+    });
+    await assert.rejects(pilot.send("pos"), (error: unknown) => {
+      assert.ok(error instanceof CalledProcessError);
+      assert.match(error.message, /等待试玩助手超时/);
+      return true;
+    });
+    assert.deepEqual(messages, []);
+    assert.equal((await readSshLog(log)).length, 1);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("a retry that fails again is reported without another restart", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-pilot-"));
+  try {
+    const log = await useFakeSsh(directory, [
+      AGENT_GONE,
+      AGENT_GONE,
+      { stdout: "" },
+      { stdout: "" },
+      { stdout: '{"state":"started"}' },
+      { stdout: '{"ok":true,"focused":true}' },
+      AGENT_GONE,
+    ]);
+    const pilot = createPilot(laptop(), undefined, SIGNAL, {
+      timingFile: "/dev/null",
+      game: "ff4",
+    });
+    await assert.rejects(pilot.send("pos"), /试玩助手没有运行/);
+    const calls = await readSshLog(log);
+    assert.equal(calls.length, 7);
+    assert.equal(countStarts(calls), 1);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+async function useFakeSsh(directory: string, responses: readonly SshResponse[]): Promise<string> {
   const config = join(directory, "fake-ssh.json");
   const log = join(directory, "ssh.log");
   await writeFile(config, JSON.stringify({ responses }), "utf8");
@@ -264,6 +406,67 @@ async function useFakeSsh(
   process.env.FAKE_SSH_CONFIG = config;
   process.env.FAKE_SSH_LOG = log;
   return log;
+}
+
+interface SshResponse {
+  readonly stdout?: string;
+  readonly stderr?: string;
+  readonly code?: number;
+  readonly delayMs?: number;
+}
+
+interface FakeSsh {
+  readonly laptop: Laptop;
+  readonly log: string;
+}
+
+/**
+ * A laptop whose ssh is fake-ssh with its own config. Two of them run side by side without
+ * sharing the process-wide FAKE_SSH_* variables, which a concurrency test needs.
+ */
+async function fakeSsh(
+  directory: string,
+  name: string,
+  responses: readonly SshResponse[],
+): Promise<FakeSsh> {
+  const config = join(directory, `${name}.json`);
+  const log = join(directory, `${name}.log`);
+  const wrapper = join(directory, `ssh-${name}.sh`);
+  await writeFile(config, JSON.stringify({ responses }), "utf8");
+  await writeFile(log, "", "utf8");
+  await writeFile(
+    wrapper,
+    "#!/bin/sh\n" +
+      `FAKE_SSH_CONFIG=${shellQuote(config)} FAKE_SSH_LOG=${shellQuote(log)} ` +
+      `exec ${shellQuote(process.execPath)} ${shellQuote(FAKE_SSH)} "$@"\n`,
+    "utf8",
+  );
+  await chmod(config, 0o600);
+  await chmod(wrapper, 0o755);
+  return { laptop: { ...LAPTOP, sshCommand: wrapper }, log };
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+async function waitForSshCalls(path: string, count: number): Promise<void> {
+  const deadline = Date.now() + 5000;
+  while ((await readSshLog(path)).length < count) {
+    if (Date.now() > deadline) throw new Error(`${path} 没有出现 ${count} 次 SSH 调用`);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
+/** How many times the scheduled-task request was fired: one restart, or none. */
+function countStarts(calls: readonly { args: string[] }[]): number {
+  return calls.filter((call) => scriptOf(call).includes("schtasks.exe /run /tn")).length;
+}
+
+function scriptOf(call: { args: string[] }): string {
+  const index = call.args.indexOf("-EncodedCommand");
+  const encoded = index < 0 ? undefined : call.args[index + 1];
+  return encoded === undefined ? "" : Buffer.from(encoded, "base64").toString("utf16le");
 }
 
 async function readSshLog(path: string): Promise<{ args: string[]; stdin: string }[]> {

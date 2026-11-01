@@ -25,6 +25,10 @@ if (logPath) {
 
 const responses = Array.isArray(config.responses) ? config.responses : [];
 const response = responses[count] ?? config.default ?? {};
+// A delayed answer lets a test keep one command in flight while another runs (concurrency).
+if (typeof response.delayMs === "number" && response.delayMs > 0) {
+  await new Promise((resolve) => setTimeout(resolve, response.delayMs));
+}
 if (response.stdout) process.stdout.write(response.stdout);
 if (response.stderr) process.stderr.write(response.stderr);
 process.exit(typeof response.code === "number" ? response.code : 0);

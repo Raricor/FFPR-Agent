@@ -49,6 +49,16 @@ const DEFAULT_WAIT_MS = 30_000;
 /** Rest state is per laptop, not per tool call: Python keeps it in a module-level dict. */
 const LINK_REST_UNTIL = new WeakMap<object, number>();
 
+/**
+ * In-flight restarts, keyed by game: the pilot agent quits after 30 idle minutes, and several
+ * tool calls can find it gone together. The state is per game so one title's restart never
+ * holds up another's (10-29: six players ran at once).
+ */
+const RESTARTS = new Map<string, Promise<void>>();
+
+/** sendSsh throws exactly this when agent.json is missing (the guard is in its script). */
+const AGENT_GONE = "试玩助手没有运行";
+
 export interface PilotLink {
   command(op: string, fields: Fields, signal: AbortSignal, timeoutMs?: number): Promise<unknown>;
   query(op: string, fields: Fields, signal: AbortSignal): Promise<unknown>;
@@ -60,6 +70,8 @@ export interface PilotOptions {
   /** Test seams; production uses TIMING under .deps and the process environment. */
   timingFile?: string;
   env?: NodeJS.ProcessEnv;
+  /** One line when the pilot agent had to be restarted; omitted means it is not recorded. */
+  log?: (message: string) => void;
 }
 
 /** FF5's pilot agent keeps the Python path; the five new games each get their own directory. */
@@ -98,14 +110,14 @@ export function createPilot(
       !truthy(fields.shot);
     if (canUseLink) {
       try {
-        result = await throughLink(link, op, fields, waitMs, signal);
+        result = await throughLink(link, op, fields, waitMs, signal, `${byKey(game).label} 玩家`);
         via = "lan";
       } catch (error) {
         if (!(error instanceof LinkError)) throw error;
         LINK_REST_UNTIL.set(laptop, performance.now() + LINK_REST_SECONDS * 1000);
       }
     }
-    result ??= await sendSsh(laptop, op, game, waitMs, fields, signal);
+    result ??= await sendSshOrRestart(laptop, op, game, waitMs, fields, signal, options.log);
     await recordTime(timingFile, op, via, started);
     return result;
   };
@@ -126,13 +138,15 @@ export async function throughLink(
   fields: Fields,
   waitMs: number,
   signal: AbortSignal,
+  sender: string,
 ): Promise<Reply> {
   if (op === "keys") {
     // via "game": the bridge presses a virtual gamepad inside the game, so the window can stay
     // in the background (bridge 0.9.0; older bridges ignore the field and use SendInput).
+    // "from" is the bridge 0.12.0 keys record; older bridges ignore the unknown field.
     const reply = await link.command(
       "keys",
-      { keys: fields.keys, gap: "gap" in fields ? fields.gap : 120, via: "game" },
+      { keys: fields.keys, gap: "gap" in fields ? fields.gap : 120, via: "game", from: sender },
       signal,
       waitMs,
     );
@@ -204,6 +218,64 @@ export async function sendSsh(
   return parsed;
 }
 
+/**
+ * The SSH half of a send: when the agent is gone, start it again and resend once. Only that
+ * explicit failure restarts anything; a timeout or a broken SSH command is reported as before
+ * (10-29: FF1 reported the not-running error five times in a minute).
+ */
+async function sendSshOrRestart(
+  laptop: Laptop,
+  op: string,
+  game: string,
+  waitMs: number,
+  fields: Fields,
+  signal: AbortSignal,
+  log: ((message: string) => void) | undefined,
+): Promise<Reply> {
+  try {
+    return await sendSsh(laptop, op, game, waitMs, fields, signal);
+  } catch (error) {
+    if (!agentGone(error)) throw error;
+    await restartAgent(laptop, game, log, signal);
+    // Once only: a second not-running means the restart did not take, so the caller sees it.
+    return await sendSsh(laptop, op, game, waitMs, fields, signal);
+  }
+}
+
+/** True only for the pilot agent being absent, never for another SSH failure. */
+function agentGone(error: unknown): boolean {
+  return error instanceof CalledProcessError && error.stderr.includes(AGENT_GONE);
+}
+
+/**
+ * Start the agent once per game while concurrent callers wait for that start. The caller that
+ * actually started it records the line; the others only resend.
+ */
+async function restartAgent(
+  laptop: Laptop,
+  game: string,
+  log: ((message: string) => void) | undefined,
+  signal?: AbortSignal,
+): Promise<void> {
+  const key = byKey(game).key;
+  const pending = RESTARTS.get(key);
+  if (pending !== undefined) {
+    await pending;
+    return;
+  }
+  const starting = (async () => {
+    if (await ensureAgent(laptop, game, signal)) {
+      log?.("试玩助手不在，已重新启动");
+    }
+  })();
+  RESTARTS.set(key, starting);
+  try {
+    await starting;
+  } finally {
+    if (RESTARTS.get(key) === starting) RESTARTS.delete(key);
+  }
+}
+
 /** Copy a screenshot the agent left on the laptop to .deps/pilot/shots. */
 export async function fetchShot(
   laptop: Laptop,
@@ -246,7 +318,9 @@ export async function startAgent(
   if (keepAwake) command.push("-KeepAwake");
   const request = sessionRequest("powershell.exe", command, null, false);
   await runInSession(laptop, request, 60, signal);
-  const deadline = performance.now() + 30_000;
+  // 10-29: FF5's first answer arrived just after 30 seconds and the start had worked; the agent
+  // loads the bridge before it can answer, so give a slow start a full minute.
+  const deadline = performance.now() + 60_000;
   for (;;) {
     try {
       // Ask the agent itself: `send` answers status from the bridge over the LAN link, which is
