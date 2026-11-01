@@ -20,3 +20,6 @@ tools/link_harness/obj/
 
 # Parallel dsh porting copies (merged back into dsh/)
 dsh-port-*/
+
+# Agent rules for this machine (Claude Code / dsh); kept local, not published
+/CLAUDE.md
