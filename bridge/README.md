@@ -1,6 +1,6 @@
 # 桥插件(FfprBridge)
 
-BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（设计方案 §5），从不改游戏数据和存档。当前版本 0.10.0。
+BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（设计方案 §5），从不改游戏数据和存档。当前版本 0.12.0。
 
 - 所有挂钩都是 postfix，只读参数和返回值，不改参数、不改返回值，也不改任何游戏对象。
 - 调用游戏的地方只有取值函数和纯查询。
@@ -14,6 +14,8 @@ BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（�
 - 把以上内容写进 `BepInEx/ffpr/probe-<启动时间>.jsonl`，同时推送给 WebSocket 客户端。
 - 在查询通道上回答查询(见「查询通道」)。
 - 0.5.0 起，在局域网连接上替开发机按键(见「局域网连接」)。0.9.0 起按键走虚拟手柄，游戏在后台、最小化时也能玩。
+- 0.12.0:新的 `bridge` 查询(作品、版本、进程、端口、局域网、客户端、挂钩、最近 100 条按键、最近 50 条警告),给笔记本上托盘里的桥插件小程序用;按键命令可以带可选的 `from`,说明这次按键是谁按的。
+- 0.11.0:一个包，六作装完全一样的文件。`FfprBridge.dll` 只当加载器，按进程名认出作品后加载 `games/FfprBridge.<作品>.dll`；版本号只在 `src/Version.cs` 一处；编译和安装改用 `build.sh` / `deploy.sh`。游戏启动后窗口最小化，不抢前台。
 - 0.9.0 / 0.9.1:虚拟手柄按键(`"via": "game"`、`hold`);本机 `/command`(要令牌);0.9.1 删掉了调试用的查询。
 - 0.10.0:默认端口按作品分开(FF5 仍是 47800,其余 4780N),Steam 能同时开几作，各作的桥插件互不占端口;按键只进自己那一作。六作都能编(`dotnet build -p:Game=ffN`)。FF5 专有的部分(职业、魔法窗口、战斗技能列表、职业熟练)只在 FF5 里编进去;各作没有的字段不报：总金钱(FF1–FF3)、胜场(只有 FF5)、AR 战斗(FF2–FF4)、装备栏能否选(FF1–FF3)。
 - 0.8.1–0.8.3:修好读战斗目标光标。FF5 的光标组件挂在一个选目标时也不活动的对象上，改成按状态机判断;`Active()` 不再永久缓存第一个找到的实例。
@@ -28,11 +30,14 @@ BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（�
 
 | 文件 | 做什么 |
 | --- | --- |
-| `Plugin.cs` | 入口：读配置、逐个打挂钩(一个失败不影响其他)、启动 WebSocket、挂上每帧回调 |
+| `loader/Loader.cs` | 唯一的 BepInEx 插件：按进程名认出作品,加载 `games/FfprBridge.<作品>.dll`,调用它的 `Start` |
+| `Plugin.cs` | 每作的入口 `Start(host)`：读配置、逐个打挂钩(一个失败不影响其他)、启动 WebSocket、挂上每帧回调 |
+| `Version.cs` | 唯一的版本号,加载器和六份共用 |
 | `Probe.cs` | 每帧：换地图检测、处理查询;每秒：采样 |
 | `Hooks.cs` | Harmony postfix 挂钩：对话、选项、系统消息、成就、Steam、图鉴、存档 |
 | `Requests.cs` | 查询的分派;换地图事件 `MapWatch` |
-| `Outbox.cs` | 写探针文件;本机和局域网两个监听;WebSocket 广播与单播回复 |
+| `Outbox.cs` | 写探针文件;本机和局域网两个监听;WebSocket 广播与单播回复;记下每个客户端(远端、通道、连上的时间) |
+| `BridgeInfo.cs` | `bridge` 查询的内容:版本、挂钩、最近 100 条按键、最近 50 条来自本插件的警告(0.12.0) |
 | `Link.cs` | 局域网连接的设置:监听地址、允许的客户端、令牌 |
 | `Keyboard.cs` | 按键线程:`keys`、`hold`、`status`、`stop`;默认走 SendInput(要前台),`"via": "game"` 交给 `GameInput` |
 | `GameInput.cs` | 虚拟手柄：按键对应的按钮、按住的期限、在游戏线程上发出状态事件 |
@@ -46,19 +51,33 @@ BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（�
 | `GameState.Battle.cs` | 战斗：敌我单位、战斗菜单 |
 | `GameState.Menus.cs` | 带光标的界面：商店、地图菜单(魔法、道具、装备)、存档列表 |
 
-## 编译与安装
+## 编译与安装(0.11.0 起)
 
 插件要针对从笔记本取回的程序集编译。这些程序集必须和游戏当前的 build 一致，游戏更新后要重新取回。
 
 ```bash
 uv run ffpr-laptop fetch-assemblies ff5   # 取回程序集到 .deps/ff5
-uv run ffpr-laptop install-plugin ff5     # 编译,然后装进 BepInEx/plugins/FfprBridge(游戏需已退出)
-uv run ffpr-pilot restart --slot 3        # 或者一步到位：退出游戏、编译安装、启动、等标题画面、读档
+bash bridge/build.sh                      # 编加载器和六份,拼成 bridge/bin/package/FfprBridge
+bash bridge/deploy.sh                     # 编译并装到笔记本上所有装了的作品(游戏需已退出)
+bash bridge/deploy.sh ff1 ff5             # 只装这几作
 uv run ffpr-laptop probe-logs ff5         # 取回探针日志到 .deps/ff5/probe
 uv run ffpr-probe ff5                     # 汇总最新的一份日志
 ```
 
-只想编译：`dotnet build bridge -c Release -p:Game=ff5`，产物在 `bridge/bin/ff5/Release/FfprBridge.dll`。
+`deploy.sh` 会跳过没装的作品和正在运行的游戏，每作打印一行结果。六作的包完全一样：
+
+```
+FfprBridge/
+  FfprBridge.dll              加载器(BepInEx 插件,GUID 仍是 ffpr.agent.bridge)
+  version.txt                 这一包的版本号
+  games/FfprBridge.ff1.dll    每作一份
+  …
+  games/FfprBridge.ff6.dll
+```
+
+加载器不引用任何游戏的程序集。启动时用 `Paths.ProcessName` 对照进程名（`FINAL FANTASY`、`FINAL FANTASY II`……`FINAL FANTASY VI`，忽略大小写，整个名字相等才算）认出作品，再加载 `games/FfprBridge.<作品>.dll`，调用它的 `FfprBridge.Plugin.Start`。认不出进程或找不到文件时只记一条日志就返回，不让异常冒出去。所以六个 `plugins/FfprBridge/` 装同样的文件，不会再出现某一作装成旧版的问题。
+
+只想编一作：`dotnet build bridge -c Release -p:Game=ff5`，产物在 `bridge/bin/ff5/Release/FfprBridge.ff5.dll`。
 
 配置文件 `BepInEx/config/ffpr.agent.bridge.cfg` 在首次运行后生成，有三项：
 
@@ -125,6 +144,34 @@ uv run ffpr-probe ff5                     # 汇总最新的一份日志
 | `achievements` | `defs`(成就主数据，三个平台各一套)、`account`(账号层，和 Steam 同步)、`save`(存档层计数、宝箱按地点 `treasure`、队员职业等级)、`bestiary`(每个编号登记了没有、出没地点);没读档时顶层另有 `treasure`(主数据里每个地点的宝箱总数，0.10.0 起) | 0.7.6 |
 | `monsters` | 每个图鉴编号的怪物资料：等级、HP、MP、经验、金钱、首领、属性(`type` 1 弱 / 3 无效 / 4 吸收)、状态免疫、掉落、偷窃。静态数据，取一次就够 | 0.7.9 |
 | `encounters` | 当前位置的遇敌组：每种队形的概率(千分比)、能不能逃、几只什么怪。世界地图上随区域和脚下地形变 | 0.8.0 |
+| `bridge` | 这一包和运行时:作品、版本、进程、启动时间、端口、局域网、客户端、挂钩、最近 100 条按键、最近 50 条警告 | 0.12.0 |
+
+### `bridge` 查询(0.12.0)
+
+本机的 `/query` 和局域网的 `/v1/query` 都能用。请求是 `{"id": 1, "op": "bridge"}`,回复:
+
+```json
+{"ok": true, "bridge": {
+  "game": "ff5", "version": "0.12.0", "process": "FINAL FANTASY V",
+  "startedAt": "ISO 时间", "port": 47800,
+  "lan": {"enabled": true, "listen": "192.168.8.230"},
+  "clients": [{"remote": "192.168.8.229:51234", "channel": "stream", "since": "ISO 时间"}],
+  "hooks": {"ok": ["MessageLookup", "..."], "failed": [{"name": "…", "error": "…"}]},
+  "keys": [{"at": "ISO 时间", "from": "FF5 玩家", "remote": "192.168.8.229:51240",
+            "via": "game", "keys": ["Enter"], "ok": true, "error": null}],
+  "warnings": [{"at": "ISO 时间", "level": "Warning", "text": "…"}]
+}}
+```
+
+- `game` 是编译时定下的作品(`ff1` … `ff6`);`process` 是 `Paths.ProcessName`。
+- `clients` 是本机和局域网连接的总表,`channel` 是 `stream` / `query` / `command`,断开就删掉。
+- `hooks` 是 `Plugin.Start` 挂钩的结果;失败的只记名字和错误消息。
+- `keys` 每个 `keys` 命令记一条,最多最近 100 条,按时间先后。命令里可选的 `from` 去掉首尾空白、
+  最多 32 个字,没有就是 null;`remote` 是发命令那个客户端的地址;`via` 是 `game` 或 `sendinput`。
+- `warnings` 是桥插件自己记的 Warning / Error / Fatal,最多最近 50 条。用
+  `BepInEx.Logging.Logger.Listeners` 加的监听器只收本插件的日志,不改各处 `Logger.LogWarning`。
+
+这些都只是托管对象,不碰 IL2CPP;几个线程都会读写,`BridgeInfo` 用一把锁保护。
 
 `menu` 的魔法窗口里,`abilityIndex` 从列表顶端数,`abilityCursor` 从可见的第一行数;两者在列表滚动后不同。`menu` 已在 10-20 实测：主菜单、选人光标、魔法种类都读得对;队伍还没学魔法时，各魔法种类的 `enabled` 都是 false。
 
@@ -146,7 +193,7 @@ uv run ffpr-probe ff5                     # 汇总最新的一份日志
 | `GET /v1/health` | HTTP | 帧号、订阅数、丢弃数、`hello` |
 | `/v1/stream` | WebSocket | 先发 `hello`,之后是写进探针文件的每一条记录 |
 | `/v1/query` | WebSocket | 和「查询通道」一样的请求-应答 |
-| `/v1/command` | WebSocket | 按键:`{"id": 1, "op": "keys", "keys": ["Down*3", "Enter", "Up:600"], "gap": 120}`;`status`(前台、锁屏);`stop`(取消正在按的和排队的) |
+| `/v1/command` | WebSocket | 按键:`{"id": 1, "op": "keys", "keys": ["Down*3", "Enter", "Up:600"], "gap": 120, "from": "FF5 玩家"}`;`status`(前台、锁屏);`stop`(取消正在按的和排队的) |
 
 按键的写法和试玩助手一样。不带 `via` 时走 SendInput:每按一个键前都检查游戏自己的窗口(`UnityWndClass`)是否在前台，不在就停下，报 `not_focused` 或 `locked`。按住的键无论如何都会松开。
 
