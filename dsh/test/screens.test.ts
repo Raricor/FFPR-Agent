@@ -74,6 +74,70 @@ void test("advance_story keeps the default name in a focused naming box", async 
   assert.deepEqual(pilot.keys(), [["TextEnter"], ["Enter"]]);
 });
 
+void test("FF5's advance_story closes the FieldHelp its story op stops on and pages again", async () => {
+  const { game, directory } = await temporaryGame("ff5");
+  try {
+    const pilot = new FakePilot();
+    let state = "Player";
+    let stories = 0;
+    pilot.on("pos", () => ({ pos: { state, map: 3 } }));
+    pilot.onQuery("textinput", { textinput: { open: false, fields: [] } });
+    pilot.on("keys", (fields) => {
+      if (firstKey(fields) === "PadStart") state = "Player";
+      return { ok: true };
+    });
+    pilot.on("story", () => {
+      stories += 1;
+      if (stories === 1) {
+        state = "FieldHelp";
+        return { pages: 0, stop: "state:FieldHelp" };
+      }
+      return { pages: 3, stop: "choice" };
+    });
+
+    const text = await game.run("advance_story", {}, pilot);
+    assert.match(text, /关掉了操作提示/);
+    assert.match(text, /翻了 3 页,停下原因:choice/);
+    assert.deepEqual(pilot.keys(), [["PadStart"]]);
+    assert.equal(stories, 2);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("FF5's advance_story keeps the default name its story op stops on", async () => {
+  const { game, directory } = await temporaryGame("ff5");
+  try {
+    const pilot = new FakePilot();
+    let focused = false;
+    let stories = 0;
+    pilot.on("pos", { pos: { state: "Player", map: 3 } });
+    pilot.onQuery("textinput", () => ({
+      textinput: { open: focused, fields: [{ name: "InputField", text: "泰拉", focused }] },
+    }));
+    pilot.on("keys", (fields) => {
+      if (firstKey(fields) === "TextEnter") focused = false;
+      return { ok: true };
+    });
+    pilot.on("story", () => {
+      stories += 1;
+      if (stories === 1) {
+        focused = true;
+        return { pages: 1, stop: "state:ChangeName" };
+      }
+      return { pages: 2, stop: "free" };
+    });
+
+    const text = await game.run("advance_story", {}, pilot);
+    assert.ok(text.includes("给 泰拉 起名(默认名)"));
+    assert.match(text, /翻了 3 页,停下原因:free/);
+    assert.deepEqual(pilot.keys(), [["TextEnter"], ["Enter"]]);
+    assert.equal(stories, 2);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 void test("an old bridge without textinput is skipped without an error", async () => {
   const pilot = new FakePilot();
   pilot.on("pos", { pos: { state: "Player", map: 3 } });

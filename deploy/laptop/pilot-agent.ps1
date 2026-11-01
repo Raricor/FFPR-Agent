@@ -237,7 +237,7 @@ function Invoke-Keys($keys, [int]$Gap) {
     $w = Get-GameWindow
     if (-not $w) { return @{ ok = $false; error = 'game_not_running' } }
     if (Test-GameButtons) {
-        $r = Invoke-Command @{ op = 'keys'; keys = @($keys); gap = $Gap; via = 'game' }
+        $r = Invoke-Command @{ op = 'keys'; keys = @($keys); gap = $Gap; via = 'game'; from = '试玩助手' }
         $out = @{ ok = [bool]$r.ok; sent = $r.sent }
         if (-not $r.ok) { $out.error = $r.error }
         return $out
@@ -547,7 +547,8 @@ function Invoke-Story([int]$PageMs, [int]$TimeoutMs) {
             continue
         }
         # Shop and menu screens are not dialogs; hand them back instead of waiting them out.
-        if ($s.scene.state -in 'Shop', 'Menu', 'ChangeName') {
+        # 10-29: a new game's controls overlay (FieldHelp) ignores Enter; stop and let the engine close it.
+        if ($s.scene.state -in 'Shop', 'Menu', 'ChangeName', 'FieldHelp') {
             return @{ ok = $true; stop = "state:$($s.scene.state)"; pages = $pages }
         }
         if ($s.scene.state -eq 'Player') {

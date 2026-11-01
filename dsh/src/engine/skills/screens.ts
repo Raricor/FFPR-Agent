@@ -165,8 +165,9 @@ export async function advanceStory(
 /**
  * A focused naming box: keep its default text with TextEnter, then Enter the 是/否 prompt whose
  * cursor starts on 是. Returns the line for the tool result, or null when no box is focused.
+ * FF5's story op also calls this, so a new-game naming box does not stop its paging (10-29).
  */
-async function nameFocusedField(pilot: Pilot): Promise<string | null> {
+export async function nameFocusedField(pilot: Pilot): Promise<string | null> {
   const reply = record(await pilot.query("textinput"));
   const input = record(reply.textinput);
   if (!truthy(input.open)) return null;

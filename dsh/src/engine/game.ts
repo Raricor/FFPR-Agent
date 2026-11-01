@@ -84,7 +84,7 @@ export function shopSelling(guide: Guide | null, area: string, item: string): st
 export interface GameOptions {
   readonly laptop: Laptop;
   readonly game: string;
-  /** save_game writes this slot and a wipe loads it; 3 for FF5, 20 for the other five. */
+  /** save_game writes this slot and a wipe loads it; slot 20 for all six games (10-29). */
   readonly saveSlot: number;
   readonly notesFile?: string;
   readonly events?: KeyEvents;
@@ -1018,11 +1018,10 @@ export class Game {
   }
 
   private async toolAdvanceStory(pilot: Pilot): Promise<HandlerResult> {
-    // FF5 is the running game: its paging stays the pilot agent's story op, unchanged.
+    // FF5 is the running game: its paging stays the pilot agent's story op, but the new-game
+    // FieldHelp and naming screens the op now stops on are handled before each try (10-29).
     if (this.game === "ff5") {
-      const result = await pilot.send("story", { pageMs: 3000, timeout: 600000 }, 620_000);
-      const why = result.stop || result.error;
-      return { text: `翻了 ${show(result.pages)} 页,停下原因:${show(why)}` };
+      return { text: await this.pilotAdvanceStory(pilot) };
     }
     const outcome = await screens.advanceStory(pilot);
     const notes = outcome.notes.length > 0 ? outcome.notes.join("\n") + "\n" : "";
@@ -1042,6 +1041,30 @@ export class Game {
       };
     }
     return { text: `${notes}翻了 ${outcome.pages} 页,停下原因:${outcome.stop}` };
+  }
+
+  /**
+   * FF5's story op pages by itself, but it stops on the first-visit FieldHelp and the naming
+   * box; close those with the five-game helpers, then let it page again (at most three tries).
+   */
+  private async pilotAdvanceStory(pilot: Pilot): Promise<string> {
+    const notes: string[] = [];
+    let pages = 0;
+    let why: string | undefined;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const help = await screens.dismissFieldHelp(pilot);
+      if (help === "stuck") return [...notes, screens.FIELD_HELP_STUCK].join("\n");
+      if (help === "closed") notes.push("关掉了操作提示");
+      const named = await screens.nameFocusedField(pilot);
+      if (named !== null) notes.push(named);
+
+      const result = await pilot.send("story", { pageMs: 3000, timeout: 600000 }, 620_000);
+      pages += num(result.pages) ?? 0;
+      why = text(result.stop) || text(result.error);
+      if (why !== "state:ChangeName" && why !== "state:FieldHelp") break;
+    }
+    const line = `翻了 ${pages} 页,停下原因:${show(why)}`;
+    return notes.length > 0 ? `${notes.join("\n")}\n${line}` : line;
   }
 
   private async toolPress(args: Json, pilot: Pilot): Promise<HandlerResult> {
