@@ -333,3 +333,52 @@ void test("describe keeps story lines short and progress in parentheses", () => 
     "20:25 剧情 甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲甲 / ……(1 句)",
   );
 });
+
+void test("the activity listener sees new and grown entries without changing news()", () => {
+  const plain = new KeyEvents(() => at(30));
+  const listened = new KeyEvents(() => at(30));
+  const seen: string[] = [];
+  listened.onEntry((entry) => seen.push(`${entry.type}:${entry.text}`));
+  const records: Json[] = [
+    rec(1, 0, "hello", { product: "FF5", gameVersion: "1.2.0", plugin: "0.7.2" }),
+    sample(2, 1),
+    sample(3, 2, { names: ["巴兹", "蕾娜", "加拉夫"] }),
+    line(4, 1502, "E0003_00_001", "巴兹", "法利斯去哪了？"),
+    line(5, 1503, "E0003_00_001", "加拉夫", "去酒馆看看。"),
+  ];
+  const plainNews: string[] = [];
+  const listenedNews: string[] = [];
+  for (const record of records) {
+    plain.feed(record);
+    listened.feed(record);
+    plainNews.push(plain.news());
+    listenedNews.push(listened.news());
+  }
+  assert.deepEqual(listenedNews, plainNews);
+  assert.ok(seen.includes("party:法利斯 离队"));
+  assert.ok(seen.some((entry) => entry.startsWith("story:巴兹:法利斯去哪了？")));
+  assert.ok(seen.some((entry) => entry.includes("去酒馆看看。")));
+});
+
+void test("the watcher reports a link change once and never twice for the same state", async () => {
+  const hello = rec(1, 0, "hello", { product: "FF5", gameVersion: "1.2.0", plugin: "0.7.2" });
+  const events = new KeyEvents(() => at(30));
+  const controller = new AbortController();
+  const statuses: boolean[] = [];
+  let attempts = 0;
+  const stream = async function* (signal: AbortSignal): AsyncIterable<Json> {
+    await Promise.resolve();
+    attempts += 1;
+    if (attempts === 1) {
+      yield hello;
+      throw new Error("连接断开");
+    }
+    if (attempts === 2) throw new Error("还是断开");
+    controller.abort(signal.reason);
+  };
+  const watcher = new Watcher(stream, events, 0.01, (status) => statuses.push(status.up));
+  await watcher.run(controller.signal);
+  assert.deepEqual(statuses, [true, false]);
+  assert.equal(watcher.connected, false);
+  assert.equal(watcher.error, "还是断开");
+});

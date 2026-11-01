@@ -6,7 +6,7 @@ import { BestiaryAreaCache } from "../src/engine/achievements.ts";
 import type { BridgeLink } from "../src/engine/bridge.ts";
 import { Tactics } from "../src/engine/tactics.ts";
 import { currentGame } from "../src/plugin/commands.ts";
-import { installPanel, TACTICS_ROUTE } from "../src/plugin/panel.ts";
+import { ACHIEVEMENTS_ROUTE, installPanel, TACTICS_ROUTE } from "../src/plugin/panel.ts";
 import type { PlayerEngine } from "../src/plugin/player.ts";
 import { FakePilot } from "./fake-pilot.ts";
 
@@ -114,7 +114,11 @@ void test("currentGame reads the hello product and falls back to the configured 
 void test("the panel route returns the view with no-store and an ISO timestamp", async () => {
   const server = fakeContext(true);
   const pilot = new FakePilot().onQuery("achievements", REPLY);
-  installPanel(server.ctx, engine(), () => pilot);
+  installPanel(
+    server.ctx,
+    () => engine(),
+    () => pilot,
+  );
   const route = server.routes[0];
   assert.ok(route);
   assert.equal(route.path, "/api/ffpr/achievements");
@@ -135,7 +139,7 @@ void test("the panel route returns the view with no-store and an ISO timestamp",
 
 void test("the route reports a down bridge with HTTP 200", async () => {
   const server = fakeContext(true);
-  installPanel(server.ctx, { bridge: undefined } as unknown as PlayerEngine);
+  installPanel(server.ctx, () => ({ bridge: undefined }) as unknown as PlayerEngine);
   const route = server.routes[0];
   assert.ok(route);
   const response = await route.fetch(new Request("http://localhost/api/ffpr/achievements"));
@@ -148,7 +152,7 @@ void test("the route reports a down bridge with HTTP 200", async () => {
 
 void test("without a connection service no route is registered and nothing throws", () => {
   const server = fakeContext(false);
-  installPanel(server.ctx, engine());
+  installPanel(server.ctx, () => engine());
   assert.deepEqual(server.routes, []);
   assert.deepEqual(server.disposers, []);
 });
@@ -165,7 +169,11 @@ void test("the tactics route returns the current map from the sample", async () 
     })
     .on("pos", { pos: { state: "Player", battle: false } })
     .onQuery("items", { items: { normal: [{ name: "恢复药", count: 2 }], important: [] } });
-  installPanel(server.ctx, tacticsEngine(tacticsWithMap()), () => pilot);
+  installPanel(
+    server.ctx,
+    () => tacticsEngine(tacticsWithMap()),
+    () => pilot,
+  );
   const route = server.routes.find((item) => item.path === TACTICS_ROUTE);
   assert.ok(route);
   const response = await route.fetch(new Request("http://localhost/api/ffpr/tactics"));
@@ -204,7 +212,13 @@ void test("the tactics route caches the bestiary areas across requests", async (
       },
     });
   const cache = new BestiaryAreaCache();
-  installPanel(server.ctx, tacticsEngine(tacticsWithMap()), () => pilot, undefined, cache);
+  installPanel(
+    server.ctx,
+    () => tacticsEngine(tacticsWithMap()),
+    () => pilot,
+    undefined,
+    cache,
+  );
   const route = server.routes.find((item) => item.path === TACTICS_ROUTE);
   assert.ok(route);
   await route.fetch(new Request("http://localhost/api/ffpr/tactics"));
@@ -219,7 +233,7 @@ void test("the tactics route still returns stored maps when the bridge is down",
   const server = fakeContext(true);
   // A default parameter turns an explicit undefined into its default, so set the field itself.
   const engine: PlayerEngine = { ...tacticsEngine(tacticsWithMap()), bridge: undefined };
-  installPanel(server.ctx, engine);
+  installPanel(server.ctx, () => engine);
   const route = server.routes.find((item) => item.path === TACTICS_ROUTE);
   assert.ok(route);
   const response = await route.fetch(new Request("http://localhost/api/ffpr/tactics"));
@@ -234,4 +248,89 @@ void test("the tactics route still returns stored maps when the bridge is down",
     "others" in body.view && Array.isArray(body.view.others) ? body.view.others.length : 0,
     1,
   );
+});
+
+function engineForGame(game: string, product: string): PlayerEngine {
+  return { bridge: linkWith(product), game: { game } } as unknown as PlayerEngine;
+}
+
+function bodyOf(value: unknown): Record<string, unknown> {
+  assert.ok(typeof value === "object" && value !== null);
+  return value as Record<string, unknown>;
+}
+
+void test("?game=ff3 uses FF3's engine, while no game still means ff5", async () => {
+  const server = fakeContext(true);
+  const pilot = new FakePilot().onQuery("achievements", REPLY);
+  const ff5 = engine();
+  const ff3 = engineForGame("ff3", "FINAL FANTASY III");
+  installPanel(
+    server.ctx,
+    (game) => (game === "ff5" ? ff5 : game === "ff3" ? ff3 : undefined),
+    () => pilot,
+  );
+  const route = server.routes.find((item) => item.path === ACHIEVEMENTS_ROUTE);
+  assert.ok(route);
+
+  const ff3Body = bodyOf(
+    await (
+      await route.fetch(new Request("http://localhost/api/ffpr/achievements?game=ff3"))
+    ).json(),
+  );
+  assert.equal(ff3Body.ok, true);
+  assert.equal(bodyOf(ff3Body.view).title, "FF3 成就 · 当前存档");
+
+  const ff5Body = bodyOf(
+    await (await route.fetch(new Request("http://localhost/api/ffpr/achievements"))).json(),
+  );
+  assert.equal(ff5Body.ok, true);
+  assert.equal(bodyOf(ff5Body.view).title, "FF5 成就 · 当前存档");
+});
+
+void test("a game whose player is not loaded reports that in the achievements route", async () => {
+  const server = fakeContext(true);
+  installPanel(server.ctx, () => undefined);
+  const route = server.routes.find((item) => item.path === ACHIEVEMENTS_ROUTE);
+  assert.ok(route);
+  const body = bodyOf(
+    await (
+      await route.fetch(new Request("http://localhost/api/ffpr/achievements?game=ff4"))
+    ).json(),
+  );
+  assert.equal(body.ok, false);
+  assert.equal(body.error, "FF4 玩家没有加载");
+});
+
+void test("an unknown game is an error in both routes", async () => {
+  const server = fakeContext(true);
+  installPanel(server.ctx, () => undefined);
+  const achievements = server.routes.find((item) => item.path === ACHIEVEMENTS_ROUTE);
+  const tactics = server.routes.find((item) => item.path === TACTICS_ROUTE);
+  assert.ok(achievements);
+  assert.ok(tactics);
+  const achievementsBody = bodyOf(
+    await (
+      await achievements.fetch(new Request("http://localhost/api/ffpr/achievements?game=ff9"))
+    ).json(),
+  );
+  assert.equal(achievementsBody.ok, false);
+  assert.match(String(achievementsBody.error), /未知的作品/);
+  const tacticsBody = bodyOf(
+    await (await tactics.fetch(new Request("http://localhost/api/ffpr/tactics?game=ff9"))).json(),
+  );
+  assert.equal(tacticsBody.ok, false);
+  assert.match(String(tacticsBody.error), /未知的作品/);
+});
+
+void test("the tactics route puts a missing player in the down view's status", async () => {
+  const server = fakeContext(true);
+  installPanel(server.ctx, () => undefined);
+  const route = server.routes.find((item) => item.path === TACTICS_ROUTE);
+  assert.ok(route);
+  const body = bodyOf(
+    await (await route.fetch(new Request("http://localhost/api/ffpr/tactics?game=ff4"))).json(),
+  );
+  assert.equal(body.ok, true);
+  assert.equal(bodyOf(body.view).status, "FF4 玩家没有加载");
+  assert.equal(bodyOf(body.view).current, null);
 });

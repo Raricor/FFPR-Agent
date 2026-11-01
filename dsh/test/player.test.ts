@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
+import { ActivityLog } from "../src/engine/activity.ts";
+import { KeyEvents } from "../src/engine/events.ts";
 import { TOOLS } from "../src/engine/prompt.ts";
 import { FakePilot } from "./fake-pilot.ts";
+import { activityEntryRecorder } from "../src/plugin/player.ts";
 import {
   DEFAULT_TIMEOUT_MS,
   GAME_TOOL_SCHEMAS,
@@ -57,7 +60,7 @@ void test("the five new games do not get FF5's game operations", () => {
   );
   assert.match(
     String(ff5.find((tool) => tool.name === "save_game")?.description),
-    /存档到 3 号存档位/,
+    /存档到 20 号存档位/,
   );
 });
 
@@ -124,7 +127,7 @@ void test("the tool call's signal reaches the Pilot", async () => {
 void test("the prompt has the dsh goal text and no placeholders", async () => {
   const { buildSystemPrompt, openingMessage, withOpening } =
     await import("../src/plugin/player.ts");
-  const prompt = buildSystemPrompt("ff5", 3);
+  const prompt = buildSystemPrompt("ff5", 20);
   assert.match(prompt, /目标:用户在对话里给你的目标;用户没说就接着之前的进度玩。/);
   assert.equal(prompt.includes("{goal}"), false);
   assert.equal(prompt.includes("{hint}"), false);
@@ -143,4 +146,77 @@ void test("the prompt has the dsh goal text and no placeholders", async () => {
   assert.equal(withOpening(decision, 2, "开始。"), decision); // only the first step of a turn
   assert.equal(withOpening(decision, 1, ""), decision);
   assert.deepEqual(withOpening({ kind: "reject" }, 1, "开始。"), { kind: "reject" });
+});
+
+void test("a tool call logs one activity line with its first result line", async () => {
+  const log = new ActivityLog({ game: "ff5" });
+  const definitions = gameToolDefinitions(
+    host({ run: () => Promise.resolve("到了 (13,11)\n当前状态:\n在地图上") }),
+    "ff5",
+    3,
+    log,
+  );
+  const walk = definitions.find((tool) => tool.name === "walk_to");
+  assert.ok(walk);
+  await walk.execute({ x: 13, y: 11 }, exec(new AbortController().signal));
+  assert.equal(log.entries.length, 1);
+  const entry = log.entries[0];
+  assert.ok(entry);
+  assert.equal(entry.kind, "tool");
+  assert.match(entry.text, /^walk_to \{"x":13,"y":11\} → 到了 \(13,11\)\(\d+\.\d 秒\)$/);
+  assert.equal(log.busy, null);
+});
+
+void test("a failed tool logs an error line and clears the busy tool", async () => {
+  const log = new ActivityLog({ game: "ff5" });
+  const definitions = gameToolDefinitions(
+    host({
+      run: () => {
+        throw new Error("连不上桥插件");
+      },
+    }),
+    "ff5",
+    3,
+    log,
+  );
+  const remember = definitions.find((tool) => tool.name === "remember");
+  assert.ok(remember);
+  const result = await remember.execute({ note: "x" }, exec(new AbortController().signal));
+  assert.equal(result, "工具出错:连不上桥插件");
+  assert.equal(log.entries.length, 1);
+  const entry = log.entries[0];
+  assert.ok(entry);
+  assert.equal(entry.kind, "error");
+  assert.equal(entry.text, "remember 出错:连不上桥插件");
+  assert.equal(log.busy, null);
+});
+
+void test("a story entry that grows three times is logged once", () => {
+  const now = new Date("2026-10-29T20:30:00+08:00");
+  const events = new KeyEvents(() => now);
+  const log = new ActivityLog({ game: "ff5", now: () => now });
+  events.onEntry(activityEntryRecorder(log));
+  events.feed({
+    seq: 1,
+    t: "2026-10-29T12:00:00Z",
+    type: "hello",
+    product: "FF5",
+    gameVersion: "1.2.0",
+    plugin: "0.7.2",
+  });
+  for (const [index, line] of ["甲", "乙", "丙", "丁"].entries()) {
+    events.feed({
+      seq: index + 2,
+      t: `2026-10-29T12:00:0${index + 1}Z`,
+      type: "dialog.play",
+      ids: ["E0003_00_001_a_01"],
+      speaker: "巴兹",
+      lines: [line],
+    });
+  }
+  assert.equal(log.entries.length, 1);
+  const entry = log.entries[0];
+  assert.ok(entry);
+  assert.equal(entry.kind, "event");
+  assert.equal(entry.text, "剧情 巴兹:甲");
 });

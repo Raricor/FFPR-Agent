@@ -11,10 +11,11 @@
 
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { ToolDefinition } from "@deepseek-ai/dsh-tools";
+import type { ActivityLog } from "../engine/activity.ts";
 import { describeError } from "../engine/errors.ts";
 import { byKey } from "../engine/games.ts";
 import type { Pilot } from "../engine/pilot.ts";
-import { PRESS_TOOL, TOOLS } from "../engine/prompt.ts";
+import { PRESS_TOOL, toolSchemas, type GameToolSchema } from "../engine/prompt.ts";
 import { isRecord } from "../engine/values.ts";
 
 /** One tool call's engine side: a Pilot bound to its signal, and the serialized Game. */
@@ -57,14 +58,7 @@ const FF5_ONLY_TOOLS: ReadonlySet<string> = new Set([
 ]);
 
 /** The shape `engine/prompt.ts` keeps for each OpenAI function definition. */
-export interface GameToolSchema {
-  readonly type: "function";
-  readonly function: {
-    readonly name: string;
-    readonly description: string;
-    readonly parameters: Record<string, unknown>;
-  };
-}
+export type { GameToolSchema };
 
 export function timeoutFor(name: string): number {
   const base = TOOL_TIMEOUTS[name] ?? DEFAULT_TIMEOUT_MS;
@@ -72,34 +66,19 @@ export function timeoutFor(name: string): number {
 }
 
 /** The tool list one game's player sees, with save_game naming its own slot. */
-export function gameToolSchemas(
-  game: string,
-  saveSlot = byKey(game).key === "ff5" ? 3 : 20,
-): GameToolSchema[] {
+export function gameToolSchemas(game: string, saveSlot = 20): GameToolSchema[] {
   const ff5 = byKey(game).key === "ff5";
-  const schemas: readonly GameToolSchema[] = ff5 ? TOOLS : [...TOOLS, PRESS_TOOL];
-  return schemas
-    .filter((tool) => {
-      const name = tool.function.name;
-      return name !== "done" && (ff5 || !FF5_ONLY_TOOLS.has(name));
-    })
-    .map((tool) =>
-      tool.function.name === "save_game"
-        ? {
-            ...tool,
-            function: {
-              ...tool.function,
-              description:
-                `存档到 ${saveSlot} 号存档位。只能在世界地图或存档点用,迷宫里不行。` +
-                "首领战前先存档。",
-            },
-          }
-        : tool,
-    );
+  const schemas: readonly GameToolSchema[] = ff5
+    ? toolSchemas(saveSlot)
+    : [...toolSchemas(saveSlot), PRESS_TOOL];
+  return schemas.filter((tool) => {
+    const name = tool.function.name;
+    return name !== "done" && (ff5 || !FF5_ONLY_TOOLS.has(name));
+  });
 }
 
 /** FF5's 26 tools, kept for tests and callers that already know the game. */
-export const GAME_TOOL_SCHEMAS: readonly GameToolSchema[] = gameToolSchemas("ff5", 3);
+export const GAME_TOOL_SCHEMAS: readonly GameToolSchema[] = gameToolSchemas("ff5", 20);
 
 function rendered(value: unknown): string {
   if (typeof value === "string") return value;
@@ -109,7 +88,8 @@ function rendered(value: unknown): string {
 export function gameToolDefinitions(
   host: GameToolHost,
   game = "ff5",
-  saveSlot = byKey(game).key === "ff5" ? 3 : 20,
+  saveSlot = 20,
+  activity?: ActivityLog,
 ): ToolDefinition[] {
   return gameToolSchemas(game, saveSlot).map((tool) => ({
     name: tool.function.name,
@@ -121,20 +101,37 @@ export function gameToolDefinitions(
       render: (_args, value) => [{ type: "text", text: rendered(value) }],
     },
     async execute(args, exec) {
+      const name = tool.function.name;
       const fields = isRecord(args) ? args : {};
+      const started = Date.now();
       try {
-        return await host.run(
-          tool.function.name,
+        const result = await host.run(
+          name,
           fields,
           host.pilot(exec.signal),
           exec.signal,
           exec.agent,
         );
+        const seconds = ((Date.now() - started) / 1000).toFixed(1);
+        const summary = (result.split(/\r\n|\r|\n/, 1)[0] ?? "").trim();
+        activity?.record(
+          "tool",
+          `${name} ${firstChars(JSON.stringify(fields), 120)} → ${summary}(${seconds} 秒)`,
+        );
+        return result;
       } catch (error) {
         // Cancellation is dsh's, not the model's: let it settle the call as ABORTED.
         exec.signal.throwIfAborted();
-        return `工具出错:${describeError(error)}`;
+        const message = describeError(error);
+        activity?.record("error", `${name} 出错:${message}`);
+        return `工具出错:${message}`;
       }
     },
   }));
+}
+
+/** The first `max` code points of a JSON argument dump (task 24 caps it at 120). */
+function firstChars(value: string, max: number): string {
+  const points = Array.from(value);
+  return points.length <= max ? value : points.slice(0, max).join("");
 }

@@ -11,18 +11,22 @@ import type { Context } from "@deepseek-ai/cordis";
 import type { Agent, PreStepDecision } from "@deepseek-ai/dsh-agent";
 import { createUserMessage, type ContextFormed } from "@deepseek-ai/dsh-llm";
 import { PERSONA_PREFIX_SECTION } from "@deepseek-ai/dsh-system-prompt";
+import { ActivityLog, activityFile } from "../engine/activity.ts";
 import { BridgeLink } from "../engine/bridge.ts";
+import { readEnvFile } from "../engine/env.ts";
 import { describeError, isMissingFile } from "../engine/errors.ts";
-import { KeyEvents, Watcher } from "../engine/events.ts";
+import { KeyEvents, WINDOWS, Watcher } from "../engine/events.ts";
 import { Game } from "../engine/game.ts";
 import { HealthWaiter } from "../engine/gate.ts";
 import { byKey } from "../engine/games.ts";
+import { LABEL, type KeyEntry } from "../engine/keylog.ts";
 import { CalledProcessError, fetchProbeLogs, load as loadLaptop } from "../engine/laptop.ts";
 import type { Laptop } from "../engine/laptop.ts";
 import { AsyncLock } from "../engine/lock.ts";
 import { DEPS } from "../engine/paths.ts";
 import { createPilot, ensureAgent } from "../engine/link-pilot.ts";
 import { systemPrompt } from "../engine/prompt.ts";
+import { Redactor } from "../engine/redact.ts";
 import { gameDefaults, type Config } from "./config.ts";
 import { formatNotes, formatTactician, notesContext, tacticianContext } from "./notes-prompt.ts";
 import { callTactician } from "./tactician.ts";
@@ -42,6 +46,8 @@ export interface PlayerEngine {
   readonly laptop: Laptop;
   readonly bridge: BridgeLink | undefined;
   readonly events: KeyEvents | undefined;
+  readonly watcher: Watcher | undefined;
+  readonly activity: ActivityLog;
   readonly game: Game;
   readonly waiter: HealthWaiter;
   readonly stop: AbortController;
@@ -114,9 +120,23 @@ export async function startEngine(
     signal,
   });
   const stop = new AbortController();
-  const events = bridge
-    ? await followEvents(laptop, config.game, bridge, stop.signal, log)
+  // Mask every value in secrets.env before it can reach a log line (task 24).
+  const redactor = new Redactor();
+  for (const value of Object.values(await readEnvFile(config.secretsFile, signal))) {
+    redactor.add(value);
+  }
+  const activity = await ActivityLog.load({
+    game: config.game,
+    file: activityFile(config.game),
+    redact: (value) => redactor.redact(value),
+    warn: (message) => {
+      log.warn(message);
+    },
+  });
+  const followed = bridge
+    ? await followEvents(laptop, config.game, bridge, stop.signal, log, activity)
     : undefined;
+  const events = followed?.events;
   const game = await Game.create({
     laptop,
     game: config.game,
@@ -140,12 +160,33 @@ export async function startEngine(
       else log.info(message);
     },
   });
-  return { laptop, bridge, events, game, waiter, stop };
+  return { laptop, bridge, events, watcher: followed?.watcher, activity, game, waiter, stop };
+}
+
+/**
+ * One activity line per key entry (task 24 review). A story entry grows as its pages arrive, so
+ * the listener sees the same KeyEntry several times; the WeakSet keeps only the first text.
+ * Empty text is not marked as seen: a scene entry can be created before its first line.
+ */
+export function activityEntryRecorder(activity: ActivityLog): (entry: KeyEntry) => void {
+  const recorded = new WeakSet<KeyEntry>();
+  return (entry) => {
+    if (recorded.has(entry)) return;
+    if (entry.text === "" || !WINDOWS[2].types.has(entry.type)) return;
+    recorded.add(entry);
+    activity.record("event", `${LABEL[entry.type] ?? entry.type} ${entry.text}`);
+  };
+}
+
+interface FollowedEvents {
+  readonly events: KeyEvents;
+  readonly watcher: Watcher;
 }
 
 /**
  * Key events for the planning windows: the last few probe files, then the bridge's stream on
- * the LAN link, exactly like cli/ds.py's follow_events.
+ * the LAN link, exactly like cli/ds.py's follow_events. The activity page also records the
+ * stream's connection changes and the tactical-layer entries the Builder produces (task 24).
  */
 async function followEvents(
   laptop: Laptop,
@@ -153,7 +194,8 @@ async function followEvents(
   link: BridgeLink,
   signal: AbortSignal,
   log: PlayerLog,
-): Promise<KeyEvents> {
+  activity: ActivityLog,
+): Promise<FollowedEvents> {
   const events = new KeyEvents();
   try {
     await fetchProbeLogs(laptop, byKey(game), SEED_FILES, signal);
@@ -166,9 +208,26 @@ async function followEvents(
     }
   }
   for (const path of await seedFiles(game, signal)) await events.seed(path, signal);
-  new Watcher((streamSignal) => link.stream(streamSignal), events).start(signal);
+  // Seeded history is deliberately not logged: the page shows what happens from now on.
+  events.onEntry(activityEntryRecorder(activity));
+  let everUp = false;
+  const watcher = new Watcher(
+    (streamSignal) => link.stream(streamSignal),
+    events,
+    5.0,
+    (status) => {
+      if (status.up) {
+        everUp = true;
+        activity.record("link", "连上桥插件");
+        return;
+      }
+      const reason = status.error ?? "连接已断开";
+      activity.record("link", everUp ? `桥插件断开:${reason}` : "连不上桥插件，游戏可能没开");
+    },
+  );
+  watcher.start(signal);
   log.info(`跟随事件流;已有 ${events.entries.length} 条重要事件`);
-  return events;
+  return { events, watcher };
 }
 
 async function seedFiles(game: string, signal?: AbortSignal): Promise<string[]> {
@@ -202,16 +261,26 @@ export function gameToolHost(
   const lock = new AsyncLock();
   return {
     pilot: (signal) =>
-      createPilot(engine.laptop, engine.bridge, signal, { game: engine.game.game }),
+      createPilot(engine.laptop, engine.bridge, signal, {
+        game: engine.game.game,
+        // The pilot agent's auto-restart (task 28) must be visible in the overview's log.
+        log: (message) => {
+          engine.activity.record("event", message);
+        },
+      }),
     run: async (name, args, pilot, signal, agent) => {
       signal.throwIfAborted();
       return lock.run(async () => {
         signal.throwIfAborted();
+        // The overview's busy line follows the tool that actually holds the one game, not the
+        // calls queued behind it.
+        engine.activity.beginTool(name);
         bind({ agent, signal });
         try {
           return await engine.game.run(name, args, pilot);
         } finally {
           bind(null);
+          engine.activity.endTool();
         }
       });
     },
@@ -229,7 +298,7 @@ export function installPlayer(ctx: Context, engine: PlayerEngine, log: PlayerLog
   const host = gameToolHost(engine, (call) => {
     binding = call;
   });
-  const tools = gameToolDefinitions(host, engine.game.game, engine.game.saveSlot);
+  const tools = gameToolDefinitions(host, engine.game.game, engine.game.saveSlot, engine.activity);
   const personaText = buildSystemPrompt(engine.game.game, engine.game.saveSlot);
   const disposers = new Map<string, () => Promise<void>>();
 

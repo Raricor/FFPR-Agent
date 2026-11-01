@@ -30,7 +30,10 @@ interface OpenSidebarTab {
 
 interface SlotsService {
   inject(name: string, callback: () => void): void;
-  register(definition: Record<string, unknown>, component: () => unknown): () => void;
+  register(
+    definition: Record<string, unknown>,
+    component: (props: { readonly size?: number }) => unknown,
+  ): () => void;
 }
 
 interface ClientContext {

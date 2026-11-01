@@ -1,8 +1,9 @@
 /**
- * The sidebar's read-only route (task 14): GET /api/ffpr/achievements returns the same
- * AchievementView `/ach` renders, so the browser never reads the game itself. The connection
- * service only exists in a web composition, so it is injected optionally (Cordis
- * `ctx.inject([...], callback)`), not listed in the plugin's required inject array.
+ * The sidebar's read-only routes (task 14, task 24): GET /api/ffpr/achievements and
+ * GET /api/ffpr/tactics answer for the game named by `?game=ffN`, so one registration serves
+ * all six players. The connection service only exists in a web composition, so it is injected
+ * optionally (Cordis `ctx.inject([...], callback)`), not listed in the plugin's required inject
+ * array.
  */
 
 import type { Context } from "@deepseek-ai/cordis";
@@ -13,22 +14,79 @@ import { parseEncounters, type EncounterTable } from "../engine/encounters.ts";
 import { describeError } from "../engine/errors.ts";
 import { CalledProcessError } from "../engine/laptop.ts";
 import { LinkError } from "../engine/bridge.ts";
-import { byKey } from "../engine/games.ts";
+import { byKey, type Game } from "../engine/games.ts";
 import { createPilot } from "../engine/link-pilot.ts";
 import { profileFor } from "../engine/profiles/index.ts";
 import type { GameProfile } from "../engine/profiles/types.ts";
 import { heldItems } from "../engine/skills/battle.ts";
+import { inBattle as inBattleOf, placeName as placeNameOf } from "../engine/status.ts";
+import { Tactics } from "../engine/tactics.ts";
 import { tacticsView, type TacticsPanelView } from "../engine/tactics-view.ts";
-import { num, record, records, text, truthy } from "../engine/values.ts";
+import { num, record, records, truthy } from "../engine/values.ts";
 import { currentGame, readAchievementView, type CommandPilotFactory } from "./commands.ts";
 import type { PlayerEngine } from "./player.ts";
 
 export const ACHIEVEMENTS_ROUTE = "/api/ffpr/achievements";
 export const TACTICS_ROUTE = "/api/ffpr/tactics";
 
+/** The root panel entry's way to find the player preset that started one game's engine. */
+export type EngineLookup = (game: string) => PlayerEngine | undefined;
+
+type GameChoice =
+  { readonly ok: true; readonly game: Game } | { readonly ok: false; readonly error: string };
+
+/**
+ * `?game=ffN`, defaulting to ff5 so the old FF5 pages keep working; an unknown key reports the
+ * Chinese unknown-game error instead of picking an engine.
+ */
+function requestedGame(request: Request): GameChoice {
+  const raw = new URL(request.url).searchParams.get("game");
+  const key = raw === null || raw.trim() === "" ? "ff5" : raw.trim();
+  try {
+    return { ok: true, game: byKey(key) };
+  } catch (error) {
+    return { ok: false, error: describeError(error) };
+  }
+}
+
+function json(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+/** What the strategy route shows before (or without) a loaded player for this game. */
+function emptyTacticsView(game: Game, status: string): TacticsPanelView {
+  return {
+    ...tacticsView({
+      profile: profileFor(game.key),
+      strategy: false,
+      mapId: null,
+      party: [],
+      inBattle: false,
+      tactics: new Tactics(),
+      mapNameOf: () => "",
+      tacticianInfoFor: () => null,
+      lastBossPlan: () => null,
+      areaId: null,
+      encountered: () => [],
+      monsters: null,
+      bestiaryEntries: null,
+      items: {},
+      elements: null,
+      encounters: null,
+    }),
+    status,
+  };
+}
+
 /** One exact Fetch route; owner authentication and cookies are handled by the connection. */
 export function achievementRoute(
-  engine: PlayerEngine,
+  engineFor: EngineLookup,
   pilotFor?: CommandPilotFactory,
   monsterCache?: MonsterCache,
 ): ConnectionFetchRoute {
@@ -37,18 +95,17 @@ export function achievementRoute(
     methods: ["GET"],
     requestBody: "buffered",
     fetch: async (request) => {
-      const result = await readAchievementView(engine, request.signal, pilotFor, monsterCache);
       const at = new Date().toISOString();
-      const body = result.ok
-        ? { ok: true, view: result.view, at }
-        : { ok: false, error: result.error, at };
-      return new Response(JSON.stringify(body), {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-          "Cache-Control": "no-store",
-        },
-      });
+      const choice = requestedGame(request);
+      if (!choice.ok) return json({ ok: false, error: choice.error, at });
+      const engine = engineFor(choice.game.key);
+      if (engine === undefined) {
+        return json({ ok: false, error: `${choice.game.label} 玩家没有加载`, at });
+      }
+      const result = await readAchievementView(engine, request.signal, pilotFor, monsterCache);
+      return result.ok
+        ? json({ ok: true, view: result.view, at })
+        : json({ ok: false, error: result.error, at });
     },
   };
 }
@@ -104,11 +161,7 @@ export async function readTacticsView(
     const sample = record((await pilot.query("sample")).sample);
     const mapId = num(record(sample.user).mapId) ?? null;
     const areaId = num(record(sample.user).areaId) ?? null;
-    // Same naming as the player's map listing (game.ts): area, then location.
-    const placeName = [record(sample.user).areaText, record(sample.user).locationText]
-      .map((value) => text(value))
-      .filter((value): value is string => value !== undefined && value !== "")
-      .join(" ");
+    const placeName = placeNameOf(sample);
     const party = records(sample.party);
     let items: Record<string, number> = {};
     try {
@@ -135,8 +188,7 @@ export async function readTacticsView(
       // The sample's battle flag is enough when an older pilot has no pos answer.
       signal.throwIfAborted();
     }
-    const inBattle =
-      truthy(pos.battle) || pos.state === "Battle" || truthy(record(sample.battle).active);
+    const inBattle = truthy(pos.battle) || pos.state === "Battle" || inBattleOf(sample);
     return tacticsView({
       profile,
       strategy,
@@ -165,7 +217,7 @@ export async function readTacticsView(
 
 /** One exact Fetch route for the strategy page; always 200 with a rendered view. */
 export function tacticsRoute(
-  engine: PlayerEngine,
+  engineFor: EngineLookup,
   pilotFor?: CommandPilotFactory,
   monsterCache?: MonsterCache,
   bestiaryCache?: BestiaryAreaCache,
@@ -175,6 +227,17 @@ export function tacticsRoute(
     methods: ["GET"],
     requestBody: "buffered",
     fetch: async (request) => {
+      const at = new Date().toISOString();
+      const choice = requestedGame(request);
+      if (!choice.ok) return json({ ok: false, error: choice.error, at });
+      const engine = engineFor(choice.game.key);
+      if (engine === undefined) {
+        return json({
+          ok: true,
+          view: emptyTacticsView(choice.game, `${choice.game.label} 玩家没有加载`),
+          at,
+        });
+      }
       const view = await readTacticsView(
         engine,
         request.signal,
@@ -182,36 +245,29 @@ export function tacticsRoute(
         monsterCache,
         bestiaryCache,
       );
-      const at = new Date().toISOString();
-      return new Response(JSON.stringify({ ok: true, view, at }), {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json; charset=utf-8",
-          "Cache-Control": "no-store",
-        },
-      });
+      return json({ ok: true, view, at });
     },
   };
 }
 
 /**
- * Register the route on the plugin's ctx when this deployment has a connection service. Without
- * one (a non-web profile) the callback never runs: no route, no error.
+ * Register the routes on the plugin's ctx when this deployment has a connection service. The
+ * root panel entry calls this once; the player presets no longer register routes themselves.
  */
 export function installPanel(
   ctx: Context,
-  engine: PlayerEngine,
+  engineFor: EngineLookup,
   pilotFor?: CommandPilotFactory,
   monsterCache?: MonsterCache,
   bestiaryCache?: BestiaryAreaCache,
 ): void {
   ctx.inject(["connection"], (connectionCtx) => {
     connectionCtx.effect(() =>
-      connectionCtx.connection.fetch.register(achievementRoute(engine, pilotFor, monsterCache)),
+      connectionCtx.connection.fetch.register(achievementRoute(engineFor, pilotFor, monsterCache)),
     );
     connectionCtx.effect(() =>
       connectionCtx.connection.fetch.register(
-        tacticsRoute(engine, pilotFor, monsterCache, bestiaryCache),
+        tacticsRoute(engineFor, pilotFor, monsterCache, bestiaryCache),
       ),
     );
   });

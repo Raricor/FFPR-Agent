@@ -158,6 +158,7 @@ export class KeyEvents {
   private seq = 0;
   private readonly told = new Map<KeyEntry, string>(); // entry → the text news() last reported
   private numbersShown = false; // this run's bridge sends the numbers the bestiary shows
+  private entryListener: ((entry: KeyEntry) => void) | undefined;
 
   /**
    * The game is one resource but JavaScript runs one statement at a time, so Python's
@@ -205,8 +206,43 @@ export class KeyEvents {
       if (this.recent.length > 50) this.recent.shift();
     }
     const before = this.builder.entries.length;
+    const previousLast = before > 0 ? this.builder.entries[before - 1]?.text : undefined;
+    const previousStory = this.builder.story?.text;
     this.builder.feed(record);
-    this.entries.push(...this.builder.entries.slice(before));
+    const built = this.builder.entries;
+    const notified = new Set<KeyEntry>();
+    for (let index = before; index < built.length; index += 1) {
+      const entry = built[index];
+      if (entry === undefined) continue;
+      this.entries.push(entry);
+      notified.add(entry);
+      this.entryListener?.(entry);
+    }
+    // A merged level-up rewrites the last entry.
+    if (built.length === before && before > 0 && built[before - 1]?.text !== previousLast) {
+      const entry = built[before - 1];
+      if (entry !== undefined && !notified.has(entry)) {
+        notified.add(entry);
+        this.entryListener?.(entry);
+      }
+    }
+    // A story's next page can arrive after a sample added other entries in between.
+    const story = this.builder.story;
+    if (story !== null && story.text !== previousStory && !notified.has(story)) {
+      this.entryListener?.(story);
+    }
+  }
+
+  /**
+   * Called for each new key entry, and again when the newest entry grows (a story's next line,
+   * a battle's merged level-ups). The listener is for the activity page only: it does not mark
+   * entries as told, so `news()` sees exactly what it would without a listener.
+   */
+  onEntry(listener: (entry: KeyEntry) => void): () => void {
+    this.entryListener = listener;
+    return () => {
+      if (this.entryListener === listener) this.entryListener = undefined;
+    };
   }
 
   private recordEnemies(record: Json, battle: Json): void {
@@ -300,6 +336,12 @@ export class KeyEvents {
 
 export type Stream = (signal: AbortSignal) => AsyncIterable<Json>;
 
+/** The link's state changes the activity page logs; repeated identical states are not sent. */
+export interface LinkStatus {
+  readonly up: boolean;
+  readonly error?: string;
+}
+
 /**
  * Follows the bridge's stream, reconnecting when the link drops, until the signal aborts.
  * This is Python's daemon thread as one asynchronous loop; the stream itself is injected so
@@ -309,12 +351,20 @@ export class Watcher {
   readonly stream: Stream;
   readonly events: KeyEvents;
   readonly retry: number;
+  readonly onStatus: ((status: LinkStatus) => void) | undefined;
   error: string | null = null;
+  private status: LinkStatus | null = null;
 
-  constructor(stream: Stream, events: KeyEvents, retry = 5.0) {
+  constructor(
+    stream: Stream,
+    events: KeyEvents,
+    retry = 5.0,
+    onStatus?: (status: LinkStatus) => void,
+  ) {
     this.stream = stream;
     this.events = events;
     this.retry = retry;
+    this.onStatus = onStatus;
   }
 
   start(signal: AbortSignal): this {
@@ -322,11 +372,23 @@ export class Watcher {
     return this;
   }
 
+  /** Whether the newest connection is up; the overview page's green dot reads this. */
+  get connected(): boolean {
+    return this.status?.up === true;
+  }
+
+  private report(status: LinkStatus): void {
+    if (this.status !== null && this.status.up === status.up) return;
+    this.status = status;
+    this.onStatus?.(status);
+  }
+
   async run(signal: AbortSignal): Promise<void> {
     while (!aborted(signal)) {
       try {
         for await (const record of this.stream(signal)) {
           if (aborted(signal)) break;
+          this.report({ up: true });
           this.events.feed(record);
           this.error = null;
         }
@@ -334,8 +396,10 @@ export class Watcher {
         // A closed socket, a game restart: follow it again after the retry.
         if (aborted(signal)) break;
         this.error = describeError(error);
+        this.report({ up: false, error: this.error });
       }
       if (aborted(signal)) break;
+      this.report({ up: false, error: this.error ?? "连接已断开" });
       try {
         await delay(this.retry * 1000, signal);
       } catch {

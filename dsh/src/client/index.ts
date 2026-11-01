@@ -9,11 +9,17 @@ const TAB_ID = "@local/ffpr-dsh";
 const TAB_KIND = "ffpr-achievements";
 const TACTICS_TAB_ID = "@local/ffpr-dsh/tactics";
 const TACTICS_KIND = "ffpr-tactics";
+const OVERVIEW_PANEL_ID = "ffpr";
 const OPENED_PREFIX = "ffpr-dsh.achievements.opened.";
 const TACTICS_OPENED_PREFIX = "ffpr-dsh.tactics.opened.";
 const ONLY_MISSING_KEY = "ffpr-dsh.achievements.onlyMissing";
 const PANEL_TAB_KEY = "ffpr-dsh.achievements.tab";
+const SIDEBAR_GAME_KEY = "ffpr-dsh.game";
+const OVERVIEW_GAME_KEY = "ffpr-dsh.overview.game";
+const OVERVIEW_KINDS_KEY = "ffpr-dsh.overview.kinds";
 const REFRESH_MS = 30_000;
+const OVERVIEW_REFRESH_MS = 3000;
+const GAME_KEYS: readonly string[] = ["ff1", "ff2", "ff3", "ff4", "ff5", "ff6"];
 type PanelTab = "achievements" | "bestiary" | "treasure";
 const PANEL_TABS: readonly { readonly key: PanelTab; readonly label: string }[] = [
   { key: "achievements", label: "成就" },
@@ -159,6 +165,55 @@ function writeStorage(key: string, value: string): void {
   }
 }
 
+function storedGame(key: string, fallback: string): string {
+  const saved = readStorage(key);
+  return saved !== null && GAME_KEYS.includes(saved) ? saved : fallback;
+}
+
+/** The selected game shared by one panel, remembered across reloads (task 24). */
+function useGame(key: string): [string, (game: string) => void] {
+  const [game, setGame] = React.useState<string>(() => storedGame(key, "ff5"));
+  return [
+    game,
+    (next: string) => {
+      setGame(next);
+      writeStorage(key, next);
+    },
+  ];
+}
+
+/** Small FF1 … FF6 button row above the sidebar pages. */
+function gameSelector(game: string, select: (game: string) => void): unknown {
+  return h(
+    "div",
+    { style: { display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" } },
+    ...GAME_KEYS.map((key) =>
+      h(
+        "button",
+        {
+          key,
+          type: "button",
+          onClick: () => {
+            select(key);
+          },
+          style: {
+            fontSize: 11,
+            padding: "1px 7px",
+            font: "inherit",
+            color: "inherit",
+            cursor: "pointer",
+            border: "1px solid rgba(128, 128, 128, 0.4)",
+            borderRadius: 4,
+            background: game === key ? "rgba(128, 128, 128, 0.18)" : "transparent",
+            fontWeight: game === key ? 600 : 400,
+          },
+        },
+        key.toUpperCase(),
+      ),
+    ),
+  );
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -182,9 +237,9 @@ function clock(iso: string): string {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-async function fetchPanel(signal: AbortSignal): Promise<PanelReply> {
+async function fetchPanel(signal: AbortSignal, game: string): Promise<PanelReply> {
   // Relative on purpose: the web app may be mounted below the origin's root.
-  const response = await fetch("api/ffpr/achievements", {
+  const response = await fetch(`api/ffpr/achievements?game=${encodeURIComponent(game)}`, {
     signal,
     headers: { Accept: "application/json" },
   });
@@ -208,8 +263,8 @@ function isTacticsView(value: unknown): value is TacticsPanelView {
   );
 }
 
-async function fetchTactics(signal: AbortSignal): Promise<TacticsPanelView> {
-  const response = await fetch("api/ffpr/tactics", {
+async function fetchTactics(signal: AbortSignal, game: string): Promise<TacticsPanelView> {
+  const response = await fetch(`api/ffpr/tactics?game=${encodeURIComponent(game)}`, {
     signal,
     headers: { Accept: "application/json" },
   });
@@ -227,21 +282,28 @@ interface PollResult<T> {
   readonly at: string | null;
 }
 
-async function loadAchievements(signal: AbortSignal): Promise<PollResult<AchievementView>> {
-  const reply = await fetchPanel(signal);
+async function loadAchievements(
+  signal: AbortSignal,
+  game: string,
+): Promise<PollResult<AchievementView>> {
+  const reply = await fetchPanel(signal, game);
   return reply.ok
     ? { value: reply.view, error: null, at: reply.at }
     : { value: null, error: reply.error, at: reply.at };
 }
 
-async function loadTactics(signal: AbortSignal): Promise<PollResult<TacticsPanelView>> {
-  return { value: await fetchTactics(signal), error: null, at: null };
+async function loadTactics(
+  signal: AbortSignal,
+  game: string,
+): Promise<PollResult<TacticsPanelView>> {
+  return { value: await fetchTactics(signal, game), error: null, at: null };
 }
 
 /** One 30-second poll, shared by both sidebar tabs; errors keep the last good content. */
 function usePolling<T>(
-  load: (signal: AbortSignal) => Promise<PollResult<T>>,
+  load: (signal: AbortSignal, game: string) => Promise<PollResult<T>>,
   intervalMs: number,
+  game: string,
 ): { data: T | null; error: string | null; at: string; reload: () => void } {
   const [data, setData] = React.useState<T | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -254,7 +316,7 @@ function usePolling<T>(
     const fetchNow = async (): Promise<void> => {
       if (document.visibilityState === "hidden") return;
       try {
-        const next = await load(controller.signal);
+        const next = await load(controller.signal, game);
         if (stopped) return;
         if (next.value !== null) setData(next.value);
         setError(next.error);
@@ -276,7 +338,7 @@ function usePolling<T>(
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", reload);
     };
-  }, [tick]);
+  }, [tick, game]);
   return {
     data,
     error,
@@ -609,7 +671,8 @@ const PANEL_STYLE: Record<string, string | number> = {
 };
 
 function Panel(): unknown {
-  const { data: view, error, at, reload } = usePolling(loadAchievements, REFRESH_MS);
+  const [game, setGame] = useGame(SIDEBAR_GAME_KEY);
+  const { data: view, error, at, reload } = usePolling(loadAchievements, REFRESH_MS, game);
   const [onlyMissing, setOnlyMissing] = React.useState<boolean>(
     () => readStorage(ONLY_MISSING_KEY) === "1",
   );
@@ -620,6 +683,7 @@ function Panel(): unknown {
 
   const rows = view === null ? [] : onlyMissing ? view.rows.filter((row) => !row.done) : view.rows;
   const children: unknown[] = [panelHeader(view?.title ?? "FFPR 成就", reload)];
+  children.push(gameSelector(game, setGame));
   if (view !== null) {
     for (const line of view.summary) {
       children.push(h("div", { style: { marginTop: 2 } }, line));
@@ -715,8 +779,10 @@ function Panel(): unknown {
 }
 
 function TacticsPanel(): unknown {
-  const { data: view, error, at, reload } = usePolling(loadTactics, REFRESH_MS);
+  const [game, setGame] = useGame(SIDEBAR_GAME_KEY);
+  const { data: view, error, at, reload } = usePolling(loadTactics, REFRESH_MS, game);
   const children: unknown[] = [panelHeader(view?.title ?? "FFPR 策略", reload)];
+  children.push(gameSelector(game, setGame));
   if (error !== null) {
     children.push(h("div", { style: { color: "#d9822b", marginTop: 4 } }, error));
   }
@@ -731,6 +797,568 @@ function TacticsPanel(): unknown {
   children.push(h("div", { style: { opacity: 0.65, marginTop: 2 } }, `更新于 ${clock(at)}`));
   if (view !== null) children.push(strategyBlock(view));
   return h("div", { style: PANEL_STYLE }, ...children);
+}
+
+type ActivityKind = "tool" | "event" | "link" | "error";
+
+interface ActivityEntry {
+  readonly at: string;
+  readonly game: string;
+  readonly kind: ActivityKind;
+  readonly text: string;
+}
+
+interface OverviewCard {
+  readonly game: string;
+  readonly title: string;
+  readonly loaded: boolean;
+  readonly link: "up" | "down";
+  readonly linkText: string | null;
+  readonly status: string;
+  readonly place: string;
+  readonly party: readonly { readonly name: string; readonly hp: number; readonly maxHp: number }[];
+  readonly busy: { readonly name: string; readonly at: string } | null;
+  readonly last: { readonly at: string; readonly kind: ActivityKind; readonly text: string } | null;
+  readonly saveSlot: number;
+}
+
+interface OverviewReply {
+  readonly at: string;
+  readonly games: readonly OverviewCard[];
+  readonly log: readonly ActivityEntry[];
+}
+
+const KIND_FILTERS: readonly { readonly key: ActivityKind; readonly label: string }[] = [
+  { key: "tool", label: "AI 操作" },
+  { key: "event", label: "事件" },
+  { key: "link", label: "连接" },
+  { key: "error", label: "报错" },
+];
+
+function isActivityEntry(value: unknown): value is ActivityEntry {
+  return (
+    isRecord(value) &&
+    typeof value.at === "string" &&
+    typeof value.game === "string" &&
+    typeof value.text === "string" &&
+    (value.kind === "tool" ||
+      value.kind === "event" ||
+      value.kind === "link" ||
+      value.kind === "error")
+  );
+}
+
+function isOverviewCard(value: unknown): value is OverviewCard {
+  return (
+    isRecord(value) &&
+    typeof value.game === "string" &&
+    typeof value.title === "string" &&
+    typeof value.loaded === "boolean" &&
+    (value.link === "up" || value.link === "down") &&
+    typeof value.status === "string" &&
+    typeof value.place === "string" &&
+    Array.isArray(value.party) &&
+    (value.busy === null || isRecord(value.busy)) &&
+    (value.last === null || isRecord(value.last))
+  );
+}
+
+async function fetchOverview(signal: AbortSignal, since: string | null): Promise<OverviewReply> {
+  const params = new URLSearchParams({ limit: "500" });
+  if (since !== null) params.set("since", since);
+  const response = await fetch(`api/ffpr/overview?${params.toString()}`, {
+    signal,
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(`读不了总控数据(HTTP ${response.status}),试试刷新网页`);
+  const body: unknown = await response.json();
+  if (
+    !isRecord(body) ||
+    body.ok !== true ||
+    typeof body.at !== "string" ||
+    !Array.isArray(body.games) ||
+    !body.games.every(isOverviewCard) ||
+    !Array.isArray(body.log) ||
+    !body.log.every(isActivityEntry)
+  ) {
+    throw new Error("读不懂总控数据");
+  }
+  return {
+    at: body.at,
+    games: body.games.filter(isOverviewCard),
+    log: body.log.filter(isActivityEntry),
+  };
+}
+
+/** New entries first, de-duplicated across the one-millisecond `since` overlap. */
+function mergeOverviewLog(
+  current: readonly ActivityEntry[],
+  incoming: readonly ActivityEntry[],
+): ActivityEntry[] {
+  const seen = new Set<string>();
+  const merged: ActivityEntry[] = [];
+  for (const entry of [...incoming, ...current]) {
+    const key = `${entry.at}|${entry.game}|${entry.kind}|${entry.text}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(entry);
+  }
+  merged.sort((left, right) => Date.parse(right.at) - Date.parse(left.at));
+  return merged.slice(0, 1000);
+}
+
+function storedOverviewGame(): string {
+  const saved = readStorage(OVERVIEW_GAME_KEY);
+  return saved === "all" || (saved !== null && GAME_KEYS.includes(saved)) ? saved : "all";
+}
+
+function storedKinds(): ReadonlySet<ActivityKind> {
+  const fallback: ActivityKind[] = KIND_FILTERS.map((item) => item.key);
+  const raw = readStorage(OVERVIEW_KINDS_KEY);
+  if (raw === null) return new Set(fallback);
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set(fallback);
+    const valid = parsed.filter(
+      (value): value is ActivityKind =>
+        value === "tool" || value === "event" || value === "link" || value === "error",
+    );
+    return new Set(valid);
+  } catch {
+    return new Set(fallback);
+  }
+}
+
+function ago(iso: string): string {
+  const elapsed = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(elapsed) || elapsed < 0) return "刚刚";
+  const seconds = Math.floor(elapsed / 1000);
+  if (seconds < 10) return "刚刚";
+  if (seconds < 60) return `${seconds} 秒前`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} 分钟前`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} 小时前`;
+  return `${Math.floor(hours / 24)} 天前`;
+}
+
+function busySeconds(iso: string): number {
+  const elapsed = Date.now() - Date.parse(iso);
+  return Number.isFinite(elapsed) ? Math.max(0, Math.floor(elapsed / 1000)) : 0;
+}
+
+function kindLabel(kind: ActivityKind): string {
+  return KIND_FILTERS.find((item) => item.key === kind)?.label ?? kind;
+}
+
+function kindColor(kind: ActivityKind): string {
+  if (kind === "error") return "var(--dsw-alias-state-error-primary)";
+  if (kind === "event") return "var(--dsw-alias-state-business-primary)";
+  if (kind === "link") return "var(--dsw-alias-label-tertiary)";
+  return "var(--dsw-alias-label-secondary)";
+}
+
+function dotColor(card: OverviewCard): string {
+  if (!card.loaded || card.link === "down") return "var(--dsw-alias-label-tertiary)";
+  if (card.last !== null && card.last.kind === "error") {
+    return "var(--dsw-alias-state-error-primary)";
+  }
+  if (card.status === "战斗中") return "var(--dsw-alias-state-warn-primary)";
+  return "var(--dsw-alias-state-success-primary)";
+}
+
+function useOverview(paused: boolean): {
+  readonly games: readonly OverviewCard[];
+  readonly entries: readonly ActivityEntry[];
+  readonly at: string;
+  readonly error: string | null;
+} {
+  const [games, setGames] = React.useState<readonly OverviewCard[]>([]);
+  const [entries, setEntries] = React.useState<readonly ActivityEntry[]>([]);
+  const [at, setAt] = React.useState<string>("");
+  const [error, setError] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (paused) return;
+    const controller = new AbortController();
+    let stopped = false;
+    let lastAt: string | null = null;
+    let timer: number | null = null;
+    const fetchNow = async (): Promise<void> => {
+      if (document.visibilityState === "hidden") return;
+      try {
+        // One millisecond of overlap keeps same-millisecond entries; mergeOverviewLog de-dupes.
+        const since =
+          lastAt === null ? null : new Date(Math.max(0, Date.parse(lastAt) - 1)).toISOString();
+        const reply = await fetchOverview(controller.signal, since);
+        if (stopped) return;
+        setGames(reply.games);
+        if (reply.log.length > 0) {
+          setEntries((current) => mergeOverviewLog(current, reply.log));
+          const newest = reply.log[0]?.at;
+          if (newest !== undefined) lastAt = newest;
+        }
+        setAt(reply.at);
+        setError(null);
+      } catch (caught) {
+        if (stopped || controller.signal.aborted) return;
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    };
+    const reload = (): void => {
+      void fetchNow();
+    };
+    reload();
+    timer = window.setInterval(reload, OVERVIEW_REFRESH_MS);
+    document.addEventListener("visibilitychange", reload);
+    return () => {
+      stopped = true;
+      controller.abort();
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", reload);
+    };
+  }, [paused]);
+  return { games, entries, at, error };
+}
+
+function filterChip(key: string, label: string, active: boolean, select: () => void): unknown {
+  return h(
+    "button",
+    {
+      key,
+      type: "button",
+      onClick: select,
+      style: {
+        fontSize: 11,
+        padding: "1px 8px",
+        font: "inherit",
+        color: "inherit",
+        cursor: "pointer",
+        border: "1px solid rgba(128, 128, 128, 0.4)",
+        borderRadius: 4,
+        background: active ? "rgba(128, 128, 128, 0.18)" : "transparent",
+        fontWeight: active ? 600 : 400,
+      },
+    },
+    label,
+  );
+}
+
+function hpBar(member: { readonly hp: number; readonly maxHp: number }): unknown {
+  const percent =
+    member.maxHp > 0 ? Math.max(0, Math.min(100, (member.hp / member.maxHp) * 100)) : 0;
+  const color =
+    member.maxHp > 0 && member.hp * 4 <= member.maxHp
+      ? "var(--dsw-alias-state-error-primary)"
+      : "var(--dsw-alias-state-success-primary)";
+  return h(
+    "div",
+    {
+      style: {
+        flex: 1,
+        height: 3,
+        borderRadius: 2,
+        background: "rgba(128, 128, 128, 0.25)",
+        overflow: "hidden",
+      },
+    },
+    h("div", { style: { width: `${percent}%`, height: "100%", background: color } }),
+  );
+}
+
+function OverviewCardView(card: OverviewCard, selected: boolean, select: () => void): unknown {
+  const children: unknown[] = [
+    h(
+      "div",
+      { style: { display: "flex", alignItems: "center", gap: 6, fontWeight: 600 } },
+      h("span", {
+        style: {
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          flex: "none",
+          background: dotColor(card),
+        },
+      }),
+      card.title,
+    ),
+  ];
+  if (!card.loaded) {
+    children.push(h("div", { style: { fontSize: 12, opacity: 0.8 } }, "这一作的玩家没有加载"));
+  } else {
+    const where = [card.status, card.place].filter((part) => part !== "").join(" · ");
+    const statusLine = where !== "" ? where : (card.linkText ?? "状态未知");
+    children.push(
+      h(
+        "div",
+        {
+          style: {
+            fontSize: 12,
+            color:
+              where === "" && card.linkText !== null
+                ? "var(--dsw-alias-state-warn-primary)"
+                : "var(--dsw-alias-label-secondary)",
+          },
+        },
+        statusLine,
+      ),
+    );
+    for (const [index, member] of card.party.entries()) {
+      children.push(
+        h(
+          "div",
+          {
+            key: `${member.name}-${index}`,
+            style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12 },
+          },
+          h(
+            "span",
+            {
+              style: {
+                width: 64,
+                flex: "none",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              },
+            },
+            member.name,
+          ),
+          h(
+            "span",
+            { style: { fontVariantNumeric: "tabular-nums", flex: "none" } },
+            `HP ${member.hp}/${member.maxHp}`,
+          ),
+          hpBar(member),
+        ),
+      );
+    }
+    if (card.busy !== null) {
+      children.push(
+        h(
+          "div",
+          { style: { fontSize: 12 } },
+          `正在 ${card.busy.name}(${busySeconds(card.busy.at)} 秒)`,
+        ),
+      );
+    } else if (card.last !== null) {
+      children.push(
+        h(
+          "div",
+          { style: { fontSize: 12, color: "var(--dsw-alias-label-tertiary)" } },
+          `${card.last.text} · ${ago(card.last.at)}`,
+        ),
+      );
+    }
+    // When there is no fresh state the first line already carries the disconnect reason.
+    if (card.linkText !== null && where !== "") {
+      children.push(
+        h(
+          "div",
+          { style: { fontSize: 11, color: "var(--dsw-alias-state-warn-primary)" } },
+          card.linkText,
+        ),
+      );
+    }
+  }
+  return h(
+    "button",
+    {
+      key: card.game,
+      type: "button",
+      onClick: select,
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        gap: 5,
+        alignItems: "stretch",
+        textAlign: "left",
+        font: "inherit",
+        color: "inherit",
+        cursor: "pointer",
+        opacity: card.loaded ? 1 : 0.55,
+        padding: "10px 12px",
+        borderRadius: 8,
+        border: selected
+          ? "1px solid var(--dsw-alias-state-business-primary)"
+          : "1px solid var(--dsw-alias-border-l2)",
+        background: selected ? "var(--dsw-alias-bg-layer-2)" : "transparent",
+      },
+    },
+    ...children,
+  );
+}
+
+function OverviewPage(): unknown {
+  const [paused, setPaused] = React.useState(false);
+  const { games, entries, at, error } = useOverview(paused);
+  const [gameFilter, setGameFilter] = React.useState<string>(storedOverviewGame);
+  const [kinds, setKinds] = React.useState<ReadonlySet<ActivityKind>>(storedKinds);
+
+  const selectGame = (game: string): void => {
+    const next = gameFilter === game ? "all" : game;
+    setGameFilter(next);
+    writeStorage(OVERVIEW_GAME_KEY, next);
+  };
+  const toggleKind = (kind: ActivityKind): void => {
+    const next = new Set(kinds);
+    if (next.has(kind)) next.delete(kind);
+    else next.add(kind);
+    setKinds(next);
+    writeStorage(OVERVIEW_KINDS_KEY, JSON.stringify([...next]));
+  };
+
+  const shown = entries
+    .filter((entry) => (gameFilter === "all" || entry.game === gameFilter) && kinds.has(entry.kind))
+    .slice(0, 300);
+
+  return h(
+    "div",
+    {
+      style: {
+        boxSizing: "border-box",
+        height: "100%",
+        overflowY: "auto",
+        padding: "0 clamp(24px, 4vw, 48px) 48px",
+        color: "var(--dsw-alias-label-primary)",
+      },
+    },
+    h(
+      "div",
+      {
+        style: {
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          gap: 12,
+          paddingTop: 28,
+        },
+      },
+      h("div", { style: { flex: 1, fontSize: 20, fontWeight: 500 } }, "六作总控"),
+      h(
+        "div",
+        { style: { fontSize: 12, color: "var(--dsw-alias-label-tertiary)" } },
+        `更新于 ${clock(at)}`,
+      ),
+      h(
+        "label",
+        { style: { display: "flex", alignItems: "center", gap: 4, fontSize: 12 } },
+        h("input", {
+          type: "checkbox",
+          checked: paused,
+          onChange: (event: { target: { checked: boolean } }) => {
+            setPaused(event.target.checked);
+          },
+        }),
+        "暂停刷新",
+      ),
+    ),
+    error !== null
+      ? h("div", { style: { color: "var(--dsw-alias-state-warn-primary)", marginTop: 8 } }, error)
+      : null,
+    h(
+      "div",
+      {
+        style: {
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+          gap: 12,
+          marginTop: 16,
+        },
+      },
+      ...games.map((card) =>
+        OverviewCardView(card, gameFilter === card.game, () => {
+          selectGame(card.game);
+        }),
+      ),
+    ),
+    h(
+      "div",
+      { style: { marginTop: 24, display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" } },
+      h("span", { style: { fontSize: 12, color: "var(--dsw-alias-label-secondary)" } }, "作品"),
+      filterChip("all", "全部", gameFilter === "all", () => {
+        setGameFilter("all");
+        writeStorage(OVERVIEW_GAME_KEY, "all");
+      }),
+      ...GAME_KEYS.map((key) =>
+        filterChip(key, key.toUpperCase(), gameFilter === key, () => {
+          selectGame(key);
+        }),
+      ),
+    ),
+    h(
+      "div",
+      { style: { marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" } },
+      h("span", { style: { fontSize: 12, color: "var(--dsw-alias-label-secondary)" } }, "种类"),
+      ...KIND_FILTERS.map((item) =>
+        filterChip(item.key, item.label, kinds.has(item.key), () => {
+          toggleKind(item.key);
+        }),
+      ),
+    ),
+    shown.length === 0
+      ? h(
+          "div",
+          { style: { marginTop: 12, fontSize: 12, color: "var(--dsw-alias-label-tertiary)" } },
+          "没有符合筛选的日志",
+        )
+      : h(
+          "div",
+          { style: { marginTop: 12 } },
+          ...shown.map((entry, index) =>
+            h(
+              "div",
+              {
+                key: `${entry.at}|${entry.game}|${entry.kind}|${entry.text}|${index}`,
+                style: {
+                  display: "flex",
+                  gap: 8,
+                  alignItems: "baseline",
+                  padding: "2px 0",
+                  fontSize: 12,
+                  borderBottom: "1px solid var(--dsw-alias-border-l2)",
+                },
+              },
+              h(
+                "span",
+                { style: { flex: "none", opacity: 0.7, fontVariantNumeric: "tabular-nums" } },
+                clock(entry.at),
+              ),
+              h("span", { style: { flex: "none", opacity: 0.45 } }, "·"),
+              h("span", { style: { flex: "none", opacity: 0.8 } }, entry.game.toUpperCase()),
+              h("span", { style: { flex: "none", opacity: 0.45 } }, "·"),
+              h(
+                "span",
+                { style: { flex: "none", color: kindColor(entry.kind), fontWeight: 600 } },
+                kindLabel(entry.kind),
+              ),
+              h("span", { style: { flex: "none", opacity: 0.45 } }, "·"),
+              h("span", { style: { overflowWrap: "anywhere" } }, entry.text),
+            ),
+          ),
+        ),
+  );
+}
+
+function OverviewIcon(props: { readonly size?: number }): unknown {
+  const size = props.size ?? 16;
+  return h(
+    "svg",
+    {
+      width: size,
+      height: size,
+      viewBox: "0 0 24 24",
+      fill: "none",
+      stroke: "currentColor",
+      strokeWidth: 1.8,
+      strokeLinecap: "round",
+      strokeLinejoin: "round",
+      "aria-hidden": "true",
+    },
+    h("rect", { x: 2, y: 7, width: 20, height: 10, rx: 4 }),
+    h("path", { d: "M7 10v4M5 12h4" }),
+    h("circle", { cx: 16, cy: 11, r: 1 }),
+    h("circle", { cx: 18, cy: 13, r: 1 }),
+  );
 }
 
 function startAutoOpen(ctx: ClientContext, kind: string, prefix: string): void {
@@ -830,6 +1458,20 @@ function apply(ctx: ClientContext): void {
   );
   ctx.slots.inject("sidebar.right.pane.tab", () =>
     ctx.slots.register({ name: "sidebar.right.pane.tab", key: TACTICS_TAB_ID }, TacticsPanel),
+  );
+  ctx.slots.inject("main", () =>
+    ctx.slots.register({ name: "main", key: OVERVIEW_PANEL_ID }, OverviewPage),
+  );
+  ctx.slots.inject("sidebar.panellist", () =>
+    ctx.slots.register(
+      {
+        name: "sidebar.panellist",
+        id: OVERVIEW_PANEL_ID,
+        order: 5,
+        label: "FFPR 总控",
+      },
+      OverviewIcon,
+    ),
   );
   startAutoOpen(ctx, TAB_KIND, OPENED_PREFIX);
   startAutoOpen(ctx, TACTICS_KIND, TACTICS_OPENED_PREFIX);
