@@ -29,7 +29,10 @@ internal static class Keyboard
     private const int DefaultHoldMs = 70;
     private const int DefaultGapMs = 120;
 
-    private static readonly BlockingCollection<(WebSocket From, JsonObject Command)> Queue = new(64);
+    // 0.12.0: the client's address travels with the command, so the keys record can say who sent
+    // it even after the connection has gone.
+    private static readonly BlockingCollection<(WebSocket From, JsonObject Command, string Remote)> Queue =
+        new(64);
     private static readonly Regex Spec = new(@"^(?<name>[A-Za-z0-9]+)(:(?<hold>\d+))?(\*(?<times>\d+))?$");
     private static readonly int OwnPid = Environment.ProcessId;
     private static volatile bool _stop;
@@ -56,6 +59,7 @@ internal static class Keyboard
             Reply(from, null, Failed(e.Message));
             return;
         }
+        var remote = Plugin.Outbox.RemoteOf(from);
         if (command["op"]?.GetValue<string>() == "stop")
         {
             _stop = true;
@@ -67,7 +71,7 @@ internal static class Keyboard
             Reply(from, command, new JsonObject { ["ok"] = true });
             return;
         }
-        if (!Queue.TryAdd((from, command)))
+        if (!Queue.TryAdd((from, command, remote)))
         {
             Reply(from, command, Failed("busy"));
         }
@@ -75,7 +79,7 @@ internal static class Keyboard
 
     private static void Loop()
     {
-        foreach (var (from, command) in Queue.GetConsumingEnumerable())
+        foreach (var (from, command, remote) in Queue.GetConsumingEnumerable())
         {
             _stop = false;
             JsonObject result;
@@ -92,6 +96,10 @@ internal static class Keyboard
             catch (Exception e)
             {
                 result = Failed($"{e.GetType().Name}: {e.Message}");
+            }
+            if (command["op"]?.GetValue<string>() == "keys")
+            {
+                BridgeInfo.KeyCommand(remote, command, result);
             }
             Reply(from, command, result);
         }

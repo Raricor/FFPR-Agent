@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Compile check for deploy/laptop/BridgeGui.cs (0.12.0) on the dev box.
+
+    The tray app itself is never built as a project: bridge-gui.ps1 runs Add-Type on the laptop,
+    and Windows PowerShell 5.1's compiler only knows C# 5. This project builds the same source
+    with LangVersion 5, TreatWarningsAsErrors, and net48 reference assemblies, so a C# 6+ slip
+    fails here instead of on the laptop. Run it with:
+
+      bash deploy/laptop/gui-check/check.sh
+  -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>5</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <OutputType>Library</OutputType>
+    <AssemblyName>BridgeGuiCheck</AssemblyName>
+    <RootNamespace>FfprBridgeGui</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- Add-Type does not generate an assembly-info file either; keep the checks comparable. -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../BridgeGui.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Web.Extensions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

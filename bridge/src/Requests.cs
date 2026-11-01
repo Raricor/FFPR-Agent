@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using BepInEx;
@@ -25,6 +25,7 @@ namespace FfprBridge;
 ///   {"id": 12, "op": "title"}           title menu: commands (greyed out or not), cursor
 ///   {"id": 13, "op": "shot"}            save this frame as a PNG; the reply names the file
 ///   {"id": 14, "op": "textinput"}       text fields on screen (naming boxes): text, focused
+///   {"id": 15, "op": "bridge"}          this build, its clients, hooks, recent keys and warnings
 /// </summary>
 internal static class Requests
 {
@@ -99,6 +100,9 @@ internal static class Requests
                     break;
                 case "textinput":
                     reply["textinput"] = GameState.TextInput();
+                    break;
+                case "bridge":
+                    reply["bridge"] = BridgeInfo.Snapshot();
                     break;
                 case "encounters":
                     reply["encounters"] = GameState.Encounters();

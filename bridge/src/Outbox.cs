@@ -7,6 +7,7 @@ using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using BepInEx.Logging;
@@ -37,7 +38,10 @@ internal sealed class Outbox
     // To == null: a record for the file and every client; otherwise a reply for one client.
     private readonly BlockingCollection<(string Line, WebSocket To)> _queue =
         new(new ConcurrentQueue<(string, WebSocket)>(), Capacity);
-    private readonly List<WebSocket> _clients = new();
+
+    // 0.12.0: every connection is listed for the laptop's tray app, with the address, the channel
+    // it came in on and when it arrived. Only stream clients get the broadcast.
+    private readonly List<Client> _clients = new();
     private readonly string _file;
     private readonly int _port;
     private readonly Link _link;
@@ -51,6 +55,14 @@ internal sealed class Outbox
         Command,
     }
 
+    private sealed class Client
+    {
+        public WebSocket Socket;
+        public string Remote;
+        public Channel Channel;
+        public DateTime Since;
+    }
+
     public Outbox(string file, int port, Link link, ManualLogSource log)
     {
         _file = file;
@@ -61,6 +73,45 @@ internal sealed class Outbox
 
     /// <summary>Lines lost because the queue was full; reported in every sample.</summary>
     public long Dropped => Interlocked.Read(ref _dropped);
+
+    public int Port => _port;
+
+    public Link Lan => _link;
+
+    /// <summary>The connections the tray app's "bridge" query reports, in the order they arrived.</summary>
+    public JsonArray Clients()
+    {
+        var array = new JsonArray();
+        lock (_clients)
+        {
+            foreach (var client in _clients)
+            {
+                array.Add(new JsonObject
+                {
+                    ["remote"] = client.Remote,
+                    ["channel"] = client.Channel.ToString().ToLowerInvariant(),
+                    ["since"] = client.Since.ToString("O"),
+                });
+            }
+        }
+        return array;
+    }
+
+    /// <summary>The address a key command's client came from, for the keys record.</summary>
+    public string RemoteOf(WebSocket socket)
+    {
+        lock (_clients)
+        {
+            foreach (var client in _clients)
+            {
+                if (client.Socket == socket)
+                {
+                    return client.Remote;
+                }
+            }
+        }
+        return null;
+    }
 
     /// <summary>Sent first to every client that connects, so it knows what it is talking to.</summary>
     public volatile string Hello;
@@ -111,7 +162,7 @@ internal sealed class Outbox
                 {
                     if (to.State == WebSocketState.Open && !TrySend(to, Encoding.UTF8.GetBytes(line)))
                     {
-                        Drop(to);
+                        DropSocket(to);
                     }
                     continue;
                 }
@@ -131,21 +182,21 @@ internal sealed class Outbox
 
     private void Broadcast(string line)
     {
-        WebSocket[] clients;
+        Client[] clients;
         lock (_clients)
         {
             if (_clients.Count == 0)
             {
                 return;
             }
-            clients = _clients.ToArray();
+            clients = _clients.FindAll(c => c.Channel == Channel.Stream).ToArray();
         }
         var bytes = Encoding.UTF8.GetBytes(line);
-        foreach (var ws in clients)
+        foreach (var client in clients)
         {
-            if (!TrySend(ws, bytes))
+            if (!TrySend(client.Socket, bytes))
             {
-                Drop(ws);
+                Drop(client);
             }
         }
     }
@@ -164,14 +215,38 @@ internal sealed class Outbox
         }
     }
 
-    private void Drop(WebSocket ws)
+    private void Drop(Client client)
     {
         lock (_clients)
         {
-            _clients.Remove(ws);
+            _clients.Remove(client);
         }
-        ws.Abort();
-        ws.Dispose();
+        client.Socket.Abort();
+        client.Socket.Dispose();
+    }
+
+    /// <summary>A reply whose client is gone; the socket need not still be in the list.</summary>
+    private void DropSocket(WebSocket socket)
+    {
+        Client found = null;
+        lock (_clients)
+        {
+            foreach (var client in _clients)
+            {
+                if (client.Socket == socket)
+                {
+                    found = client;
+                    break;
+                }
+            }
+        }
+        if (found != null)
+        {
+            Drop(found);
+            return;
+        }
+        socket.Abort();
+        socket.Dispose();
     }
 
     private void AcceptLoop(IPAddress address, bool lan)
@@ -263,19 +338,21 @@ internal sealed class Outbox
             await stream.WriteAsync(Encoding.ASCII.GetBytes(response));
 
             ws = WebSocket.CreateFromStream(stream, true, null, TimeSpan.FromSeconds(30));
+            var client = new Client
+            {
+                Socket = ws,
+                Remote = tcp.Client.RemoteEndPoint?.ToString(),
+                Channel = channel.Value,
+                Since = DateTime.UtcNow,
+            };
+            lock (_clients)
+            {
+                _clients.Add(client);
+            }
             var hello = Hello;
             if (hello != null && !TrySend(ws, Encoding.UTF8.GetBytes(hello)))
             {
                 return;
-            }
-            // Only stream clients get the broadcast: a client that only asks questions would let
-            // it pile up in its socket while idle and get dropped.
-            if (channel == Channel.Stream)
-            {
-                lock (_clients)
-                {
-                    _clients.Add(ws);
-                }
             }
 
             // Reading also keeps pings answered and notices when the client leaves.
@@ -320,7 +397,7 @@ internal sealed class Outbox
             {
                 lock (_clients)
                 {
-                    _clients.Remove(ws);
+                    _clients.RemoveAll(c => c.Socket == ws);
                 }
                 ws.Dispose();
             }
@@ -330,10 +407,16 @@ internal sealed class Outbox
 
     private string Health()
     {
-        int clients;
+        var clients = 0;
         lock (_clients)
         {
-            clients = _clients.Count;
+            foreach (var client in _clients)
+            {
+                if (client.Channel == Channel.Stream)
+                {
+                    clients++;
+                }
+            }
         }
         var hello = Hello ?? "null";
         return $"{{\"ok\":true,\"frame\":{Probe.Frame},\"clients\":{clients},\"dropped\":{Dropped},\"hello\":{hello}}}";
