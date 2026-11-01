@@ -6,7 +6,7 @@
 
 ## 现状
 
-- **主线是 dsh 插件版**(`dsh/`,TypeScript):DeepSeek(只用 `deepseek-flash`)在 DeepSeek Harness(dsh)的网页里玩 FF5。代码多数由 dsh 写，规范和审查见 `dsh/CLAUDE.md`。
+- **主线是 dsh 插件版**(`dsh/`,TypeScript):DeepSeek(只用 `deepseek-flash`)在 DeepSeek Harness(dsh)的网页里玩 FF5。代码多数由 dsh 写，规范和审查见 `dsh/CLAUDE.md`(本机文件，不进版本库)。
 - **Python 版**(`agent/`)已冻结，作为移植时的对照基准，不再加功能。
 - **游戏进度**:FF5 打到卡纳克，下一段是火力船。3 号档是第 26 次存档(卡纳克镇外，全员满状态)。
 - **能做到的**:
@@ -37,7 +37,7 @@
 | --- | --- |
 | 本文件 | 代码地图和常用命令 |
 | `CHANGELOG.md` | 版本记录 |
-| `dsh/CLAUDE.md` | dsh 插件的开发规范(dsh 和 Claude 共用) |
+| `dsh/CLAUDE.md` | dsh 插件的开发规范(dsh 和 Claude 共用;只在本机，不进版本库) |
 | `dsh/tasks/` | 交给 dsh 的每个任务的说明 |
 | `bridge/README.md` | 桥插件：记录格式、查询、按键、用到的游戏类。**「桥能读什么」以这里为准** |
 | `deploy/laptop/README.md` | 笔记本端脚本、账号和计划任务 |
