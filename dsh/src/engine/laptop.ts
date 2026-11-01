@@ -1,8 +1,8 @@
 /**
  * The link to the Windows laptop, ported from ffpr_agent/laptop.py: SSH with one dedicated key,
  * PowerShell over -EncodedCommand, programs started on the desktop through the logon-only
- * scheduled task, and the operations other code builds on (deploy the scripts, install the
- * bridge, launch a game, fetch probe logs).
+ * scheduled task, and the operations other code builds on (deploy the scripts, launch a game,
+ * fetch probe logs).
  *
  * Every process is spawned asynchronously: the plugin lives in dsh's event loop, so a blocking
  * SSH call would freeze the whole harness. All waiting functions take the caller's signal and
@@ -10,8 +10,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { access, mkdir, stat } from "node:fs/promises";
-import { constants } from "node:fs";
+import { mkdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -250,7 +249,7 @@ export async function runPs(
   return { ...result, stderr };
 }
 
-/** Run scp with the dedicated key; shared by deploy, installPlugin and fetchProbeLogs. */
+/** Run scp with the dedicated key; shared by deploy and fetchProbeLogs. */
 export async function runScp(
   laptop: Laptop,
   sources: string | readonly string[],
@@ -328,16 +327,6 @@ export function secureRootScript(laptop: Laptop): string {
   );
 }
 
-/** The dotnet executable and environment; the SDK lives in ~/.dotnet on the dev box. */
-export async function dotnet(): Promise<{ exe: string; env: NodeJS.ProcessEnv }> {
-  const env = { ...process.env };
-  const found = await findOnPath("dotnet");
-  if (found) return { exe: found, env };
-  const home = join(homedir(), ".dotnet");
-  if (!("DOTNET_ROOT" in env)) env.DOTNET_ROOT = home;
-  return { exe: join(home, "dotnet"), env };
-}
-
 /** Copy deploy/laptop to the laptop's root, which only we and the desktop user may write. */
 export async function deploy(laptop: Laptop, signal?: AbortSignal): Promise<void> {
   await runPs(
@@ -352,51 +341,20 @@ export async function deploy(laptop: Laptop, signal?: AbortSignal): Promise<void
   });
 }
 
-/** Ask Steam on the desktop to start the game; returns the session task's state. */
+/**
+ * Ask Steam on the desktop to start the game; returns the session task's state.
+ * 10-29 (task 23): run-in-session.ps1 now waits up to 120 seconds for the game window and only
+ * then writes `started`, so the default wait has to allow that plus the round trips.
+ */
 export async function launch(
   laptop: Laptop,
   game: Game,
-  timeout = 60,
+  timeout = 150,
   signal?: AbortSignal,
 ): Promise<string | undefined> {
   const request = sessionRequest(`steam://rungameid/${game.appId}`, [], null, false);
   const status = await runInSession(laptop, request, timeout, signal);
   return typeof status.state === "string" ? status.state : undefined;
-}
-
-/**
- * Build the bridge (unless `build` is false) and copy it into the game's BepInEx. The game must
- * not be running: it holds the plugin file open.
- */
-export async function installPlugin(
-  laptop: Laptop,
-  game: Game,
-  build = true,
-  signal?: AbortSignal,
-): Promise<string> {
-  if (build) {
-    const { exe, env } = await dotnet();
-    const command = [exe, "build", join(REPO, "bridge"), "-c", "Release", `-p:Game=${game.key}`];
-    await runProcess([...command, "-nologo", "-v:q"], { check: true, env, signal });
-  }
-  const dll = join(REPO, "bridge", "bin", game.key, "Release", "FfprBridge.dll");
-  const staging = `${laptop.root}/staging/plugin`;
-  await runPs(laptop, `New-Item -ItemType Directory -Force ${psQuote(staging)} | Out-Null`, {
-    signal,
-  });
-  await runScp(laptop, dll, `${target(laptop)}:${staging}/FfprBridge.dll`, { signal });
-  const result = await runPs(
-    laptop,
-    `Import-Module ${deployedScript(laptop, "FfprCommon.psm1")} -Force\n` +
-      `$dir = Find-GameDir ${game.key}\n` +
-      "if (Test-GameRunning $dir) { throw '游戏正在运行:插件文件被占用,请先退出游戏' }\n" +
-      "$dest = Join-Path $dir 'BepInEx\\plugins\\FfprBridge'\n" +
-      "New-Item -ItemType Directory -Force $dest | Out-Null\n" +
-      `Copy-Item ${psQuote(staging + "/FfprBridge.dll")} $dest -Force\n` +
-      "'已安装到 ' + $dest",
-    { capture: true, signal },
-  );
-  return result.stdout.trim();
 }
 
 /** Copy the newest `last` probe files to .deps/<game>/probe; returns their names and sizes. */
@@ -490,21 +448,6 @@ function runProcess(command: readonly string[], options: RunOptions = {}): Promi
       resolve(result);
     });
   });
-}
-
-async function findOnPath(name: string): Promise<string | undefined> {
-  const path = process.env.PATH || "";
-  for (const directory of path.split(":")) {
-    if (!directory) continue;
-    const candidate = join(directory, name);
-    try {
-      await access(candidate, constants.X_OK);
-      return candidate;
-    } catch {
-      // Not here; the next PATH entry may have it.
-    }
-  }
-  return undefined;
 }
 
 function parseStatus(text: string): Record<string, unknown> {

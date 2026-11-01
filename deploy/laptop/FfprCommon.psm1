@@ -21,6 +21,14 @@ function Get-FfprAppId([string]$Game) {
     $script:AppIds[$key]
 }
 
+# Reverse lookup for run-in-session.ps1: steam://rungameid/<AppId> -> ffN, or $null.
+function Get-GameByAppId([int]$AppId) {
+    foreach ($key in $script:AppIds.Keys) {
+        if ($script:AppIds[$key] -eq $AppId) { return $key }
+    }
+    $null
+}
+
 function Get-SteamRoot {
     $reg = Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -Name SteamPath -ErrorAction SilentlyContinue
     if ($reg -and $reg.SteamPath) { return ($reg.SteamPath -replace '/', '\') }
@@ -79,6 +87,95 @@ function Get-GameExe([string]$GameDir) {
 function Test-GameRunning([string]$GameDir) {
     $exe = Get-GameExe $GameDir
     [bool]($exe -and (Get-Process -Name $exe.BaseName -ErrorAction SilentlyContinue))
+}
+
+# Window helpers for run-in-session.ps1 (0.11.0): a launched game should go to the background
+# instead of covering the desktop. The class name must not collide with pilot-agent.ps1's
+# FfprInput, which is loaded in the same session when the pilot runs.
+if (-not ('FfprWindow' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+public static class FfprWindow {
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int cmd);
+    [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string cls, string title);
+
+    // The game's own window. MainWindowHandle is not enough: BepInEx's console belongs to the
+    // same process and can be the "main" window.
+    public static IntPtr FindUnityWindow(uint pid) {
+        IntPtr h = IntPtr.Zero;
+        while ((h = FindWindowEx(IntPtr.Zero, h, "UnityWndClass", null)) != IntPtr.Zero) {
+            uint owner;
+            GetWindowThreadProcessId(h, out owner);
+            if (owner == pid) return h;
+        }
+        return IntPtr.Zero;
+    }
+}
+'@
+}
+
+# The game window of any process with this name, or $null if it has not appeared yet.
+function Find-GameWindow([string]$ProcessName) {
+    foreach ($p in @(Get-Process -Name $ProcessName -ErrorAction SilentlyContinue)) {
+        $hwnd = [FfprWindow]::FindUnityWindow([uint32]$p.Id)
+        if ($hwnd -ne [IntPtr]::Zero) { return $hwnd }
+    }
+    $null
+}
+
+# SW_SHOWMINNOACTIVE (7): minimise without activating the window, so focus stays where it was.
+function Hide-GameWindow([IntPtr]$Window) {
+    [void][FfprWindow]::ShowWindow($Window, 7)
+}
+
+# 0.11.0: launch a game through its Steam URL and put its window in the background -- wait for
+# the window, minimise it without activating it, and watch for 20 s because Unity activates the
+# window again while initialising (10-29: a launch that returned early made the next game's
+# schtasks /run get ignored). launch-game.ps1 and run-in-session.ps1 both call this, so the two
+# cannot drift apart. Returns the status fields run-in-session.ps1 writes.
+function Start-GameInBackground {
+    param(
+        [Parameter(Mandatory = $true)][string]$Game,
+        [switch]$Foreground
+    )
+    $appId = Get-FfprAppId $Game
+    $exe = $null
+    if (-not $Foreground) {
+        try { $exe = (Get-GameExe (Find-GameDir $Game)).BaseName } catch { $exe = $null }
+    }
+    $before = [FfprWindow]::GetForegroundWindow()
+    Start-Process -FilePath "steam://rungameid/$appId"
+    # Unknown game directory, or the caller wants the window in front: start it and return.
+    if (-not $exe) { return @{ state = 'started'; minimized = $false } }
+
+    $deadline = (Get-Date).AddSeconds(120)
+    $hwnd = $null
+    while ($null -eq $hwnd -and (Get-Date) -lt $deadline) {
+        $hwnd = Find-GameWindow $exe
+        if ($null -eq $hwnd) { Start-Sleep -Milliseconds 500 }
+    }
+    if ($null -eq $hwnd) {
+        return @{ state = 'started'; minimized = $false; note = '120 秒内没等到游戏窗口' }
+    }
+    Hide-GameWindow $hwnd
+    # Give the focus back to whatever was in front before the launch.
+    if ($before -ne [IntPtr]::Zero) { [void][FfprWindow]::SetForegroundWindow($before) }
+    $rehidden = 0
+    $watchUntil = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $watchUntil) {
+        Start-Sleep -Milliseconds 500
+        if (-not [FfprWindow]::IsIconic($hwnd)) {
+            Hide-GameWindow $hwnd
+            $rehidden++
+        }
+    }
+    return @{ state = 'started'; minimized = $true; rehidden = $rehidden }
 }
 
 # Start-Process in Windows PowerShell 5.1 joins -ArgumentList with spaces and no quoting, so

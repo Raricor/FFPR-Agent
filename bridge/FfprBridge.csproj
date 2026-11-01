@@ -1,14 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    BepInEx 6 IL2CPP plugin. Builds against the files fetched from the laptop with
-    `ffpr-laptop fetch-assemblies <game>`, which must match the game build it runs on:
+    One of the six per-game assemblies (0.11.0). It is loaded by the loader in loader/ and
+    builds against the files fetched from the laptop with `ffpr-laptop fetch-assemblies
+    <game>`, which must match the game build it runs on:
 
       dotnet build bridge -c Release -p:Game=ff5
+
+    bridge/build.sh builds all six and lays them out as the single package.
   -->
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
-    <AssemblyName>FfprBridge</AssemblyName>
+    <AssemblyName>FfprBridge.$(Game)</AssemblyName>
     <RootNamespace>FfprBridge</RootNamespace>
     <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -23,6 +26,11 @@
     <DefineConstants>$(DefineConstants);$(Game.ToUpperInvariant())</DefineConstants>
     <OutputPath>bin\$(Game)\$(Configuration)\</OutputPath>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The loader is its own project; do not compile it into this one. -->
+    <Compile Remove="loader\**\*.cs" />
+  </ItemGroup>
 
   <ItemGroup>
     <CoreRef Include="0Harmony;BepInEx.Core;BepInEx.Unity.IL2CPP;Il2CppInterop.Runtime;Il2CppInterop.Common" />
