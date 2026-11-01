@@ -19,7 +19,7 @@ async function temporaryGame(notesFile?: string): Promise<Game> {
   return await Game.create({
     laptop: LAPTOP,
     game: "ff5",
-    saveSlot: 3,
+    saveSlot: 20,
     notesFile,
     atlasFile: join(directory, "atlas.json"),
     tacticsFile: join(directory, "tactics.json"),
@@ -161,7 +161,7 @@ void test("the opening carries the window and a tool result carries the news", a
   const game = await Game.create({
     laptop: LAPTOP,
     game: "ff5",
-    saveSlot: 3,
+    saveSlot: 20,
     events,
     atlasFile: join(tmpdir(), "ffpr-game-no-atlas.json"),
     tacticsFile: join(tmpdir(), "ffpr-game-no-tactics.json"),
@@ -204,7 +204,7 @@ void test("the simple tools answer through the pilot, one after another", async 
   const game = await Game.create({
     laptop: LAPTOP,
     game: "ff5",
-    saveSlot: 3,
+    saveSlot: 20,
     events,
     atlasFile: join(tmpdir(), `ffpr-game-atlas-${process.pid}.json`),
     tacticsFile: join(tmpdir(), `ffpr-game-tactics-${process.pid}.json`),
@@ -266,6 +266,7 @@ void test("the simple tools answer through the pilot, one after another", async 
   pilot.on("keys", { ok: true });
   pilot.on("story", { pages: 3, stop: "choice" });
   pilot.on("leave", { ok: true, presses: 1 });
+  pilot.onQuery("textinput", { textinput: { open: false, fields: [] } });
   pilot.onQuery("items", { items: { normal: [], important: [] } });
   pilot.onQuery("shop", { shop: { open: false } });
   pilot.onQuery("sample", {

@@ -110,7 +110,7 @@ async function harness(
   const game = await Game.create({
     laptop: LAPTOP,
     game: "ff5",
-    saveSlot: 3,
+    saveSlot: 20,
     events,
     atlasFile: join(directory, "atlas.json"),
     tacticsFile: join(directory, "tactics.json"),

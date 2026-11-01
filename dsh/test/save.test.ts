@@ -48,6 +48,8 @@ for (const item of fixture.cases) {
   });
 }
 
+// 10-29 (task 26): FF5 now saves to slot 20 like the five new games; a list that stops at 19
+// must not confirm on the wrong slot.
 void test("a save whose cursor cannot reach slot 20 does not press confirm", async () => {
   const pilot = new FakePilot();
   pilot.on("pos", { pos: { state: "Player", saves: 2 } });

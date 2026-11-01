@@ -10,8 +10,10 @@ import Schema from "@deepseek-ai/schemastery";
 import { byKey, type Game } from "../engine/games.ts";
 import { DEPS } from "../engine/paths.ts";
 
-const FF5_SAVE_SLOT = 3;
-/** FF1–FF4 and FF6 start from a new game in slot 20 and never touch another slot (task 21). */
+/**
+ * All six games start from a new game and write slot 20 only (10-29: the user made FF5 use the
+ * same slot as the other five; its old slot 3 was the user's own save).
+ */
 const NEW_GAME_SAVE_SLOT = 20;
 const FF5_BRIDGE_PORT = 47800;
 const NEW_GAME_BRIDGE_PORT_BASE = 47800;
@@ -19,7 +21,7 @@ const NEW_GAME_BRIDGE_PORT_BASE = 47800;
 /** Everything that differs by title when the preset does not override it. */
 export interface GameDefaults {
   readonly game: Game;
-  /** 3 for FF5; 20 for the five games that were started fresh. */
+  /** 20 for every game: all six start fresh and never touch another slot. */
   readonly saveSlot: number;
   /** FF5's bridge is 47800; FFN's is 4780N (bridge 0.10.0). */
   readonly bridgePort: number;
@@ -36,7 +38,7 @@ export function gameDefaults(key: string): GameDefaults {
   const number = Number(game.key.slice(2));
   return {
     game,
-    saveSlot: ff5 ? FF5_SAVE_SLOT : NEW_GAME_SAVE_SLOT,
+    saveSlot: NEW_GAME_SAVE_SLOT,
     bridgePort: ff5 ? FF5_BRIDGE_PORT : NEW_GAME_BRIDGE_PORT_BASE + number,
     notesFile: join(DEPS, "ds", `notes-${game.key}.json`),
     atlasFile: join(DEPS, "ds", `atlas-${game.key}.json`),

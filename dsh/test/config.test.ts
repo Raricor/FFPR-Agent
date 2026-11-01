@@ -13,7 +13,7 @@ void test("Config defaults point at FF5's deployment paths and slot", () => {
   assert.equal(config.secretsFile, join(homedir(), ".config", "ffpr-agent", "secrets.env"));
   assert.equal(config.laptopEnv, "/root/data/mediaflow/FFPR-Agent/agent/laptop.env");
   assert.equal(config.game, "ff5");
-  assert.equal(config.saveSlot, 3);
+  assert.equal(config.saveSlot, 20);
   assert.equal(config.notesFile, join(DEPS, "ds", "notes-ff5.json"));
   assert.equal(config.atlasFile, join(DEPS, "ds", "atlas-ff5.json"));
   assert.equal(config.tacticsFile, join(DEPS, "ds", "tactics-ff5.json"));
@@ -22,13 +22,13 @@ void test("Config defaults point at FF5's deployment paths and slot", () => {
   assert.equal(config.bridgeUrl, undefined);
 });
 
-void test("each of the six games gets its own save slot, port and files", () => {
+void test("all six games write save slot 20 but keep their own port and files", () => {
   const expected = [
     ["ff1", 20, 47801],
     ["ff2", 20, 47802],
     ["ff3", 20, 47803],
     ["ff4", 20, 47804],
-    ["ff5", 3, 47800],
+    ["ff5", 20, 47800],
     ["ff6", 20, 47806],
   ] as const;
   for (const [key, slot, port] of expected) {

@@ -182,6 +182,21 @@ function dropLines(text: string, patterns: readonly RegExp[]): string {
     .join("\n");
 }
 
+/**
+ * The last line before {hint}, shared by all six prompts: every game was started fresh in slot
+ * 20 on 10-29, so the player never reads an old save and must write its own.
+ */
+function saveSlotHint(saveSlot: number): string {
+  return (
+    `存档只写 ${saveSlot} 号存档位;游戏已经开好新游戏、过了起名,` +
+    "从现在的位置开始玩;第一次能存档时就用 save_game 存档。"
+  );
+}
+
+function withSaveSlotHint(text: string, saveSlot: number): string {
+  return text.replace("{hint}", `${saveSlotHint(saveSlot)}\n{hint}`);
+}
+
 function fiveGameSystemPrompt(name: string, points: string, saveSlot: number): string {
   let text = SYSTEM_PROMPT_FF5.replace(
     "你在玩《最终幻想5 像素重制版》(中文版),通过工具操作游戏。",
@@ -194,25 +209,21 @@ function fiveGameSystemPrompt(name: string, points: string, saveSlot: number): s
     )
     .replace(";地图上也可以用 cast 解毒。", "。")
     .replace("看魔法店和武器防具店有没有新东西", "看武器防具店有没有新东西")
-    .replace(";笔记里有攻略查到的提醒。", "。")
-    .replace(
-      "{hint}",
-      `存档只写 ${saveSlot} 号存档位;游戏已经开好新游戏、过了起名,` +
-        "从现在的位置开始玩;第一次能存档时就用 save_game 存档。\n{hint}",
-    );
+    .replace(";笔记里有攻略查到的提醒。", "。");
   text = dropLines(text, FF5_ONLY_SYSTEM_LINES);
-  return text;
+  return withSaveSlotHint(text, saveSlot);
 }
 
-/** FF5 writes slot 3; the five games that started fresh write slot 20 (task 21). */
+/** Every game writes slot 20: all six start fresh, so no old slot is read (10-29). */
 function saveSlotFor(game: string): number {
-  return byKey(game).key === "ff5" ? 3 : 20;
+  byKey(game); // unknown keys still throw here, as they always did
+  return 20;
 }
 
-/** The first layer's persona for one game; FF5's text is byte-for-byte the old constant. */
+/** The first layer's persona for one game; FF5's text only gains the new-game hint. */
 export function systemPrompt(game: string, saveSlot = saveSlotFor(game)): string {
   const info = byKey(game);
-  if (info.key === "ff5") return SYSTEM_PROMPT_FF5;
+  if (info.key === "ff5") return withSaveSlotHint(SYSTEM_PROMPT_FF5, saveSlot);
   const name = GAME_NAMES[info.key];
   const points = FIVE_GAME_POINTS[info.key];
   if (name === undefined || points === undefined) {
@@ -296,7 +307,17 @@ export function tacticianPrompt(game: string): string {
   return dropLines(text, [/^ {2}可以在 ask_up 里建议换职业/u]);
 }
 
-export const TOOLS = [
+/** The shape the plugin hands to `ctx.tools.register`, still OpenAI's function format. */
+export interface GameToolSchema {
+  readonly type: "function";
+  readonly function: {
+    readonly name: string;
+    readonly description: string;
+    readonly parameters: Record<string, unknown>;
+  };
+}
+
+const TOOLS_BASE = [
   {
     type: "function",
     function: {
@@ -650,7 +671,9 @@ export const TOOLS = [
     type: "function",
     function: {
       name: "save_game",
-      description: "存档到 3 号存档位。只能在世界地图或存档点用,迷宫里不行。首领战前先存档。",
+      // Filled in by `toolSchemas`: the configured slot, not a hard-coded 3 (task 26).
+      description:
+        "存档到 {saveSlot} 号存档位。只能在世界地图或存档点用,迷宫里不行。首领战前先存档。",
       parameters: { type: "object", properties: {} },
     },
   },
@@ -701,6 +724,27 @@ export const TOOLS = [
     },
   },
 ] as const;
+
+/**
+ * The tool definitions with save_game naming the slot this game writes (task 26). The slot is
+ * a config value, so the list cannot stay one exported constant.
+ */
+export function toolSchemas(saveSlot: number): readonly GameToolSchema[] {
+  return TOOLS_BASE.map((tool) =>
+    tool.function.name === "save_game"
+      ? {
+          ...tool,
+          function: {
+            ...tool.function,
+            description: tool.function.description.replace("{saveSlot}", String(saveSlot)),
+          },
+        }
+      : tool,
+  );
+}
+
+/** FF5's 26 tools with the shared default slot, for callers that already know the game. */
+export const TOOLS: readonly GameToolSchema[] = toolSchemas(20);
 
 /**
  * The extra tool the five newly started games get (task 22): a menu no other tool understands,

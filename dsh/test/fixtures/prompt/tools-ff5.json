@@ -388,7 +388,7 @@
     "type": "function",
     "function": {
       "name": "save_game",
-      "description": "存档到 3 号存档位。只能在世界地图或存档点用,迷宫里不行。首领战前先存档。",
+      "description": "存档到 20 号存档位。只能在世界地图或存档点用,迷宫里不行。首领战前先存档。",
       "parameters": {
         "type": "object",
         "properties": {}

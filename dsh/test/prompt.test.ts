@@ -14,6 +14,7 @@ import {
   tacticianPrompt,
   TERRAIN,
   TOOLS,
+  toolSchemas,
 } from "../src/engine/prompt.ts";
 
 interface RawCells {
@@ -75,12 +76,26 @@ const ff5Tactician = await readFile(
 );
 
 void test("the FF5 prompts and tool definitions keep the ported text", () => {
-  assert.equal(systemPrompt("ff5", 3), ff5System);
+  // 10-29 (task 26): FF5 now starts a new game in slot 20 instead of reading its old slot 3.
+  // Only two places differ from the ported constant: the new-game/save-slot sentence before
+  // {hint}, and save_game's description naming slot 20. Everything else is unchanged.
+  assert.equal(systemPrompt("ff5"), ff5System);
+  assert.ok(ff5System.includes("存档只写 20 号存档位"));
   assert.equal(tacticianPrompt("ff5"), ff5Tactician);
   assert.ok(ff5System.includes("enemy.name.喧嚣鬼"));
   assert.ok(ff5System.includes("敌人:hp最低"));
   assert.ok(ff5System.includes("目标:{goal}") && ff5System.endsWith("{hint}"));
   assert.deepEqual(TOOLS, fixture.tools);
+});
+
+void test("save_game names the slot passed to toolSchemas", () => {
+  const description = (slot: number): string =>
+    String(
+      toolSchemas(slot).find((tool) => tool.function.name === "save_game")?.function.description,
+    );
+  assert.match(description(20), /存档到 20 号存档位/);
+  assert.match(description(7), /存档到 7 号存档位/);
+  assert.equal(description(7).includes("{saveSlot}"), false);
 });
 
 void test("the five new games get their own points, save slot and no FF5-only lines", () => {
@@ -92,7 +107,7 @@ void test("the five new games get their own points, save slot and no FF5-only li
     ["ff6", "最终幻想VI", "角色很多"],
   ] as const;
   for (const [key, name, point] of cases) {
-    const text = systemPrompt(key, 20);
+    const text = systemPrompt(key);
     assert.ok(text.startsWith(`你在玩《${name} 像素重制版》(中文版)`), key);
     assert.ok(text.includes("这一作的要点:"), key);
     assert.ok(text.includes(point), key);
