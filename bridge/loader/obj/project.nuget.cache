@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "qZt9SjLAXcE=",
+  "success": true,
+  "projectFilePath": "/root/data/mediaflow/FFPR-Agent/bridge/loader/FfprBridge.Loader.csproj",
+  "expectedPackageFiles": [
+    "/root/.nuget/packages/microsoft.netcore.app.ref/6.0.36/microsoft.netcore.app.ref.6.0.36.nupkg.sha512",
+    "/root/.nuget/packages/microsoft.aspnetcore.app.ref/6.0.36/microsoft.aspnetcore.app.ref.6.0.36.nupkg.sha512"
+  ],
+  "logs": []
+}

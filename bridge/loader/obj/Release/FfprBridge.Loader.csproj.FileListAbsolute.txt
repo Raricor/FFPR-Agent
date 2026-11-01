@@ -1,0 +1,12 @@
+/root/data/mediaflow/FFPR-Agent/bridge/loader/bin/Release/FfprBridge.dll
+/root/data/mediaflow/FFPR-Agent/bridge/loader/bin/Release/FfprBridge.pdb
+/root/data/mediaflow/FFPR-Agent/bridge/loader/obj/Release/FfprBridge.Loader.csproj.AssemblyReference.cache
+/root/data/mediaflow/FFPR-Agent/bridge/loader/obj/Release/FfprBridge.Loader.GeneratedMSBuildEditorConfig.editorconfig
+/root/data/mediaflow/FFPR-Agent/bridge/loader/obj/Release/FfprBridge.Loader.AssemblyInfoInputs.cache
+/root/data/mediaflow/FFPR-Agent/bridge/loader/obj/Release/FfprBridge.Loader.AssemblyInfo.cs
+/root/data/mediaflow/FFPR-Agent/bridge/loader/obj/Release/FfprBridge.Loader.csproj.CoreCompileInputs.cache
+/root/data/mediaflow/FFPR-Agent/bridge/loader/obj/Release/FfprBridge.Loader.sourcelink.json
+/root/data/mediaflow/FFPR-Agent/bridge/loader/obj/Release/FfprBridge.dll
+/root/data/mediaflow/FFPR-Agent/bridge/loader/obj/Release/refint/FfprBridge.dll
+/root/data/mediaflow/FFPR-Agent/bridge/loader/obj/Release/FfprBridge.pdb
+/root/data/mediaflow/FFPR-Agent/bridge/loader/obj/Release/ref/FfprBridge.dll
