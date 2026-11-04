@@ -1,0 +1,1012 @@
+{
+  "items": {
+    "input": {
+      "normal": [
+        {
+          "name": "<IC_DRAG>恢复药",
+          "count": 3
+        },
+        {
+          "name": "<IC_STAR>不死鸟之尾",
+          "count": 1
+        },
+        {
+          "name": "空手",
+          "count": 1
+        },
+        {
+          "name": "无",
+          "count": 1
+        },
+        {
+          "name": "<IC_KEY>",
+          "count": 2
+        }
+      ],
+      "important": [
+        {
+          "name": "<IC_KEY>运河的钥匙",
+          "count": 1
+        },
+        {
+          "name": "",
+          "count": 1
+        }
+      ]
+    },
+    "text": "道具:恢复药×3、不死鸟之尾×1\n贵重物品:运河的钥匙×1"
+  },
+  "entities": {
+    "input": {
+      "total": 5,
+      "entities": [
+        {
+          "kind": "GotoMap",
+          "cell": [12, 21],
+          "toMap": 242,
+          "name": "",
+          "active": true
+        },
+        {
+          "kind": "TresureBox",
+          "tile": [13, 54],
+          "content": "フレイル",
+          "num": 1,
+          "name": "宝箱"
+        },
+        {
+          "kind": "Npc",
+          "cell": [12, 19],
+          "npc": 0,
+          "name": "兵士(色違い：黄)"
+        },
+        {
+          "kind": "DefaultEntity",
+          "cell": [12, 7],
+          "name": "閉まっている扉",
+          "active": false
+        },
+        {
+          "kind": "DefaultEntity",
+          "cell": [17, 18],
+          "name": "トルナ運河の開錠_右扉"
+        }
+      ]
+    },
+    "text": "共 5 个实体,列出 5 个:\n  GotoMap @ [12, 21]  通往地图 242\n  TresureBox @ [13, 54] 宝箱 内容 フレイル×1\n  Npc @ [12, 19] 兵士(色違い：黄) NPC 0\n  DefaultEntity @ [12, 7] 閉まっている扉 未激活\n  DefaultEntity @ [17, 18] トルナ運河の開錠_右扉"
+  },
+  "namedObjects": {
+    "input": {
+      "total": 7,
+      "entities": [
+        {
+          "kind": "DefaultEntity",
+          "cell": [17, 18],
+          "name": "トルナ運河の開錠_右扉"
+        },
+        {
+          "kind": "DefaultEntity",
+          "cell": [39, 32],
+          "name": "x",
+          "active": false
+        },
+        {
+          "kind": "DefaultEntity",
+          "cell": [4, 0],
+          "name": "【汎用】海賊船"
+        },
+        {
+          "kind": "DefaultEntity",
+          "cell": [128, 128],
+          "name": ""
+        },
+        {
+          "kind": "DefaultAnimEntity",
+          "cell": [8, 7],
+          "name": "クリスタルかけら"
+        },
+        {
+          "kind": "Npc",
+          "cell": [12, 17],
+          "name": "ガルラ吹き出し"
+        },
+        {
+          "kind": "Npc",
+          "cell": [12, 19],
+          "name": "兵士(色違い：黄)",
+          "active": true
+        }
+      ]
+    },
+    "out": {
+      "total": 3,
+      "entities": [
+        {
+          "kind": "DefaultEntity",
+          "cell": [17, 18],
+          "name": "トルナ運河の開錠_右扉"
+        },
+        {
+          "kind": "DefaultAnimEntity",
+          "cell": [8, 7],
+          "name": "クリスタルかけら"
+        },
+        {
+          "kind": "Npc",
+          "cell": [12, 19],
+          "name": "兵士(色違い：黄)",
+          "active": true
+        }
+      ]
+    }
+  },
+  "parseTail": {
+    "text": "probe-cut-line\n{\"seq\":2,\"t\":\"2026-10-19T14:56:24.5017179Z\",\"frame\":1,\"type\":\"sample\",\"scene\":{\"name\":null},\"user\":null,\"party\":null,\"field\":null,\"dialog\":null,\"choice\":{},\"battle\":null,\"dropped\":0}\n{\"seq\":3,\"t\":\"2026-10-19T14:56:25.3159071Z\",\"frame\":28,\"type\":\"sample\",\"scene\":{\"name\":null},\"user\":null,\"party\":null,\"field\":null,\"dialog\":null,\"choice\":{},\"battle\":null,\"dropped\":0}\n{\"seq\":4,\"t\":\"2026-10-19T14:56:26.3312928Z\",\"frame\":81,\"type\":\"sample\",\"scene\":{\"name\":\"Splash\",\"sub\":\"SubSceneManagerSplash\",\"state\":null},\"user\":{\"mapId\":0,\"areaId\":0,\"areaType\":0,\"area\":null,\"location\":null,\"gil\":0,\"totalGil\":0,\"playTime\":0,\"steps\":0,\"battles\":0,\"wins\":0,\"escapes\":0,\"kills\":0,\"chests\":0,\"saves\":0,\"complete\":false,\"boost\":{\"encounter\":true,\"exp\":1,\"gil\":1,\"abp\":1}},\"party\":null,\"field\":null,\"dialog\":null,\"choice\":{},\"battle\":null,\"dropped\":0}\n{\"seq\":5,\"t\":\"2026-10-19T14:56:27.3333546Z\",\"frame\":140,\"type\":\"sample\",\"scene\":{\"name\":\"Splash\",\"sub\":\"SubSceneManagerSplash\",\"state\":null},\"user\":{\"mapId\":0,\"areaId\":0,\"areaType\":0,\"area\":null,\"location\":null,\"gil\":0,\"totalGil\":0,\"playTime\":0,\"steps\":0,\"battles\":0,\"wins\":0,\"escapes\":0,\"kills\":0,\"chests\":0,\"saves\":0,\"complete\":false,\"boost\":{\"encounter\":true,\"exp\":1,\"gil\":1,\"abp\":1}},\"party\":null,\"field\":null,\"dialog\":null,\"choice\":{},\"battle\":null,\"dropped\":0}\n{\"seq\":6,\"t\":\"2026-10-19T14:56:28.3473711Z\",\"frame\":180,\"type\":\"sample\",\"scene\":{\"name\":\"Splash\",\"sub\":\"SubSceneManagerSplash\",\"state\":null},\"user\":{\"mapId\":0,\"areaId\":0,\"areaType\":0,\"area\":null,\"location\":null,\"gil\":0,\"totalGil\":0,\"playTime\":0,\"steps\":0,\"battles\":0,\"wins\":0,\"escapes\":0,\"kills\":0,\"chests\":0,\"saves\":0,\"complete\":false,\"boost\":{\"encounter\":true,\"exp\":1,\"gil\":1,\"abp\":1}},\"party\":null,\"field\":null,\"dialog\":null,\"choice\":{},\"battle\":null,\"dropped\":0}",
+    "out": [
+      {
+        "seq": 2,
+        "t": "2026-10-19T14:56:24.5017179Z",
+        "frame": 1,
+        "type": "sample",
+        "scene": {
+          "name": null
+        },
+        "user": null,
+        "party": null,
+        "field": null,
+        "dialog": null,
+        "choice": {},
+        "battle": null,
+        "dropped": 0
+      },
+      {
+        "seq": 3,
+        "t": "2026-10-19T14:56:25.3159071Z",
+        "frame": 28,
+        "type": "sample",
+        "scene": {
+          "name": null
+        },
+        "user": null,
+        "party": null,
+        "field": null,
+        "dialog": null,
+        "choice": {},
+        "battle": null,
+        "dropped": 0
+      },
+      {
+        "seq": 4,
+        "t": "2026-10-19T14:56:26.3312928Z",
+        "frame": 81,
+        "type": "sample",
+        "scene": {
+          "name": "Splash",
+          "sub": "SubSceneManagerSplash",
+          "state": null
+        },
+        "user": {
+          "mapId": 0,
+          "areaId": 0,
+          "areaType": 0,
+          "area": null,
+          "location": null,
+          "gil": 0,
+          "totalGil": 0,
+          "playTime": 0,
+          "steps": 0,
+          "battles": 0,
+          "wins": 0,
+          "escapes": 0,
+          "kills": 0,
+          "chests": 0,
+          "saves": 0,
+          "complete": false,
+          "boost": {
+            "encounter": true,
+            "exp": 1,
+            "gil": 1,
+            "abp": 1
+          }
+        },
+        "party": null,
+        "field": null,
+        "dialog": null,
+        "choice": {},
+        "battle": null,
+        "dropped": 0
+      },
+      {
+        "seq": 5,
+        "t": "2026-10-19T14:56:27.3333546Z",
+        "frame": 140,
+        "type": "sample",
+        "scene": {
+          "name": "Splash",
+          "sub": "SubSceneManagerSplash",
+          "state": null
+        },
+        "user": {
+          "mapId": 0,
+          "areaId": 0,
+          "areaType": 0,
+          "area": null,
+          "location": null,
+          "gil": 0,
+          "totalGil": 0,
+          "playTime": 0,
+          "steps": 0,
+          "battles": 0,
+          "wins": 0,
+          "escapes": 0,
+          "kills": 0,
+          "chests": 0,
+          "saves": 0,
+          "complete": false,
+          "boost": {
+            "encounter": true,
+            "exp": 1,
+            "gil": 1,
+            "abp": 1
+          }
+        },
+        "party": null,
+        "field": null,
+        "dialog": null,
+        "choice": {},
+        "battle": null,
+        "dropped": 0
+      },
+      {
+        "seq": 6,
+        "t": "2026-10-19T14:56:28.3473711Z",
+        "frame": 180,
+        "type": "sample",
+        "scene": {
+          "name": "Splash",
+          "sub": "SubSceneManagerSplash",
+          "state": null
+        },
+        "user": {
+          "mapId": 0,
+          "areaId": 0,
+          "areaType": 0,
+          "area": null,
+          "location": null,
+          "gil": 0,
+          "totalGil": 0,
+          "playTime": 0,
+          "steps": 0,
+          "battles": 0,
+          "wins": 0,
+          "escapes": 0,
+          "kills": 0,
+          "chests": 0,
+          "saves": 0,
+          "complete": false,
+          "boost": {
+            "encounter": true,
+            "exp": 1,
+            "gil": 1,
+            "abp": 1
+          }
+        },
+        "party": null,
+        "field": null,
+        "dialog": null,
+        "choice": {},
+        "battle": null,
+        "dropped": 0
+      }
+    ]
+  },
+  "marks": [
+    {
+      "unit": {
+        "name": "蕾娜",
+        "hp": 12,
+        "maxHp": 100,
+        "status": ["Poison", ""]
+      },
+      "out": "[毒]"
+    },
+    {
+      "unit": {
+        "name": "巴兹",
+        "status": ["Blind", "Silence"]
+      },
+      "out": "[黑暗、沉默]"
+    },
+    {
+      "unit": {
+        "name": "法利斯",
+        "status": []
+      },
+      "out": ""
+    },
+    {
+      "unit": {},
+      "out": ""
+    }
+  ],
+  "summarize": [
+    {
+      "sample": {
+        "seq": 4454,
+        "t": "2026-10-19T15:54:34.9329615Z",
+        "frame": 205483,
+        "type": "sample",
+        "scene": {
+          "name": "MainGame",
+          "sub": "SubSceneManagerMainGame",
+          "state": "Event"
+        },
+        "user": {
+          "mapId": 198,
+          "areaId": 7,
+          "areaType": 1,
+          "area": "MSG_MAP_NAME_08",
+          "location": null,
+          "gil": 1360,
+          "totalGil": 1360,
+          "playTime": 3297,
+          "steps": 0,
+          "battles": 11,
+          "wins": 11,
+          "escapes": 0,
+          "kills": 25,
+          "chests": 1,
+          "saves": 0,
+          "complete": false,
+          "boost": {
+            "encounter": false,
+            "exp": 4,
+            "gil": 4,
+            "abp": 4
+          }
+        },
+        "party": [
+          {
+            "id": 1,
+            "name": "巴兹",
+            "job": 1,
+            "lv": 4,
+            "hp": 73,
+            "maxHp": 73,
+            "mp": 19,
+            "maxMp": 19,
+            "exp": 124
+          },
+          {
+            "id": 2,
+            "name": "蕾娜",
+            "job": 1,
+            "lv": 4,
+            "hp": 71,
+            "maxHp": 71,
+            "mp": 20,
+            "maxMp": 20,
+            "exp": 106
+          },
+          {
+            "id": 3,
+            "name": "加拉夫",
+            "job": 1,
+            "lv": 4,
+            "hp": 75,
+            "maxHp": 75,
+            "mp": 19,
+            "maxMp": 19,
+            "exp": 106
+          },
+          {
+            "id": 4,
+            "name": "法利斯",
+            "job": 1,
+            "lv": 3,
+            "hp": 54,
+            "maxHp": 54,
+            "mp": 14,
+            "maxMp": 14,
+            "exp": 50
+          }
+        ],
+        "field": {
+          "pos": [-80, -16, 249],
+          "world": [-80, -16, 249],
+          "entity": [-80, -22],
+          "moveState": "Walk",
+          "cell": [15, 23, 0]
+        },
+        "dialog": {
+          "open": false,
+          "playing": false,
+          "field": true,
+          "page": 0,
+          "waitPage": false,
+          "waitEnd": false,
+          "speaker": "法利斯",
+          "lines": ["好，出发！"]
+        },
+        "choice": {
+          "select": {
+            "open": false,
+            "default": 0,
+            "options": []
+          },
+          "multiple": {
+            "open": false,
+            "options": []
+          }
+        },
+        "battle": {
+          "active": false,
+          "ar": false
+        },
+        "dropped": 0
+      },
+      "events": [
+        {
+          "seq": 159,
+          "t": "2026-10-19T15:59:56.9353789Z",
+          "frame": 9273,
+          "type": "map.change",
+          "from": 0,
+          "fromCell": null,
+          "to": 1,
+          "toCell": [161, 111],
+          "state": "ChangeMap"
+        },
+        {
+          "seq": 198,
+          "t": "2026-10-19T14:59:40.1847330Z",
+          "frame": 11570,
+          "type": "dialog.play",
+          "state": "Event",
+          "field": true,
+          "auto": false,
+          "speaker": "",
+          "lines": [],
+          "ids": [],
+          "lookups": [
+            "MSG_SYSTEM_144",
+            "MSG_SYSTEM_184",
+            "MSG_JOB_NAME_01",
+            "MSG_SYSTEM_400",
+            "MSG_SYSTEM_170",
+            "MSG_SYSTEM_142",
+            "MSG_SYSTEM_101",
+            "MSG_SYSTEM_143",
+            "MSG_SYSTEM_101",
+            "MSG_SYSTEM_141",
+            "MSG_SYSTEM_101",
+            "MSG_SYSTEM_144",
+            "MSG_SYSTEM_184",
+            "MSG_JOB_NAME_01",
+            "MSG_SYSTEM_400",
+            "MSG_SYSTEM_170",
+            "MSG_SYSTEM_142",
+            "MSG_SYSTEM_101",
+            "MSG_SYSTEM_143",
+            "MSG_SYSTEM_101",
+            "MSG_SYSTEM_141",
+            "MSG_SYSTEM_101",
+            "MSG_SYSTEM_144",
+            "MSG_SYSTEM_184",
+            "MSG_JOB_NAME_01",
+            "MSG_SYSTEM_209",
+            "MSG_PC_KEY_CONFIG_07",
+            "MSG_SYSTEM_135",
+            "MSG_SYSTEM_107",
+            "MSG_PC_KEY_CONFIG_02",
+            "MSG_SYSTEM_098",
+            "MSG_PC_KEY_CONFIG_01",
+            "MSG_SYSTEM_099",
+            "MSG_SYSTEM_100",
+            "MSG_SYSTEM_101",
+            "MSG_SYSTEM_101",
+            "MSG_SYSTEM_142",
+            "MSG_SYSTEM_143",
+            "MSG_SYSTEM_141",
+            "MSG_SYSTEM_282",
+            "MSG_SYSTEM_102",
+            "MSG_SYSTEM_141",
+            "MSG_SYSTEM_140",
+            "MSG_SYSTEM_102",
+            "MSG_SYSTEM_196",
+            "MSG_SYSTEM_196",
+            "MSG_SYSTEM_211",
+            "切换说明"
+          ]
+        }
+      ],
+      "text": "MainGame/Event · 地图 198 MSG_MAP_NAME_08 · 格子 15,23 · 非战斗 · 金钱 1360\n队伍 巴兹 Lv4 73/73,蕾娜 Lv4 71/71,加拉夫 Lv4 75/75,法利斯 Lv3 54/54\n  + map.change {\"from\": 0, \"fromCell\": null, \"to\": 1, \"toCell\": [161, 111], \"state\": \"ChangeMap\"}\n  + 对话  "
+    },
+    {
+      "sample": {
+        "seq": 252,
+        "t": "2026-10-19T15:00:29.8324348Z",
+        "frame": 14494,
+        "type": "sample",
+        "scene": {
+          "name": "MainGame",
+          "sub": "SubSceneManagerMainGame",
+          "state": "Event"
+        },
+        "user": {
+          "mapId": 71,
+          "areaId": 17,
+          "areaType": 1,
+          "area": "MSG_MAP_NAME_18",
+          "location": "",
+          "gil": 500,
+          "totalGil": 500,
+          "playTime": 52,
+          "steps": 0,
+          "battles": 0,
+          "wins": 0,
+          "escapes": 0,
+          "kills": 0,
+          "chests": 0,
+          "saves": 0,
+          "complete": false,
+          "boost": {
+            "encounter": true,
+            "exp": 1,
+            "gil": 1,
+            "abp": 1
+          }
+        },
+        "party": null,
+        "field": {
+          "pos": [8, 328, 149],
+          "world": [8, 328, 149],
+          "entity": [8, 322],
+          "moveState": "Walk",
+          "cell": [32, 11, 0]
+        },
+        "dialog": {
+          "open": true,
+          "playing": true,
+          "field": true,
+          "page": 0,
+          "waitPage": false,
+          "waitEnd": false,
+          "speaker": "蕾娜",
+          "lines": ["父王！"]
+        },
+        "choice": {
+          "select": {
+            "open": false,
+            "default": 0,
+            "options": []
+          },
+          "multiple": {
+            "open": false,
+            "options": []
+          }
+        },
+        "battle": {
+          "active": false,
+          "ar": false
+        },
+        "dropped": 0
+      },
+      "events": [
+        {
+          "seq": 518,
+          "t": "2026-10-19T15:04:24.0719229Z",
+          "frame": 28124,
+          "type": "sysmsg",
+          "state": "FieldReady",
+          "id": "MSG_LOCATION_STICK_01",
+          "text": "泰空陨石地"
+        },
+        {
+          "seq": 253,
+          "t": "2026-10-19T16:01:18.5731525Z",
+          "frame": 14035,
+          "type": "choice.open",
+          "kind": "select",
+          "state": "Event",
+          "default": 0,
+          "options": []
+        }
+      ],
+      "text": "MainGame/Event · 地图 71 MSG_MAP_NAME_18 · 格子 32,11 · 非战斗 · 金钱 500\n对话框打开 【蕾娜】父王！\n  + 系统消息 泰空陨石地\n  + 选项 "
+    },
+    {
+      "sample": {
+        "seq": 1138,
+        "t": "2026-10-20T12:15:00.6504131Z",
+        "frame": 43284,
+        "type": "sample",
+        "scene": {
+          "name": "MainGame",
+          "sub": "SubSceneManagerMainGame",
+          "state": "Event"
+        },
+        "user": {
+          "mapId": 35,
+          "areaId": 9,
+          "areaType": 1,
+          "area": "MSG_MAP_NAME_10",
+          "areaText": "图尔村",
+          "location": "MSG_ARA_NAME_01",
+          "locationText": "旅店",
+          "gil": 2072,
+          "totalGil": 3352,
+          "playTime": 7218.6,
+          "steps": 0,
+          "battles": 21,
+          "wins": 21,
+          "escapes": 0,
+          "kills": 47,
+          "chests": 4,
+          "saves": 5,
+          "complete": false,
+          "boost": {
+            "encounter": true,
+            "exp": 4,
+            "gil": 4,
+            "abp": 4
+          }
+        },
+        "party": [
+          {
+            "slot": "Front",
+            "id": 1,
+            "name": "巴兹",
+            "job": 7,
+            "lv": 7,
+            "hp": 121,
+            "maxHp": 172,
+            "mp": 19,
+            "maxMp": 26,
+            "exp": 514
+          },
+          {
+            "slot": "Front",
+            "id": 2,
+            "name": "蕾娜",
+            "job": 5,
+            "lv": 7,
+            "hp": 40,
+            "maxHp": 124,
+            "mp": 16,
+            "maxMp": 53,
+            "exp": 496
+          },
+          {
+            "slot": "Front",
+            "id": 3,
+            "name": "加拉夫",
+            "job": 3,
+            "lv": 7,
+            "hp": 43,
+            "maxHp": 188,
+            "mp": 19,
+            "maxMp": 20,
+            "exp": 496
+          }
+        ],
+        "field": {
+          "pos": [-40, -72, 249],
+          "entity": [-40, -78],
+          "dirVec": [-32, 0],
+          "dir": "Left",
+          "moving": false,
+          "moveState": "Walk",
+          "cell": [7, 14]
+        },
+        "dialog": {
+          "open": true,
+          "playing": true,
+          "field": true,
+          "page": 0,
+          "waitPage": false,
+          "waitEnd": true,
+          "speaker": "",
+          "lines": ["欢迎光临。", "住一晚需要10金币，", "您确定要住店吗？"]
+        },
+        "choice": {
+          "select": {
+            "open": true,
+            "default": 0,
+            "options": [],
+            "labels": ["是", "否"],
+            "cursor": 0
+          },
+          "multiple": {
+            "open": false,
+            "options": [],
+            "labels": [],
+            "cursor": 0
+          }
+        },
+        "battle": {
+          "active": false,
+          "ar": false
+        },
+        "dropped": 0
+      },
+      "events": [],
+      "text": "MainGame/Event · 地图 35 图尔村 · 格子 7,14 · 非战斗 · 金钱 2072\n对话框打开 欢迎光临。 / 住一晚需要10金币， / 您确定要住店吗？\n选项(select):[是] / 否\n队伍 巴兹 Lv7 121/172,蕾娜 Lv7 40/124,加拉夫 Lv7 43/188"
+    },
+    {
+      "sample": {
+        "seq": 302,
+        "t": "2026-10-19T17:52:34.9891693Z",
+        "frame": 16898,
+        "type": "sample",
+        "scene": {
+          "name": "MainGame",
+          "sub": "SubSceneManagerMainGame",
+          "state": "Battle"
+        },
+        "user": {
+          "mapId": 1,
+          "areaId": 1,
+          "areaType": 0,
+          "area": "MSG_MAP_NAME_01",
+          "areaText": "世界地图",
+          "location": "",
+          "locationText": null,
+          "gil": 2552,
+          "totalGil": 3112,
+          "playTime": 6707.7,
+          "steps": 0,
+          "battles": 20,
+          "wins": 20,
+          "escapes": 0,
+          "kills": 44,
+          "chests": 4,
+          "saves": 5,
+          "complete": false,
+          "boost": {
+            "encounter": true,
+            "exp": 4,
+            "gil": 4,
+            "abp": 4
+          }
+        },
+        "party": [
+          {
+            "slot": "Front",
+            "id": 1,
+            "name": "巴兹",
+            "job": 7,
+            "lv": 7,
+            "hp": 41,
+            "maxHp": 172,
+            "mp": 19,
+            "maxMp": 26,
+            "exp": 484
+          },
+          {
+            "slot": "Front",
+            "id": 2,
+            "name": "蕾娜",
+            "job": 5,
+            "lv": 7,
+            "hp": 40,
+            "maxHp": 124,
+            "mp": 20,
+            "maxMp": 53,
+            "exp": 466
+          },
+          {
+            "slot": "Front",
+            "id": 3,
+            "name": "加拉夫",
+            "job": 3,
+            "lv": 7,
+            "hp": 43,
+            "maxHp": 188,
+            "mp": 19,
+            "maxMp": 20,
+            "exp": 466
+          },
+          {
+            "slot": "Front",
+            "id": 4,
+            "name": "法利斯",
+            "job": 6,
+            "lv": 7,
+            "hp": 27,
+            "maxHp": 122,
+            "mp": 14,
+            "maxMp": 55,
+            "exp": 410
+          }
+        ],
+        "field": {
+          "pos": [152, 456, 149],
+          "entity": [152, 450],
+          "dirVec": [-16, 0],
+          "dir": "Left",
+          "moving": false,
+          "moveState": "Walk",
+          "cell": [137, 99]
+        },
+        "dialog": {
+          "open": false,
+          "playing": false,
+          "field": false,
+          "page": 0,
+          "waitPage": false,
+          "waitEnd": false,
+          "speaker": "",
+          "lines": []
+        },
+        "choice": {
+          "select": {
+            "open": false,
+            "default": 0,
+            "options": []
+          },
+          "multiple": {
+            "open": false,
+            "options": []
+          }
+        },
+        "battle": {
+          "active": true,
+          "ar": false,
+          "enemies": [
+            {
+              "name": "哥布林",
+              "hp": 16,
+              "maxHp": 16,
+              "mp": 3
+            },
+            {
+              "name": "哥布林",
+              "hp": 16,
+              "maxHp": 16,
+              "mp": 3
+            },
+            {
+              "name": "哥布林",
+              "hp": 16,
+              "maxHp": 16,
+              "mp": 3
+            }
+          ],
+          "players": [
+            {
+              "name": "巴兹",
+              "hp": 41,
+              "maxHp": 172,
+              "mp": 19
+            },
+            {
+              "name": "蕾娜",
+              "hp": 40,
+              "maxHp": 124,
+              "mp": 20
+            },
+            {
+              "name": "加拉夫",
+              "hp": 43,
+              "maxHp": 188,
+              "mp": 19
+            },
+            {
+              "name": "法利斯",
+              "hp": 27,
+              "maxHp": 122,
+              "mp": 14
+            }
+          ]
+        },
+        "dropped": 0
+      },
+      "events": [
+        {
+          "seq": 106,
+          "t": "2026-10-19T17:49:17.8599017Z",
+          "frame": 5181,
+          "type": "save.write",
+          "slot": 3,
+          "result": "Success"
+        },
+        {
+          "seq": 194,
+          "t": "2026-10-19T14:59:37.2342142Z",
+          "frame": 11439,
+          "type": "achievement.progress",
+          "kind": "OwnedGil",
+          "value": 500,
+          "condition": 0,
+          "additional": true,
+          "now": 0
+        }
+      ],
+      "text": "MainGame/Battle · 地图 1 世界地图 · 格子 137,99 · 战斗中 · 金钱 2552\n敌人:哥布林 16/16,哥布林 16/16,哥布林 16/16\n我方:巴兹 41/172,蕾娜 40/124,加拉夫 43/188,法利斯 27/122\n队伍 巴兹 Lv7 41/172,蕾娜 Lv7 40/124,加拉夫 Lv7 43/188,法利斯 Lv7 27/122\n  + save.write {\"slot\": 3, \"result\": \"Success\"}\n  + achievement.progress {\"kind\": \"OwnedGil\", \"value\": 500, \"condition\": 0, \"additional\": true, \"now\": 0}"
+    },
+    {
+      "sample": {
+        "seq": 2,
+        "t": "2026-10-19T14:56:24.5017179Z",
+        "frame": 1,
+        "type": "sample",
+        "scene": {
+          "name": null
+        },
+        "user": null,
+        "party": null,
+        "field": null,
+        "dialog": null,
+        "choice": {},
+        "battle": null,
+        "dropped": 0
+      },
+      "events": [
+        {
+          "seq": 198,
+          "t": "2026-10-19T14:59:40.1847330Z",
+          "frame": 11570,
+          "type": "dialog.play",
+          "state": "Event",
+          "field": true,
+          "auto": false,
+          "speaker": "",
+          "lines": [],
+          "ids": [],
+          "lookups": [
+            "MSG_SYSTEM_144",
+            "MSG_SYSTEM_184",
+            "MSG_JOB_NAME_01",
+            "MSG_SYSTEM_400",
+            "MSG_SYSTEM_170",
+            "MSG_SYSTEM_142",
+            "MSG_SYSTEM_101",
+            "MSG_SYSTEM_143",
+            "MSG_SYSTEM_101",
+            "MSG_SYSTEM_141",
+            "MSG_SYSTEM_101",
+            "MSG_SYSTEM_144",
+            "MSG_SYSTEM_184",
+            "MSG_JOB_NAME_01",
+            "MSG_SYSTEM_400",
+            "MSG_SYSTEM_170",
+            "MSG_SYSTEM_142",
+            "MSG_SYSTEM_101",
+            "MSG_SYSTEM_143",
+            "MSG_SYSTEM_101",
+            "MSG_SYSTEM_141",
+            "MSG_SYSTEM_101",
+            "MSG_SYSTEM_144",
+            "MSG_SYSTEM_184",
+            "MSG_JOB_NAME_01",
+            "MSG_SYSTEM_209",
+            "MSG_PC_KEY_CONFIG_07",
+            "MSG_SYSTEM_135",
+            "MSG_SYSTEM_107",
+            "MSG_PC_KEY_CONFIG_02",
+            "MSG_SYSTEM_098",
+            "MSG_PC_KEY_CONFIG_01",
+            "MSG_SYSTEM_099",
+            "MSG_SYSTEM_100",
+            "MSG_SYSTEM_101",
+            "MSG_SYSTEM_101",
+            "MSG_SYSTEM_142",
+            "MSG_SYSTEM_143",
+            "MSG_SYSTEM_141",
+            "MSG_SYSTEM_282",
+            "MSG_SYSTEM_102",
+            "MSG_SYSTEM_141",
+            "MSG_SYSTEM_140",
+            "MSG_SYSTEM_102",
+            "MSG_SYSTEM_196",
+            "MSG_SYSTEM_196",
+            "MSG_SYSTEM_211",
+            "切换说明"
+          ]
+        }
+      ],
+      "text": "None/None · 地图 None  · 不在地图上 · 非战斗 · 金钱 None\n  + 对话  "
+    }
+  ]
+}
