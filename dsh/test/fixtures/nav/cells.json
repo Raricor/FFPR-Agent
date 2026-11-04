@@ -1,0 +1,30 @@
+{
+  "cases": [
+    {
+      "cells": {
+        "origin": [9, 4],
+        "center": [10, 5],
+        "attr": [
+          [0, 1, 0],
+          [3, 7, null]
+        ]
+      },
+      "text": "      9 10 11\n   4  0  1  0\n   5  3  @  ?"
+    },
+    {
+      "cells": {
+        "origin": [-2, -1],
+        "center": [0, 0],
+        "attr": [
+          [16, null, 3],
+          [4, 7, 19]
+        ]
+      },
+      "text": "     -2 -1  0\n  -1 16  ?  3\n   0  4  7  @"
+    }
+  ],
+  "hasTerrain": {
+    "map1": true,
+    "map1-b": true
+  }
+}
