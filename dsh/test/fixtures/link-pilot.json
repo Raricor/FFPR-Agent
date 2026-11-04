@@ -1,0 +1,323 @@
+[
+  {
+    "name": "keys keeps ok, sent and error",
+    "op": "keys",
+    "fields": {
+      "keys": ["Down*2", "Enter"],
+      "gap": 80,
+      "ignored": true
+    },
+    "wait": 12.5,
+    "reply": {
+      "ok": true,
+      "sent": 5,
+      "error": null,
+      "extra": "drop me"
+    },
+    "calls": [
+      {
+        "method": "command",
+        "op": "keys",
+        "timeout": 12.5,
+        "fields": {
+          "keys": ["Down*2", "Enter"],
+          "gap": 80
+        }
+      }
+    ],
+    "expected": {
+      "ok": true,
+      "sent": 5,
+      "error": null
+    }
+  },
+  {
+    "name": "keys applies the default gap",
+    "op": "keys",
+    "fields": {
+      "keys": ["Enter"]
+    },
+    "wait": 30,
+    "reply": {
+      "ok": true
+    },
+    "calls": [
+      {
+        "method": "command",
+        "op": "keys",
+        "timeout": 30,
+        "fields": {
+          "keys": ["Enter"],
+          "gap": 120
+        }
+      }
+    ],
+    "expected": {
+      "ok": true
+    }
+  },
+  {
+    "name": "status says the game is running and keeps the bridge fields",
+    "op": "status",
+    "fields": {},
+    "wait": 10,
+    "reply": {
+      "ok": true,
+      "focused": true,
+      "locked": false,
+      "foreground": "FFPR",
+      "extra": 1
+    },
+    "calls": [
+      {
+        "method": "command",
+        "op": "status",
+        "timeout": 10,
+        "fields": {}
+      }
+    ],
+    "expected": {
+      "running": true,
+      "ok": true,
+      "focused": true,
+      "locked": false,
+      "foreground": "FFPR"
+    }
+  },
+  {
+    "name": "bridge wraps the reply from a pass-through query",
+    "op": "bridge",
+    "fields": {
+      "q": "pos",
+      "fresh": true
+    },
+    "wait": 30,
+    "reply": {
+      "ok": true,
+      "map": 238
+    },
+    "calls": [
+      {
+        "method": "query",
+        "op": "pos",
+        "fields": {
+          "fresh": true
+        }
+      }
+    ],
+    "expected": {
+      "ok": true,
+      "reply": {
+        "ok": true,
+        "map": 238
+      }
+    }
+  },
+  {
+    "name": "bridge turns a failed reply into bridge_error",
+    "op": "bridge",
+    "fields": {
+      "q": "pos"
+    },
+    "wait": 30,
+    "reply": {
+      "ok": false
+    },
+    "calls": [
+      {
+        "method": "query",
+        "op": "pos",
+        "fields": {}
+      }
+    ],
+    "expected": {
+      "ok": false,
+      "error": "bridge_error:None"
+    }
+  },
+  {
+    "name": "cells asks for the default radius",
+    "op": "cells",
+    "fields": {},
+    "wait": 30,
+    "reply": {
+      "ok": true,
+      "cells": [[1, 2]],
+      "extra": 1
+    },
+    "calls": [
+      {
+        "method": "query",
+        "op": "cells",
+        "fields": {
+          "r": 8
+        }
+      }
+    ],
+    "expected": {
+      "ok": true,
+      "cells": [[1, 2]]
+    }
+  },
+  {
+    "name": "cells keeps the caller's radius",
+    "op": "cells",
+    "fields": {
+      "r": 12
+    },
+    "wait": 30,
+    "reply": {
+      "ok": true,
+      "cells": []
+    },
+    "calls": [
+      {
+        "method": "query",
+        "op": "cells",
+        "fields": {
+          "r": 12
+        }
+      }
+    ],
+    "expected": {
+      "ok": true,
+      "cells": []
+    }
+  },
+  {
+    "name": "entities asks for the default limit",
+    "op": "entities",
+    "fields": {},
+    "wait": 30,
+    "reply": {
+      "ok": true,
+      "entities": [],
+      "total": 0
+    },
+    "calls": [
+      {
+        "method": "query",
+        "op": "entities",
+        "fields": {
+          "max": 200
+        }
+      }
+    ],
+    "expected": {
+      "ok": true,
+      "entities": []
+    }
+  },
+  {
+    "name": "entities keeps the caller's limit",
+    "op": "entities",
+    "fields": {
+      "max": 5
+    },
+    "wait": 30,
+    "reply": {
+      "ok": true,
+      "entities": [
+        {
+          "kind": "npc"
+        }
+      ]
+    },
+    "calls": [
+      {
+        "method": "query",
+        "op": "entities",
+        "fields": {
+          "max": 5
+        }
+      }
+    ],
+    "expected": {
+      "ok": true,
+      "entities": [
+        {
+          "kind": "npc"
+        }
+      ]
+    }
+  },
+  {
+    "name": "pos passes fields and reads pos",
+    "op": "pos",
+    "fields": {},
+    "wait": 30,
+    "reply": {
+      "ok": true,
+      "pos": {
+        "map": 238,
+        "state": "Field"
+      }
+    },
+    "calls": [
+      {
+        "method": "query",
+        "op": "pos",
+        "fields": {}
+      }
+    ],
+    "expected": {
+      "ok": true,
+      "pos": {
+        "map": 238,
+        "state": "Field"
+      }
+    }
+  },
+  {
+    "name": "pos turns a failed reply into bridge_error",
+    "op": "pos",
+    "fields": {},
+    "wait": 30,
+    "reply": {
+      "ok": false,
+      "error": "not ready"
+    },
+    "calls": [
+      {
+        "method": "query",
+        "op": "pos",
+        "fields": {}
+      }
+    ],
+    "expected": {
+      "ok": false,
+      "error": "bridge_error:not ready"
+    }
+  },
+  {
+    "name": "route passes fields to the bridge query",
+    "op": "route",
+    "fields": {
+      "from": [1, 2],
+      "to": [3, 4]
+    },
+    "wait": 30,
+    "reply": {
+      "ok": true,
+      "route": {
+        "path": [[1, 2]]
+      }
+    },
+    "calls": [
+      {
+        "method": "query",
+        "op": "route",
+        "fields": {
+          "from": [1, 2],
+          "to": [3, 4]
+        }
+      }
+    ],
+    "expected": {
+      "ok": true,
+      "route": {
+        "path": [[1, 2]]
+      }
+    }
+  }
+]
