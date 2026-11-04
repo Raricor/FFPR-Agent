@@ -1,0 +1,816 @@
+{
+  "bestiaryHtml": "<!DOCTYPE html>\n<html class=\" responsive DesktopUI\" lang=\"en\"  >\n<head>\n\t<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">\n\t\t\t<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n\t\t<meta name=\"theme-color\" content=\"#171a21\">\n\t\t<title>Steam Community :: Guide :: FFV - Simplified Bestiary</title>\n\t<link rel=\"shortcut icon\" href=\"/favicon.ico\" type=\"image/x-icon\">\n\n\t\n\t\n\t<link href=\"https://community.fastly.steamstatic.com/public/shared/css/motiva_sans.css?v=-yZgCk0Nu7kH&amp;l=english&amp;_cdn=fastly\" rel=\"stylesheet\" type=\"text/css\">\n<link href=\"https://community.fastly.steamstatic.com/public/shared/css/buttons.css?v=0Ihq-pAoptBq&amp;l=english&amp;_cdn=fastly\" rel=\"stylesheet\" type=\"text/css\">\n<link href=\"https://community.fastly.steamstatic.com/public/shared/css/shared_global.css?v=LPzP0XCBpQoS&amp;l=english&amp;_cdn=fastly\" rel=\"stylesheet\" type=\"text/css\">\n<link href=\"https://community.fastly.steamstatic.com/public/css/globalv2.css?v=VJJj6r-t5GM6&amp;l=english&amp;_cdn=fastly\" rel=\"stylesheet\" type=\"text/css\">\n<link href=\"https://community.fastly.steamstatic.com/public/shared/css/apphub.css?v=V8gSeRZKZDy_&amp;l=english&amp;_cdn=fastly\" rel=\"stylesheet\" type=\"text/css\">\n<link href=\"https://community.fastly.steamstatic.com/public/css/skin_1/modalContent.css?v=WXAusLHclDIt&amp;l=english&amp;_cdn=fastly\" rel=\"stylesheet\" type=\"text/css\">\n<link href=\"https://community.fastly.steamstatic.com/public/css/skin_1/forums.css?v=O7yPUbJwKVr8&amp;l=english&amp;_cdn=fastly\" rel=\"stylesheet\" type=\"text/css\">\n<link href=\"https://community.fastly.steamstatic.com/public/css/skin_1/workshop.css?v=dyRuT2ZYdaFe&amp;l=english&amp;_cdn=fastly\" rel=\"stylesheet\" type=\"text/css\">\n<link href=\"https://community.fastly.steamstatic.com/public/css/skin_1/workshop_itemdetails.css?v=bZ1iIKjB9xd2&amp;l=english&amp;_cdn=fastly\" rel=\"stylesheet\" type=\"text/css\">\n<link href=\"https://community.fastly.steamstatic.com/public/css/skin_1/sharedfiles_guide.css?v=wor7X3APgBYt&amp;l=english&amp;_cdn=fastly\" rel=\"stylesheet\" type=\"text/css\">\n<link href=\"https://community.fastly.steamstatic.com/public/shared/css/shared_responsive.css?v=G6uS9kBT7364&amp;l=english&amp;_cdn=fastly\" rel=\"stylesheet\" type=\"text/css\">\n<link href=\"https://community.fastly.steamstatic.com/public/shared/css/apphub_images.css?v=MycZFO0quD1j&amp;l=english&amp;_cdn=fastly\" rel=\"stylesheet\" type=\"text/css\">\n<link href=\"https://community.fastly.steamstatic.com/public/css/skin_1/header.css?v=EM4kCu67DNda&amp;l=english&amp;_cdn=fastly\" rel=\"stylesheet\" type=\"text/css\">\n<script type=\"text/javascript\">\n\tvar __PrototypePreserve=[];\n\t__PrototypePreserve[0] = Array.from;\n\t__PrototypePreserve[1] = Array.prototype.filter;\n\t__PrototypePreserve[2] = Array.prototype.flatMap;\n\t__PrototypePreserve[3] = Array.prototype.find;\n\t__PrototypePreserve[4] = Array.prototype.some;\n\t__PrototypePreserve[5] = Function.prototype.bind;\n\t__PrototypePreserve[6] = HTMLElement.prototype.scrollTo;\n</script>\n<script type=\"text/javascript\" src=\"https://community.fastly.steamstatic.com/public/javascript/prototype-1.7.js?v=npJElBnrEO6W&amp;l=english&amp;_cdn=fastly\"></script>\n<script type=\"text/javascript\">\n\tArray.from = __PrototypePreserve[0] || Array.from;\n\tArray.prototype.filter = __PrototypePreserve[1] || Array.prototype.filter;\n\tArray.prototype.flatMap = __PrototypePreserve[2] || Array.prototype.flatMap;\n\tArray.prototype.find = __PrototypePreserve[3] || Array.prototype.find;\n\tArray.prototype.some = __PrototypePreserve[4] || Array.prototype.some;\n\tFunction.prototype.bind = __PrototypePreserve[5] || Function.prototype.bind;\n\tHTMLElement.prototype.scrollTo = __PrototypePreserve[6] || HTMLElement.prototype.scrollTo;\n</script>\n<script type=\"text/javascript\">\n\tvar __ScriptaculousPreserve=[];\n\t__ScriptaculousPreserve[0] = Array.from;\n\t__ScriptaculousPreserve[1] = Function.prototype.bind;\n\t__ScriptaculousPreserve[2] = HTMLElement.prototype.scrollTo;\n</script>\n<script type=\"text/javascript\" src=\"https://community.fastly.steamstatic.com/public/javascript/scriptaculous/_combined.js?v=pbdAKOcDIgbC&amp;l=english&amp;_cdn=fastly&amp;load=effects,controls,slider,dragdrop\"></script>\n<script type=\"text/javascript\">\n\tArray.from = __ScriptaculousPreserve[0] || Array.from;\n\tFunction.prototype.bind = __ScriptaculousPreserve[1] || Function.prototype.bind;\n\tHTMLElement.prototype.scrollTo = __ScriptaculousPreserve[2] || HTMLElement.prototype.scrollTo;\ndelete String['__parseStyleElement'];  Prototype.Browser.WebKit = true;</script>\n<script type=\"text/javascript\">VALVE_PUBLIC_PATH = \"https:\\/\\/community.fastly.steamstatic.com\\/public\\/\";</script><script type=\"text/javascript\" src=\"https://community.fastly.steamstatic.com/public/javascript/global.js?v=tXRa2CF6Xych&amp;l=english&amp;_cdn=fastly\"></script>\n<script type=\"text/javascript\" src=\"https://community.fastly.steamstatic.com/public/javascript/jquery-1.11.1.min.js?v=gQHVlrK4-jX-&amp;l=english&amp;_cdn=fastly\"></script>\n<script type=\"text/javascript\" src=\"https://community.fastly.steamstatic.com/public/shared/javascript/tooltip.js?v=a9q1REOJMDBo&amp;l=english&amp;_cdn=fastly\"></script>\n<script type=\"text/javascript\" src=\"https://community.fastly.steamstatic.com/public/shared/javascript/shared_global.js?v=LKHHGyvATtqM&amp;l=english&amp;_cdn=fastly\"></script>\n<script type=\"text/javascript\" src=\"https://community.fastly.steamstatic.com/public/shared/javascript/auth_refresh.js?v=w6QbwI-5-j2S&amp;l=english&amp;_cdn=fastly\"></script>\n<script type=\"text/javascript\">Object.seal && [ Object, Array, String, Number ].map( function( builtin ) { Object.seal( builtin.prototype ); } );</script><script type=\"text/javascript\">$J = jQuery.noConflict();\nif ( typeof JSON != 'object' || !JSON.stringify || !JSON.parse ) { document.write( \"<scr\" + \"ipt type=\\\"text\\/javascript\\\" src=\\\"https:\\/\\/community.fastly.steamstatic.com\\/public\\/javascript\\/json2.js?v=54NKNglvGTO8&amp;l=english&amp;_cdn=fastly\\\"><\\/script>\\n\" ); };\n</script>\n\t\t<script type=\"text/javascript\">\n\t\t\tdocument.addEventListener('DOMContentLoaded', function(event) {\n\t\t\t\tSetupTooltips( { tooltipCSSClass: 'community_tooltip'} );\n\t\t});\n\t\t</script><script type=\"text/javascript\" src=\"https://community.fastly.steamstatic.com/public/javascript/modalv2.js?v=zBXEuexVQ0FZ&amp;l=english&amp;_cdn=fastly\"></script>\n<script type=\"text/javascript\" src=\"https://community.fastly.steamstatic.com/public/javascript/modalContent.js?v=uqf5ttWTRe7l&amp;l=english&amp;_cdn=fastly\"></script>\n<script type=\"text/javascript\" src=\"https://community.fastly.steamstatic.com/public/javascript/workshop_functions.js?v=xf67kNQdFh0Y&amp;l=english&amp;_cdn=fastly\"></script>\n<script type=\"text/javascript\" src=\"https://community.fastly.steamstatic.com/public/javascript/sharedfiles_functions_logged_out.js?v=v32Qc59_NiZ5&amp;l=english&amp;_cdn=fastly\"></script>\n<script type=\"text/javascript\" src=\"https://community.fastly.steamstatic.com/public/javascript/sharedfiles_guide_functions.js?v=pUwS4aTx-xar&amp;l=english&amp;_cdn=fastly\"></script>\n<script type=\"text/javascript\" src=\"https://community.fastly.steamstatic.com/public/javascript/applications/community/localization/loyaltyrewards_manifest.js?v=0TlabJvDa5nf&amp;l=english&amp;_cdn=fastly\"></script>\n<script type=\"text/javascript\" src=\"https://community.fastly.steamstatic.com/public/shared/javascript/shared_responsive_adapter.js?v=asNZNxt9kVQn&amp;l=english&amp;_cdn=fastly\"></script>\n\n\t\t\t\t\t\t<meta name=\"twitter:card\" content=\"summary_large_image\">\n\t\t\t\t\t<meta name=\"Description\" content=\"Simple tool for better keeping track of bestiary progress, intended for anyone aiming for 100% completion....\">\n\t\t\t\n\t<meta name=\"twitter:site\" content=\"@steam\" />\n\n\t\t\t\t\t\t<meta property=\"og:title\" content=\"Steam Community :: Guide :: FFV - Simplified Bestiary\">\n\t\t\t\t\t<meta property=\"twitter:title\" content=\"Steam Community :: Guide :: FFV - Simplified Bestiary\">\n\t\t\t\t\t<meta property=\"og:type\" content=\"website\">\n\t\t\t\t\t<meta property=\"fb:app_id\" content=\"105386699540688\">\n\t\t\t\t\t<meta property=\"og:description\" content=\"Simple tool for better keeping track of bestiary progress, intended for anyone aiming for 100% completion....\">\n\t\t\t\t\t<meta property=\"twitter:description\" content=\"Simple tool for better keeping track of bestiary progress, intended for anyone aiming for 100% completion....\">\n\t\t\t\n\t\n\t\t\t<link rel=\"image_src\" href=\"https://images.steamusercontent.com/ugc/1844784446610187062/43B60B94F69C8561761A47F321010EEF2FFC56A7/?imw=5000&amp;imh=5000&amp;ima=fit&amp;impolicy=Letterbox&amp;imcolor=%23000000&amp;letterbox=false\">\n\t\t<meta property=\"og:image\" content=\"https://images.steamusercontent.com/ugc/1844784446610187062/43B60B94F69C8561761A47F321010EEF2FFC56A7/?imw=5000&amp;imh=5000&amp;ima=fit&amp;impolicy=Letterbox&amp;imcolor=%23000000&amp;letterbox=false\">\n\t\t<meta name=\"twitter:image\" content=\"https://images.steamusercontent.com/ugc/1844784446610187062/43B60B94F69C8561761A47F321010EEF2FFC56A7/?imw=5000&amp;imh=5000&amp;ima=fit&amp;impolicy=Letterbox&amp;imcolor=%23000000&amp;letterbox=false\" />\n\t\t\t\t\n\t\n\t\n\t\n\t\n\t</head>\n<body class=\"apphub_blue responsive_page \" >\n\n\n<div class=\"responsive_page_frame with_header\">\n\t\t\t\t\t\t<div role=\"navigation\" class=\"responsive_page_menu_ctn mainmenu\" aria-label=\"Mobile Menu\">\n\t\t\t\t<div class=\"responsive_page_menu\"  id=\"responsive_page_menu\">\n\t\t\t\t\t\t\t\t\t\t<div class=\"mainmenu_contents\">\n\t\t\t\t\t\t<div class=\"mainmenu_contents_items\">\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"menuitem\" href=\"https://steamcommunity.com/login/home/?goto=sharedfiles%2Ffiledetails%2F%3Fid%3D2682517364\">\n\t\t\t\t\t\t\t\t\tSign in\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"menuitem supernav\" href=\"https://store.steampowered.com/\" data-tooltip-type=\"selector\" data-tooltip-content=\".submenu_Store\">\n\t\t\t\tStore\t\t\t</a>\n\t\t\t<div class=\"submenu_Store\" style=\"display: none;\" data-submenuid=\"Store\">\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"submenuitem\" href=\"https://store.steampowered.com/\">\n\t\t\t\t\t\tHome\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"submenuitem\" href=\"https://store.steampowered.com/explore/\">\n\t\t\t\t\t\tDiscovery Queue\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"submenuitem\" href=\"https://store.steampowered.com/wishlist/\">\n\t\t\t\t\t\tWishlist\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"submenuitem\" href=\"https://store.steampowered.com/points/shop/\">\n\t\t\t\t\t\tPoints Shop\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"submenuitem\" href=\"https://store.steampowered.com/news/\">\n\t\t\t\t\t\tNews\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"submenuitem\" href=\"https://store.steampowered.com/stats/\">\n\t\t\t\t\t\tCharts\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t\t\t\t\t<a class=\"menuitem supernav supernav_active\" href=\"https://steamcommunity.com/\" data-tooltip-type=\"selector\" data-tooltip-content=\".submenu_Community\">\n\t\t\t\tCommunity\t\t\t</a>\n\t\t\t<div class=\"submenu_Community\" style=\"display: none;\" data-submenuid=\"Community\">\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"submenuitem\" href=\"https://steamcommunity.com/\">\n\t\t\t\t\t\tHome\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"submenuitem\" href=\"https://steamcommunity.com/discussions/\">\n\t\t\t\t\t\tDiscussions\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"submenuitem\" href=\"https://steamcommunity.com/workshop/\">\n\t\t\t\t\t\tWorkshop\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"submenuitem\" href=\"https://steamcommunity.com/market/\">\n\t\t\t\t\t\tMarket\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"submenuitem\" href=\"https://steamcommunity.com/?subsection=broadcasts\">\n\t\t\t\t\t\tBroadcasts\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t\t\t\t\t<a class=\"menuitem \" href=\"https://store.steampowered.com/about/\">\n\t\t\t\tAbout\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t<a class=\"menuitem \" href=\"https://help.steampowered.com/en/\">\n\t\t\t\tSupport\t\t\t</a>\n\t\t\t\n\t\t\t\t\t\t\t<div class=\"minor_menu_items\">\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<div class=\"menuitem change_language_action\">\n\t\t\t\t\t\t\t\t\tChange language\t\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"menuitem\" href=\"https://store.steampowered.com/mobile\" target=\"_blank\" rel=\"noreferrer\">Get the Steam Mobile App</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<div class=\"menuitem\" role=\"link\" onclick=\"Responsive_RequestDesktopView();\">\n\t\t\t\t\t\t\t\t\t\tView desktop website\t\t\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t</div>\n\t\t\t\t\t\t<div class=\"mainmenu_footer_spacer  \"></div>\n\t\t\t\t\t\t<div class=\"mainmenu_footer\">\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<div class=\"mainmenu_footer_logo\"><img src=\"https://community.fastly.steamstatic.com/public/shared/images/responsive/footerLogo_valve_new.png\"></div>\n\t\t\t\t\t\t\t\t© Valve Corporation. All rights reserved. All trademarks are property of their respective owners in the US and other countries.\t\t\t\t\t\t\t\t<span class=\"mainmenu_valve_links\">\n\t\t\t\t\t\t\t\t\t<a href=\"https://store.steampowered.com/privacy_agreement/\" target=\"_blank\">Privacy Policy</a>\n\t\t\t\t\t\t\t\t\t&nbsp;| &nbsp;<a href=\"http://www.valvesoftware.com/legal.htm\" target=\"_blank\">Legal</a>\n\t\t\t\t\t\t\t\t\t&nbsp;| &nbsp;<a href=\"https://help.steampowered.com/faqs/view/10BB-D27A-6378-4436\" target=\"_blank\">Accessibility</a>\n\t\t\t\t\t\t\t\t\t&nbsp;| &nbsp;<a href=\"https://store.steampowered.com/subscriber_agreement/\" target=\"_blank\">Steam Subscriber Agreement</a>\n\t\t\t\t\t\t\t\t\t&nbsp;| &nbsp;<a href=\"https://store.steampowered.com/steam_refunds/\" target=\"_blank\">Refunds</a>\n\t\t\t\t\t\t\t\t\t&nbsp;| &nbsp;<a href=\"https://store.steampowered.com/account/cookiepreferences/\" target=\"_blank\">Cookies</a>\n\t\t\t\t\t\t\t\t</span>\n\t\t\t\t\t\t\t\t\t\t\t\t\t</div>\n\t\t\t\t\t</div>\n\t\t\t\t\t\t\t\t\t</div>\n\t\t\t</div>\n\t\t\n\t\t<div class=\"responsive_local_menu_tab\"></div>\n\n\t\t<div class=\"responsive_page_menu_ctn localmenu\">\n\t\t\t<div class=\"responsive_page_menu\"  id=\"responsive_page_local_menu\" data-panel=\"{&quot;onOptionsActionDescription&quot;:&quot;Filter&quot;,&quot;onOptionsButton&quot;:&quot;Responsive_ToggleLocalMenu()&quot;,&quot;onCancelButton&quot;:&quot;Responsive_ToggleLocalMenu()&quot;}\">\n\t\t\t\t<div class=\"localmenu_content\" data-panel=\"{&quot;maintainY&quot;:true,&quot;bFocusRingRoot&quot;:true,&quot;flow-children&quot;:&quot;column&quot;}\">\n\t\t\t\t</div>\n\t\t\t</div>\n\t\t</div>\n\n\n\n\t\t\t\t\t<div class=\"responsive_header\">\n\t\t\t\t<div class=\"responsive_header_content\">\n\t\t\t\t\t<div id=\"responsive_menu_logo\">\n\t\t\t\t\t\t<img src=\"https://community.fastly.steamstatic.com/public/shared/images/responsive/header_menu_hamburger.png\" height=\"100%\">\n\t\t\t\t\t\t\t\t\t\t\t</div>\n\t\t\t\t\t<div class=\"responsive_header_logo\">\n\t\t\t\t\t\t<a href=\"https://store.steampowered.com/\">\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<img src=\"https://community.fastly.steamstatic.com/public/shared/images/responsive/header_logo.png\" height=\"36\" border=\"0\" alt=\"STEAM\">\n\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t</div>\n\t\t\t\t\t\t\t\t\t</div>\n\t\t\t</div>\n\t\t\n\t\t<div class=\"responsive_page_content_overlay\">\n\n\t\t</div>\n\t\n\t<div class=\"responsive_page_content\">\n\n\t\t<div role=\"banner\" id=\"global_header\" data-panel=\"{&quot;flow-children&quot;:&quot;row&quot;}\">\n\t<div class=\"content\">\n\t\t<div class=\"logo\">\n\t\t\t<span id=\"logo_holder\">\n\t\t\t\t\t\t\t\t\t<a href=\"https://store.steampowered.com/\" aria-label=\"Link to the Steam Homepage\">\n\t\t\t\t\t\t<img src=\"https://community.fastly.steamstatic.com/public/shared/images/header/logo_steam.svg?t=962016\" width=\"144.5\" height=\"44\" alt=\"Link to the Steam Homepage\">\n\t\t\t\t\t</a>\n\t\t\t\t\t\t\t</span>\n\t\t</div>\n\n\t\t\t<div role=\"navigation\" class=\"supernav_container\" aria-label=\"Global Menu\">\n\t\t\t\t\t\t\t\t<a class=\"menuitem supernav\" href=\"https://store.steampowered.com/\" data-tooltip-type=\"selector\" data-tooltip-content=\".submenu_Store\">\n\t\t\t\tSTORE\t\t\t</a>\n\t\t\t<div class=\"submenu_Store\" style=\"display: none;\" data-submenuid=\"Store\">\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"submenuitem\" href=\"https://store.steampowered.com/\">\n\t\t\t\t\t\tHome\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"submenuitem\" href=\"https://store.steampowered.com/explore/\">\n\t\t\t\t\t\tDiscovery Queue\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"submenuitem\" href=\"https://store.steampowered.com/wishlist/\">\n\t\t\t\t\t\tWishlist\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"submenuitem\" href=\"https://store.steampowered.com/points/shop/\">\n\t\t\t\t\t\tPoints Shop\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"submenuitem\" href=\"https://store.steampowered.com/news/\">\n\t\t\t\t\t\tNews\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"submenuitem\" href=\"https://store.steampowered.com/stats/\">\n\t\t\t\t\t\tCharts\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t\t\t\t\t<a class=\"menuitem supernav supernav_active\" href=\"https://steamcommunity.com/\" data-tooltip-type=\"selector\" data-tooltip-content=\".submenu_Community\">\n\t\t\t\tCOMMUNITY\t\t\t</a>\n\t\t\t<div class=\"submenu_Community\" style=\"display: none;\" data-submenuid=\"Community\">\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"submenuitem\" href=\"https://steamcommunity.com/\">\n\t\t\t\t\t\tHome\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"submenuitem\" href=\"https://steamcommunity.com/discussions/\">\n\t\t\t\t\t\tDiscussions\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"submenuitem\" href=\"https://steamcommunity.com/workshop/\">\n\t\t\t\t\t\tWorkshop\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"submenuitem\" href=\"https://steamcommunity.com/market/\">\n\t\t\t\t\t\tMarket\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"submenuitem\" href=\"https://steamcommunity.com/?subsection=broadcasts\">\n\t\t\t\t\t\tBroadcasts\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t\t\t\t\t<a class=\"menuitem \" href=\"https://store.steampowered.com/about/\">\n\t\t\t\tAbout\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t<a class=\"menuitem \" href=\"https://help.steampowered.com/en/\">\n\t\t\t\tSUPPORT\t\t\t</a>\n\t\t\t\t</div>\n\t<script type=\"text/javascript\">\n\t\tjQuery(function($) {\n\t\t\t$('#global_header .supernav').v_tooltip({'location':'bottom', 'destroyWhenDone': false, 'tooltipClass': 'supernav_content', 'offsetY':-6, 'offsetX': 1, 'horizontalSnap': 4, 'tooltipParent': '#global_header .supernav_container', 'correctForScreenSize': false});\n\t\t});\n\t</script>\n\n\t\t<div id=\"global_actions\">\n\t\t\t<div role=\"navigation\" id=\"global_action_menu\" aria-label=\"Account Menu\">\n\t\t\t\t\t\t\t\t\t<a class=\"header_installsteam_btn header_installsteam_btn_green\" href=\"https://store.steampowered.com/about/\">\n\t\t\t\t\t\t<div class=\"header_installsteam_btn_content\">\n\t\t\t\t\t\t\tInstall Steam\t\t\t\t\t\t</div>\n\t\t\t\t\t</a>\n\t\t\t\t\n\t\t\t\t\n\t\t\t\t\t\t\t\t\t<a class=\"global_action_link\" href=\"https://steamcommunity.com/login/home/?goto=sharedfiles%2Ffiledetails%2F%3Fid%3D2682517364\">sign in</a>\n\t\t\t\t\t\t\t\t\t\t\t&nbsp;|&nbsp;\n\t\t\t\t\t\t<span class=\"pulldown global_action_link\" id=\"language_pulldown\" onclick=\"ShowMenu( this, 'language_dropdown', 'right' );\">language</span>\n\t\t\t\t\t\t<div class=\"popup_block_new\" id=\"language_dropdown\" style=\"display: none;\">\n\t\t\t\t\t\t\t<div class=\"popup_body popup_menu\">\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=schinese&id=2682517364\" onclick=\"ChangeLanguage( 'schinese' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\t简体中文 (Simplified Chinese)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=tchinese&id=2682517364\" onclick=\"ChangeLanguage( 'tchinese' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\t繁體中文 (Traditional Chinese)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=japanese&id=2682517364\" onclick=\"ChangeLanguage( 'japanese' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\t日本語 (Japanese)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=koreana&id=2682517364\" onclick=\"ChangeLanguage( 'koreana' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\t한국어 (Korean)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=thai&id=2682517364\" onclick=\"ChangeLanguage( 'thai' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tไทย (Thai)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=indonesian&id=2682517364\" onclick=\"ChangeLanguage( 'indonesian' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tBahasa Indonesia (Indonesian)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=malay&id=2682517364\" onclick=\"ChangeLanguage( 'malay' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tBahasa Melayu (Malay)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<span class=\"language_beta\">BETA</span>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=bulgarian&id=2682517364\" onclick=\"ChangeLanguage( 'bulgarian' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tБългарски (Bulgarian)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=czech&id=2682517364\" onclick=\"ChangeLanguage( 'czech' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tČeština (Czech)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=danish&id=2682517364\" onclick=\"ChangeLanguage( 'danish' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tDansk (Danish)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=german&id=2682517364\" onclick=\"ChangeLanguage( 'german' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tDeutsch (German)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=spanish&id=2682517364\" onclick=\"ChangeLanguage( 'spanish' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tEspañol - España (Spanish - Spain)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=latam&id=2682517364\" onclick=\"ChangeLanguage( 'latam' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tEspañol - Latinoamérica (Spanish - Latin America)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=greek&id=2682517364\" onclick=\"ChangeLanguage( 'greek' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tΕλληνικά (Greek)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=french&id=2682517364\" onclick=\"ChangeLanguage( 'french' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tFrançais (French)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=italian&id=2682517364\" onclick=\"ChangeLanguage( 'italian' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tItaliano (Italian)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=hungarian&id=2682517364\" onclick=\"ChangeLanguage( 'hungarian' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tMagyar (Hungarian)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=dutch&id=2682517364\" onclick=\"ChangeLanguage( 'dutch' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tNederlands (Dutch)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=norwegian&id=2682517364\" onclick=\"ChangeLanguage( 'norwegian' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tNorsk (Norwegian)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=polish&id=2682517364\" onclick=\"ChangeLanguage( 'polish' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tPolski (Polish)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=portuguese&id=2682517364\" onclick=\"ChangeLanguage( 'portuguese' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tPortuguês (Portuguese - Portugal)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=brazilian&id=2682517364\" onclick=\"ChangeLanguage( 'brazilian' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tPortuguês - Brasil (Portuguese - Brazil)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=romanian&id=2682517364\" onclick=\"ChangeLanguage( 'romanian' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tRomână (Romanian)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=russian&id=2682517364\" onclick=\"ChangeLanguage( 'russian' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tРусский (Russian)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=finnish&id=2682517364\" onclick=\"ChangeLanguage( 'finnish' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tSuomi (Finnish)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=swedish&id=2682517364\" onclick=\"ChangeLanguage( 'swedish' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tSvenska (Swedish)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=turkish&id=2682517364\" onclick=\"ChangeLanguage( 'turkish' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tTürkçe (Turkish)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=vietnamese&id=2682517364\" onclick=\"ChangeLanguage( 'vietnamese' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tTiếng Việt (Vietnamese)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"?l=ukrainian&id=2682517364\" onclick=\"ChangeLanguage( 'ukrainian' ); return false;\">\n\t\t\t\t\t\t\t\t\t\t\tУкраїнська (Ukrainian)\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<a class=\"popup_menu_item tight\" href=\"https://www.valvesoftware.com/contact?contact-person=Translation%20Team%20Feedback\" target=\"_blank\">Report a translation problem</a>\n\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t</div>\n\t\t\t\t\t\t\t\t\t\t\t\t</div>\n\t\t\t\t\t</div>\n\t\t\t</div>\n</div>\n<script type=\"text/javascript\">\n\tg_sessionID = \"e3a19a46aa8e373d6a94c42b\";\n\tg_steamID = false;\n\tg_strLanguage = \"english\";\n\tg_SNR = '2_100100_100101_100106';\n\tg_bAllowAppImpressions = true;\n\t\tg_ContentDescriptorPreferences = [1,3,4];\n\n\t\n\n\t// We always want to have the timezone cookie set for PHP to use\n\tsetTimezoneCookies();\n\n\t$J( function() {\n\n\t\t\t\t\tInitMiniprofileHovers(( 'https%3A%2F%2Fsteamcommunity.com' ));\n\t\t\tInitEmoticonHovers();\n\t\t\n\t\tApplyAdultContentPreferences();\n\t});\n\n\t$J( function() { InitEconomyHovers( \"https:\\/\\/community.fastly.steamstatic.com\\/public\\/css\\/skin_1\\/economy.css?v=RsRFFW9vaq1B&l=english&_cdn=fastly\", \"https:\\/\\/community.fastly.steamstatic.com\\/public\\/javascript\\/economy_common.js?v=TSVmDS2fQKJu&l=english&_cdn=fastly\", \"https:\\/\\/community.fastly.steamstatic.com\\/public\\/javascript\\/economy.js?v=pY7JMvljOOPC&l=english&_cdn=fastly\" );});</script>\n<div id=\"application_config\" style=\"display: none;\"  data-config=\"{&quot;EUNIVERSE&quot;:1,&quot;WEB_UNIVERSE&quot;:&quot;public&quot;,&quot;LANGUAGE&quot;:&quot;english&quot;,&quot;COUNTRY&quot;:&quot;TW&quot;,&quot;MEDIA_CDN_COMMUNITY_URL&quot;:&quot;https:\\/\\/shared.fastly.steamstatic.com\\/community_assets\\/&quot;,&quot;MEDIA_CDN_URL&quot;:&quot;https:\\/\\/cdn.fastly.steamstatic.com\\/&quot;,&quot;VIDEO_CDN_URL&quot;:&quot;https:\\/\\/video.fastly.steamstatic.com\\/&quot;,&quot;COMMUNITY_CDN_URL&quot;:&quot;https:\\/\\/community.fastly.steamstatic.com\\/&quot;,&quot;COMMUNITY_CDN_ASSET_URL&quot;:&quot;https:\\/\\/cdn.fastly.steamstatic.com\\/steamcommunity\\/public\\/assets\\/&quot;,&quot;STORE_CDN_URL&quot;:&quot;https:\\/\\/store.fastly.steamstatic.com\\/&quot;,&quot;PUBLIC_SHARED_URL&quot;:&quot;https:\\/\\/community.fastly.steamstatic.com\\/public\\/shared\\/&quot;,&quot;COMMUNITY_BASE_URL&quot;:&quot;https:\\/\\/steamcommunity.com\\/&quot;,&quot;CHAT_BASE_URL&quot;:&quot;https:\\/\\/steamcommunity.com\\/&quot;,&quot;STORE_BASE_URL&quot;:&quot;https:\\/\\/store.steampowered.com\\/&quot;,&quot;STORE_CHECKOUT_BASE_URL&quot;:&quot;https:\\/\\/checkout.steampowered.com\\/&quot;,&quot;IMG_URL&quot;:&quot;https:\\/\\/community.fastly.steamstatic.com\\/public\\/images\\/&quot;,&quot;STEAMTV_BASE_URL&quot;:&quot;https:\\/\\/steam.tv\\/&quot;,&quot;HELP_BASE_URL&quot;:&quot;https:\\/\\/help.steampowered.com\\/&quot;,&quot;PARTNER_BASE_URL&quot;:&quot;https:\\/\\/partner.steamgames.com\\/&quot;,&quot;STATS_BASE_URL&quot;:&quot;https:\\/\\/partner.steampowered.com\\/&quot;,&quot;INTERNAL_STATS_BASE_URL&quot;:&quot;https:\\/\\/steamstats.valve.org\\/&quot;,&quot;IN_CLIENT&quot;:false,&quot;USE_POPUPS&quot;:false,&quot;STORE_ICON_BASE_URL&quot;:&quot;https:\\/\\/shared.fastly.steamstatic.com\\/store_item_assets\\/steam\\/apps\\/&quot;,&quot;STORE_ITEM_BASE_URL&quot;:&quot;https:\\/\\/shared.fastly.steamstatic.com\\/store_item_assets\\/&quot;,&quot;WEBAPI_BASE_URL&quot;:&quot;https:\\/\\/api.steampowered.com\\/&quot;,&quot;TOKEN_URL&quot;:&quot;https:\\/\\/steamcommunity.com\\/chat\\/clientjstoken&quot;,&quot;BUILD_TIMESTAMP&quot;:1792509193,&quot;PAGE_TIMESTAMP&quot;:1792515657,&quot;IN_TENFOOT&quot;:false,&quot;IN_CHROMEOS&quot;:false,&quot;IN_MOBILE_WEBVIEW&quot;:false,&quot;PLATFORM&quot;:&quot;unknown&quot;,&quot;BASE_URL_STORE_CDN_ASSETS&quot;:&quot;https:\\/\\/cdn.fastly.steamstatic.com\\/store\\/&quot;,&quot;EREALM&quot;:1,&quot;LOGIN_BASE_URL&quot;:&quot;https:\\/\\/login.steampowered.com\\/&quot;,&quot;AVATAR_BASE_URL&quot;:&quot;https:\\/\\/avatars.fastly.steamstatic.com\\/&quot;,&quot;FROM_WEB&quot;:true,&quot;WEBSITE_ID&quot;:&quot;Community&quot;,&quot;BASE_URL_SHARED_CDN&quot;:&quot;https:\\/\\/shared.fastly.steamstatic.com\\/&quot;,&quot;CLAN_CDN_ASSET_URL&quot;:&quot;https:\\/\\/clan.fastly.steamstatic.com\\/&quot;,&quot;COMMUNITY_ASSETS_BASE_URL&quot;:&quot;https:\\/\\/shared.fastly.steamstatic.com\\/community_assets\\/&quot;,&quot;NOW&quot;:1792515657,&quot;SUPPORT_BASE_URL&quot;:&quot;https:\\/\\/steamsupport.valvesoftware.com\\/&quot;,&quot;SNR&quot;:&quot;2_100100_100101_100106&quot;}\" data-userinfo=\"{&quot;logged_in&quot;:false,&quot;country_code&quot;:&quot;TW&quot;,&quot;excluded_content_descriptors&quot;:[1,3,4]}\" data-community=\"[]\" data-loyaltystore=\"{&quot;webapi_token&quot;:&quot;&quot;}\" data-steam_notifications=\"null\"></div><link href=\"https://community.fastly.steamstatic.com/public/css/applications/community/main.css?v=ffA7xo5eR7aG&amp;l=english&amp;_cdn=fastly\" rel=\"stylesheet\" type=\"text/css\">\n<script type=\"text/javascript\">globalThis.CLSTAMP = \"11148902\";</script>\n<script type=\"text/javascript\" src=\"https://community.fastly.steamstatic.com/public/javascript/applications/community/manifest.js?v=rLahmBTz-2t1&amp;l=english&amp;_cdn=fastly\"></script>\n<script type=\"text/javascript\" src=\"https://community.fastly.steamstatic.com/public/javascript/applications/community/libraries~b28b7af69.js?v=HElEOW53yy_U&amp;l=english&amp;_cdn=fastly\"></script>\n<script type=\"text/javascript\" src=\"https://community.fastly.steamstatic.com/public/javascript/applications/community/main.js?v=XurpDbbgLYmI&amp;l=english&amp;_cdn=fastly\"></script>\n\t<div id=\"application_root\"></div>\n\n\t\t<div role=\"main\" class=\"responsive_page_template_content\" id=\"responsive_page_template_content\" data-panel=\"{&quot;autoFocus&quot;:true,&quot;navKey&quot;:&quot;responsive_page_template_content&quot;}\" >\n\n\t\t\t<script type=\"text/javascript\">\n\tvar publishedfileid = '2682517364';\n\tvar currentSectionID = '0';\n\tvar searchText = \"\";\n\n\taddEvent( window, \"scroll\", CheckForVisibleYouTubeVideos, false);\n\taddEvent( window, \"scroll\", OnScrollChangeGuideSection, false);\n\n\t$J( function()\n\t{\n\t\tif ( window.parent && window.parent !== window && window.parent.OnModalContentLoaded )\n\t\t\twindow.parent.OnModalContentLoaded();\n\n\t\t\t\t// fix the table of contents if the user tries to scroll past it\n\t\tnew FixedElementOnScrollWrapper( 'GuideTableOfContents', 60, true, 130, { fixedClass: 'fixed_in_scroll' } );\n\n\t\tnew FixedElementOnScrollWrapper( 'ScrollingItemControls', 0, false, 0, {fixedClass: 'fixed_in_scroll'} );\n\t\t\n\t\t// set the current selection\n\t\tif ( location.hash.length > 1 )\n\t\t{\n\t\t\tSelectGuideSection( location.hash.substring( 1 ), 'scrollTo' );\n\t\t}\n\t\telse\n\t\t{\n\t\t\tvar guideSection = GetGuideSection( publishedfileid );\n\t\t\tif ( guideSection != null )\n\t\t\t{\n\t\t\t\tSelectGuideSection( guideSection, 'changeHash' );\n\t\t\t}\n\t\t\telse\n\t\t\t{\n\t\t\t\tvar firstElem = $( \"guideSectionSelection_0\" );\n\t\t\t\tfirstElem.addClassName( 'selected' );\n\t\t\t}\n\t\t}\n\n\t\tCheckForVisibleYouTubeVideos();\n\t} );\n\n\tfunction GetGuideSection( publishedfileid )\n\t{\n\t\tvar sections = WebStorage.GetLocal('GuideSections');\n\t\tif( sections && sections.length > 0 )\n\t\t{\n\t\t\tfor( var i=0; i<sections.length; i++)\n\t\t\t{\n\t\t\t\tvar section = sections[i];\n\t\t\t\tif( section.id == publishedfileid )\n\t\t\t\t\treturn section.section;\n\t\t\t}\n\t\t}\n\t\treturn null;\n\t}\n\n\tfunction SaveGuideSection( publishedfileid, strSectionName )\n\t{\n\t\tvar sections = WebStorage.GetLocal('GuideSections');\n\t\tif( sections == null )\n\t\t\tsections = [];\n\n\t\tif( sections && sections.length > 0 )\n\t\t{\n\t\t\tfor( var i=0; i<sections.length; i++)\n\t\t\t{\n\t\t\t\tvar section = sections[i];\n\t\t\t\tif( section.id == publishedfileid )\n\t\t\t\t{\n\t\t\t\t\tsection.section = strSectionName;\n\t\t\t\t\tWebStorage.SetLocal('GuideSections', sections );\n\t\t\t\t\treturn;\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t\t// Evict an item from the object to make room\n\t\tif( sections.length > 25 )\n\t\t\tsections.shift();\n\n\t\tsections.push({ id: publishedfileid, section: strSectionName });\n\t\tWebStorage.SetLocal('GuideSections', sections );\n\t}\n\n\tfunction onModalHidden()\n\t{\n\t\t// stop any videos\n\t\tif (  typeof ytplayer != 'undefined' && ytplayer  )\n\t\t{\n\t\t\tytplayer.stopVideo();\n\t\t}\n\t}\n\n\tfunction ToggleSectionVisibility( browseBar, elementID )\n\t{\n\t\tif ( $(elementID).visible() )\n\t\t{\n\t\t\t$(browseBar).className = \"rightSectionBrowseBar\";\n\t\t\t$(elementID).hide();\n\t\t}\n\t\telse\n\t\t{\n\t\t\t$(browseBar).className = \"rightSectionBrowseBar toggled\";\n\t\t\t$(elementID).show();\n\t\t}\n\t}\n\n\tEvent.observe(window, 'dom:loaded', function() {\n\t\tif ( searchText )\n\t\t{\n\t\t\tHighlightSearchText( searchText, $('highlightContent') );\n\n\t\t\tvar rgSections = $$('div.subSection' );\n\t\t\tfor ( var i = 0; i < rgSections.length; ++i )\n\t\t\t{\n\t\t\t\tvar section = rgSections[i];\n\t\t\t\tHighlightSearchText( searchText, section );\n\t\t\t}\n\t\t}\n\t});\n\n</script>\n\n<div class=\"sharedfiles_item_page_header\">\n\t\n\n<div class=\"apphub_HomeHeaderContent\">\n\n\n\t<script lang=\"js\">\n\t\tconst g_bIsAppHubModerator = 0;\n\t</script>\n\n\t\n\t\n\t<div class=\"apphub_HeaderTop\">\n\t\t<div class=\"apphub_OtherSiteInfo responsive_hidden\">\n\t\t\t\n\t\t\t\t\t\t\t<a style=\"position: relative; z-index: 1;\" class=\"btnv6_blue_hoverfade btn_medium\" href=\"https://store.steampowered.com/app/1173810?snr=2_100100_100101_100106_apphubheader\" data-appid=\"1173810\">\n\t\t\t\t\t<span>Store Page</span>\n\t\t\t\t</a>\n\t\t\t\t\t</div>\n\t\t<div class=\"apphub_AppDetails\">\n\t\t\t<div class=\"apphub_AppIcon\"><img src=\"https://shared.fastly.steamstatic.com/community_assets/images/apps/1173810/44e0c2ea2c929fe4f6ba94ea1a63a3f858a80b10.jpg\"><div class=\"overlay\"></div></div>\n\t\t\t<div class=\"apphub_AppName ellipsis\">FINAL FANTASY V</div>\n\t\t</div>\n\t\t<div style=\"clear: both\"></div>\n\n\t\t\n\t\t\t\t<div data-panel=\"{&quot;maintainX&quot;:true,&quot;bFocusRingRoot&quot;:true,&quot;flow-children&quot;:&quot;row&quot;}\" class=\"apphub_sectionTabs responsive_hidden\">\n\t\t\t\t\n\t<a href=\"https://steamcommunity.com/app/1173810\" class=\"apphub_sectionTab  \"><span>All</span></a>\n\t\t\n\t<a href=\"https://steamcommunity.com/app/1173810/discussions/\" class=\"apphub_sectionTab  \"><span>Discussions</span></a>\n\t\t\n\t<a href=\"https://steamcommunity.com/app/1173810/screenshots/\" class=\"apphub_sectionTab  \"><span>Screenshots</span></a>\n\t\t\n\t<a href=\"https://steamcommunity.com/app/1173810/images/\" class=\"apphub_sectionTab  \"><span>Artwork</span></a>\n\t\t\n\t<a href=\"https://steamcommunity.com/app/1173810/broadcasts/\" class=\"apphub_sectionTab  \"><span>Broadcasts</span></a>\n\t\t\n\t<a href=\"https://steamcommunity.com/app/1173810/videos/\" class=\"apphub_sectionTab  \"><span>Videos</span></a>\n\t\t\n\t<a href=\"https://steamcommunity.com/app/1173810/allnews/\" class=\"apphub_sectionTab  \"><span>News</span></a>\n\t\t\n\t<a href=\"https://steamcommunity.com/app/1173810/guides/\" class=\"apphub_sectionTab active \"><span>Guides</span></a>\n\t\t\n\t<a href=\"https://steamcommunity.com/app/1173810/reviews/\" class=\"apphub_sectionTab  \"><span>Reviews</span></a>\n\t\t\t</div>\n\n\t\t<div class=\"nonresponsive_hidden responsive_tab_ctn sharedfiles_responsive_tab\">\n\t\t\t<div class=\"responsive_tab_control\">\n\t\t\t\t<div class=\"responsive_tab_control_inner\">\n\t\t\t\t\t\t\t\t\t\t<select class=\"responsive_tab_select\" id=\"responsive_tab_select6ad79e4960169\">\n\t\t\t\t\t\t\t\t\t\t\t\t\t<option value=\"https://steamcommunity.com/app/1173810\" >\n\t\t\t\t\t\t\t\tAll\t\t\t\t\t\t\t</option>\n\t\t\t\t\t\t\t\t\t\t\t\t\t<option value=\"https://steamcommunity.com/app/1173810/discussions/\" >\n\t\t\t\t\t\t\t\tDiscussions\t\t\t\t\t\t\t</option>\n\t\t\t\t\t\t\t\t\t\t\t\t\t<option value=\"https://steamcommunity.com/app/1173810/screenshots/\" >\n\t\t\t\t\t\t\t\tScreenshots\t\t\t\t\t\t\t</option>\n\t\t\t\t\t\t\t\t\t\t\t\t\t<option value=\"https://steamcommunity.com/app/1173810/images/\" >\n\t\t\t\t\t\t\t\tArtwork\t\t\t\t\t\t\t</option>\n\t\t\t\t\t\t\t\t\t\t\t\t\t<option value=\"https://steamcommunity.com/app/1173810/broadcasts/\" >\n\t\t\t\t\t\t\t\tBroadcasts\t\t\t\t\t\t\t</option>\n\t\t\t\t\t\t\t\t\t\t\t\t\t<option value=\"https://steamcommunity.com/app/1173810/videos/\" >\n\t\t\t\t\t\t\t\tVideos\t\t\t\t\t\t\t</option>\n\t\t\t\t\t\t\t\t\t\t\t\t\t<option value=\"https://steamcommunity.com/app/1173810/allnews/\" >\n\t\t\t\t\t\t\t\tNews\t\t\t\t\t\t\t</option>\n\t\t\t\t\t\t\t\t\t\t\t\t\t<option value=\"https://steamcommunity.com/app/1173810/guides/\" selected>\n\t\t\t\t\t\t\t\tGuides\t\t\t\t\t\t\t</option>\n\t\t\t\t\t\t\t\t\t\t\t\t\t<option value=\"https://steamcommunity.com/app/1173810/reviews/\" >\n\t\t\t\t\t\t\t\tReviews\t\t\t\t\t\t\t</option>\n\t\t\t\t\t\t\t\t\t\t\t</select>\n\t\t\t\t</div>\n\t\t\t</div>\n\t\t\t<div class=\"responsive_tab_baseline\"></div>\n\t\t</div>\n\t</div>\n\t<div class=\"apphub_sectionTabsHR responsive_hidden\"></div>\n\n\n\t<!-- these elements are used to populate the local menu on responsive pages -->\n\t<div style=\"display: none;\">\n\t\t<div class=\"responsive_local_menu apphub_responsive_menu\">\n\t\t\t<h3 class=\"ellipsis apphub_responsive_menu_title\">FINAL FANTASY V</h3>\n\t\t\t<div class=\"apphub_ResponsiveMenuCtn\">\n\t\t\t\t\t\t\t\t\t<a style=\"position: relative; z-index: 1;\" class=\"btnv6_blue_hoverfade btn_medium\" href=\"https://store.steampowered.com/app/1173810\">\n\t\t\t\t\t\t<span>Store Page</span>\n\t\t\t\t\t</a>\n\t\t\t\t\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t\t\t\t\t\t</div>\n\t</div>\n\t<!-- end responsive menu -->\n\n\t\n</div>\n\n\t<div class=\"apphub_HeaderBottomBG_ctn\">\n\t\t<div class=\"apphub_HeaderBottomBG_blur\"></div><div class=\"apphub_HeaderBottomBG\"></div>\n\t</div>\n\t\t<div class=\"breadcrumbs\">\n\t\t\t\t\t\t\t\t\t<a data-panel=\"{&quot;noFocusRing&quot;:true}\" href=\"https://steamcommunity.com/app/1173810\">FINAL FANTASY V</a>\n\t\t\t\t\t\t<span class=\"breadcrumb_separator\">&gt;&nbsp;</span><a data-panel=\"{&quot;noFocusRing&quot;:true}\" href=\"https://steamcommunity.com/app/1173810/guides/\">Guides</a>\n\t\t\t\t\t\t<span class=\"breadcrumb_separator\">&gt;&nbsp;</span><a data-panel=\"{&quot;noFocusRing&quot;:true}\" href=\"https://steamcommunity.com/id/speckle135/myworkshopfiles/?section=guides&appid=1173810\">Speckle's Guides</a>\n\t\t\t\t\t\t\t\t</div>\n\t</div>\n<div id=\"ig_bottom\" class=\"nobg mediaBody\">\n\n\t\t\t<div class=\"bannedNotification\" id=\"bannedNotification\" style=\"display: none\" >\n\t\t\tThis item has been removed from the community because it violates Steam Community & Content Guidelines. It is only visible to you. If you believe your item has been removed by mistake, please contact <a href=\"https://help.steampowered.com/en/wizard/HelpWithSteamIssue/?issueid=415\" target=\"_blank\" rel=\"\" >Steam Support</a>.\t\t\t\t\t</div>\n\t\t<div class=\"incompatibleNotification\" id=\"incompatibleNotification\" style=\"display: none\" >\n\t\t\t\t\t\t\tThis item is incompatible with FINAL FANTASY V. Please see the <a href=\"https://steamcommunity.com\">instructions page</a> for reasons why this item might not work within FINAL FANTASY V.\t\t\t\t\t</div>\n\n\t\t\n\t\t\n\t\t\n\t\t\n\t\t\n\n\t\t\n\t\t\n\t<div data-panel=\"{&quot;type&quot;:&quot;PanelGroup&quot;}\" class=\"guideTop\">\n\t\t<div id=\"detailsHeaderRight\">\n\t\t\t<!-- top level info -->\n\t\t\t\t\t\t\t<div class=\"ratingSection\">\n\t\t\t\t\t<div class=\"fileRatingDetails\"><img src=\"https://community.fastly.steamstatic.com/public/images/sharedfiles/not-yet_large.png?v=2\" /></div>\n\t\t\t\t\t\t\t\t\t\t\tNot enough ratings\t\t\t\t\t\t\t\t\t</div>\n\t\t\t\t\t</div>\n\t\t<div class=\"guideTopContent\">\n\t\t\t<div class=\"guidePreviewImage\">\n\t\t\t\t<img src=\"https://images.steamusercontent.com/ugc/1844784446610187062/43B60B94F69C8561761A47F321010EEF2FFC56A7/?imw=128&imh=128&ima=fit&impolicy=Letterbox&imcolor=%23000000&letterbox=true\"/>\n\t\t\t</div>\n\t\t\t<div class=\"workshopItemTitle\">FFV - Simplified Bestiary</div>\n\t\t\t<div class=\"guideAuthors\">By Speckle</div>\n\t\t\t<div class=\"dotHR\"></div>\n\t\t\t<div style=\"clear: left\"></div>\n\t\t\t<div class=\"guideTopDescription\" id=\"highlightContent\">Simple tool for better keeping track of bestiary progress, intended for anyone aiming for 100% completion.</div>\n\t\t</div>\n\t\t<div class=\"workshopItemControlsCtn\" id=\"ScrollingItemControls\">\n\t\t\t\t<div class=\"workshopItemControls\" id=\"ItemControls\">\n\t\t<div class=\"workshopItemRatings\">\n\t\t\t\t\t\t<div class=\"review_award_ctn\">\n\t\t\t\t\t\t\t</div>\n\t\t</div>\n\t\t<div class=\"workshopItemControlCtn\">\n\t\t\t\t\t\t\t<span data-panel=\"{&quot;focusable&quot;:true,&quot;clickOnActivate&quot;:true}\" role=\"button\" onclick=\"VoteUp(2682517364);\" id=\"VoteUpBtn\" class=\"general_btn voteUp \">&nbsp;</span>\n\t\t\t\t<span data-panel=\"{&quot;focusable&quot;:true,&quot;clickOnActivate&quot;:true}\" role=\"button\" onclick=\"VoteDown(2682517364);\" id=\"VoteDownBtn\" class=\"general_btn voteDown \">&nbsp;</span>\n\t\t\t\t\t</div>\n\n\t\t<span data-panel=\"{&quot;focusable&quot;:true,&quot;clickOnActivate&quot;:true}\" role=\"button\" onClick=\"PublishedFileAward( '2682517364', 9 )\" class=\"general_btn\"><span><img src=\"https://community.fastly.steamstatic.com/public/shared/images//award_icon.svg\" class=\"reward_btn_icon\">Award</span></span>\n\n\t\t\n\t\t<div class=\"workshopItemControlCtn\">\n\t\t\t<span data-panel=\"{&quot;focusable&quot;:true,&quot;clickOnActivate&quot;:true}\" role=\"button\" onclick=\"FavoriteItem();\" id=\"FavoriteItemBtn\" class=\"general_btn favorite tooltip \" data-tooltip-text=\"Easily find this item again later\">\n\t\t\t\t<div class=\"favoriteText\">\n\t\t\t\t\t<div id=\"FavoriteItemOptionAdd\" class=\"favoriteOption addfavorite selected\">Favorite</div>\n\t\t\t\t\t<div id=\"FavoriteItemOptionFavorited\" class=\"favoriteOption favorited \">Favorited</div>\n\t\t\t\t\t<div class=\"favoriteOption removefavorite\">Unfavorite</div>\n\t\t\t\t</div>\n\t\t\t</span>\n\n\t\t\t\n\t\t\t\t\t\t<span data-panel=\"{&quot;focusable&quot;:true,&quot;clickOnActivate&quot;:true}\" role=\"button\" onclick=\"ShowSharePublishedFilePopup( '2682517364', '1173810' );\" id=\"ShareItemBtn\" class=\"general_btn share tooltip\" data-tooltip-text=\"Share this item on Steam or your favorite social network\">Share</span>\n\t\t\t\t\t</div>\n\n\t\t\n\t\t\n\t\t<div class=\"vertical_divider\"></div>\n\n\t\t\t\t\t<div class=\"workshopItemControlCtn\">\n\t\t\t\t<span data-panel=\"{&quot;focusable&quot;:true,&quot;clickOnActivate&quot;:true}\" role=\"button\" onclick=\"ShowContentReportDialog( { type: 'ugcfile', publishedFileId: '2682517364' } );\" id=\"ReportItemBtn\" class=\"general_btn report tooltip \" data-tooltip-text=\"Report this item for violating the Steam Online Conduct Rules\"></span>\n\t\t\t</div>\n\t\t\t<div  data-featuretarget=\"content-moderation-report-dialog\"></div>\t\t\n\t\t\n\t\t\t\t<div id=\"action_wait\" style=\"display: none;\"><img src=\"https://community.fastly.steamstatic.com/public/images/login/throbber.gif\"></div>\n\t</div>\n\n\t<div id=\"JustFavorited\" class=\"just_added_to_list\" style=\"display: none\">\n\t\t<div class=\"just_added_favorite_icon\"></div>\n\t\t<div class=\"just_added_text\">This item has been added to your <a href=\"https://steamcommunity.com/my/myworkshopfiles/?section=guides&browsefilter=myfavorites\">Favorites</a>.</div>\n\t\t<div class=\"close_notification\"><span data-panel=\"{&quot;focusable&quot;:true,&quot;clickOnActivate&quot;:true}\" role=\"button\" onclick=\"CloseNotification( 'JustFavorited' );\" class=\"close\"><img src=\"https://community.fastly.steamstatic.com/public/images/sharedfiles/ico_dialogue_close.png\"></span></div>\n\t\t<div style=\"clear:both\"></div>\n\t</div>\n\t\t</div>\n\t\t<div style=\"clear: both\"></div>\n\t</div>\n\n\t<div id=\"sharedfiles_content_ctn\" data-miniprofile-appid=\"1173810\">\n\n\t\t<!-- right side contents -->\n\t\t<div data-panel=\"{&quot;maintainY&quot;:true,&quot;onMoveDown&quot;:&quot;BlockMovement&quot;,&quot;onMoveUp&quot;:&quot;BlockMovement&quot;,&quot;flow-children&quot;:&quot;column&quot;}\" id=\"rightContents\" class=\"responsive_local_menu\">\n\t\t\t<div class=\"sidebar\">\n\t\t\t\t<!-- created by -->\n\t\t\t\t<div class=\"panel\">\n\t\t\t\t\t\n<div class=\"rightSectionTopTitle condensed\">Created by</div>\n<div class=\"rightDetailsBlock\">\n\t<div class=\"creatorsBlock\">\n\t\t\t\t<div data-panel=\"{&quot;flow-children&quot;:&quot;column&quot;}\" class=\"friendBlock persona offline\" data-miniprofile=\"160429281\" >\n\t\t\t\t\t\t<a class=\"friendBlockLinkOverlay\" href=\"https://steamcommunity.com/id/speckle135\"></a>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t<div class=\"playerAvatar offline\">\n\t\t\t\t<img src=\"https://avatars.fastly.steamstatic.com/7e0b65cefbf8f42df29c65ab139df69b457cb329_medium.jpg\">\n\t\t\t</div>\n\t\t\t<div class=\"friendBlockContent\">\n\t\t\t\tSpeckle<br>\n\t\t\t\t<span class=\"friendSmallText\">\n\t\tOffline\n\t\t\t\t</span>\n\t\t\t</div>\n\t\t</div>\n\t\t\t</div>\n</div>\n\n\n\t\t\t\t\t<div class=\"hr padded\"></div>\t<div class=\"rightDetailsBlock\">\n\t<div data-panel=\"{&quot;type&quot;:&quot;PanelGroup&quot;}\" class=\"workshopTags\"><span class=\"workshopTagsTitle\">Category:&nbsp;</span><a href=\"https://steamcommunity.com/app/1173810/guides/?browsesort=trend&filetype=11&requiredtags%5B%5D=Achievements\">Achievements</a>, <a href=\"https://steamcommunity.com/app/1173810/guides/?browsesort=trend&filetype=11&requiredtags%5B%5D=Secrets\">Secrets</a>, <a href=\"https://steamcommunity.com/app/1173810/guides/?browsesort=trend&filetype=11&requiredtags%5B%5D=Walkthroughs\">Walkthroughs</a></div>\t</div>\n\n\t\t\t\t\t<div class=\"hr padded\"></div>\n\n\t\t\t\t\t<div class=\"rightDetailsBlock\">\n\t\t\t\t\t\t<div class=\"detailsStatsContainerLeft\">\n\t\t\t\t\t\t\t<div class=\"detailsStatLeft\">Posted </div>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<div class=\"detailsStatLeft\">Updated </div>\n\t\t\t\t\t\t\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t<div class=\"detailsStatsContainerRight\">\n\t\t\t\t\t\t\t<div class=\"detailsStatRight\">14 Dec, 2021 @ 12:36pm</div>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<div class=\"detailsStatRight\">14 Dec, 2021 @ 12:47pm</div>\n\t\t\t\t\t\t\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t<div style=\"clear:left\"></div>\n\t\t\t\t\t</div>\n\t\t\t\t</div>\n\n\t\t\t\t\t<div class=\"panel\">\n\t\t\t<table class=\"stats_table\">\n\t\t\t\t\t\t\t\t<tr>\n\t\t\t\t\t<td>969</td>\n\t\t\t\t\t<td>Unique Visitors</td>\n\t\t\t\t</tr>\n\t\t\t\t\t\t\t\t\t\t\t\t<tr>\n\t\t\t\t\t<td>8</td>\n\t\t\t\t\t<td>Current Favorites</td>\n\t\t\t\t</tr>\n\t\t\t</table>\n\t</div>\n\t\t\t<!-- favorited by -->\n\t\t\t\n\t\t\t\t<div class=\"panel responsive_OnClickDismissMenu\" id=\"GuideTableOfContents\">\n\t\t\t\t\t<div class=\"rightSectionTopTitle\">Guide Index</div>\n\n\t\t\t\t\t<div class=\"hr smallpadded\"></div>\n\n\t\t\t\t\t<div class=\"rightbox_list_option\" id=\"guideSectionSelection_0\">\n\t\t\t\t\t\t<div class=\"rightbox_list_selection_background\"></div>\n\t\t\t\t\t\t<div class=\"guideSubSectionSelectionLink ellipsis\">\n\t\t\t\t\t\t\t<a onclick=\"SelectGuideSection( '0', 'changeHash' )\">Overview</a>\n\t\t\t\t\t\t</div>\n\t\t\t\t\t</div>\n\t\t\t\t\t<div class=\"hr smallpadded\"></div>\n\n\t\t\t\t\t\t\t\t\t\t\t\t<div class=\"rightbox_list_option\" id=\"guideSectionSelection_4996318\">\n\t\t\t\t\t\t\t\t<div class=\"rightbox_list_selection_background\"></div>\n\t\t\t\t\t\t\t\t<div class=\"guideSubSectionSelectionLink ellipsis\">\n\t\t\t\t\t\t\t\t\t<a onclick=\"javascript:SelectGuideSection( '4996318', 'changeHash' )\">Description</a>&nbsp;\n\t\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<div class=\"rightbox_list_option\" id=\"guideSectionSelection_4996324\">\n\t\t\t\t\t\t\t\t<div class=\"rightbox_list_selection_background\"></div>\n\t\t\t\t\t\t\t\t<div class=\"guideSubSectionSelectionLink ellipsis\">\n\t\t\t\t\t\t\t\t\t<a onclick=\"javascript:SelectGuideSection( '4996324', 'changeHash' )\">Bestiary</a>&nbsp;\n\t\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t<div class=\"rightbox_list_option\" id=\"guideSectionSelection_4996325\">\n\t\t\t\t\t\t\t\t<div class=\"rightbox_list_selection_background\"></div>\n\t\t\t\t\t\t\t\t<div class=\"guideSubSectionSelectionLink ellipsis\">\n\t\t\t\t\t\t\t\t\t<a onclick=\"javascript:SelectGuideSection( '4996325', 'changeHash' )\">Closing Note</a>&nbsp;\n\t\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t\t\n\t\t\t\t\t<div class=\"hr smallpadded\"></div>\n\t\t\t\t\t<div class=\"rightbox_list_option\" id=\"guideSectionSelection_-1\">\n\t\t\t\t\t\t<div class=\"rightbox_list_selection_background\"></div>\n\t\t\t\t\t\t<div class=\"guideSubSectionSelectionLink ellipsis\">\n\t\t\t\t\t\t\t<a onclick=\"javascript:SelectGuideSection( '-1', 'changeHash' )\">Comments</a>\n\t\t\t\t\t\t</div>\n\t\t\t\t\t</div>\n\t\t\t\t</div>\n\t\t\t</div>\n\t\t</div>\n\n\n\t\t<div data-panel=\"{&quot;maintainY&quot;:true,&quot;flow-children&quot;:&quot;column&quot;}\" id=\"profileBlock\" class=\"clearfix\">\n\n\t\t\t<div class=\"guide subSections\">\n\t\t\t\t\t\t\t\t\t\t<div class=\"subSection detailBox\" id=\"4996318\">\n\t\t\t\t\t\t\t<div class=\"subSectionTitle\">\n\t\t\t\t\t\t\t\tDescription\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t\t<div class=\"subSectionDesc\">\n\t\t\t\t\t\t\t\tThis is a simple list of every enemy in the game. It does not list locations or stats, only the name and corresponding number of each enemy. It is recommended that you copy and paste this list into a separate doc and subtract entries as you discover them during your playthrough. Alternatively, you can access the attached Google Docs link and save a copy.<br><br>Link: <a class=\"bb_link\" href=\"https://steamcommunity.com/linkfilter/?u=https%3A%2F%2Fdocs.google.com%2Fdocument%2Fd%2F1J2WBXMqwPoa6zKGuKHvrRYeoBSFvWbfS1B7NDTsO7ms%2Fedit%3Fusp%3Dsharing\" target=\"_blank\" rel=\" noopener\" >https://docs.google.com/document/d/1J2WBXMqwPoa6zKGuKHvrRYeoBSFvWbfS1B7NDTsO7ms/edit?usp=sharing</a><br><br>This is best used as a tool for keeping track of discovered monsters during a playthrough! Good luck on 100% completion!\t\t\t\t\t\t\t\t<div style=\"clear: both\"></div>\n\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t</div>\n\t\t\t\t\t\t<div style=\"clear: both\"></div>\n\t\t\t\t\t\t\t\t\t\t\t\t<div class=\"subSection detailBox\" id=\"4996324\">\n\t\t\t\t\t\t\t<div class=\"subSectionTitle\">\n\t\t\t\t\t\t\t\tBestiary\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t\t<div class=\"subSectionDesc\">\n\t\t\t\t\t\t\t\t1.\tGoblin<br>2.\tSteel Bat<br>3.\tDevil Crab<br>4.\tStroper<br>5.\tKiller Bee<br>6.\tNutkin<br>7.\tStray Cat<br>8.\tBlack Goblin<br>9.\tWhite Serpent<br>10.\tMoldwynd<br>11.\tMani Wizard<br>12.\tSkeleton<br>13.\tCalcruthl<br>14.\tUndead Husk<br>15.\tMindflusher<br>16.\tGatling<br>17.\tBig Horn<br>18.\tTatou<br>19.\tBandersnatch<br>20.\tGarula<br>21.\tRock Slug<br>22.\tGaelicat<br>23.\tCockatrice<br>24.\tHeadstone<br>25.\tElf Toad<br>26.\tIce Soldier<br>27.\tRicard Mage<br>28.\tWyvern<br>29.\tPas de Seul<br>30.\tJackanapes<br>31.\tAegir<br>32.\tZu<br>33.\tWild Nakk<br>34.\tGrass Tortoise<br>35.\tSilent Bee<br>36.\tMythril Dragon<br>37.\tCrew Dust<br>38.\tPoltergeist<br>39.\tDefeater<br>40.\tMotor Trap<br>41.\tSergeant<br>42.\tSorcerer<br>43.\tCur Nakk<br>44.\tGigas<br>45.\tPage 32<br>46.\tPage 64<br>47.\tPage 128<br>48.\tPage 256<br>49.\tBomb<br>50.\tDoublizard<br>51.\tBio Soldier<br>52.\tHarvester<br>53.\tBlack Flame<br>54.\tStone Golem<br>55.\tMini Dragon<br>56.\tPrototype<br>57.\tSkull Eater<br>58.\tDhorme Chimera<br>59.\tSandboil<br>60.\tDesert Killer<br>61.\tSand Bear<br>62.\tRa Mage<br>63.\tRonkan Knight<br>64.\tStone Mask<br>65.\tEnchanted Fan<br>66.\tLamia<br>67.\tArcheotoad<br>68.\tHydra<br>69.\tGhidra<br>70.\tPao<br>71.\tTarantula<br>72.\tShell Bear<br>73.\tDevilfish<br>74.\tTreant<br>75.\tStrapparer<br>76.\tMerrow<br>77.\tFlying Killer<br>78.\tLittle Chariot<br>79.\tNeo Garula<br>80.\tTunneller<br>81.\tBirostris<br>82.\tFairy Orc<br>83.\tDevourer<br>84.\tMandrake<br>85.\tKuza Beast<br>86.\tShield Dragon<br>87.\tExdeath's Soul<br>88.\tBlood Slime<br>89.\tAcrophies<br>90.\tMoogle Eater<br>91.\tLesser Lopros<br>92.\tCactus<br>93.\tSandcrawler<br>94.\tAquathorn<br>95.\tWeresnake<br>96.\tKornago<br>97.\tCursed Being<br>98.\tUndergrounder<br>99.\tObjet d'Art<br>100.\tDrippy<br>101.\tLycaon<br>102.\tBone Dragon<br>103.\tPoison Eagle<br>104.\tZombie Dragon<br>105.\tGobbledygook<br>106.\tNeon<br>107.\tMagnetite<br>108.\tReflect Knight<br>109.\tTraveler<br>110.\tLevel Tricker<br>111.\tGravitator<br>112.\tZiggurat Gigas<br>113.\tDark Aspic<br>114.\tMetamorph<br>115.\tCure Beast<br>116.\tLand Turtle<br>117.\tDechirer<br>118.\tMini Magician<br>119.\tGalajelly<br>120.\tMammon<br>121.\tImp<br>122.\tWyrm<br>123.\tTwin Lizard<br>124.\tBlind Wolf<br>125.\tHellraiser<br>126.\tReflect Mage<br>127.\tMagic Dragon<br>128.\tBlack Warlock<br>129.\tAdamantite Golem<br>130.\tBandercoeurl<br>131.\tIron Fist<br>132.\tBlue Dragon<br>133.\tRed Dragon<br>134.\tYellow Dragon<br>135.\tSleepy<br>136.\tTriffid<br>137.\tHedgehog<br>138.\tPython<br>139.\tShadow<br>140.\tElm Gigas<br>141.\tDesertpede<br>142.\tBulette<br>143.\tLamia Queen<br>144.\tRajiformes<br>145.\tUshabti<br>146.\tArcheosaur<br>147.\tZephyrus<br>148.\tMummy<br>149.\tAspis<br>150.\tMecha Head<br>151.\tThe Damned<br>152.\tGrand Mummy<br>153.\tSekhmet<br>154.\tSlug<br>155.\tGloom Widow<br>156.\tMykale<br>157.\tExecutor<br>158.\tOiseaurare<br>159.\tShadow Dancer<br>160.\tNumb Blade<br>161.\tTot Aevis<br>162.\tTiny Mage<br>163.\tChrono Controller<br>164.\tFlaremancer<br>165.\tDueling Knight<br>166.\tIron Muscles<br>167.\tBerserker<br>168.\tUnknown<br>169.\tUnknown<br>170.\tUnknown<br>171.\tUnknown<br>172.\tUnknown<br>173.\tFrost Bull<br>174.\tIstory Lythos<br>175.\tSpizzner<br>176.\tDruid<br>177.\tIronback<br>178.\tMercury Bat<br>179.\tCoral<br>180.\tAquagel<br>181.\tSteel Fist<br>182.\tAlchymia<br>183.\tTonberry<br>184.\tAnkheg<br>185.\tAmmonite<br>186.\tLandcrawler<br>187.\tLemure<br>188.\tParthenope<br>189.\tCherie<br>190.\tMagic Pot<br>191.\tSucker<br>192.\tOctokraken<br>193.\tSahagin<br>194.\tThunder Anemone<br>195.\tSea Ibis<br>196.\tCorbett<br>197.\tNix<br>198.\tWater Scorpion<br>199.\tVilia<br>200.\tGel Fish<br>201.\tRukh<br>202.\tSea Devil<br>203.\tStingray<br>204.\tGrenade<br>205.\tBaldanders<br>206.\tDeath Dealer<br>207.\tLevel Checker<br>208.\tWhite Flame<br>209.\tMoss Fungus<br>210.\tFarfarello<br>211.\tOrukat<br>212.\tGreat Dragon<br>213.\tAchelon<br>214.\tNinja<br>215.\tDragon Aevis<br>216.\tSword Dancer<br>217.\tDeath Claw<br>218.\tFury<br>219.\tYojimbo<br>220.\tIron Giant<br>221.\tKing Behemoth<br>222.\tCrystal Dragon<br>223.\tNecromancer<br>224.\tGorgimera<br>225.\tMindflayer<br>226.\tCrystelle<br>227.\tBelphegor<br>228.\tMover<br>229.\tWing Raptor☆<br>230.\tKarlabos☆<br>231.\tSiren☆<br>232.\tMagissa☆<br>233.\tForza☆<br>234.\tIce Commander☆<br>235.\tShiva☆<br>236.\tGarula☆<br>237.\tLiquid Flame☆<br>238.\tIron Claw☆<br>239.\tIfrit☆<br>240.\tByblos☆<br>241.\tRamuh☆<br>242.\tSandworm☆<br>243.\tCray Claw☆<br>244.\tAdamantoise☆<br>245.\tFlame Thrower☆<br>246.\tRocket Launcher☆<br>247.\tSoul Cannon☆<br>248.\tLauncher☆<br>249.\tLauncher☆<br>250.\tArcheoaevis☆<br>251.\tPurobolos☆<br>252.\tTitan☆<br>253.\tManticore☆<br>254.\tAbductor☆<br>255.\tGilgamesh☆<br>256.\tGilgamesh☆<br>257.\tTyrannosaur☆<br>258.\tAbductor☆<br>259.\tGolem☆<br>260.\tDragon Pod☆<br>261.\tDragon Flower☆<br>262.\tGilgamesh☆<br>263.\tEnkidu☆<br>264.\tAtomos☆<br>265.\tCrystal☆<br>266.\tCrystal☆<br>267.\tCrystal☆<br>268.\tCrystal☆<br>269.\tCatoblepas☆<br>270.\tGil Turtle☆<br>271.\tCarbuncle☆<br>272.\tGilgamesh☆<br>273.\tExdeath☆<br>274.\tAntlion☆<br>275.\tMelusine☆<br>276.\tGargoyle☆<br>277.\tWendigo☆<br>278.\tOdin☆<br>279.\tMinotaur☆<br>280.\tOmniscient☆<br>281.\tTriton☆<br>282.\tNereid☆<br>283.\tPhobos☆<br>284.\tLeviathan☆<br>285.\tFamed Mimic Gogo☆<br>286.\tBahamut☆<br>287.\tApanda☆<br>288.\tCalofisteri☆<br>289.\tAzulmagia☆<br>290.\tAlte Roite☆<br>291.\tJura Aevis☆<br>292.\tCatastrophe☆<br>293.\tHalicarnassus☆<br>294.\tTwintania☆<br>295.\tGilgamesh☆<br>296.\tNecrophobe☆<br>297.\tBarrier☆<br>298.\tGilgamesh☆<br>299.\tOmega☆<br>300.\tShinryu☆<br>301.\tExdeath☆<br>302.\tNeo Exdeath☆\t\t\t\t\t\t\t\t<div style=\"clear: both\"></div>\n\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t</div>\n\t\t\t\t\t\t<div style=\"clear: both\"></div>\n\t\t\t\t\t\t\t\t\t\t\t\t<div class=\"subSection detailBox\" id=\"4996325\">\n\t\t\t\t\t\t\t<div class=\"subSectionTitle\">\n\t\t\t\t\t\t\t\tClosing Note\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t\t<div class=\"subSectionDesc\">\n\t\t\t\t\t\t\t\tCredit for this specific guide goes primarily to the Final Fantasy Wikipedia for supplying the full list of bestiary entries for the Pixel Remaster of FFV. If anything here is incorrect, feel free to leave a comment on the steam guide and I will do my best to fix it.<br>\t\t\t\t\t\t\t\t<div style=\"clear: both\"></div>\n\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t</div>\n\t\t\t\t\t\t<div style=\"clear: both\"></div>\n\t\t\t\t\t\t\t\t\t</div>\n\n\t\t\t<div id=\"-1\">\n\t\t\t\t\t\t\t</div>\n\t\t</div>\n\n\t</div>\n\n\n\t<div style=\"clear: both;\"></div>\n</div>\n\n<div id=\"previewImageEnlarged\" class=\"modal_frame_image\" style=\"display:none;\">\n\t<div class=\"modal_box_preview_image\">\n\t\t<div class=\"modal_close_image\"><a onclick=\"hideModal( 'previewImageEnlarged' );\"><img src=\"https://community.fastly.steamstatic.com/public/images/x9x9.gif\" width=\"9\" height=\"9\" border=\"0\" alt=\"Close\" /></a></div>\n\t\t<div><img id=\"enlargedImage\" src=\"https://community.fastly.steamstatic.com/public/images/trans.gif\"></div>\n\t</div>\n</div>\n\n<div id=\"ShareOnSteamDialog\" style=\"display: none\">\n\t<div id=\"ShareOnSteamDialogContents\"></div>\n</div>\n\n<div id=\"SharePopup\" style=\"display: none\">\n\t<div class=\"share_ctn\">\n\t\t<a class=\"share_controls_steam\" onclick=\"ShareOnSteam();\">\n\t\t\t<span>Share to your Steam activity feed</span>\n\t\t</a>\n\t\t<div class=\"share_controls_other\">\n\t\t\t<div class=\"shareItemLink\"><a class=\"btn_grey_black btn_medium\" id=\"SharePopupLink_Facebook\" href=\"\" title=\"Share on Facebook\"><span><img src=\"https://community.fastly.steamstatic.com/public/images//social/facebook_large.png\"></span></a></div>\n\t\t\t<div class=\"shareItemLink\"><a class=\"btn_grey_black btn_medium\" id=\"SharePopupLink_Twitter\" href=\"\" title=\"Share on Twitter\"><span><img src=\"https://community.fastly.steamstatic.com/public/images//social/twitter_large.png\"></span></a></div>\n\t\t\t<div class=\"shareItemLink\"><a class=\"btn_grey_black btn_medium\" id=\"SharePopupLink_Reddit\" href=\"\" title=\"Share on Reddit\"><span><img src=\"https://community.fastly.steamstatic.com/public/images//social/reddit_large.png\"></span></a></div>\n\t\t</div>\n\t\t<div style=\"clear: left\"></div>\n\t</div>\n\t<div class=\"share_controls_divider\"></div>\n\t<div class=\"share_controls_page_link\">\n\t\t<form onsubmit=\"return false;\">\n\t\t\tLink:&nbsp;<input type=\"input\" id=\"SharePopupInput\" value=\"\" readonly=\"readonly\" >\n\t\t</form>\n\t</div>\n</div>\t<div id=\"NotLoggedInWarning\" class=\"modal_frame\" style=\"display: none\">\n\t\t<div class=\"modal_box\">\n\t\t\t<div class=\"modal_box_ctn\">\n\t\t\t\t<div class=\"notLoggedInText\">You need to sign in or create an account to do that.</div>\n\t\t\t\t<div class=\"notLoggedInButtons\">\n\t\t\t\t\t<a class=\"btn_green_white_innerfade btn_medium\" href=\"https://steamcommunity.com/login/home/?goto=sharedfiles%2Ffiledetails%2F%3Fid%3D2682517364%26insideModal%3D0%26requirelogin%3D1\"><span>Sign In</span></a>\n\t\t\t\t\t<a class=\"btn_green_white_innerfade btn_medium\" href=\"https://store.steampowered.com/join\"><span>Create an Account</span></a>\n\t\t\t\t\t<a class=\"btn_grey_black btn_medium\" onclick=\"hideModal( 'NotLoggedInWarning' )\"><span>Cancel</span></a>\n\t\t\t\t\t<div style=\"clear: left\"></div>\n\t\t\t\t</div>\n\t\t\t</div>\n\t\t</div>\n\t</div>\n\t\n<div id=\"PromptModal\" class=\"modal_frame_tags\" style=\"display:none;\">\n\t<div class=\"modal_top_band\">\n\t\t<div class=\"modal_close\"><a onclick=\"hideModal( 'PromptModal' )\"><img src=\"https://community.fastly.steamstatic.com/public/images/x9x9.gif\" width=\"9\" height=\"9\" border=\"0\" alt=\"Close\" /></a></div>\n\t</div>\n\t<div class=\"modal_box\">\n\t\t<div class=\"updateKVTagsForm\" id=\"PromptModalFormDiv\">\n\t\t\t<script>\n\t\t\t\tfunction UpdateKVTagsSingle()\n\t\t\t\t{\n\t\t\t\t\t$('PromptModalForm').submit();\n\t\t\t\t}\n\t\t\t</script>\n\t\t\t<form class=\"smallForm\" method=\"POST\" name=\"KVTagsUpdateFormSingle\" id=\"PromptModalForm\" action=\"https://steamcommunity.com/workshop/updatekvtags/\" >\n\t\t\t\t<input type=\"hidden\" name=\"id\" value=\"2682517364\" />\n\t\t\t\t<input type=\"hidden\" name=\"sessionid\" value=\"e3a19a46aa8e373d6a94c42b\" />\n\n\t\t\t\t<div class=\"box\">\n\t\t\t\t\t<div class=\"itemBulletArrow\"></div>\n\t\t\t\t\t<div class=\"title\" id=\"PromptTitle\"></div>\n\t\t\t\t\t<p class=\"description\" id=\"PromptDescription\"></p>\n\t\t\t\t\t<input type=\"text\" class=\"titleField\" name=\"value\" id=\"PromptValue\">\n\t\t\t\t</div>\n\n\n\t\t\t\t<a class=\"btn_green_white_innerfade btn_medium button\" href=\"javascript:UpdateKVTagsSingle();\"><span>Update</span></a>\n\n\t\t\t\t<div style=\"clear:both\"></div>\n\t\t\t</form>\n\t\t</div>\n\t</div>\n</div>\n\t\t</div>\t<!-- responsive_page_legacy_content -->\n\n\t\t\t\t<script>\n\t\t\tRecordAppImpression( 1173810, '2_100100_100101_100106' );\n\t\t</script>\n\t\t<div  data-featuretarget=\"footer\"></div>\n\t</div>\t<!-- responsive_page_content -->\n\n</div>\t<!-- responsive_page_frame -->\n</body>\n</html>",
+  "bestiary": [
+    [1, "Goblin"],
+    [2, "Steel Bat"],
+    [3, "Devil Crab"],
+    [4, "Stroper"],
+    [5, "Killer Bee"],
+    [6, "Nutkin"],
+    [7, "Stray Cat"],
+    [8, "Black Goblin"],
+    [9, "White Serpent"],
+    [10, "Moldwynd"],
+    [11, "Mani Wizard"],
+    [12, "Skeleton"],
+    [13, "Calcruthl"],
+    [14, "Undead Husk"],
+    [15, "Mindflusher"],
+    [16, "Gatling"],
+    [17, "Big Horn"],
+    [18, "Tatou"],
+    [19, "Bandersnatch"],
+    [20, "Garula"],
+    [21, "Rock Slug"],
+    [22, "Gaelicat"],
+    [23, "Cockatrice"],
+    [24, "Headstone"],
+    [25, "Elf Toad"],
+    [26, "Ice Soldier"],
+    [27, "Ricard Mage"],
+    [28, "Wyvern"],
+    [29, "Pas de Seul"],
+    [30, "Jackanapes"],
+    [31, "Aegir"],
+    [32, "Zu"],
+    [33, "Wild Nakk"],
+    [34, "Grass Tortoise"],
+    [35, "Silent Bee"],
+    [36, "Mythril Dragon"],
+    [37, "Crew Dust"],
+    [38, "Poltergeist"],
+    [39, "Defeater"],
+    [40, "Motor Trap"],
+    [41, "Sergeant"],
+    [42, "Sorcerer"],
+    [43, "Cur Nakk"],
+    [44, "Gigas"],
+    [45, "Page 32"],
+    [46, "Page 64"],
+    [47, "Page 128"],
+    [48, "Page 256"],
+    [49, "Bomb"],
+    [50, "Doublizard"],
+    [51, "Bio Soldier"],
+    [52, "Harvester"],
+    [53, "Black Flame"],
+    [54, "Stone Golem"],
+    [55, "Mini Dragon"],
+    [56, "Prototype"],
+    [57, "Skull Eater"],
+    [58, "Dhorme Chimera"],
+    [59, "Sandboil"],
+    [60, "Desert Killer"],
+    [61, "Sand Bear"],
+    [62, "Ra Mage"],
+    [63, "Ronkan Knight"],
+    [64, "Stone Mask"],
+    [65, "Enchanted Fan"],
+    [66, "Lamia"],
+    [67, "Archeotoad"],
+    [68, "Hydra"],
+    [69, "Ghidra"],
+    [70, "Pao"],
+    [71, "Tarantula"],
+    [72, "Shell Bear"],
+    [73, "Devilfish"],
+    [74, "Treant"],
+    [75, "Strapparer"],
+    [76, "Merrow"],
+    [77, "Flying Killer"],
+    [78, "Little Chariot"],
+    [79, "Neo Garula"],
+    [80, "Tunneller"],
+    [81, "Birostris"],
+    [82, "Fairy Orc"],
+    [83, "Devourer"],
+    [84, "Mandrake"],
+    [85, "Kuza Beast"],
+    [86, "Shield Dragon"],
+    [87, "Exdeath's Soul"],
+    [88, "Blood Slime"],
+    [89, "Acrophies"],
+    [90, "Moogle Eater"],
+    [91, "Lesser Lopros"],
+    [92, "Cactus"],
+    [93, "Sandcrawler"],
+    [94, "Aquathorn"],
+    [95, "Weresnake"],
+    [96, "Kornago"],
+    [97, "Cursed Being"],
+    [98, "Undergrounder"],
+    [99, "Objet d'Art"],
+    [100, "Drippy"],
+    [101, "Lycaon"],
+    [102, "Bone Dragon"],
+    [103, "Poison Eagle"],
+    [104, "Zombie Dragon"],
+    [105, "Gobbledygook"],
+    [106, "Neon"],
+    [107, "Magnetite"],
+    [108, "Reflect Knight"],
+    [109, "Traveler"],
+    [110, "Level Tricker"],
+    [111, "Gravitator"],
+    [112, "Ziggurat Gigas"],
+    [113, "Dark Aspic"],
+    [114, "Metamorph"],
+    [115, "Cure Beast"],
+    [116, "Land Turtle"],
+    [117, "Dechirer"],
+    [118, "Mini Magician"],
+    [119, "Galajelly"],
+    [120, "Mammon"],
+    [121, "Imp"],
+    [122, "Wyrm"],
+    [123, "Twin Lizard"],
+    [124, "Blind Wolf"],
+    [125, "Hellraiser"],
+    [126, "Reflect Mage"],
+    [127, "Magic Dragon"],
+    [128, "Black Warlock"],
+    [129, "Adamantite Golem"],
+    [130, "Bandercoeurl"],
+    [131, "Iron Fist"],
+    [132, "Blue Dragon"],
+    [133, "Red Dragon"],
+    [134, "Yellow Dragon"],
+    [135, "Sleepy"],
+    [136, "Triffid"],
+    [137, "Hedgehog"],
+    [138, "Python"],
+    [139, "Shadow"],
+    [140, "Elm Gigas"],
+    [141, "Desertpede"],
+    [142, "Bulette"],
+    [143, "Lamia Queen"],
+    [144, "Rajiformes"],
+    [145, "Ushabti"],
+    [146, "Archeosaur"],
+    [147, "Zephyrus"],
+    [148, "Mummy"],
+    [149, "Aspis"],
+    [150, "Mecha Head"],
+    [151, "The Damned"],
+    [152, "Grand Mummy"],
+    [153, "Sekhmet"],
+    [154, "Slug"],
+    [155, "Gloom Widow"],
+    [156, "Mykale"],
+    [157, "Executor"],
+    [158, "Oiseaurare"],
+    [159, "Shadow Dancer"],
+    [160, "Numb Blade"],
+    [161, "Tot Aevis"],
+    [162, "Tiny Mage"],
+    [163, "Chrono Controller"],
+    [164, "Flaremancer"],
+    [165, "Dueling Knight"],
+    [166, "Iron Muscles"],
+    [167, "Berserker"],
+    [168, "Unknown"],
+    [169, "Unknown"],
+    [170, "Unknown"],
+    [171, "Unknown"],
+    [172, "Unknown"],
+    [173, "Frost Bull"],
+    [174, "Istory Lythos"],
+    [175, "Spizzner"],
+    [176, "Druid"],
+    [177, "Ironback"],
+    [178, "Mercury Bat"],
+    [179, "Coral"],
+    [180, "Aquagel"],
+    [181, "Steel Fist"],
+    [182, "Alchymia"],
+    [183, "Tonberry"],
+    [184, "Ankheg"],
+    [185, "Ammonite"],
+    [186, "Landcrawler"],
+    [187, "Lemure"],
+    [188, "Parthenope"],
+    [189, "Cherie"],
+    [190, "Magic Pot"],
+    [191, "Sucker"],
+    [192, "Octokraken"],
+    [193, "Sahagin"],
+    [194, "Thunder Anemone"],
+    [195, "Sea Ibis"],
+    [196, "Corbett"],
+    [197, "Nix"],
+    [198, "Water Scorpion"],
+    [199, "Vilia"],
+    [200, "Gel Fish"],
+    [201, "Rukh"],
+    [202, "Sea Devil"],
+    [203, "Stingray"],
+    [204, "Grenade"],
+    [205, "Baldanders"],
+    [206, "Death Dealer"],
+    [207, "Level Checker"],
+    [208, "White Flame"],
+    [209, "Moss Fungus"],
+    [210, "Farfarello"],
+    [211, "Orukat"],
+    [212, "Great Dragon"],
+    [213, "Achelon"],
+    [214, "Ninja"],
+    [215, "Dragon Aevis"],
+    [216, "Sword Dancer"],
+    [217, "Death Claw"],
+    [218, "Fury"],
+    [219, "Yojimbo"],
+    [220, "Iron Giant"],
+    [221, "King Behemoth"],
+    [222, "Crystal Dragon"],
+    [223, "Necromancer"],
+    [224, "Gorgimera"],
+    [225, "Mindflayer"],
+    [226, "Crystelle"],
+    [227, "Belphegor"],
+    [228, "Mover"],
+    [229, "Wing Raptor☆"],
+    [230, "Karlabos☆"],
+    [231, "Siren☆"],
+    [232, "Magissa☆"],
+    [233, "Forza☆"],
+    [234, "Ice Commander☆"],
+    [235, "Shiva☆"],
+    [236, "Garula☆"],
+    [237, "Liquid Flame☆"],
+    [238, "Iron Claw☆"],
+    [239, "Ifrit☆"],
+    [240, "Byblos☆"],
+    [241, "Ramuh☆"],
+    [242, "Sandworm☆"],
+    [243, "Cray Claw☆"],
+    [244, "Adamantoise☆"],
+    [245, "Flame Thrower☆"],
+    [246, "Rocket Launcher☆"],
+    [247, "Soul Cannon☆"],
+    [248, "Launcher☆"],
+    [249, "Launcher☆"],
+    [250, "Archeoaevis☆"],
+    [251, "Purobolos☆"],
+    [252, "Titan☆"],
+    [253, "Manticore☆"],
+    [254, "Abductor☆"],
+    [255, "Gilgamesh☆"],
+    [256, "Gilgamesh☆"],
+    [257, "Tyrannosaur☆"],
+    [258, "Abductor☆"],
+    [259, "Golem☆"],
+    [260, "Dragon Pod☆"],
+    [261, "Dragon Flower☆"],
+    [262, "Gilgamesh☆"],
+    [263, "Enkidu☆"],
+    [264, "Atomos☆"],
+    [265, "Crystal☆"],
+    [266, "Crystal☆"],
+    [267, "Crystal☆"],
+    [268, "Crystal☆"],
+    [269, "Catoblepas☆"],
+    [270, "Gil Turtle☆"],
+    [271, "Carbuncle☆"],
+    [272, "Gilgamesh☆"],
+    [273, "Exdeath☆"],
+    [274, "Antlion☆"],
+    [275, "Melusine☆"],
+    [276, "Gargoyle☆"],
+    [277, "Wendigo☆"],
+    [278, "Odin☆"],
+    [279, "Minotaur☆"],
+    [280, "Omniscient☆"],
+    [281, "Triton☆"],
+    [282, "Nereid☆"],
+    [283, "Phobos☆"],
+    [284, "Leviathan☆"],
+    [285, "Famed Mimic Gogo☆"],
+    [286, "Bahamut☆"],
+    [287, "Apanda☆"],
+    [288, "Calofisteri☆"],
+    [289, "Azulmagia☆"],
+    [290, "Alte Roite☆"],
+    [291, "Jura Aevis☆"],
+    [292, "Catastrophe☆"],
+    [293, "Halicarnassus☆"],
+    [294, "Twintania☆"],
+    [295, "Gilgamesh☆"],
+    [296, "Necrophobe☆"],
+    [297, "Barrier☆"],
+    [298, "Gilgamesh☆"],
+    [299, "Omega☆"],
+    [300, "Shinryu☆"],
+    [301, "Exdeath☆"],
+    [302, "Neo Exdeath☆"]
+  ],
+  "sectionTitles": [
+    "Introduction",
+    "Prologue",
+    "Tule",
+    "Wind Shrine",
+    "Pirate's Hideout and Torna Canal",
+    "Ship Graveyard",
+    "Carwen",
+    "North Mountain",
+    "Castle Tycoon",
+    "Walse",
+    "Tower of Walse",
+    "Karnak",
+    "Fire-Powered Ship: Part I",
+    "Fire-Powered Ship: Part II",
+    "Karnak Castle",
+    "Library of the Ancients: Part I",
+    "Library of the Ancients: Part II",
+    "Blue Magic Hunting",
+    "Crescent and Black Chocobo Forest",
+    "Istory",
+    "Jachol",
+    "Lix and Desert of Shifting Sands",
+    "Gohn, the Town of Ruin and Castle Tycoon Revisited",
+    "Tycoon Meteorite Revisited",
+    "Ronka Ruins: Part I",
+    "Ronka Ruins: Part II",
+    "Meteorites",
+    "Departure",
+    "Galuf's World",
+    "The Big Bridge",
+    "Regole and Moogle Forest",
+    "Underground Waterway and Moogle Village",
+    "Castle of Bal: Part I",
+    "Castle of Bal: Part II",
+    "Quelb: Part I",
+    "Quelb: Part II",
+    "Drakenvale",
+    "Surgate Castle",
+    "Xezat's Fleet",
+    "Barrier Tower: Part I",
+    "Barrier Tower: Part II",
+    "Underwater Exploration",
+    "Moore",
+    "Forest of Moore: Part I",
+    "Forest of Moore: Part II",
+    "Gil Cave",
+    "Castle Exdeath: Part I",
+    "Castle Exdeath: Part II",
+    "Merged World",
+    "Pyramid of Moore: Part I",
+    "Pyramid of Moore: Part II",
+    "Pyramid of Moore: Part III",
+    "Kuza, the Sealed Castle",
+    "Side Exploration",
+    "Phantom Village: Part I",
+    "Phantom Village: Part II",
+    "Odin",
+    "Bahamut",
+    "Phoenix Tower",
+    "Island Shrine: Part I",
+    "Island Shrine: Part II",
+    "Fork Tower",
+    "Sunken Tower of Walse",
+    "Great Sea Trench: Part I",
+    "Great Sea Trench: Part II",
+    "Istory Falls: Part I",
+    "Istory Falls: Part II",
+    "Cleanup",
+    "Interdimensional Rift: Part I",
+    "Interdimensional Rift: Part II",
+    "Interdimensional Rift: Part III",
+    "Interdimensional Rift: Part IV",
+    "Interdimensional Rift, Final Floor: Part I",
+    "Interdimensional Rift, Final Floor: Part II",
+    "Shinryu, The Final Treasure Chest",
+    "Achievement Cleanup",
+    "Join Us!"
+  ],
+  "sections": [
+    {
+      "html": "<div class=\"subSectionTitle\">\n\t\t\t\t\t\t\t\tTule\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t\t<div class=\"subSectionDesc\">\n\t\t\t\t\t\t\t\t<u><b>Overworld</b></u> <br><br>Note: There are currently no random encounters in the sea. <br><br>Sail north past the mountains to trigger a cutscene. <br>Answer with 'No' to control the ship yourself, then head northwest to find a town. <br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1787360924687099678/53D9CCF736A9119469C7B37EDAEF791DAF9E6D11/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787360924687099678%2F53D9CCF736A9119469C7B37EDAEF791DAF9E6D11%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787360924687099678/53D9CCF736A9119469C7B37EDAEF791DAF9E6D11/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div><br>Go inside. <br><br><u><b>Tule</b></u><br><br>Head north to watch the pirates get a drink from the Pub. <br>Now once you regain control, go east and through the small alley by the Inn to find a barrel. <br>Search the barrel for 150 Gil. {1/46}<br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1787360924687218265/56992B1600DD802F90D26BF736A4C57CE143476A/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787360924687218265%2F56992B1600DD802F90D26BF736A4C57CE143476A%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787360924687218265/56992B1600DD802F90D26BF736A4C57CE143476A/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div><br>Backtrack to the entrance and go north past the Pub to find some boxes and barrels. <br>Search the top left box for a Tent. {2/46}<br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1787360924687218275/F6800653A973EEBEFDD01317C84B0B2F31831091/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787360924687218275%2FF6800653A973EEBEFDD01317C84B0B2F31831091%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787360924687218275/F6800653A973EEBEFDD01317C84B0B2F31831091/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div><br>Now search the barrel at the opposite side to find a Potion. {3/46}<br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1787360924687218283/BFEEFCD5542EC6DD28D41C18EBB9661C3CFD8783/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787360924687218283%2FBFEEFCD5542EC6DD28D41C18EBB9661C3CFD8783%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787360924687218283/BFEEFCD5542EC6DD28D41C18EBB9661C3CFD8783/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div><br>Go across the bridge to find Zok's house, but don't head inside yet. Instead, go west around the house to find a secret passage. <br>Inspect the bush at the top of the house for a Phoenix Down. {4/46}<br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1787360924687218292/898EB509B53DC47769A37C942BE3BE7DCFE6763D/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787360924687218292%2F898EB509B53DC47769A37C942BE3BE7DCFE6763D%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787360924687218292/898EB509B53DC47769A37C942BE3BE7DCFE6763D/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div><br>Now do the same thing but at the east side this time. Search the box at the very top for Leather Shoes. {5/46}<br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1787360924687218300/724BFDDC7A77FF4CF960714E7DA393CAE169D884/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787360924687218300%2F724BFDDC7A77FF4CF960714E7DA393CAE169D884%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787360924687218300/724BFDDC7A77FF4CF960714E7DA393CAE169D884/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div><br>Make your way back to the entrance of the town and head west to find a building. <br>Go inside. <br><br><u><b>Greenhorn's Club</b></u><br><br>Speak to the receptionist and answer with 'Yes'.<br>Search the pot for a Potion, the barrel for a Phoenix Down, and the box for a Tent. {8/46}<br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1787360924687218307/CA724AC3FC3698130589C4E591AAEF8EA8AEF3EB/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787360924687218307%2FCA724AC3FC3698130589C4E591AAEF8EA8AEF3EB%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787360924687218307/CA724AC3FC3698130589C4E591AAEF8EA8AEF3EB/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div><br>Also, open both chests for an Ether and 100 Gil. [4/225]<br>Note: Left chest is only reachable through the secret passage shown in the screenshot.<br><br>Now go upstairs and open the lone chest on the west side for a Monsters-in-a-box encounter. Don't worry. It's just a Goblin. <br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1787360924687218239/E31F3E9CF413AED5A9A0749AF4D2CCDFE83F6469/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787360924687218239%2FE31F3E9CF413AED5A9A0749AF4D2CCDFE83F6469%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787360924687218239/E31F3E9CF413AED5A9A0749AF4D2CCDFE83F6469/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div><br>After defeating that monstrosity, you will be rewarded with Leather Shoes for such a feat. [5/225]<br>Don't forget to upgrade your party's equipment. <br>That concludes all collectibles for this location. However, we're still missing something important in this town so don't leave just yet. Leave the building though.<br><br><u><b>Tule</b></u><br><br>Enter the Pub <br><br><u><b>Tule - Pub</b></u><br><br>Sit at the stool by the stage to make the dancers dance for you. This will make them get out of the path to the piano (which is our objective). <br>Go up the stage and play the piano. [Piano Maestro: 1/8]<br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1787360924687218316/B8B7EE44C04845EAEDBBEAFB72D6BDF5B5139D8F/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787360924687218316%2FB8B7EE44C04845EAEDBBEAFB72D6BDF5B5139D8F%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787360924687218316/B8B7EE44C04845EAEDBBEAFB72D6BDF5B5139D8F/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div><br>Note: This step is required for the Piano Maestro achievement. <br>Optional: Head upstairs and sneak into Faris bedroom to trigger a funny cutscene. <br><br>Exit the Pub. <br><br><u><b>Tule</b></u><br><br>Now go shopping spree if you desire. Just remember that you can't use magic yet.<br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Magic</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Item</div><div class=\"bb_table_th\">Cost</div><div class=\"bb_table_th\">Description</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Fire</div><div class=\"bb_table_td\">150</div><div class=\"bb_table_td\">Deals fire damage.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Blizzard</div><div class=\"bb_table_td\">150</div><div class=\"bb_table_td\">Deals ice damage.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Thunder</div><div class=\"bb_table_td\">150</div><div class=\"bb_table_td\">Deals lightning damage.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Cure</div><div class=\"bb_table_td\">180</div><div class=\"bb_table_td\">Restores HP.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Libra</div><div class=\"bb_table_td\">80</div><div class=\"bb_table_td\">Determines the enemy's HP, weakness, current condition, and level.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Poisona</div><div class=\"bb_table_td\">90</div><div class=\"bb_table_td\">Cures poison.</div></div></div><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Weapons</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Item</div><div class=\"bb_table_th\">Cost</div><div class=\"bb_table_th\">Description</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Broadsword</div><div class=\"bb_table_td\">280</div><div class=\"bb_table_td\">Attack +15 Can be two-handed Can be enchanted</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Rod</div><div class=\"bb_table_td\">200</div><div class=\"bb_table_td\">Attack +8 Weight + 1 Magic +1</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Staff</div><div class=\"bb_table_td\">200</div><div class=\"bb_table_td\">Attack +9 Can be two-handed</div></div></div><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Armor</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Item</div><div class=\"bb_table_th\">Cost</div><div class=\"bb_table_th\">Description</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Leather Shield</div><div class=\"bb_table_td\">90</div><div class=\"bb_table_td\">Evasion +10 Weight +2</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Leather Cap</div><div class=\"bb_table_td\">50</div><div class=\"bb_table_td\">Defense +1 Magic Defense + 1 Weight +1</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Leather Armor</div><div class=\"bb_table_td\">80</div><div class=\"bb_table_td\">Defense +1 Magic Defense + 1 Weight +2</div></div></div><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Items (inside Inn)</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Item</div><div class=\"bb_table_th\">Cost</div><div class=\"bb_table_th\">Description</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Potion</div><div class=\"bb_table_td\">40</div><div class=\"bb_table_td\">Recovers HP.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Tent</div><div class=\"bb_table_td\">250</div><div class=\"bb_table_td\">Recovers all members' HP and MP. Can be used outdoors.</div></div></div><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Inn</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Service</div><div class=\"bb_table_th\">Cost</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Rest</div><div class=\"bb_table_td\">10</div></div></div><br>Once you are ready to go, leave the town.\t\t\t\t\t\t\t\t<div style=\"clear: both\"></div>\n\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t</div>\n\t\t\t\t\t\t<div style=\"clear: both\"></div>\n\t\t\t\t\t\t\t\t\t\t\t\t<div class=\"subSection detailBox\" id=\"4912279\">\n\t\t\t\t\t\t\t",
+      "section": {
+        "title": "Tule",
+        "text": "Overworld\nNote: There are currently no random encounters in the sea.\nSail north past the mountains to trigger a cutscene.\nAnswer with 'No' to control the ship yourself, then head northwest to find a town.\nGo inside.\nTule\nHead north to watch the pirates get a drink from the Pub.\nNow once you regain control, go east and through the small alley by the Inn to find a barrel.\nSearch the barrel for 150 Gil. {1/46}\nBacktrack to the entrance and go north past the Pub to find some boxes and barrels.\nSearch the top left box for a Tent. {2/46}\nNow search the barrel at the opposite side to find a Potion. {3/46}\nGo across the bridge to find Zok's house, but don't head inside yet. Instead, go west around the house to find a secret passage.\nInspect the bush at the top of the house for a Phoenix Down. {4/46}\nNow do the same thing but at the east side this time. Search the box at the very top for Leather Shoes. {5/46}\nMake your way back to the entrance of the town and head west to find a building.\nGo inside.\nGreenhorn's Club\nSpeak to the receptionist and answer with 'Yes'.\nSearch the pot for a Potion, the barrel for a Phoenix Down, and the box for a Tent. {8/46}\nAlso, open both chests for an Ether and 100 Gil. [4/225]\nNote: Left chest is only reachable through the secret passage shown in the screenshot.\nNow go upstairs and open the lone chest on the west side for a Monsters-in-a-box encounter. Don't worry. It's just a Goblin.\nAfter defeating that monstrosity, you will be rewarded with Leather Shoes for such a feat. [5/225]\nDon't forget to upgrade your party's equipment.\nThat concludes all collectibles for this location. However, we're still missing something important in this town so don't leave just yet. Leave the building though.\nTule\nEnter the Pub\nTule - Pub\nSit at the stool by the stage to make the dancers dance for you. This will make them get out of the path to the piano (which is our objective).\nGo up the stage and play the piano. [Piano Maestro: 1/8]\nNote: This step is required for the Piano Maestro achievement.\nOptional: Head upstairs and sneak into Faris bedroom to trigger a funny cutscene.\nExit the Pub.\nTule\nNow go shopping spree if you desire. Just remember that you can't use magic yet.\nMagic\nItem\nCost\nDescription\nFire\n150\nDeals fire damage.\nBlizzard\n150\nDeals ice damage.\nThunder\n150\nDeals lightning damage.\nCure\n180\nRestores HP.\nLibra\n80\nDetermines the enemy's HP, weakness, current condition, and level.\nPoisona\n90\nCures poison.\nWeapons\nItem\nCost\nDescription\nBroadsword\n280\nAttack +15 Can be two-handed Can be enchanted\nRod\n200\nAttack +8 Weight + 1 Magic +1\nStaff\n200\nAttack +9 Can be two-handed\nArmor\nItem\nCost\nDescription\nLeather Shield\n90\nEvasion +10 Weight +2\nLeather Cap\n50\nDefense +1 Magic Defense + 1 Weight +1\nLeather Armor\n80\nDefense +1 Magic Defense + 1 Weight +2\nItems (inside Inn)\nItem\nCost\nDescription\nPotion\n40\nRecovers HP.\nTent\n250\nRecovers all members' HP and MP. Can be used outdoors.\nInn\nService\nCost\nRest\n10\nOnce you are ready to go, leave the town.",
+        "shops": [
+          {
+            "where": "Tule",
+            "kind": "魔法",
+            "goods": [
+              {
+                "name": "Fire",
+                "cost": 150,
+                "note": "Deals fire damage."
+              },
+              {
+                "name": "Blizzard",
+                "cost": 150,
+                "note": "Deals ice damage."
+              },
+              {
+                "name": "Thunder",
+                "cost": 150,
+                "note": "Deals lightning damage."
+              },
+              {
+                "name": "Cure",
+                "cost": 180,
+                "note": "Restores HP."
+              },
+              {
+                "name": "Libra",
+                "cost": 80,
+                "note": "Determines the enemy's HP, weakness, current condition, and level."
+              },
+              {
+                "name": "Poisona",
+                "cost": 90,
+                "note": "Cures poison."
+              }
+            ]
+          },
+          {
+            "where": "Tule",
+            "kind": "武器",
+            "goods": [
+              {
+                "name": "Broadsword",
+                "cost": 280,
+                "note": "Attack +15 Can be two-handed Can be enchanted"
+              },
+              {
+                "name": "Rod",
+                "cost": 200,
+                "note": "Attack +8 Weight + 1 Magic +1"
+              },
+              {
+                "name": "Staff",
+                "cost": 200,
+                "note": "Attack +9 Can be two-handed"
+              }
+            ]
+          },
+          {
+            "where": "Tule",
+            "kind": "防具",
+            "goods": [
+              {
+                "name": "Leather Shield",
+                "cost": 90,
+                "note": "Evasion +10 Weight +2"
+              },
+              {
+                "name": "Leather Cap",
+                "cost": 50,
+                "note": "Defense +1 Magic Defense + 1 Weight +1"
+              },
+              {
+                "name": "Leather Armor",
+                "cost": 80,
+                "note": "Defense +1 Magic Defense + 1 Weight +2"
+              }
+            ]
+          },
+          {
+            "where": "Tent",
+            "kind": "旅店",
+            "goods": [
+              {
+                "name": "Rest",
+                "cost": 10,
+                "note": ""
+              }
+            ]
+          }
+        ],
+        "treasures": [
+          {
+            "kind": "hidden",
+            "n": 1,
+            "where": "Tule",
+            "text": "Search the barrel for 150 Gil."
+          },
+          {
+            "kind": "hidden",
+            "n": 2,
+            "where": "Tule",
+            "text": "Search the top left box for a Tent."
+          },
+          {
+            "kind": "hidden",
+            "n": 3,
+            "where": "Tule",
+            "text": "Now search the barrel at the opposite side to find a Potion."
+          },
+          {
+            "kind": "hidden",
+            "n": 4,
+            "where": "Tule",
+            "text": "Inspect the bush at the top of the house for a Phoenix Down."
+          },
+          {
+            "kind": "hidden",
+            "n": 5,
+            "where": "Tule",
+            "text": "Now do the same thing but at the east side this time. Search the box at the very top for Leather Shoes."
+          },
+          {
+            "kind": "hidden",
+            "n": 8,
+            "where": "Greenhorn's Club",
+            "text": "Search the pot for a Potion, the barrel for a Phoenix Down, and the box for a Tent."
+          },
+          {
+            "kind": "chest",
+            "n": 4,
+            "where": "Greenhorn's Club",
+            "text": "Also, open both chests for an Ether and 100 Gil."
+          },
+          {
+            "kind": "chest",
+            "n": 5,
+            "where": "Greenhorn's Club",
+            "text": "After defeating that monstrosity, you will be rewarded with Leather Shoes for such a feat."
+          }
+        ]
+      }
+    },
+    {
+      "html": "<div class=\"subSectionTitle\">\n\t\t\t\t\t\t\t\tWalse\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t\t<div class=\"subSectionDesc\">\n\t\t\t\t\t\t\t\t<u><b>Overworld</b></u><br><br>Hop on Hiryu and fly a little northeast (you must go around the mountains, of course) to find our next destination. <br>Refer to the screenshot below for the exact location. <br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1787361012297745728/0A97924F3E449FC6D6F39C5A0019940D153ADDFB/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787361012297745728%2F0A97924F3E449FC6D6F39C5A0019940D153ADDFB%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787361012297745728/0A97924F3E449FC6D6F39C5A0019940D153ADDFB/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div><br>This location is Walse and it's divided into two areas. The left one is the castle and the right is the town. Head into the town first. <br><br><u><b>Walse</b></u><br><br>From the entrance, head west and take the stairs leading to the water. <br>Swim west and enter the westernmost house.<br><br>Inspect the white pot to find Silver Specs. {22/46}<br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1787361012297745700/2C0BB925734B76F909E2F2AC57FED5281A99F7F2/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787361012297745700%2F2C0BB925734B76F909E2F2AC57FED5281A99F7F2%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787361012297745700/2C0BB925734B76F909E2F2AC57FED5281A99F7F2/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div><br>That's the only collectible here. Feel free to visit the shops to purchase anything you want. <br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Inn</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Service</div><div class=\"bb_table_th\">Cost</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Rest</div><div class=\"bb_table_td\">20</div></div></div><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Items</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Item</div><div class=\"bb_table_th\">Cost</div><div class=\"bb_table_th\">Description</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Potion</div><div class=\"bb_table_td\">40</div><div class=\"bb_table_td\">Recovers HP.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Antidote</div><div class=\"bb_table_td\">30</div><div class=\"bb_table_td\">Cures an ally of poison.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Eye Drops</div><div class=\"bb_table_td\">20</div><div class=\"bb_table_td\">Cures an ally of darkness.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Maiden's Kiss</div><div class=\"bb_table_td\">60</div><div class=\"bb_table_td\">Cures an ally of the toad status.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Mallet</div><div class=\"bb_table_td\">50</div><div class=\"bb_table_td\">Cures an ally of the mini status.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Gold Needle</div><div class=\"bb_table_td\">150</div><div class=\"bb_table_td\">Cures an ally of petrification.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Phoenix Down</div><div class=\"bb_table_td\">1000</div><div class=\"bb_table_td\">Revives an ally from the KO status.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Tent</div><div class=\"bb_table_td\">250</div><div class=\"bb_table_td\">Recovers all members' HP and MP. Can be used outdoors.</div></div></div><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Weapons</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Item</div><div class=\"bb_table_th\">Cost</div><div class=\"bb_table_th\">Description</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Battle Axe</div><div class=\"bb_table_td\">650</div><div class=\"bb_table_td\">Attack +23 Can be two-handed</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Long Sword</div><div class=\"bb_table_td\">480</div><div class=\"bb_table_td\">Attack +22 Can be two-handed Can be enchanted</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Dagger</div><div class=\"bb_table_td\">300</div><div class=\"bb_table_td\">Attack +14 Can be enchanted</div></div></div><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Armor</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Item</div><div class=\"bb_table_th\">Cost</div><div class=\"bb_table_th\">Description</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Iron Shield</div><div class=\"bb_table_td\">390</div><div class=\"bb_table_td\">Defense +2 Evasion +20 Weight +5</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Iron Helm</div><div class=\"bb_table_td\">350</div><div class=\"bb_table_td\">Defense +4 Magic Defense +2 Weight +4</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Iron Armor</div><div class=\"bb_table_td\">500</div><div class=\"bb_table_td\">Defense +6 Magic Defense +2 Weight +8</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Kenpo Gi</div><div class=\"bb_table_td\">450</div><div class=\"bb_table_td\">Defense +5 Magic Defense +2 Weight +3 Strength +1</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Cotton Robe</div><div class=\"bb_table_td\">300</div><div class=\"bb_table_td\">Defense +2 Magic Defense +4 Weight +2</div></div></div><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Magic</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Item</div><div class=\"bb_table_th\">Cost</div><div class=\"bb_table_th\">Description</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Slow</div><div class=\"bb_table_td\">80</div><div class=\"bb_table_td\">Slows the passing of time for one enemy.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Regen</div><div class=\"bb_table_td\">100</div><div class=\"bb_table_td\">Gradually restores HP.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Mute</div><div class=\"bb_table_td\">320</div><div class=\"bb_table_td\">Silences all allies and enemies.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Haste</div><div class=\"bb_table_td\">320</div><div class=\"bb_table_td\">Hastens the passing of time for one ally.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Chocobo</div><div class=\"bb_table_td\">300</div><div class=\"bb_table_td\">Triggers the &quot;Choco Kick&quot; attack against one enemy. Triggers the &quot;Fat Chocobo&quot; attack against all enemies.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Sylph</div><div class=\"bb_table_td\">350</div><div class=\"bb_table_td\">Absorbs HP from one enemy to heal all allies. Triggers &quot;Whisperwind.&quot;</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Remora</div><div class=\"bb_table_td\">250</div><div class=\"bb_table_td\">Paralyzes one enemy. Triggers &quot;Constrict.&quot;</div></div></div><br>Some great stuff in the Magic Shop. Make sure to get everything if you can. <br>Once prepared, leave the town and head into the castle. <br><br><u><b>Castle Walse</b></u><br><br>Go north and enter the castle. <br><br><u><b>Castle Walse - 2F</b></u><br><br>Head northeast and go through the door. <br><br>Once at the new room, go north and then take the south-eastern staircase leading down. <br><br><u><b>Castle Walse - Storehouse</b></u><br><br>Search the left barrel for a Tent and the right barrel for a Phoenix Down. {24/46}<br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1787361012297745716/D4EEECC4E997360E6098C39F1B979A9392FF836E/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787361012297745716%2FD4EEECC4E997360E6098C39F1B979A9392FF836E%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787361012297745716/D4EEECC4E997360E6098C39F1B979A9392FF836E/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div><br>Now search the second crate for 490 Gil. {25/46}<br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1794116645884806992/4590197086441D1049B4C8D05DB30BC5A54ADCE6/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1794116645884806992%2F4590197086441D1049B4C8D05DB30BC5A54ADCE6%2F\"><img src=\"https://images.steamusercontent.com/ugc/1794116645884806992/4590197086441D1049B4C8D05DB30BC5A54ADCE6/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div><br>Backtrack to the main hall and take the eastern stairs leading down. <br><br><u><b>Castle Walse - 1F</b></u><br><br>Exit through the southeastern door.<br><br><u><b>Castle Walse</b></u><br><br>Follow the linear path until you reach the water, then go north and straight into the waterfall. <br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1787361012297745735/355E2EC39798D74E575AEC917457BAE4ECD18CEA/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787361012297745735%2F355E2EC39798D74E575AEC917457BAE4ECD18CEA%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787361012297745735/355E2EC39798D74E575AEC917457BAE4ECD18CEA/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div><br><u><b>Walse Tower - 1F</b></u><br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">ㅤ  ㅤ        ㅤ BESTIARY: WALSE TOWERㅤ ㅤ</div></div></div><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">ID</div><div class=\"bb_table_th\">MONSTER</div><div class=\"bb_table_th\">HP</div><div class=\"bb_table_th\">MP</div><div class=\"bb_table_th\">GIL</div><div class=\"bb_table_th\">EXP</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">025</div><div class=\"bb_table_td\">Elf Toad</div><div class=\"bb_table_td\">160</div><div class=\"bb_table_td\">50</div><div class=\"bb_table_td\">81</div><div class=\"bb_table_td\">65</div><div class=\"bb_table_td\">BM: Pond's Chorus</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">026</div><div class=\"bb_table_td\">Ice Soldier</div><div class=\"bb_table_td\">160</div><div class=\"bb_table_td\">20</div><div class=\"bb_table_td\">84</div><div class=\"bb_table_td\">65</div></div></div><br>This area has random encounters.<br>This area has no collectibles.<br>Make sure to grab the Blue Magic 'Pond's Chorus' from Elf Toad. <br><br>Take the stairs down into the water, then head north.<br><br><u><b>Walse Tower - 2F</b></u><br><br>2F and 3F have the exactly same layout, so make your way to 4F.<br><br><u><b>Walse Tower - 4F</b></u><br><br>Walk towards the middle of the room and quick-save/heal up, then interact with the orb. <br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1787361012297745723/59E44253EAC99F5517291422BE8D582CCA3A0CFB/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787361012297745723%2F59E44253EAC99F5517291422BE8D582CCA3A0CFB%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787361012297745723/59E44253EAC99F5517291422BE8D582CCA3A0CFB/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">       Ice Commander x3  </div></div></div><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">ID</div><div class=\"bb_table_th\">HP</div><div class=\"bb_table_th\">MP</div><div class=\"bb_table_th\">ATK</div><div class=\"bb_table_th\">DEF</div><div class=\"bb_table_th\">EVA</div><div class=\"bb_table_th\">M.DEF</div><div class=\"bb_table_th\">MAG</div><div class=\"bb_table_th\">WEAKNESS</div><div class=\"bb_table_th\">RESIST.</div><div class=\"bb_table_th\">ABSORBS</div><div class=\"bb_table_th\">CANCELS</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">234</div><div class=\"bb_table_td\">600</div><div class=\"bb_table_td\">200</div><div class=\"bb_table_td\">21</div><div class=\"bb_table_td\">0</div><div class=\"bb_table_td\">10</div><div class=\"bb_table_td\">0</div><div class=\"bb_table_td\">10</div><div class=\"bb_table_td\">Fire</div><div class=\"bb_table_td\">Mini</div><div class=\"bb_table_td\">Ice</div><div class=\"bb_table_td\">None</div></div></div><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">       Shiva  </div></div></div><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">ID</div><div class=\"bb_table_th\">HP</div><div class=\"bb_table_th\">MP</div><div class=\"bb_table_th\">ATK</div><div class=\"bb_table_th\">DEF</div><div class=\"bb_table_th\">EVA</div><div class=\"bb_table_th\">M.DEF</div><div class=\"bb_table_th\">MAG</div><div class=\"bb_table_th\">WEAKNESS</div><div class=\"bb_table_th\">RESIST.</div><div class=\"bb_table_th\">ABSORBS</div><div class=\"bb_table_th\">CANCELS</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">235</div><div class=\"bb_table_td\">1500</div><div class=\"bb_table_td\">1000</div><div class=\"bb_table_td\">40</div><div class=\"bb_table_td\">0</div><div class=\"bb_table_td\">0</div><div class=\"bb_table_td\">0</div><div class=\"bb_table_td\">0</div><div class=\"bb_table_td\">Fire</div><div class=\"bb_table_td\">Zombie, Mini, Toad, Petrify, Death, Silence, Berserk, Confuse, Paralyze, Sleep, Old, Stop</div><div class=\"bb_table_td\">Ice</div><div class=\"bb_table_td\">None</div></div></div><br>This is a tough battle. <br>If you have the blue magic 'Flash', this is a good time to make use of it. Ice Commanders' are not resistant against Darkness status and doing that can pretty much null all their devastating physical attacks.<br>Make your Black Mage (if you have one) spam fire-based spells on Shiva until taking her down. Yes, start with her as she can become extremely annoying with her Blizzara attacks. <br>As with the White Mage, heal your party on all turns, one by one if possible as healing all at once can be counterproductive if the enemies are focusing on just one of your characters.<br>The rest of the party can attack with anything you have. Just try to stick to the correct order: Shiva → Ice Commanders.<br><br>After winning this difficult fight, you will be rewarded with the powerful summoned monster Shiva! <br>If you're having issues winning this battle at this time, you can wait until our next visit here to give it another go. <br><br>Anyway, now that we're done here, backtrack to the main hall of the castle (walk south of the orb for a shortcut outside the waterfall) and then head into the throne room.<br><br>Whatever you do, <u>DON'T free the Lone Wolf</u> as that will get future treasure chests stolen, an action that may void the 'open all treasure chests' achievement...<br><br>Watch the scenes to set your next objective!<br>Exit to the overworld.<br><br>Note: We're purposely skipping a section of this dungeon since it's way too hard for this point of the game. We will come back later when we are stronger!\t\t\t\t\t\t\t\t<div style=\"clear: both\"></div>\n\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t</div>\n\t\t\t\t\t\t<div style=\"clear: both\"></div>\n\t\t\t\t\t\t\t\t\t\t\t\t<div class=\"subSection detailBox\" id=\"4914361\">\n\t\t\t\t\t\t\t",
+      "section": {
+        "title": "Walse",
+        "text": "Overworld\nHop on Hiryu and fly a little northeast (you must go around the mountains, of course) to find our next destination.\nRefer to the screenshot below for the exact location.\nThis location is Walse and it's divided into two areas. The left one is the castle and the right is the town. Head into the town first.\nWalse\nFrom the entrance, head west and take the stairs leading to the water.\nSwim west and enter the westernmost house.\nInspect the white pot to find Silver Specs. {22/46}\nThat's the only collectible here. Feel free to visit the shops to purchase anything you want.\nInn\nService\nCost\nRest\n20\nItems\nItem\nCost\nDescription\nPotion\n40\nRecovers HP.\nAntidote\n30\nCures an ally of poison.\nEye Drops\n20\nCures an ally of darkness.\nMaiden's Kiss\n60\nCures an ally of the toad status.\nMallet\n50\nCures an ally of the mini status.\nGold Needle\n150\nCures an ally of petrification.\nPhoenix Down\n1000\nRevives an ally from the KO status.\nTent\n250\nRecovers all members' HP and MP. Can be used outdoors.\nWeapons\nItem\nCost\nDescription\nBattle Axe\n650\nAttack +23 Can be two-handed\nLong Sword\n480\nAttack +22 Can be two-handed Can be enchanted\nDagger\n300\nAttack +14 Can be enchanted\nArmor\nItem\nCost\nDescription\nIron Shield\n390\nDefense +2 Evasion +20 Weight +5\nIron Helm\n350\nDefense +4 Magic Defense +2 Weight +4\nIron Armor\n500\nDefense +6 Magic Defense +2 Weight +8\nKenpo Gi\n450\nDefense +5 Magic Defense +2 Weight +3 Strength +1\nCotton Robe\n300\nDefense +2 Magic Defense +4 Weight +2\nMagic\nItem\nCost\nDescription\nSlow\n80\nSlows the passing of time for one enemy.\nRegen\n100\nGradually restores HP.\nMute\n320\nSilences all allies and enemies.\nHaste\n320\nHastens the passing of time for one ally.\nChocobo\n300\nTriggers the \"Choco Kick\" attack against one enemy. Triggers the \"Fat Chocobo\" attack against all enemies.\nSylph\n350\nAbsorbs HP from one enemy to heal all allies. Triggers \"Whisperwind.\"\nRemora\n250\nParalyzes one enemy. Triggers \"Constrict.\"\nSome great stuff in the Magic Shop. Make sure to get everything if you can.\nOnce prepared, leave the town and head into the castle.\nCastle Walse\nGo north and enter the castle.\nCastle Walse - 2F\nHead northeast and go through the door.\nOnce at the new room, go north and then take the south-eastern staircase leading down.\nCastle Walse - Storehouse\nSearch the left barrel for a Tent and the right barrel for a Phoenix Down. {24/46}\nNow search the second crate for 490 Gil. {25/46}\nBacktrack to the main hall and take the eastern stairs leading down.\nCastle Walse - 1F\nExit through the southeastern door.\nCastle Walse\nFollow the linear path until you reach the water, then go north and straight into the waterfall.\nWalse Tower - 1F\nㅤ  ㅤ        ㅤ BESTIARY: WALSE TOWERㅤ ㅤ\nID\nMONSTER\nHP\nMP\nGIL\nEXP\n025\nElf Toad\n160\n50\n81\n65\nBM: Pond's Chorus\n026\nIce Soldier\n160\n20\n84\n65\nThis area has random encounters.\nThis area has no collectibles.\nMake sure to grab the Blue Magic 'Pond's Chorus' from Elf Toad.\nTake the stairs down into the water, then head north.\nWalse Tower - 2F\n2F and 3F have the exactly same layout, so make your way to 4F.\nWalse Tower - 4F\nWalk towards the middle of the room and quick-save/heal up, then interact with the orb.\nIce Commander x3\nID\nHP\nMP\nATK\nDEF\nEVA\nM.DEF\nMAG\nWEAKNESS\nRESIST.\nABSORBS\nCANCELS\n234\n600\n200\n21\n0\n10\n0\n10\nFire\nMini\nIce\nNone\nShiva\nID\nHP\nMP\nATK\nDEF\nEVA\nM.DEF\nMAG\nWEAKNESS\nRESIST.\nABSORBS\nCANCELS\n235\n1500\n1000\n40\n0\n0\n0\n0\nFire\nZombie, Mini, Toad, Petrify, Death, Silence, Berserk, Confuse, Paralyze, Sleep, Old, Stop\nIce\nNone\nThis is a tough battle.\nIf you have the blue magic 'Flash', this is a good time to make use of it. Ice Commanders' are not resistant against Darkness status and doing that can pretty much null all their devastating physical attacks.\nMake your Black Mage (if you have one) spam fire-based spells on Shiva until taking her down. Yes, start with her as she can become extremely annoying with her Blizzara attacks.\nAs with the White Mage, heal your party on all turns, one by one if possible as healing all at once can be counterproductive if the enemies are focusing on just one of your characters.\nThe rest of the party can attack with anything you have. Just try to stick to the correct order: Shiva → Ice Commanders.\nAfter winning this difficult fight, you will be rewarded with the powerful summoned monster Shiva!\nIf you're having issues winning this battle at this time, you can wait until our next visit here to give it another go.\nAnyway, now that we're done here, backtrack to the main hall of the castle (walk south of the orb for a shortcut outside the waterfall) and then head into the throne room.\nWhatever you do, DON'T free the Lone Wolf as that will get future treasure chests stolen, an action that may void the 'open all treasure chests' achievement...\nWatch the scenes to set your next objective!\nExit to the overworld.\nNote: We're purposely skipping a section of this dungeon since it's way too hard for this point of the game. We will come back later when we are stronger!",
+        "shops": [
+          {
+            "where": "Walse",
+            "kind": "旅店",
+            "goods": [
+              {
+                "name": "Rest",
+                "cost": 20,
+                "note": ""
+              }
+            ]
+          },
+          {
+            "where": "Walse",
+            "kind": "道具",
+            "goods": [
+              {
+                "name": "Potion",
+                "cost": 40,
+                "note": "Recovers HP."
+              },
+              {
+                "name": "Antidote",
+                "cost": 30,
+                "note": "Cures an ally of poison."
+              },
+              {
+                "name": "Eye Drops",
+                "cost": 20,
+                "note": "Cures an ally of darkness."
+              },
+              {
+                "name": "Maiden's Kiss",
+                "cost": 60,
+                "note": "Cures an ally of the toad status."
+              },
+              {
+                "name": "Mallet",
+                "cost": 50,
+                "note": "Cures an ally of the mini status."
+              },
+              {
+                "name": "Gold Needle",
+                "cost": 150,
+                "note": "Cures an ally of petrification."
+              },
+              {
+                "name": "Phoenix Down",
+                "cost": 1000,
+                "note": "Revives an ally from the KO status."
+              },
+              {
+                "name": "Tent",
+                "cost": 250,
+                "note": "Recovers all members' HP and MP. Can be used outdoors."
+              }
+            ]
+          },
+          {
+            "where": "Walse",
+            "kind": "武器",
+            "goods": [
+              {
+                "name": "Battle Axe",
+                "cost": 650,
+                "note": "Attack +23 Can be two-handed"
+              },
+              {
+                "name": "Long Sword",
+                "cost": 480,
+                "note": "Attack +22 Can be two-handed Can be enchanted"
+              },
+              {
+                "name": "Dagger",
+                "cost": 300,
+                "note": "Attack +14 Can be enchanted"
+              }
+            ]
+          },
+          {
+            "where": "Walse",
+            "kind": "防具",
+            "goods": [
+              {
+                "name": "Iron Shield",
+                "cost": 390,
+                "note": "Defense +2 Evasion +20 Weight +5"
+              },
+              {
+                "name": "Iron Helm",
+                "cost": 350,
+                "note": "Defense +4 Magic Defense +2 Weight +4"
+              },
+              {
+                "name": "Iron Armor",
+                "cost": 500,
+                "note": "Defense +6 Magic Defense +2 Weight +8"
+              },
+              {
+                "name": "Kenpo Gi",
+                "cost": 450,
+                "note": "Defense +5 Magic Defense +2 Weight +3 Strength +1"
+              },
+              {
+                "name": "Cotton Robe",
+                "cost": 300,
+                "note": "Defense +2 Magic Defense +4 Weight +2"
+              }
+            ]
+          },
+          {
+            "where": "Walse",
+            "kind": "魔法",
+            "goods": [
+              {
+                "name": "Slow",
+                "cost": 80,
+                "note": "Slows the passing of time for one enemy."
+              },
+              {
+                "name": "Regen",
+                "cost": 100,
+                "note": "Gradually restores HP."
+              },
+              {
+                "name": "Mute",
+                "cost": 320,
+                "note": "Silences all allies and enemies."
+              },
+              {
+                "name": "Haste",
+                "cost": 320,
+                "note": "Hastens the passing of time for one ally."
+              },
+              {
+                "name": "Chocobo",
+                "cost": 300,
+                "note": "Triggers the \"Choco Kick\" attack against one enemy. Triggers the \"Fat Chocobo\" attack against all enemies."
+              },
+              {
+                "name": "Sylph",
+                "cost": 350,
+                "note": "Absorbs HP from one enemy to heal all allies. Triggers \"Whisperwind.\""
+              },
+              {
+                "name": "Remora",
+                "cost": 250,
+                "note": "Paralyzes one enemy. Triggers \"Constrict.\""
+              }
+            ]
+          }
+        ],
+        "treasures": [
+          {
+            "kind": "hidden",
+            "n": 22,
+            "where": "Walse",
+            "text": "Inspect the white pot to find Silver Specs."
+          },
+          {
+            "kind": "hidden",
+            "n": 24,
+            "where": "Castle Walse - Storehouse",
+            "text": "Search the left barrel for a Tent and the right barrel for a Phoenix Down."
+          },
+          {
+            "kind": "hidden",
+            "n": 25,
+            "where": "Castle Walse - Storehouse",
+            "text": "Now search the second crate for 490 Gil."
+          }
+        ]
+      }
+    },
+    {
+      "html": "<div class=\"subSectionTitle\">\n\t\t\t\t\t\t\t\tTower of Walse\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t\t<div class=\"subSectionDesc\">\n\t\t\t\t\t\t\t\t<u><b>Overworld</b></u><br><br>Pay a visit to Walse's Inn if you need to refill your HP/MP.<br>From Walse castle, head directly north to spot the meteorite between some mountains. <br>From here, go west and disembark near the large building. This is the Tower of Walse. <br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1787361012298167825/101C000256626D48E279581161A5F9B9A922AEBF/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787361012298167825%2F101C000256626D48E279581161A5F9B9A922AEBF%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787361012298167825/101C000256626D48E279581161A5F9B9A922AEBF/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div><br>Head inside.<br><br><u><b>Tower of Walse - 1F</b></u><br><br><b>WARNING: This is a one-visit location.</b><br><br>Summary of Missables: <br><ul class=\"bb_ul\"><li> All treasure chests<br></li><li> Wyvern and Pas de Seul bestiary entries</li></ul><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">ㅤ  ㅤ        ㅤ BESTIARY: TOWER OF WALSEㅤ ㅤ</div></div></div><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">ID</div><div class=\"bb_table_th\">MONSTER</div><div class=\"bb_table_th\">HP</div><div class=\"bb_table_th\">MP</div><div class=\"bb_table_th\">GIL</div><div class=\"bb_table_th\">EXP</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">027</div><div class=\"bb_table_td\">Ricard Mage</div><div class=\"bb_table_td\">100</div><div class=\"bb_table_td\">70</div><div class=\"bb_table_td\">87</div><div class=\"bb_table_td\">75</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">028</div><div class=\"bb_table_td\">Wyvern</div><div class=\"bb_table_td\">200</div><div class=\"bb_table_td\">0</div><div class=\"bb_table_td\">90</div><div class=\"bb_table_td\">160</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">029</div><div class=\"bb_table_td\">Pas de Seul</div><div class=\"bb_table_td\">280</div><div class=\"bb_table_td\">50</div><div class=\"bb_table_td\">93</div><div class=\"bb_table_td\">100</div></div></div><br>This dungeon is very straightforward. <br>From the entrance, head north, go through the door and take the stairs leading up. <br><br><u><b>Tower of Walse - 2F</b></u><br><br>Go around the structure and up another set of stairs. <br><br><u><b>Tower of Walse - 3F</b></u><br><br>Go around the structure and head upstairs. <br><br><u><b>Tower of Walse - 4F</b></u><br><br>Here you will find the King of Walse in a deplorable state. <br>Feel free to talk with him, then take the left stairs to the water and climb up the vines. <br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1787361012298167832/BF864D872A4494A76A59538043832CDBE03A86D6/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787361012298167832%2FBF864D872A4494A76A59538043832CDBE03A86D6%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787361012298167832/BF864D872A4494A76A59538043832CDBE03A86D6/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div><br><u><b>Tower of Walse - 5F</b></u><br><br>Open the chest for a Silk Robe. [27/225]<br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1787361012298167785/09362577F2A8D67DC4981686A42E50FAD5AB1C94/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787361012298167785%2F09362577F2A8D67DC4981686A42E50FAD5AB1C94%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787361012298167785/09362577F2A8D67DC4981686A42E50FAD5AB1C94/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div><br>Drop down the hole to return to 4F.<br><br><u><b>Tower of Walse - 4F</b></u><br><br>Exit the water and take the stairs leading up. <br><br><u><b>Tower of Walse - 5F</b></u><br><br>There's a consecrated circle here. Feel free to save/rest. <br>Now while standing in the circle, walk directly east to reach a chest containing a Maiden's Kiss. [28/225]<br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1787361012298167792/70446FFCD03B488AC6EFD2B195C41338A038B62E/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787361012298167792%2F70446FFCD03B488AC6EFD2B195C41338A038B62E%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787361012298167792/70446FFCD03B488AC6EFD2B195C41338A038B62E/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div><br>Continue your way to the top through the linear floors up to 8F.  <br><br><u><b>Tower of Walse - 8F</b></u><br><br>As soon as you enter this room, you will spot three vines. <br>Ignore the middle vine for now and take the northwestern one to find a chest containing Silver Armlet. [29/225]<br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1787361012298167801/B400E2CC45A8B5CAF7DA1A6FB6BD217680DB8B42/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787361012298167801%2FB400E2CC45A8B5CAF7DA1A6FB6BD217680DB8B42%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787361012298167801/B400E2CC45A8B5CAF7DA1A6FB6BD217680DB8B42/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div><br>Jump down back to the previous floor. <br><br>Back at 8F, climb up the northeastern vine this time. <br><br><u><b>Tower of Walse - 9F</b></u><br><br>Open the chest here for an Ether. [30/225]<br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1787361012298167809/EF6D02AA6994F18EB4949ABF3AE7C2EDEABC45CE/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787361012298167809%2FEF6D02AA6994F18EB4949ABF3AE7C2EDEABC45CE%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787361012298167809/EF6D02AA6994F18EB4949ABF3AE7C2EDEABC45CE/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div><br>And with that, we're done with the collectibles for this dungeon. 4/4 chests.<br>Take the stairs leading up. <br><br><u><b>Crystal Room</b></u><br><br>Before moving, heal up and quick-save. <br>Then, once prepared, go north to trigger a cutscene and the next boss fight. <br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">       Garula  </div></div></div><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">ID</div><div class=\"bb_table_th\">HP</div><div class=\"bb_table_th\">MP</div><div class=\"bb_table_th\">ATK</div><div class=\"bb_table_th\">DEF</div><div class=\"bb_table_th\">EVA</div><div class=\"bb_table_th\">M.DEF</div><div class=\"bb_table_th\">MAG</div><div class=\"bb_table_th\">WEAKNESS</div><div class=\"bb_table_th\">RESIST.</div><div class=\"bb_table_th\">ABSORBS</div><div class=\"bb_table_th\">CANCELS</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">236</div><div class=\"bb_table_td\">1200</div><div class=\"bb_table_td\">100</div><div class=\"bb_table_td\">15</div><div class=\"bb_table_td\">7</div><div class=\"bb_table_td\">0</div><div class=\"bb_table_td\">4</div><div class=\"bb_table_td\">0</div><div class=\"bb_table_td\">None</div><div class=\"bb_table_td\">Mini, Sleep</div><div class=\"bb_table_td\">None</div><div class=\"bb_table_td\">None</div></div></div><br>Easiest way to win: Keep using the blue magic 'Pond's Chorus' to turn Garula into a toad. The boss will cast toad on itself to recover from status, but won't do anything else and that turn will be considered wasted. Continue casting Pond's Chorus to waste all boss turns while the rest of the party focuses on attacking with anything you have. <br>In older versions, you could cast Silence on the boss to make it stop using Toad, but that doesn't seem to work here.<br><br>After the fight, watch the short scene and collect the crystal shards from the floor. <br><br>Jobs unlocked: <br><ul class=\"bb_ul\"><li> Summoner<br></li><li> Red Mage<br></li><li> Berserker<br></li><li> Mystic Knight<br></li><li> Time Mage</li></ul><br>The last crystal shard is sadly unreachable.<br>The tower will start shaking, so leave through the back opening before it crumbles. <br><br>Watch the scenes...<br><br><a href=\"https://images.steamusercontent.com/ugc/1787361012298167771/1BFA15D7C6BF2A6A823165DC2D44B5CB3EF13A62/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787361012298167771%2F1BFA15D7C6BF2A6A823165DC2D44B5CB3EF13A62%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787361012298167771/1BFA15D7C6BF2A6A823165DC2D44B5CB3EF13A62/\" class=\"sharedFilePreviewImage sizeOriginal floatLeft\" alt=\"\" title=\"\"></a><div class=\"bb_code\">Devotion- Essence of Water\nReceived power from the water crystal.</div>\t\t\t\t\t\t\t\t<div style=\"clear: both\"></div>\n\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t</div>\n\t\t\t\t\t\t<div style=\"clear: both\"></div>\n\t\t\t\t\t\t\t\t\t\t\t\t<div class=\"subSection detailBox\" id=\"4914681\">\n\t\t\t\t\t\t\t",
+      "section": {
+        "title": "Tower of Walse",
+        "text": "Overworld\nPay a visit to Walse's Inn if you need to refill your HP/MP.\nFrom Walse castle, head directly north to spot the meteorite between some mountains.\nFrom here, go west and disembark near the large building. This is the Tower of Walse.\nHead inside.\nTower of Walse - 1F\nWARNING: This is a one-visit location.\nSummary of Missables:\nAll treasure chests\nWyvern and Pas de Seul bestiary entries\nㅤ  ㅤ        ㅤ BESTIARY: TOWER OF WALSEㅤ ㅤ\nID\nMONSTER\nHP\nMP\nGIL\nEXP\n027\nRicard Mage\n100\n70\n87\n75\n028\nWyvern\n200\n0\n90\n160\n029\nPas de Seul\n280\n50\n93\n100\nThis dungeon is very straightforward.\nFrom the entrance, head north, go through the door and take the stairs leading up.\nTower of Walse - 2F\nGo around the structure and up another set of stairs.\nTower of Walse - 3F\nGo around the structure and head upstairs.\nTower of Walse - 4F\nHere you will find the King of Walse in a deplorable state.\nFeel free to talk with him, then take the left stairs to the water and climb up the vines.\nTower of Walse - 5F\nOpen the chest for a Silk Robe. [27/225]\nDrop down the hole to return to 4F.\nTower of Walse - 4F\nExit the water and take the stairs leading up.\nTower of Walse - 5F\nThere's a consecrated circle here. Feel free to save/rest.\nNow while standing in the circle, walk directly east to reach a chest containing a Maiden's Kiss. [28/225]\nContinue your way to the top through the linear floors up to 8F.\nTower of Walse - 8F\nAs soon as you enter this room, you will spot three vines.\nIgnore the middle vine for now and take the northwestern one to find a chest containing Silver Armlet. [29/225]\nJump down back to the previous floor.\nBack at 8F, climb up the northeastern vine this time.\nTower of Walse - 9F\nOpen the chest here for an Ether. [30/225]\nAnd with that, we're done with the collectibles for this dungeon. 4/4 chests.\nTake the stairs leading up.\nCrystal Room\nBefore moving, heal up and quick-save.\nThen, once prepared, go north to trigger a cutscene and the next boss fight.\nGarula\nID\nHP\nMP\nATK\nDEF\nEVA\nM.DEF\nMAG\nWEAKNESS\nRESIST.\nABSORBS\nCANCELS\n236\n1200\n100\n15\n7\n0\n4\n0\nNone\nMini, Sleep\nNone\nNone\nEasiest way to win: Keep using the blue magic 'Pond's Chorus' to turn Garula into a toad. The boss will cast toad on itself to recover from status, but won't do anything else and that turn will be considered wasted. Continue casting Pond's Chorus to waste all boss turns while the rest of the party focuses on attacking with anything you have.\nIn older versions, you could cast Silence on the boss to make it stop using Toad, but that doesn't seem to work here.\nAfter the fight, watch the short scene and collect the crystal shards from the floor.\nJobs unlocked:\nSummoner\nRed Mage\nBerserker\nMystic Knight\nTime Mage\nThe last crystal shard is sadly unreachable.\nThe tower will start shaking, so leave through the back opening before it crumbles.\nWatch the scenes...\nDevotion- Essence of Water\nReceived power from the water crystal.",
+        "shops": [],
+        "treasures": [
+          {
+            "kind": "chest",
+            "n": 27,
+            "where": "Tower of Walse - 5F",
+            "text": "Open the chest for a Silk Robe."
+          },
+          {
+            "kind": "chest",
+            "n": 28,
+            "where": "Tower of Walse - 5F",
+            "text": "Now while standing in the circle, walk directly east to reach a chest containing a Maiden's Kiss."
+          },
+          {
+            "kind": "chest",
+            "n": 29,
+            "where": "Tower of Walse - 8F",
+            "text": "Ignore the middle vine for now and take the northwestern one to find a chest containing Silver Armlet."
+          },
+          {
+            "kind": "chest",
+            "n": 30,
+            "where": "Tower of Walse - 9F",
+            "text": "Open the chest here for an Ether."
+          }
+        ]
+      }
+    },
+    {
+      "html": "<div class=\"subSectionTitle\">\n\t\t\t\t\t\t\t\tKarnak\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t\t<div class=\"subSectionDesc\">\n\t\t\t\t\t\t\t\t<u><b>Overworld</b></u><br><br>After the tragic scene, you will be back at the overworld near the meteorite we saw earlier. <br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1787361012298328739/DC44372E3588FBF8C7F247ED590568E54617B21E/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787361012298328739%2FDC44372E3588FBF8C7F247ED590568E54617B21E%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787361012298328739/DC44372E3588FBF8C7F247ED590568E54617B21E/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div><br>Head inside. <br><br><u><b>Walse Meteorite</b></u><br><br>Go north and enter through the hole. <br><br><u><b>Walse Meteorite - Interior</b></u><br><br>Follow the linear path to its end, then step on the warp pad. <br><br><u><b>Karnak Meteorite - Interior</b></u><br><br>Woah, we spawned in a new place!<br>Exit the meteorite and the location. <br><br><u><b>Overworld</b></u><br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">ㅤ  ㅤ        ㅤ BESTIARY: KARNAK AREAㅤ ㅤ</div></div></div><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">ID</div><div class=\"bb_table_th\">MONSTER</div><div class=\"bb_table_th\">HP</div><div class=\"bb_table_th\">MP</div><div class=\"bb_table_th\">GIL</div><div class=\"bb_table_th\">EXP</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">031</div><div class=\"bb_table_td\">Aegir</div><div class=\"bb_table_td\">180</div><div class=\"bb_table_td\">0</div><div class=\"bb_table_td\">99</div><div class=\"bb_table_td\">120</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">032</div><div class=\"bb_table_td\">Zu</div><div class=\"bb_table_td\">850</div><div class=\"bb_table_td\">0</div><div class=\"bb_table_td\">150</div><div class=\"bb_table_td\">360</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">033</div><div class=\"bb_table_td\">Wild Nakk</div><div class=\"bb_table_td\">95</div><div class=\"bb_table_td\">100</div><div class=\"bb_table_td\">125</div><div class=\"bb_table_td\">70</div><div class=\"bb_table_td\">BM: ???</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">034</div><div class=\"bb_table_td\">Grass Tortoise</div><div class=\"bb_table_td\">250</div><div class=\"bb_table_td\">0</div><div class=\"bb_table_td\">100</div><div class=\"bb_table_td\">230</div></div></div><br>Wild Nakk spawn in the forest area. <br>Zu spawns near Karnak. <br><br>From outside the meteorite, go west and follow the woods north to reach a split. <br>At the split, head southwest and follow the linear path to reach a castle and a town. This is Karnak. <br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1787361012298328760/5888915079CE511692DB0679B9E4D0EED865724D/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787361012298328760%2F5888915079CE511692DB0679B9E4D0EED865724D%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787361012298328760/5888915079CE511692DB0679B9E4D0EED865724D/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div><br>Enter the town. <br><br><u><b>Karnak</b></u><br><br>From the entrance, head northwest and enter the Pub. <br><br><u><b>Karnak - Pub</b></u><br><br>Play the piano to get progress towards the related achievement. [Piano Maestro: 3/8]<br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1787361012298328768/5FFC816B9E7270776416CE5AC3E99F72013E7492/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787361012298328768%2F5FFC816B9E7270776416CE5AC3E99F72013E7492%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787361012298328768/5FFC816B9E7270776416CE5AC3E99F72013E7492/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div><br>Exit the Pub. <br><br>Enter the Weapons/Armor shop and speak to any of the attendants. You'll get arrested, wtf? <br><br><u><b>Karnak Castle - B4</b></u><br><br>You'll wake up in a cell. <br>Approach the jail door to trigger a cutscene. BOOM! <br><br>Speak to the old man to meet <span class=\"bb_spoiler\"><span>Cid!</span></span> Hell yeah! and watch some more scenes. <br><br>Once regaining control, go north through the open jail door and up the stairs. <br><br><u><b>Karnak Castle - B3</b></u><br><br>Continue north and go up another set of stairs. <br><br><u><b>Karnak Castle - B2</b></u><br><br>Walk around the middle structure and through the door. <br><br><u><b>Karnak Castle - B1</b></u><br><br>Head north and up the stairs. <br><br><u><b>Karnak Castle - 1F</b></u><br><br>We're finally in the main hall. Exit the castle through the southern door. <br>Note: Don't bother by trying to loot anything, most of the castle is blocked by fire at the moment. We will return later anyways.<br><br><u><b>Karnak Castle</b></u><br><br>While exiting the castle, you'll watch a short scene with the wolf we decided not to free in Walse. I'm pretty sure we'll meet again with that peculiar character in the near future. <br>As for now, exit to the overworld. <br><br><u><b>Overworld</b></u><br><br>Re-enter Karnak (the town). <br><br>All shops are now open and free to explore, so it's a good time to upgrade your spells and equipment!<br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Magic (left)</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Item</div><div class=\"bb_table_th\">Cost</div><div class=\"bb_table_th\">Description</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Cura</div><div class=\"bb_table_td\">620</div><div class=\"bb_table_td\">Restores HP.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Raise</div><div class=\"bb_table_td\">700</div><div class=\"bb_table_td\">Revives a single target.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Confuse</div><div class=\"bb_table_td\">650</div><div class=\"bb_table_td\">Causes confusion.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Silence</div><div class=\"bb_table_td\">280</div><div class=\"bb_table_td\">Causes silence.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Cure</div><div class=\"bb_table_td\">180</div><div class=\"bb_table_td\">Restores HP.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Libra</div><div class=\"bb_table_td\">80</div><div class=\"bb_table_td\">Determines the enemy's HP, weakness, current condition, and level.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Poisona</div><div class=\"bb_table_td\">90</div><div class=\"bb_table_td\">Cures poison.</div></div></div><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Magic (top)</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Item</div><div class=\"bb_table_th\">Cost</div><div class=\"bb_table_th\">Description</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Fira</div><div class=\"bb_table_td\">600</div><div class=\"bb_table_td\">Deals fire damage.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Blizzara</div><div class=\"bb_table_td\">600</div><div class=\"bb_table_td\">Deals ice damage.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Thundara</div><div class=\"bb_table_td\">600</div><div class=\"bb_table_td\">Deals lightning damage.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Poison</div><div class=\"bb_table_td\">290</div><div class=\"bb_table_td\">Causes poison.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Sleep</div><div class=\"bb_table_td\">300</div><div class=\"bb_table_td\">Causes sleep.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Fire</div><div class=\"bb_table_td\">150</div><div class=\"bb_table_td\">Deals fire damage.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Blizzard</div><div class=\"bb_table_td\">150</div><div class=\"bb_table_td\">Deals ice damage.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Thunder</div><div class=\"bb_table_td\">150</div><div class=\"bb_table_td\">Deals lightning damage.</div></div></div><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Magic (right)</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Item</div><div class=\"bb_table_th\">Cost</div><div class=\"bb_table_th\">Description</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Gravity</div><div class=\"bb_table_td\">620</div><div class=\"bb_table_td\">Halves one enemy's HP.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Stop</div><div class=\"bb_table_td\">580</div><div class=\"bb_table_td\">Causes time to stop, halting the target's actions.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Haste</div><div class=\"bb_table_td\">320</div><div class=\"bb_table_td\">Hastens the passing of time for one ally.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Mute</div><div class=\"bb_table_td\">320</div><div class=\"bb_table_td\">Silences all allies and enemies.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Slow</div><div class=\"bb_table_td\">80</div><div class=\"bb_table_td\">Slows the passing of time for one enemy.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Regen</div><div class=\"bb_table_td\">100</div><div class=\"bb_table_td\">Gradually restores HP.</div></div></div><br>Make sure to get Gravity. It might help us a lot during the next boss fight.<br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Armor</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Item</div><div class=\"bb_table_th\">Cost</div><div class=\"bb_table_th\">Description</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Mythril Shield</div><div class=\"bb_table_td\">590</div><div class=\"bb_table_td\">Defense +3 Evasion +25 Weight +5</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Mythril Helm</div><div class=\"bb_table_td\">550</div><div class=\"bb_table_td\">Defense +6 Magic Defense +2 Weight +4</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Plumed Hat</div><div class=\"bb_table_td\">350</div><div class=\"bb_table_td\">Defense +2 Magic Defense +2 Weight +2</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Mythril Armor</div><div class=\"bb_table_td\">700</div><div class=\"bb_table_td\">Defense +9 Magic Defense +2 Weight +8</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Silver Plate</div><div class=\"bb_table_td\">600</div><div class=\"bb_table_td\">Defense +7 Magic Defense +2 Weight +4</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Silk Robe</div><div class=\"bb_table_td\">500</div><div class=\"bb_table_td\">Defense +4 Magic Defense +6 Weight +2</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Mythril Gloves</div><div class=\"bb_table_td\">600</div><div class=\"bb_table_td\">Defense +3 Weight +5</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Silver Armlet</div><div class=\"bb_table_td\">500</div><div class=\"bb_table_td\">Defense +2 Magic Defense +3 Weight +3</div></div></div><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Shop</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Item</div><div class=\"bb_table_th\">Cost</div><div class=\"bb_table_th\">Description</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Mythril Knife</div><div class=\"bb_table_td\">450</div><div class=\"bb_table_td\">Attack +23 Can be enchanted</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Mythril Sword</div><div class=\"bb_table_td\">880</div><div class=\"bb_table_td\">Attack +31 Can be two-handed Can be enchanted</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Mythril Hammer</div><div class=\"bb_table_td\">1050</div><div class=\"bb_table_td\">Attack +28 Can be two-handed</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Flame Rod</div><div class=\"bb_table_td\">750</div><div class=\"bb_table_td\">Attack +16</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Frost Rod</div><div class=\"bb_table_td\">750</div><div class=\"bb_table_td\">Attack +16</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Thunder Rod</div><div class=\"bb_table_td\">750</div><div class=\"bb_table_td\">Attack +16</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Flail</div><div class=\"bb_table_td\">780</div><div class=\"bb_table_td\">Attack +16 Can be two-handed</div></div></div><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Items (Inn) </div></div><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Item</div><div class=\"bb_table_th\">Cost</div><div class=\"bb_table_th\">Description</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Potion</div><div class=\"bb_table_td\">40</div><div class=\"bb_table_td\">Recovers HP.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Antidote</div><div class=\"bb_table_td\">30</div><div class=\"bb_table_td\">Cures an ally of poison.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Eye Drops</div><div class=\"bb_table_td\">20</div><div class=\"bb_table_td\">Cures an ally of darkness.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Maiden's Kiss</div><div class=\"bb_table_td\">60</div><div class=\"bb_table_td\">Cures an ally of the toad status.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Mallet</div><div class=\"bb_table_td\">50</div><div class=\"bb_table_td\">Cures an ally of the mini status.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Gold Needle</div><div class=\"bb_table_td\">150</div><div class=\"bb_table_td\">Cures an ally of petrification.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Phoenix Down</div><div class=\"bb_table_td\">1000</div><div class=\"bb_table_td\">Revives an ally from the KO status.</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Tent</div><div class=\"bb_table_td\">250</div><div class=\"bb_table_td\">Recovers all members' HP and MP. Can be used outdoors.</div></div></div><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Inn</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_th\">Service</div><div class=\"bb_table_th\">Cost</div></div><div class=\"bb_table_tr\"><div class=\"bb_table_td\">Rest</div><div class=\"bb_table_td\">20</div></div></div><br>That's all we can do in the town for now. <br>Exit to the overworld. <br><br><u><b>Overworld</b></u><br><br>Board the ship just below Karnak Castle. <br><br><div class=\"bb_table\"><div class=\"bb_table_tr\"><div class=\"bb_table_td\"><a href=\"https://images.steamusercontent.com/ugc/1787361012298328753/F84DA9522D2E36A23584AD093EEBF9C57876AD14/\" class=\"modalContentLink\" data-modal-content-popup-url=\"https://steamcommunity.com/sharedfiles/displayimageformodaldialog/?imageurl=https%3A%2F%2Fimages.steamusercontent.com%2Fugc%2F1787361012298328753%2FF84DA9522D2E36A23584AD093EEBF9C57876AD14%2F\"><img src=\"https://images.steamusercontent.com/ugc/1787361012298328753/F84DA9522D2E36A23584AD093EEBF9C57876AD14/\" class=\"sharedFilePreviewImage sizeOriginal inline\" alt=\"\" title=\"\"></a></div></div></div>\t\t\t\t\t\t\t\t<div style=\"clear: both\"></div>\n\t\t\t\t\t\t\t</div>\n\t\t\t\t\t\t</div>\n\t\t\t\t\t\t<div style=\"clear: both\"></div>\n\t\t\t\t\t\t\t\t\t\t\t\t<div class=\"subSection detailBox\" id=\"4914847\">\n\t\t\t\t\t\t\t",
+      "section": {
+        "title": "Karnak",
+        "text": "Overworld\nAfter the tragic scene, you will be back at the overworld near the meteorite we saw earlier.\nHead inside.\nWalse Meteorite\nGo north and enter through the hole.\nWalse Meteorite - Interior\nFollow the linear path to its end, then step on the warp pad.\nKarnak Meteorite - Interior\nWoah, we spawned in a new place!\nExit the meteorite and the location.\nOverworld\nㅤ  ㅤ        ㅤ BESTIARY: KARNAK AREAㅤ ㅤ\nID\nMONSTER\nHP\nMP\nGIL\nEXP\n031\nAegir\n180\n0\n99\n120\n032\nZu\n850\n0\n150\n360\n033\nWild Nakk\n95\n100\n125\n70\nBM: ???\n034\nGrass Tortoise\n250\n0\n100\n230\nWild Nakk spawn in the forest area.\nZu spawns near Karnak.\nFrom outside the meteorite, go west and follow the woods north to reach a split.\nAt the split, head southwest and follow the linear path to reach a castle and a town. This is Karnak.\nEnter the town.\nKarnak\nFrom the entrance, head northwest and enter the Pub.\nKarnak - Pub\nPlay the piano to get progress towards the related achievement. [Piano Maestro: 3/8]\nExit the Pub.\nEnter the Weapons/Armor shop and speak to any of the attendants. You'll get arrested, wtf?\nKarnak Castle - B4\nYou'll wake up in a cell.\nApproach the jail door to trigger a cutscene. BOOM!\nSpeak to the old man to meet Cid! Hell yeah! and watch some more scenes.\nOnce regaining control, go north through the open jail door and up the stairs.\nKarnak Castle - B3\nContinue north and go up another set of stairs.\nKarnak Castle - B2\nWalk around the middle structure and through the door.\nKarnak Castle - B1\nHead north and up the stairs.\nKarnak Castle - 1F\nWe're finally in the main hall. Exit the castle through the southern door.\nNote: Don't bother by trying to loot anything, most of the castle is blocked by fire at the moment. We will return later anyways.\nKarnak Castle\nWhile exiting the castle, you'll watch a short scene with the wolf we decided not to free in Walse. I'm pretty sure we'll meet again with that peculiar character in the near future.\nAs for now, exit to the overworld.\nOverworld\nRe-enter Karnak (the town).\nAll shops are now open and free to explore, so it's a good time to upgrade your spells and equipment!\nMagic (left)\nItem\nCost\nDescription\nCura\n620\nRestores HP.\nRaise\n700\nRevives a single target.\nConfuse\n650\nCauses confusion.\nSilence\n280\nCauses silence.\nCure\n180\nRestores HP.\nLibra\n80\nDetermines the enemy's HP, weakness, current condition, and level.\nPoisona\n90\nCures poison.\nMagic (top)\nItem\nCost\nDescription\nFira\n600\nDeals fire damage.\nBlizzara\n600\nDeals ice damage.\nThundara\n600\nDeals lightning damage.\nPoison\n290\nCauses poison.\nSleep\n300\nCauses sleep.\nFire\n150\nDeals fire damage.\nBlizzard\n150\nDeals ice damage.\nThunder\n150\nDeals lightning damage.\nMagic (right)\nItem\nCost\nDescription\nGravity\n620\nHalves one enemy's HP.\nStop\n580\nCauses time to stop, halting the target's actions.\nHaste\n320\nHastens the passing of time for one ally.\nMute\n320\nSilences all allies and enemies.\nSlow\n80\nSlows the passing of time for one enemy.\nRegen\n100\nGradually restores HP.\nMake sure to get Gravity. It might help us a lot during the next boss fight.\nArmor\nItem\nCost\nDescription\nMythril Shield\n590\nDefense +3 Evasion +25 Weight +5\nMythril Helm\n550\nDefense +6 Magic Defense +2 Weight +4\nPlumed Hat\n350\nDefense +2 Magic Defense +2 Weight +2\nMythril Armor\n700\nDefense +9 Magic Defense +2 Weight +8\nSilver Plate\n600\nDefense +7 Magic Defense +2 Weight +4\nSilk Robe\n500\nDefense +4 Magic Defense +6 Weight +2\nMythril Gloves\n600\nDefense +3 Weight +5\nSilver Armlet\n500\nDefense +2 Magic Defense +3 Weight +3\nShop\nItem\nCost\nDescription\nMythril Knife\n450\nAttack +23 Can be enchanted\nMythril Sword\n880\nAttack +31 Can be two-handed Can be enchanted\nMythril Hammer\n1050\nAttack +28 Can be two-handed\nFlame Rod\n750\nAttack +16\nFrost Rod\n750\nAttack +16\nThunder Rod\n750\nAttack +16\nFlail\n780\nAttack +16 Can be two-handed\nItems (Inn)\nItem\nCost\nDescription\nPotion\n40\nRecovers HP.\nAntidote\n30\nCures an ally of poison.\nEye Drops\n20\nCures an ally of darkness.\nMaiden's Kiss\n60\nCures an ally of the toad status.\nMallet\n50\nCures an ally of the mini status.\nGold Needle\n150\nCures an ally of petrification.\nPhoenix Down\n1000\nRevives an ally from the KO status.\nTent\n250\nRecovers all members' HP and MP. Can be used outdoors.\nInn\nService\nCost\nRest\n20\nThat's all we can do in the town for now.\nExit to the overworld.\nOverworld\nBoard the ship just below Karnak Castle.",
+        "shops": [
+          {
+            "where": "Regen",
+            "kind": "防具",
+            "goods": [
+              {
+                "name": "Mythril Shield",
+                "cost": 590,
+                "note": "Defense +3 Evasion +25 Weight +5"
+              },
+              {
+                "name": "Mythril Helm",
+                "cost": 550,
+                "note": "Defense +6 Magic Defense +2 Weight +4"
+              },
+              {
+                "name": "Plumed Hat",
+                "cost": 350,
+                "note": "Defense +2 Magic Defense +2 Weight +2"
+              },
+              {
+                "name": "Mythril Armor",
+                "cost": 700,
+                "note": "Defense +9 Magic Defense +2 Weight +8"
+              },
+              {
+                "name": "Silver Plate",
+                "cost": 600,
+                "note": "Defense +7 Magic Defense +2 Weight +4"
+              },
+              {
+                "name": "Silk Robe",
+                "cost": 500,
+                "note": "Defense +4 Magic Defense +6 Weight +2"
+              },
+              {
+                "name": "Mythril Gloves",
+                "cost": 600,
+                "note": "Defense +3 Weight +5"
+              },
+              {
+                "name": "Silver Armlet",
+                "cost": 500,
+                "note": "Defense +2 Magic Defense +3 Weight +3"
+              }
+            ]
+          },
+          {
+            "where": "Tent",
+            "kind": "旅店",
+            "goods": [
+              {
+                "name": "Rest",
+                "cost": 20,
+                "note": ""
+              }
+            ]
+          }
+        ],
+        "treasures": []
+      }
+    }
+  ]
+}
