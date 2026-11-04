@@ -1,0 +1,40 @@
+{
+  "version": 2,
+  "summary": "玛基莎与弗扎",
+  "roles": { "蕾娜": "治疗", "加拉夫": "黑魔" },
+  "reactions": [
+    {
+      "who": "all",
+      "on": "ally.count(not alive) > 0 and item(不死鸟之尾) > 0",
+      "do": "道具:不死鸟之尾",
+      "to": "ally.first(not alive)"
+    },
+    {
+      "who": "蕾娜",
+      "on": "enemy(玛基莎).used(any_magic)",
+      "do": "白魔法:魔法护盾",
+      "to": "ally.first(alive and not has(魔法护盾))"
+    }
+  ],
+  "phases": [
+    {
+      "name": "两只都在",
+      "when": "enemy(弗扎).alive and enemy(玛基莎).alive",
+      "rules": [
+        {
+          "who": "蕾娜",
+          "if": "ally.any(hp_pct < 60)",
+          "do": "白魔法:治疗",
+          "to": "ally.lowest(hp_pct)"
+        },
+        { "who": "加拉夫", "do": "黑魔法:最强", "to": "enemy(玛基莎)" },
+        { "who": "all", "do": "攻击", "to": "enemy(玛基莎)" }
+      ]
+    },
+    {
+      "name": "收尾",
+      "when": "enemy.alive > 0",
+      "rules": [{ "who": "all", "do": "攻击", "to": "enemy.lowest(hp)" }]
+    }
+  ]
+}

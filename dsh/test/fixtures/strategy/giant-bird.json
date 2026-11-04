@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "summary": "巨翼猛禽",
+  "roles": { "蕾娜": "治疗" },
+  "phases": [
+    {
+      "name": "合翅膀",
+      "when": "enemy(282).alive",
+      "rules": [
+        {
+          "who": "蕾娜",
+          "if": "ally.any(hp_pct < 60)",
+          "do": "白魔法:治疗",
+          "to": "ally.lowest(hp_pct)"
+        },
+        { "who": "all", "do": "防御" }
+      ]
+    },
+    {
+      "name": "张开",
+      "when": "not enemy(282).alive",
+      "rules": [{ "who": "all", "do": "攻击", "to": "enemy.boss" }]
+    }
+  ]
+}
