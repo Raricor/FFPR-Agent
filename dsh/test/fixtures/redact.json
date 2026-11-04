@@ -1,0 +1,18 @@
+{
+  "mask": "***",
+  "redact": [
+    {
+      "text": "url?key=SECRETKEY123456&x=abc",
+      "expected": "url?key=***&x=abc"
+    },
+    {
+      "text": "nothing to hide",
+      "expected": "nothing to hide"
+    }
+  ],
+  "filter": {
+    "format": "GET %s",
+    "args": ["k=SECRETKEY123456"],
+    "expected": "GET k=***"
+  }
+}
