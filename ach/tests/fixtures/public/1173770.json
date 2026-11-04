@@ -1,0 +1,102 @@
+{
+ "achievementpercentages": {
+  "achievements": [
+   {
+    "name": "scenario_1",
+    "percent": "82.6"
+   },
+   {
+    "name": "monster_hunt_100",
+    "percent": "79.7"
+   },
+   {
+    "name": "picture_book_12",
+    "percent": "79.2"
+   },
+   {
+    "name": "total_gil_10000",
+    "percent": "72.4"
+   },
+   {
+    "name": "monster_hunt_300",
+    "percent": "70.7"
+   },
+   {
+    "name": "monster_hunt_500",
+    "percent": "65.7"
+   },
+   {
+    "name": "treasure_box_25",
+    "percent": "64.2"
+   },
+   {
+    "name": "total_gil_50000",
+    "percent": "63.8"
+   },
+   {
+    "name": "total_gil_100000",
+    "percent": "60.9"
+   },
+   {
+    "name": "scenario_2",
+    "percent": "59.1"
+   },
+   {
+    "name": "scenario_3",
+    "percent": "55.7"
+   },
+   {
+    "name": "picture_book_64",
+    "percent": "55.1"
+   },
+   {
+    "name": "treasure_box_125",
+    "percent": "53.7"
+   },
+   {
+    "name": "scenario_6",
+    "percent": "53.3"
+   },
+   {
+    "name": "scenario_4",
+    "percent": "51.9"
+   },
+   {
+    "name": "area_visit",
+    "percent": "50.9"
+   },
+   {
+    "name": "scenario_5",
+    "percent": "50.9"
+   },
+   {
+    "name": "scenario_8",
+    "percent": "46.6"
+   },
+   {
+    "name": "scenario_7",
+    "percent": "45.8"
+   },
+   {
+    "name": "level_all_50",
+    "percent": "40.4"
+   },
+   {
+    "name": "pazzle_play",
+    "percent": "27.3"
+   },
+   {
+    "name": "treasure_box_249",
+    "percent": "27.2"
+   },
+   {
+    "name": "picture_book_128",
+    "percent": "21.2"
+   },
+   {
+    "name": "all_achievement",
+    "percent": "20.4"
+   }
+  ]
+ }
+}

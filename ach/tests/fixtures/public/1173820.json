@@ -1,0 +1,154 @@
+{
+ "achievementpercentages": {
+  "achievements": [
+   {
+    "name": "scenario_1",
+    "percent": "83.9"
+   },
+   {
+    "name": "total_gil_10000",
+    "percent": "67.6"
+   },
+   {
+    "name": "monster_hunt_100",
+    "percent": "66.3"
+   },
+   {
+    "name": "scenario_2",
+    "percent": "62.4"
+   },
+   {
+    "name": "treasure_box_22",
+    "percent": "60.0"
+   },
+   {
+    "name": "picture_book_34",
+    "percent": "58.0"
+   },
+   {
+    "name": "scenario_3",
+    "percent": "50.4"
+   },
+   {
+    "name": "scenario_4",
+    "percent": "47.3"
+   },
+   {
+    "name": "total_gil_100000",
+    "percent": "46.7"
+   },
+   {
+    "name": "scenario_5",
+    "percent": "45.2"
+   },
+   {
+    "name": "scenario_6",
+    "percent": "38.1"
+   },
+   {
+    "name": "monster_hunt_1000",
+    "percent": "37.0"
+   },
+   {
+    "name": "magicite_collect_15",
+    "percent": "34.9"
+   },
+   {
+    "name": "auction_battle",
+    "percent": "33.7"
+   },
+   {
+    "name": "treasure_box_107",
+    "percent": "33.6"
+   },
+   {
+    "name": "scenario_7",
+    "percent": "33.4"
+   },
+   {
+    "name": "total_gil_500000",
+    "percent": "33.0"
+   },
+   {
+    "name": "scenario_8",
+    "percent": "33.0"
+   },
+   {
+    "name": "scenario_9",
+    "percent": "30.7"
+   },
+   {
+    "name": "picture_book_173",
+    "percent": "30.1"
+   },
+   {
+    "name": "scenario_10",
+    "percent": "27.6"
+   },
+   {
+    "name": "samurai_master",
+    "percent": "25.3"
+   },
+   {
+    "name": "monster_hunt_2000",
+    "percent": "23.3"
+   },
+   {
+    "name": "monk_master",
+    "percent": "23.3"
+   },
+   {
+    "name": "scenario_11",
+    "percent": "21.1"
+   },
+   {
+    "name": "magicite_collect_25",
+    "percent": "15.0"
+   },
+   {
+    "name": "machinery_master",
+    "percent": "14.6"
+   },
+   {
+    "name": "wild_master_50",
+    "percent": "13.3"
+   },
+   {
+    "name": "coliseum_champion",
+    "percent": "12.8"
+   },
+   {
+    "name": "level_all_50",
+    "percent": "10.7"
+   },
+   {
+    "name": "area_visit",
+    "percent": "9.4"
+   },
+   {
+    "name": "blue_magic_master_20",
+    "percent": "6.0"
+   },
+   {
+    "name": "get_hidden_item",
+    "percent": "5.9"
+   },
+   {
+    "name": "gambler_master",
+    "percent": "5.4"
+   },
+   {
+    "name": "treasure_box_214",
+    "percent": "4.6"
+   },
+   {
+    "name": "picture_book_346",
+    "percent": "4.4"
+   },
+   {
+    "name": "all_achievement",
+    "percent": "3.7"
+   }
+  ]
+ }
+}

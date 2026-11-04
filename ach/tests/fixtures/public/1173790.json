@@ -1,0 +1,130 @@
+{
+ "achievementpercentages": {
+  "achievements": [
+   {
+    "name": "scenario_1",
+    "percent": "89.8"
+   },
+   {
+    "name": "job_master_10",
+    "percent": "80.7"
+   },
+   {
+    "name": "monster_hunt_100",
+    "percent": "80.4"
+   },
+   {
+    "name": "scenario_2",
+    "percent": "79.9"
+   },
+   {
+    "name": "treasure_box_37",
+    "percent": "79.3"
+   },
+   {
+    "name": "total_gil_10000",
+    "percent": "78.2"
+   },
+   {
+    "name": "picture_book_22",
+    "percent": "76.8"
+   },
+   {
+    "name": "scenario_3",
+    "percent": "71.5"
+   },
+   {
+    "name": "monster_hunt_300",
+    "percent": "71.4"
+   },
+   {
+    "name": "scenario_4",
+    "percent": "69.5"
+   },
+   {
+    "name": "total_gil_100000",
+    "percent": "67.3"
+   },
+   {
+    "name": "job_master_50",
+    "percent": "67.3"
+   },
+   {
+    "name": "scenario_5",
+    "percent": "67.0"
+   },
+   {
+    "name": "monster_hunt_500",
+    "percent": "66.6"
+   },
+   {
+    "name": "scenario_6",
+    "percent": "63.8"
+   },
+   {
+    "name": "treasure_box_184",
+    "percent": "62.5"
+   },
+   {
+    "name": "scenario_7",
+    "percent": "61.7"
+   },
+   {
+    "name": "total_gil_500000",
+    "percent": "60.9"
+   },
+   {
+    "name": "picture_book_112",
+    "percent": "60.2"
+   },
+   {
+    "name": "scenario_8",
+    "percent": "59.3"
+   },
+   {
+    "name": "get_weapon",
+    "percent": "56.9"
+   },
+   {
+    "name": "scenario_9",
+    "percent": "56.4"
+   },
+   {
+    "name": "job_master_99",
+    "percent": "53.4"
+   },
+   {
+    "name": "scenario_10",
+    "percent": "53.0"
+   },
+   {
+    "name": "level_all_50",
+    "percent": "51.5"
+   },
+   {
+    "name": "all_summon",
+    "percent": "38.2"
+   },
+   {
+    "name": "treasure_box_367",
+    "percent": "23.0"
+   },
+   {
+    "name": "get_hidden_item",
+    "percent": "21.5"
+   },
+   {
+    "name": "area_visit",
+    "percent": "21.1"
+   },
+   {
+    "name": "picture_book_225",
+    "percent": "17.9"
+   },
+   {
+    "name": "all_achievement",
+    "percent": "16.9"
+   }
+  ]
+ }
+}
