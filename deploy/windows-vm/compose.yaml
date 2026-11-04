@@ -1,0 +1,34 @@
+# Windows test VM for Windows-only modules (hotkeys, keyboard takeover, virtual pad driver,
+# screen capture, install scripts). Not for running the game: there is no GPU passthrough and
+# 4G of RAM is too little for Windows + Steam + the game. See design §4.3.
+#
+#   docker compose -f deploy/windows-vm/compose.yaml up -d     # first start installs Windows
+#   then open http://127.0.0.1:8006 on the Docker host for the web console
+#
+# The docker CLI in the dev container talks to the host's daemon, so paths here are host paths.
+# A named volume avoids depending on the dev container's mount layout.
+services:
+  win-test:
+    # Pin to a concrete tag on first use; leaving it floating makes VM rebuilds unreproducible.
+    image: ${WINDOWS_VM_IMAGE:-dockurr/windows}
+    container_name: ffpr-win-test
+    environment:
+      VERSION: "10l"   # Windows 10 LTSC, lighter than Windows 11 within 4G
+      RAM_SIZE: "4G"   # agreed upper limit
+      CPU_CORES: "4"
+      DISK_SIZE: "64G"
+    devices:
+      - /dev/kvm
+      - /dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "127.0.0.1:8006:8006"   # web console, host-local only
+      - "127.0.0.1:3389:3389"   # RDP, host-local only
+    volumes:
+      - win-storage:/storage
+    stop_grace_period: 2m
+    restart: "no"
+
+volumes:
+  win-storage:
