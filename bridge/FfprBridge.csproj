@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    One of the six per-game assemblies (0.11.0). It is loaded by the loader in loader/ and
+    builds against the files fetched from the laptop with `ffpr-laptop fetch-assemblies
+    <game>`, which must match the game build it runs on:
+
+      dotnet build bridge -c Release -p:Game=ff5
+
+    bridge/build.sh builds all six and lays them out as the single package.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>FfprBridge.$(Game)</AssemblyName>
+    <RootNamespace>FfprBridge</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <Game Condition="'$(Game)' == ''">ff5</Game>
+    <DepsDir>$(MSBuildThisFileDirectory)..\.deps\$(Game)\</DepsDir>
+    <!-- FF5, FF6, ...: code that uses one game's own (Serial.FFn) classes sits under #if. -->
+    <DefineConstants>$(DefineConstants);$(Game.ToUpperInvariant())</DefineConstants>
+    <OutputPath>bin\$(Game)\$(Configuration)\</OutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The loader is its own project; do not compile it into this one. -->
+    <Compile Remove="loader\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <CoreRef Include="0Harmony;BepInEx.Core;BepInEx.Unity.IL2CPP;Il2CppInterop.Runtime;Il2CppInterop.Common" />
+    <InteropRef Include="Assembly-CSharp;Il2Cppmscorlib;Il2CppSystem;Il2CppSystem.Core;UnityEngine;UnityEngine.CoreModule;UnityEngine.UI;Unity.InputSystem;UnityEngine.ScreenCaptureModule" />
+    <Reference Include="@(CoreRef)" HintPath="$(DepsDir)core\%(Identity).dll" Private="false" />
+    <Reference Include="@(InteropRef)" HintPath="$(DepsDir)interop\%(Identity).dll" Private="false" />
+  </ItemGroup>
+
+  <Target Name="CheckDeps" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(DepsDir)interop\Assembly-CSharp.dll')"
+           Text="缺少 $(DepsDir):先运行 uv run ffpr-laptop fetch-assemblies $(Game)" />
+  </Target>
+
+</Project>

@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The loader (0.11.0): a BepInEx 6 IL2CPP plugin that references no game assembly. It reads
+    Paths.ProcessName, picks games/FfprBridge.<game>.dll from its own folder, and calls
+    FfprBridge.Plugin.Start with itself. The six games install this same file:
+
+      dotnet build bridge/loader/FfprBridge.Loader.csproj -c Release
+
+    bridge/build.sh does that and copies it, with the six per-game assemblies, into
+    bridge/bin/package/FfprBridge/.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>FfprBridge</AssemblyName>
+    <RootNamespace>FfprBridge</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <OutputPath>bin\$(Configuration)\</OutputPath>
+    <!-- All six games ship BepInEx be.697; its core is identical in every .deps/ffN. -->
+    <DepsDir>$(MSBuildThisFileDirectory)..\..\.deps\ff5\</DepsDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\src\Version.cs" Link="Version.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="BepInEx.Core;BepInEx.Unity.IL2CPP" HintPath="$(DepsDir)core\%(Identity).dll" Private="false" />
+  </ItemGroup>
+
+  <Target Name="CheckDeps" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(DepsDir)core\BepInEx.Core.dll')"
+           Text="缺少 $(DepsDir)core\BepInEx.Core.dll:先运行 uv run ffpr-laptop fetch-assemblies ff5" />
+  </Target>
+
+</Project>
