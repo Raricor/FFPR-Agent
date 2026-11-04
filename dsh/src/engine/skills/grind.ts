@@ -1,0 +1,962 @@
+/**
+ * The grind tool (task 47): walk back and forth near the party, fight every encounter with the
+ * map's ordinary battle skill, rest at an inn when HP or MP runs low, and stop on one of the
+ * caller's goals. The loop runs in code: no model call per step.
+ *
+ * The user's 11-04 rule: when gold is short or this area's bestiary is incomplete, farm near a
+ * town with an inn and sleep when hurt instead of selling gear in use. Innkeeping is done in
+ * code where the map records make it reliable; otherwise the party is left at the town gate
+ * with a message asking the model to rest itself (the task's agreed fallback).
+ */
+
+import { Atlas } from "../atlas.ts";
+import type { CompletionState } from "../completion.ts";
+import type { EncounterRegion } from "../encounters.ts";
+import { parseEncounters } from "../encounters.ts";
+import { describeError } from "../errors.ts";
+import { cellKey, hasTerrain, terrainRule } from "../nav.ts";
+import type { Cell, CellGrid } from "../nav.ts";
+import type { Pilot, Reply } from "../pilot.ts";
+import { parsePositionReply, type Position } from "../position.ts";
+import { isRecord, list, num, record, records, text, truthy, type Json } from "../values.ts";
+import { heldItems } from "./battle.ts";
+import { useItem } from "./menu.ts";
+import { navigate, occupiedCells, openAt, type MoveState } from "./move.ts";
+import { dismissFieldHelp } from "./screens.ts";
+
+type Say = (line: string) => void;
+
+/** The inn names the guide and the maps use; the first two are FF5's. */
+const INN_WORDS: readonly string[] = ["宿屋", "旅店", "旅馆", "Inn"];
+const REVIVE_ITEMS: readonly string[] = ["不死鸟之尾", "凤凰尾"];
+const YES = /^(是|はい|yes)$/iu;
+
+export interface GrindOptions {
+  readonly untilGold?: number;
+  readonly untilLevel?: number;
+  readonly untilBestiary?: boolean;
+  readonly maxMinutes: number;
+  readonly restHpPct: number;
+  readonly restMpPct: number;
+  readonly inn?: number | string;
+}
+
+export type GrindParse =
+  | { readonly ok: true; readonly options: GrindOptions }
+  | { readonly ok: false; readonly error: string };
+
+function integer(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) throw new Error(`不是整数:${show(value)}`);
+  return Math.trunc(parsed);
+}
+
+function show(value: unknown): string {
+  if (value === null || value === undefined) return "None";
+  if (typeof value === "string") return value;
+  if (typeof value === "boolean") return value ? "True" : "False";
+  if (typeof value === "number" || typeof value === "bigint") return String(value);
+  return JSON.stringify(value);
+}
+
+/** Parse the tool arguments; at least one stopping condition is required. */
+export function parseGrindOptions(args: Json): GrindParse {
+  try {
+    const untilGold =
+      args.until_gold === undefined || args.until_gold === null
+        ? undefined
+        : integer(args.until_gold);
+    const untilLevel =
+      args.until_level === undefined || args.until_level === null
+        ? undefined
+        : integer(args.until_level);
+    const untilBestiary = truthy(args.until_bestiary);
+    if (untilGold === undefined && untilLevel === undefined && !untilBestiary) {
+      return {
+        ok: false,
+        error:
+          "至少给一个停止条件:until_gold(攒到多少钱)、until_level(全队最低等级)" +
+          "或 until_bestiary(本图鉴刷齐)。",
+      };
+    }
+    if (untilGold !== undefined && untilGold <= 0) {
+      return { ok: false, error: "until_gold 要是正数。" };
+    }
+    if (untilLevel !== undefined && untilLevel <= 0) {
+      return { ok: false, error: "until_level 要是正数。" };
+    }
+    const maxMinutes =
+      args.max_minutes === undefined || args.max_minutes === null ? 20 : Number(args.max_minutes);
+    if (!Number.isFinite(maxMinutes) || maxMinutes <= 0) {
+      return { ok: false, error: "max_minutes 要是正数。" };
+    }
+    const restHpPct =
+      args.rest_hp_pct === undefined || args.rest_hp_pct === null ? 40 : Number(args.rest_hp_pct);
+    const restMpPct =
+      args.rest_mp_pct === undefined || args.rest_mp_pct === null ? 25 : Number(args.rest_mp_pct);
+    for (const [name, value] of [
+      ["rest_hp_pct", restHpPct],
+      ["rest_mp_pct", restMpPct],
+    ] as const) {
+      if (!Number.isFinite(value) || value < 0 || value > 100) {
+        return { ok: false, error: `${name} 要在 0 到 100 之间。` };
+      }
+    }
+    let inn: number | string | undefined;
+    if (typeof args.inn === "number" && Number.isFinite(args.inn)) inn = Math.trunc(args.inn);
+    else if (typeof args.inn === "string" && args.inn.trim() !== "") inn = args.inn.trim();
+    return {
+      ok: true,
+      options: {
+        ...(untilGold === undefined ? {} : { untilGold }),
+        ...(untilLevel === undefined ? {} : { untilLevel }),
+        ...(untilBestiary ? { untilBestiary: true } : {}),
+        maxMinutes,
+        restHpPct,
+        restMpPct,
+        ...(inn === undefined ? {} : { inn }),
+      },
+    };
+  } catch (error) {
+    return { ok: false, error: describeError(error) };
+  }
+}
+
+/** What one rest and the fainter's return to the grind spot did. */
+export interface GrindInnResult {
+  readonly ok: boolean;
+  readonly detail: string;
+  /** False when the rest worked but the walk back to the grind spot did not. */
+  readonly returned?: boolean;
+}
+
+/** The Game's side of the loop: ordinary battle, completion/bestiary, the atlas and walking. */
+export interface GrindContext {
+  readonly atlas: Atlas;
+  readonly moveState: MoveState;
+  /** The existing ordinary battle handler; the loop must not reimplement it. */
+  readonly fighter: (pilot: Pilot, say: Say) => Promise<string>;
+  /** Refresh task 45's save-local bestiary and the current map's completion. */
+  readonly refresh: (pilot: Pilot) => Promise<{
+    readonly completion: CompletionState | null;
+    readonly known: ReadonlySet<number>;
+    readonly names: ReadonlyMap<number, string>;
+  }>;
+  readonly say?: Say;
+}
+
+export interface GrindReport {
+  readonly text: string;
+  readonly minutes: number;
+  readonly battles: number;
+  readonly gold: number;
+  readonly goldGained: number;
+  readonly minLevel: number | null;
+  readonly levelGained: number;
+  readonly bestiary: readonly string[];
+  readonly items: readonly string[];
+  readonly rests: number;
+  readonly stop: string;
+}
+
+interface GrindSnapshot {
+  readonly position: Position;
+  readonly gold: number;
+  readonly members: readonly Reply[];
+  readonly minLevel: number | null;
+  readonly minHpPct: number;
+  readonly minMpPct: number;
+}
+
+function pct(value: unknown, top: unknown): number {
+  const max = num(top) ?? 0;
+  return max > 0 ? (100 * (num(value) ?? 0)) / max : 100;
+}
+
+async function readSnapshot(pilot: Pilot): Promise<GrindSnapshot> {
+  const position = parsePositionReply(await pilot.send("pos"));
+  const sample = record((await pilot.query("sample")).sample);
+  const members = records(sample.party);
+  const levels = members
+    .map((member) => num(member.lv))
+    .filter((level): level is number => level !== undefined);
+  const hp = members.map((member) => pct(member.hp, member.maxHp));
+  const mp = members.map((member) => pct(member.mp, member.maxMp));
+  return {
+    position,
+    gold: num(record(sample.user).gil) ?? 0,
+    members,
+    minLevel: levels.length === 0 ? null : Math.min(...levels),
+    minHpPct: hp.length === 0 ? 100 : Math.min(...hp),
+    minMpPct: mp.length === 0 ? 100 : Math.min(...mp),
+  };
+}
+
+function memberName(member: Reply): string {
+  return text(member.name) ?? "";
+}
+
+function downed(members: readonly Reply[]): Reply[] {
+  return members.filter((member) => (num(member.hp) ?? 0) <= 0);
+}
+
+function needsRest(snapshot: GrindSnapshot, options: GrindOptions): boolean {
+  return snapshot.minHpPct < options.restHpPct || snapshot.minMpPct < options.restMpPct;
+}
+
+function safeHeldItems(pilot: Pilot): Promise<Record<string, number>> {
+  return heldItems(pilot).catch(() => ({}));
+}
+
+/** Revive one fallen member with an item when the bag has one; false means "rest instead". */
+async function tryRevive(pilot: Pilot, snapshot: GrindSnapshot, say: Say): Promise<boolean> {
+  const fallen = downed(snapshot.members);
+  if (fallen.length === 0) return true;
+  const bag = await safeHeldItems(pilot);
+  const item = REVIVE_ITEMS.find((wanted) =>
+    Object.entries(bag).some(([name, count]) => count > 0 && name.includes(wanted)),
+  );
+  if (item === undefined) return false;
+  const first = fallen[0];
+  if (first === undefined) return false;
+  const [ok, detail] = await useItem(pilot, item, memberName(first));
+  say(`  ${detail}`);
+  return ok;
+}
+
+interface WalkGrid {
+  readonly cells: CellGrid | null;
+  readonly world: boolean;
+  readonly open: ReadonlySet<string>;
+}
+
+function cellOf(value: unknown): Cell | null {
+  if (!Array.isArray(value) || value.length < 2) return null;
+  if (typeof value[0] !== "number" || typeof value[1] !== "number") return null;
+  return [value[0], value[1]];
+}
+
+function cellGridOf(value: unknown): CellGrid | null {
+  if (!isRecord(value)) return null;
+  const origin = cellOf(value.origin);
+  const center = cellOf(value.center);
+  if (origin === null || center === null || !Array.isArray(value.attr)) return null;
+  const attr: (number | null)[][] = [];
+  for (const row of value.attr) {
+    if (!Array.isArray(row)) return null;
+    attr.push(row.map((item) => (typeof item === "number" ? item : null)));
+  }
+  if (attr.length === 0) return null;
+  return { origin, center, attr };
+}
+
+/** Terrain on the world map, every open collision row indoors; one read per grind leg. */
+async function readWalkGrid(pilot: Pilot): Promise<WalkGrid> {
+  const cells = cellGridOf((await pilot.send("cells", { r: 8 })).cells);
+  if (cells !== null && hasTerrain(cells)) return { cells, world: true, open: new Set() };
+  const collision = record((await pilot.send("collision")).collision);
+  const open = new Set<string>();
+  for (const raw of list(collision.layers)) {
+    const layer = record(raw);
+    for (const [y, row] of list(layer.rows).entries()) {
+      if (typeof row !== "string") continue;
+      for (let x = 0; x < row.length; x++) {
+        const value = row[x];
+        if (value !== undefined && value !== "1" && value !== "#") open.add(cellKey(x, y));
+      }
+    }
+  }
+  return { cells: null, world: false, open };
+}
+
+function walkable(grid: WalkGrid, cell: Cell): boolean {
+  if (grid.world) {
+    const cells = grid.cells;
+    if (cells === null) return false;
+    const [x0, y0] = cells.origin;
+    const row = cells.attr[cell[1] - y0];
+    if (row === undefined) return false;
+    const value = row[cell[0] - x0];
+    if (value === undefined) return false;
+    return terrainRule(false)(value);
+  }
+  return grid.open.has(cellKey(cell[0], cell[1]));
+}
+
+function insideRegion(cell: Cell, region: EncounterRegion | null): boolean {
+  if (region === null) return true;
+  const start = region.start;
+  const end = region.end;
+  if (start === null || end === null) return true;
+  return cell[0] >= start[0] && cell[0] <= end[0] && cell[1] >= start[1] && cell[1] <= end[1];
+}
+
+const STEPS: readonly Cell[] = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+  [2, 0],
+  [-2, 0],
+  [0, 2],
+  [0, -2],
+  [1, 1],
+  [-1, 1],
+  [1, -1],
+  [-1, -1],
+];
+
+/** A nearby open cell to walk to; cycling through them makes the back-and-forth. */
+function nextStep(
+  grid: WalkGrid,
+  here: Cell,
+  region: EncounterRegion | null,
+  blocked: ReadonlySet<string>,
+  turn: number,
+): Cell | null {
+  const choices: Cell[] = [];
+  for (const [dx, dy] of STEPS) {
+    const cell: Cell = [here[0] + dx, here[1] + dy];
+    if (!insideRegion(cell, region)) continue;
+    if (blocked.has(cellKey(cell[0], cell[1]))) continue;
+    if (!walkable(grid, cell)) continue;
+    choices.push(cell);
+  }
+  return choices.length === 0 ? null : (choices[turn % choices.length] ?? null);
+}
+
+interface StopCheck {
+  readonly reached: boolean;
+  readonly reason: string;
+}
+
+function stopReason(
+  options: GrindOptions,
+  snapshot: GrindSnapshot,
+  completion: CompletionState | null,
+): StopCheck {
+  if (options.untilGold !== undefined && snapshot.gold >= options.untilGold) {
+    return { reached: true, reason: `钱够了(${snapshot.gold}/${options.untilGold})` };
+  }
+  if (
+    options.untilLevel !== undefined &&
+    snapshot.minLevel !== null &&
+    snapshot.minLevel >= options.untilLevel
+  ) {
+    return {
+      reached: true,
+      reason: `全队最低等级到了 ${snapshot.minLevel}/${options.untilLevel}`,
+    };
+  }
+  if (options.untilBestiary === true) {
+    if (completion === null || completion.monsters.total === 0) {
+      return { reached: true, reason: "读不到本图的遇敌表，没法刷图鉴，先停下" };
+    }
+    if (completion.monsters.missing.length === 0) {
+      return { reached: true, reason: "本图的怪都登记进本档图鉴了" };
+    }
+  }
+  return { reached: false, reason: "" };
+}
+
+interface MapExit {
+  readonly cell: Cell;
+  readonly to: number;
+  readonly name: string;
+}
+
+function mapExits(atlas: Atlas, mapId: number): MapExit[] {
+  const entry = atlas.maps.get(String(mapId));
+  return records(entry?.exits).flatMap((exit): MapExit[] => {
+    const cell = cellOf(exit.cell);
+    const to = num(exit.to);
+    if (cell === null || to === undefined) return [];
+    return [{ cell, to: Math.trunc(to), name: text(exit.name) ?? "" }];
+  });
+}
+
+function mapName(atlas: Atlas, mapId: number): string {
+  return text(atlas.maps.get(String(mapId))?.name) ?? `地图 ${mapId}`;
+}
+
+function innName(name: string): boolean {
+  return INN_WORDS.some((word) => name.toLowerCase().includes(word.toLowerCase()));
+}
+
+function isInnMap(atlas: Atlas, mapId: number): boolean {
+  return innName(mapName(atlas, mapId));
+}
+
+function nearestExit(exits: readonly MapExit[], here: Cell | null): MapExit | undefined {
+  if (here === null) return exits[0];
+  return [...exits].sort(
+    (left, right) =>
+      Math.abs(left.cell[0] - here[0]) +
+      Math.abs(left.cell[1] - here[1]) -
+      (Math.abs(right.cell[0] - here[0]) + Math.abs(right.cell[1] - here[1])),
+  )[0];
+}
+
+/** The inn map to use: the argument first, else the nearest one the atlas knows. */
+function findInnMap(
+  atlas: Atlas,
+  choice: number | string | undefined,
+  current: number | null,
+  here: Cell | null,
+): number | null {
+  if (typeof choice === "number") {
+    if (isInnMap(atlas, choice)) return choice;
+    const exits = mapExits(atlas, choice).filter((exit) => isInnMap(atlas, exit.to));
+    return nearestExit(exits, here)?.to ?? null;
+  }
+  if (typeof choice === "string") {
+    if (/^\d+$/u.test(choice)) return findInnMap(atlas, Number(choice), current, here);
+    const wanted = choice.toLowerCase();
+    for (const [key, entry] of atlas.maps) {
+      const id = Number(key);
+      if (!Number.isFinite(id)) continue;
+      if (!innName(text(entry.name) ?? "")) continue;
+      if ((text(entry.name) ?? "").toLowerCase().includes(wanted)) return id;
+    }
+    for (const [key] of atlas.maps) {
+      const id = Number(key);
+      if (!Number.isFinite(id)) continue;
+      const target = isInnMap(atlas, id)
+        ? id
+        : nearestExit(
+            mapExits(atlas, id).filter((exit) => isInnMap(atlas, exit.to)),
+            here,
+          )?.to;
+      if (target === undefined) continue;
+      if ((mapName(atlas, target) || mapName(atlas, id)).toLowerCase().includes(wanted))
+        return target;
+    }
+    return null;
+  }
+  if (current === null) return null;
+  if (isInnMap(atlas, current)) return current;
+  const direct = mapExits(atlas, current).filter((exit) => isInnMap(atlas, exit.to));
+  const nearest = nearestExit(direct, here);
+  if (nearest !== undefined) return nearest.to;
+  // BFS over the map records: the first inn reached by the nearest exits wins.
+  const queue: number[] = [current];
+  const seen = new Set<number>(queue);
+  while (queue.length > 0) {
+    const id = queue.shift();
+    if (id === undefined) break;
+    const exits = [...mapExits(atlas, id)].sort((left, right) => {
+      const distance = (exit: MapExit): number =>
+        here === null ? 0 : Math.abs(exit.cell[0] - here[0]) + Math.abs(exit.cell[1] - here[1]);
+      return distance(left) - distance(right);
+    });
+    for (const exit of exits) {
+      if (isInnMap(atlas, exit.to)) return exit.to;
+      if (seen.has(exit.to) || !atlas.maps.has(String(exit.to))) continue;
+      seen.add(exit.to);
+      queue.push(exit.to);
+    }
+  }
+  return null;
+}
+
+/** The town that has an inn: the fallback's stopping place. */
+function townForInn(atlas: Atlas, inn: number): number | null {
+  for (const [key] of atlas.maps) {
+    const id = Number(key);
+    if (!Number.isFinite(id) || isInnMap(atlas, id)) continue;
+    if (mapExits(atlas, id).some((exit) => exit.to === inn)) return id;
+  }
+  return null;
+}
+
+interface MapHop {
+  readonly from: number;
+  readonly to: number;
+  readonly cell: Cell;
+}
+
+/** A route over the atlas's map exits, from one map to another. */
+function mapPath(atlas: Atlas, from: number, to: number): MapHop[] | null {
+  if (from === to) return [];
+  const queue: { readonly id: number; readonly path: MapHop[] }[] = [{ id: from, path: [] }];
+  const seen = new Set<number>([from]);
+  while (queue.length > 0) {
+    const item = queue.shift();
+    if (item === undefined) break;
+    for (const exit of mapExits(atlas, item.id)) {
+      const hop: MapHop = { from: item.id, to: exit.to, cell: exit.cell };
+      if (exit.to === to) return [...item.path, hop];
+      if (seen.has(exit.to) || !atlas.maps.has(String(exit.to))) continue;
+      seen.add(exit.to);
+      queue.push({ id: exit.to, path: [...item.path, hop] });
+    }
+  }
+  return null;
+}
+
+async function currentMapAndCell(pilot: Pilot): Promise<[number | null, Cell | null]> {
+  const pos = record((await pilot.send("pos")).pos);
+  return [num(pos.map) ?? null, cellOf(pos.cell)];
+}
+
+async function travelToMap(
+  pilot: Pilot,
+  context: GrindContext,
+  target: number,
+  say: Say,
+): Promise<[boolean, string]> {
+  let current = (await currentMapAndCell(pilot))[0];
+  for (let hop = 0; hop < 8; hop++) {
+    if (current === target) return [true, `到了地图 ${target}`];
+    if (current === null) return [false, "读不到当前地图"];
+    const path = mapPath(context.atlas, current, target);
+    const first = path?.[0];
+    if (first === undefined) return [false, `地图记录里找不到从 ${current} 到 ${target} 的路`];
+    const [reached, detail] = await navigate(pilot, first.cell, false, say, 8, context.moveState);
+    if (!reached) return [false, detail];
+    const now = (await currentMapAndCell(pilot))[0];
+    if (now === null) return [false, "到了入口却没读到新地图"];
+    if (now !== current) {
+      current = now;
+      continue;
+    }
+    return [false, `走到 (${first.cell[0]}, ${first.cell[1]}) 却没有进地图 ${first.to}`];
+  }
+  return [false, "换了几次地图还没到"];
+}
+
+async function travelToCell(
+  pilot: Pilot,
+  context: GrindContext,
+  cell: Cell,
+  say: Say,
+): Promise<[boolean, string]> {
+  return navigate(pilot, cell, false, say, 30, context.moveState);
+}
+
+interface ChoiceView {
+  readonly open: boolean;
+  readonly options: readonly string[];
+  readonly cursor: number;
+}
+
+function choiceOf(sample: Json): ChoiceView {
+  for (const value of Object.values(record(sample.choice))) {
+    if (!isRecord(value) || !truthy(value.open)) continue;
+    const raw = truthy(value.options) ? value.options : value.labels;
+    const options = list(raw).map((item) => show(item));
+    return { open: true, options, cursor: num(value.cursor) ?? 0 };
+  }
+  return { open: false, options: [], cursor: 0 };
+}
+
+/** Pick 「是」 on the innkeeper's question and page the rest of the dialog. */
+async function answerInn(pilot: Pilot): Promise<string> {
+  const sample = record((await pilot.query("sample")).sample);
+  const choice = choiceOf(sample);
+  if (!choice.open) return "店主没有问要不要住宿";
+  let index = choice.options.findIndex((option) => YES.test(option.trim()));
+  if (index < 0) index = 0;
+  const step = index >= choice.cursor ? "Down" : "Up";
+  const keys = [...Array.from({ length: Math.abs(index - choice.cursor) }, () => step), "Enter"];
+  await pilot.send("keys", { keys, gap: 200 });
+  await pilot.send("story", { pageMs: 1200, timeout: 60_000 }, 70_000);
+  return "选了「是」并付了钱";
+}
+
+/** The NPC that runs the inn: its name, the one behind a counter, else the only NPC. */
+async function innKeeper(pilot: Pilot): Promise<Reply | null> {
+  const found = records(
+    record((await pilot.send("entities", { kind: "Npc", max: 60 })).entities).entities,
+  );
+  const named = found.find((npc) => innName(text(npc.name) ?? ""));
+  if (named !== undefined) return named;
+  const relays = records(
+    record((await pilot.send("entities", { kind: "RelayInteraction", max: 60 })).entities).entities,
+  ).flatMap((relay) => {
+    const cell = cellOf(relay.cell);
+    return cell === null ? [] : [cell];
+  });
+  const behind = found.find((npc) => {
+    const cell = cellOf(npc.cell);
+    return (
+      cell !== null &&
+      relays.some((relay) => Math.abs(relay[0] - cell[0]) + Math.abs(relay[1] - cell[1]) === 1)
+    );
+  });
+  if (behind !== undefined) return behind;
+  return found.length === 1 ? (found[0] ?? null) : null;
+}
+
+/** Sleep at an inn, then walk back to the grind spot. */
+export async function restAtInn(
+  pilot: Pilot,
+  context: GrindContext,
+  home: number | null,
+  spot: Cell,
+  options: GrindOptions,
+  say: Say,
+): Promise<GrindInnResult> {
+  const [current, here] = await currentMapAndCell(pilot);
+  const inn = findInnMap(context.atlas, options.inn, current, here);
+  if (inn === null) {
+    return {
+      ok: false,
+      detail: "地图记录里找不到有旅店的城镇，没法自动住店。请自己回城住一晚，回满 HP/MP 再继续刷。",
+    };
+  }
+  const [arrived, travel] = await travelToMap(pilot, context, inn, say);
+  if (!arrived) return await restFallback(pilot, context, inn, travel, say);
+  const keeper = await innKeeper(pilot);
+  if (keeper === null) return await restFallback(pilot, context, inn, "旅店里没找到店主", say);
+  const keeperCell = cellOf(keeper.cell);
+  if (keeperCell === null) return await restFallback(pilot, context, inn, "店主没有格子坐标", say);
+  const before = await readSnapshot(pilot);
+  const said = await openAt(pilot, keeperCell, say, context.moveState);
+  say(`  ${said}`);
+  const paid = await answerInn(pilot);
+  const after = await readSnapshot(pilot);
+  const recovered =
+    after.minHpPct > before.minHpPct ||
+    after.minMpPct > before.minMpPct ||
+    (after.minHpPct >= 99 && after.minMpPct >= 99);
+  if (!recovered) {
+    return await restFallback(
+      pilot,
+      context,
+      inn,
+      `和店主说话后没有回满(${before.minHpPct.toFixed(0)}% → ${after.minHpPct.toFixed(0)}% HP)`,
+      say,
+    );
+  }
+  const backTarget = home ?? before.position.map ?? inn;
+  const [back, walked] = await travelToMap(pilot, context, backTarget, say);
+  let returned = back;
+  if (back) {
+    const [atSpot, detail] = await travelToCell(pilot, context, spot, say);
+    returned = atSpot;
+    if (!atSpot) say(`  回刷怪点失败:${detail}`);
+  }
+  return {
+    ok: true,
+    returned,
+    detail:
+      `在「${mapName(context.atlas, inn)}」住了一晚(${paid})，` +
+      (returned ? "回到刷怪点继续" : `没能回到刷怪点(${walked})`),
+  };
+}
+
+/** Could not sleep automatically: go as far as the town and ask the model to do it. */
+async function restFallback(
+  pilot: Pilot,
+  context: GrindContext,
+  inn: number,
+  why: string,
+  say: Say,
+): Promise<GrindInnResult> {
+  const town = townForInn(context.atlas, inn);
+  if (town !== null) {
+    const [current] = await currentMapAndCell(pilot);
+    if (current !== town) await travelToMap(pilot, context, town, say);
+  }
+  const [where] = await currentMapAndCell(pilot);
+  const place = where === null ? "原地" : `地图 ${where}(${mapName(context.atlas, where)})`;
+  return {
+    ok: false,
+    detail: `自动住店没做成(${why})，停在${place}。请自己进旅店住一晚，回满 HP/MP 再继续刷。`,
+  };
+}
+
+function itemUseText(before: Record<string, number>, after: Record<string, number>): string[] {
+  const used: string[] = [];
+  for (const [name, count] of Object.entries(before)) {
+    const left = after[name] ?? 0;
+    if (count > left) used.push(`${name}×${count - left}`);
+  }
+  return used;
+}
+
+function minutesText(minutes: number): string {
+  return `${minutes < 10 ? minutes.toFixed(1) : Math.round(minutes)} 分钟`;
+}
+
+/** The loop itself. Throws only for a missing argument set; every in-game failure is a stop. */
+export async function grind(
+  pilot: Pilot,
+  options: GrindOptions,
+  context: GrindContext,
+): Promise<GrindReport> {
+  const say = context.say ?? (() => undefined);
+  const startedMs = pilot.now();
+  const deadline = startedMs + options.maxMinutes * 60_000;
+  const start = await readSnapshot(pilot);
+  const spot = start.position.cell;
+  if (spot === null) throw new Error("读不到队伍现在站在哪一格，没法刷怪。");
+  const grid0 = await readWalkGrid(pilot);
+  let encounters = null;
+  try {
+    encounters = parseEncounters(await pilot.query("encounters"));
+  } catch {
+    // Indoors a missing table only costs the until_bestiary goal; on the world map it also
+    // means the current region is unknown, and the check below stops instead of wandering.
+  }
+  const region = grid0.world ? (encounters?.region ?? null) : null;
+  if (grid0.world && (region?.start == null || region.end == null)) {
+    return finish(
+      pilot,
+      start,
+      start,
+      new Map<number, string>(),
+      0,
+      [],
+      "读不到当前所在的世界地图区域，不能保证留在本区域，先停下",
+      startedMs,
+      false,
+    );
+  }
+  let snapshot = start;
+  let knowledge = await context.refresh(pilot);
+  const startKnown = new Set(knowledge.known);
+  const newBestiary = new Map<number, string>();
+  const bagBefore = await safeHeldItems(pilot);
+  let battles = 0;
+  let rests = 0;
+  let turn = 0;
+  let blocked = 0;
+  let stop = "";
+  let fallback = false;
+  let grid = grid0;
+  let lastRest = "";
+  const occupied = new Set((await occupiedCells(pilot)).map((cell) => cellKey(cell[0], cell[1])));
+
+  const markNew = (known: ReadonlySet<number>, names: ReadonlyMap<number, string>): void => {
+    for (const number of known) {
+      if (startKnown.has(number) || newBestiary.has(number)) continue;
+      newBestiary.set(number, names.get(number) ?? `#${number}`);
+    }
+  };
+  markNew(knowledge.known, knowledge.names);
+
+  const atGoal = (): boolean => {
+    const check = stopReason(options, snapshot, knowledge.completion);
+    if (check.reached) stop = check.reason;
+    return check.reached;
+  };
+
+  if (atGoal()) {
+    return finish(
+      pilot,
+      start,
+      snapshot,
+      newBestiary,
+      battles,
+      itemUseText(bagBefore, await safeHeldItems(pilot)),
+      stop,
+      startedMs,
+      false,
+      rests,
+      lastRest,
+    );
+  }
+
+  while (pilot.now() < deadline) {
+    if (needsRest(snapshot, options)) {
+      if (!(await tryRevive(pilot, snapshot, say))) {
+        const rest = await restAtInn(pilot, context, start.position.map, spot, options, say);
+        lastRest = rest.detail;
+        say(`  ${rest.detail}`);
+        if (!rest.ok) {
+          fallback = true;
+          stop = rest.detail;
+          break;
+        }
+        rests += 1;
+        if (rest.returned === false) {
+          stop = rest.detail;
+          break;
+        }
+        snapshot = await readSnapshot(pilot);
+        knowledge = await context.refresh(pilot);
+        markNew(knowledge.known, knowledge.names);
+        grid = await readWalkGrid(pilot);
+        if (atGoal()) break;
+      } else {
+        snapshot = await readSnapshot(pilot);
+        if (!needsRest(snapshot, options)) continue;
+        const rest = await restAtInn(pilot, context, start.position.map, spot, options, say);
+        lastRest = rest.detail;
+        say(`  ${rest.detail}`);
+        if (!rest.ok) {
+          fallback = true;
+          stop = rest.detail;
+          break;
+        }
+        rests += 1;
+        if (rest.returned === false) {
+          stop = rest.detail;
+          break;
+        }
+        snapshot = await readSnapshot(pilot);
+        knowledge = await context.refresh(pilot);
+        markNew(knowledge.known, knowledge.names);
+        grid = await readWalkGrid(pilot);
+        if (atGoal()) break;
+      }
+    }
+    if (pilot.now() >= deadline) {
+      stop = `到 ${options.maxMinutes} 分钟了`;
+      break;
+    }
+    const here = snapshot.position.cell;
+    if (here === null) {
+      stop = "读不到当前位置，先停下";
+      break;
+    }
+    if (grid.world && region !== null && !insideRegion(here, region)) {
+      stop = `已经离开当前世界地图区域(在 ${here[0]}, ${here[1]})，先停下`;
+      break;
+    }
+    const target = nextStep(grid, here, region, occupied, turn);
+    turn += 1;
+    if (target === null) {
+      stop = "附近没有能走的格子，走不过去，先停下";
+      break;
+    }
+    const moved = await pilot.send("walk", { to: [target[0], target[1]], timeout: 30_000 }, 40_000);
+    const pos = record(moved.pos);
+    const inBattle = truthy(pos.battle) || pos.state === "Battle";
+    if (inBattle) {
+      blocked = 0;
+      const fought = await context.fighter(pilot, say);
+      battles += 1;
+      say(`  ${fought}`);
+      snapshot = await readSnapshot(pilot);
+      knowledge = await context.refresh(pilot);
+      markNew(knowledge.known, knowledge.names);
+      if (
+        fought.startsWith("全灭") ||
+        downed(snapshot.members).length === snapshot.members.length
+      ) {
+        stop = `全灭:${fought.split(/\r?\n/u, 1)[0] ?? fought}`;
+        break;
+      }
+      if (atGoal()) break;
+      if (snapshot.position.state !== "Player") {
+        stop = `战斗后停在状态 ${show(snapshot.position.state)}，先停下`;
+        break;
+      }
+      continue;
+    }
+    if (pos.state === "FieldHelp") {
+      const help = await dismissFieldHelp(pilot);
+      if (help === "stuck") {
+        stop = "关不掉操作提示，先停下";
+        break;
+      }
+      continue;
+    }
+    if (pos.state === "Gimmick" || String(moved.error).includes("Gimmick")) {
+      await pilot.send("wait", { timeout: 30_000 }, 40_000);
+      snapshot = await readSnapshot(pilot);
+      continue;
+    }
+    if (!truthy(moved.ok)) {
+      const error = show(moved.error);
+      if (error.includes("blocked") || error === "None") {
+        blocked += 1;
+        snapshot = await readSnapshot(pilot);
+        if (blocked >= 8) {
+          stop = `连续 ${blocked} 次走不过去，先停下`;
+          break;
+        }
+        continue;
+      }
+      stop = `走不过去(${error})，先停下`;
+      break;
+    }
+    blocked = 0;
+    snapshot = await readSnapshot(pilot);
+    if (snapshot.position.map !== start.position.map) {
+      stop =
+        `走到了地图 ${show(snapshot.position.map)}，不在原来刷怪的地图，先停下` +
+        "(请自己走回去再刷)";
+      break;
+    }
+    if (grid.world && region !== null) {
+      const now = snapshot.position.cell;
+      if (now !== null && !insideRegion(now, region)) {
+        stop = `走出了当前世界地图区域(在 ${now[0]}, ${now[1]})，先停下`;
+        break;
+      }
+    }
+    if (atGoal()) break;
+  }
+
+  if (stop === "") stop = `到 ${options.maxMinutes} 分钟了`;
+  return finish(
+    pilot,
+    start,
+    snapshot,
+    newBestiary,
+    battles,
+    itemUseText(bagBefore, await safeHeldItems(pilot)),
+    stop,
+    startedMs,
+    fallback,
+    rests,
+    lastRest,
+  );
+}
+
+/** Build the one result the model reads; shared by every early stop. */
+function finish(
+  pilot: Pilot,
+  start: GrindSnapshot,
+  end: GrindSnapshot,
+  newBestiary: ReadonlyMap<number, string>,
+  battles: number,
+  items: readonly string[],
+  stop: string,
+  startedMs: number,
+  fallback: boolean,
+  rests = 0,
+  lastRest = "",
+): GrindReport {
+  const minutes = Math.max(0, (pilot.now() - startedMs) / 60_000);
+  const gained = end.gold - start.gold;
+  const levelGained =
+    start.minLevel === null || end.minLevel === null ? 0 : end.minLevel - start.minLevel;
+  const bestiary = [...newBestiary.entries()]
+    .sort((left, right) => left[0] - right[0])
+    .map(([, name]) => name);
+  const levelText =
+    start.minLevel === null || end.minLevel === null
+      ? "等级读不到"
+      : `全队最低等级 ${start.minLevel}→${end.minLevel}` +
+        (levelGained > 0 ? `(+${levelGained})` : "");
+  const parts = [
+    `刷了 ${minutesText(minutes)}:打了 ${battles} 场`,
+    `钱 ${start.gold}→${end.gold}(${gained >= 0 ? "+" : ""}${gained})`,
+    levelText,
+    bestiary.length > 0
+      ? `本档图鉴新登记 ${bestiary.length} 种:${bestiary.join("、")}`
+      : "本档图鉴没有新登记",
+    items.length > 0 ? `用掉 ${items.join("、")}` : "没有用掉道具",
+    rests > 0 ? `自动住了 ${rests} 次店` : fallback ? "没能自动住店" : "没有住店",
+  ];
+  if (lastRest !== "") parts.push(`住店:${lastRest}`);
+  parts.push(`停:${stop.replace(/^停:/u, "")}`);
+  return {
+    text: parts.join(","),
+    minutes,
+    battles,
+    gold: end.gold,
+    goldGained: gained,
+    minLevel: end.minLevel,
+    levelGained,
+    bestiary,
+    items,
+    rests,
+    stop,
+  };
+}

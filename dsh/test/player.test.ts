@@ -33,7 +33,7 @@ void test("the game tools are the Python tools without done, with raw JSON Schem
     definitions.map((tool) => tool.name),
     expected.map((tool) => tool.function.name),
   );
-  assert.equal(definitions.length, 26);
+  assert.equal(definitions.length, 27);
   assert.equal(
     definitions.some((tool) => tool.name === "done"),
     false,
@@ -52,8 +52,8 @@ void test("the five new games do not get FF5's game operations", () => {
     assert.ok(names(ff5).includes(gone), `FF5 应该有 ${gone}`);
     assert.equal(names(ff6).includes(gone), false, `FF6 不该有 ${gone}`);
   }
-  assert.equal(ff5.length, 26);
-  assert.equal(ff6.length, 22);
+  assert.equal(ff5.length, 27);
+  assert.equal(ff6.length, 23);
   assert.match(
     String(ff6.find((tool) => tool.name === "save_game")?.description),
     /存档到 20 号存档位/,
@@ -137,7 +137,7 @@ void test("the prompt has the dsh goal text and no placeholders", async () => {
     "开始。当前状态:\n地图 1 · 格子 140,99\n\n最近几小时的重要事件:\n20:25 队伍 法利斯 离队",
   );
   assert.equal(openingMessage("看图", ""), "开始。当前状态:\n看图");
-  assert.deepEqual(GAME_TOOL_SCHEMAS.length, 26);
+  assert.deepEqual(GAME_TOOL_SCHEMAS.length, 27);
 
   const decision = { kind: "enter" as const, messages: [] };
   const opened = withOpening(decision, 1, "开始。");

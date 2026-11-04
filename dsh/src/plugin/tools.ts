@@ -39,6 +39,7 @@ export const TACTICIAN_TOOL_EXTRA_MS = 200_000;
 export const TOOL_TIMEOUTS: Readonly<Record<string, number>> = {
   advance_story: 650_000,
   fight: 900_000,
+  grind: 3_600_000,
   walk_to: 600_000,
   go_to: 600_000,
   interact: 600_000,
@@ -104,7 +105,7 @@ function withStrategyDocs(tool: GameToolSchema): GameToolSchema {
   };
 }
 
-/** FF5's 26 tools, kept for tests and callers that already know the game. */
+/** FF5's 27 tools, kept for tests and callers that already know the game. */
 export const GAME_TOOL_SCHEMAS: readonly GameToolSchema[] = gameToolSchemas("ff5", 20);
 
 function rendered(value: unknown): string {
