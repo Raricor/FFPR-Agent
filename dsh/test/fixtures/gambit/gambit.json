@@ -1,0 +1,2150 @@
+{
+  "vocabulary": [
+    ["self.hp", "自己的 HP"],
+    ["self.hp_pct", "自己的 HP 百分比"],
+    ["self.mp", "自己的 MP"],
+    ["ally.hp_pct", "活着的同伴(含自己)里最低的 HP 百分比"],
+    ["ally.dead", "倒下的同伴人数"],
+    ["party.alive", "活着的人数"],
+    ["enemy.count", "活着的敌人数"],
+    ["enemy.boss", "是否首领战(1/0)"],
+    ["enemy.hp_pct", "活着的敌人里最低的 HP 百分比"],
+    ["enemy.weak.<属性>", "有几只活着的敌人弱这个属性,如 enemy.weak.冰"],
+    ["enemy.absorbs.<属性>", "有几只活着的敌人吸收这个属性,如 enemy.absorbs.冰"],
+    ["turn", "这个角色第几次行动(从 1 数)"],
+    ["item.<道具名>", "背包里这种道具的数量,如 item.不死鸟之尾"],
+    ["ally.status.<状态>", "有这个状态的同伴人数,如 ally.status.麻痹(桥插件 0.6.3+)"],
+    ["self.status.<状态>", "自己有这个状态时为 1"]
+  ],
+  "targets": [
+    ["敌人", "敌人"],
+    ["", "敌人"],
+    ["自己", "自己"],
+    ["hp最低的同伴", "hp最低的同伴"],
+    ["倒下的同伴", "倒下的同伴"]
+  ],
+  "statusZh": [
+    ["Poison", "毒"],
+    ["Silence", "沉默"],
+    ["Sleep", "睡眠"],
+    ["Paralysis", "麻痹"],
+    ["Blind", "黑暗"],
+    ["Mineralization", "石化"],
+    ["SlowlyMineralization", "渐渐石化"],
+    ["Confusion", "混乱"],
+    ["Slow", "减速"],
+    ["Stop", "停止"],
+    ["Zombie", "僵尸"],
+    ["Frog", "青蛙"],
+    ["Child", "迷你"],
+    ["Pig", "猪"],
+    ["Aging", "老化"],
+    ["Bersak", "狂暴"],
+    ["Curse", "诅咒"],
+    ["UnableFight", "战斗不能"],
+    ["Dying", "濒死"],
+    ["Heist", "加速"],
+    ["Regeneration", "再生"],
+    ["Proteus", "防护"],
+    ["Shell", "魔法防护"],
+    ["Reflex", "反射"],
+    ["Blink", "分身"],
+    ["Transparent", "隐身"],
+    ["Leviteto", "浮空"]
+  ],
+  "values": [
+    {
+      "situation": {
+        "actor": "蕾娜",
+        "players": [
+          {
+            "name": "巴兹",
+            "hp": 8,
+            "maxHp": 197,
+            "mp": 19,
+            "jobName": "骑士"
+          },
+          {
+            "name": "蕾娜",
+            "hp": 60,
+            "maxHp": 142,
+            "mp": 16,
+            "jobName": "白魔法师"
+          },
+          {
+            "name": "加拉夫",
+            "hp": 0,
+            "maxHp": 215,
+            "mp": 19,
+            "jobName": "武僧"
+          },
+          {
+            "name": "法利斯",
+            "hp": 140,
+            "maxHp": 140,
+            "mp": 2,
+            "jobName": "黑魔法师"
+          }
+        ],
+        "enemies": [
+          {
+            "name": "龙虾",
+            "hp": 500,
+            "maxHp": 650,
+            "boss": 1
+          }
+        ],
+        "turn": 1,
+        "boss": true,
+        "items": {}
+      },
+      "values": {
+        "self.hp": 60,
+        "self.hp_pct": 42.25352112676056,
+        "self.mp": 16,
+        "ally.hp_pct": 4.060913705583756,
+        "ally.dead": 1,
+        "party.alive": 3,
+        "enemy.count": 1,
+        "enemy.boss": 1,
+        "enemy.hp_pct": 76.92307692307692,
+        "turn": 1
+      }
+    },
+    {
+      "situation": {
+        "actor": "蕾娜",
+        "players": [
+          {
+            "name": "巴兹",
+            "hp": 197,
+            "maxHp": 197,
+            "mp": 19,
+            "jobName": "骑士"
+          },
+          {
+            "name": "蕾娜",
+            "hp": 142,
+            "maxHp": 142,
+            "mp": 16,
+            "jobName": "白魔法师"
+          },
+          {
+            "name": "加拉夫",
+            "hp": 215,
+            "maxHp": 215,
+            "mp": 19,
+            "jobName": "武僧"
+          },
+          {
+            "name": "法利斯",
+            "hp": 140,
+            "maxHp": 140,
+            "mp": 2,
+            "jobName": "黑魔法师"
+          }
+        ],
+        "enemies": [
+          {
+            "name": "龙虾",
+            "hp": 500,
+            "maxHp": 650,
+            "boss": 1
+          }
+        ],
+        "turn": 1,
+        "boss": true,
+        "items": {}
+      },
+      "values": {
+        "self.hp": 142,
+        "self.hp_pct": 100,
+        "self.mp": 16,
+        "ally.hp_pct": 100,
+        "ally.dead": 0,
+        "party.alive": 4,
+        "enemy.count": 1,
+        "enemy.boss": 1,
+        "enemy.hp_pct": 76.92307692307692,
+        "turn": 1
+      }
+    },
+    {
+      "situation": {
+        "actor": "法利斯",
+        "players": [
+          {
+            "name": "巴兹",
+            "hp": 8,
+            "maxHp": 197,
+            "mp": 19,
+            "jobName": "骑士"
+          },
+          {
+            "name": "蕾娜",
+            "hp": 60,
+            "maxHp": 142,
+            "mp": 16,
+            "jobName": "白魔法师"
+          },
+          {
+            "name": "加拉夫",
+            "hp": 0,
+            "maxHp": 215,
+            "mp": 19,
+            "jobName": "武僧"
+          },
+          {
+            "name": "法利斯",
+            "hp": 140,
+            "maxHp": 140,
+            "mp": 2,
+            "jobName": "黑魔法师"
+          }
+        ],
+        "enemies": [
+          {
+            "name": "龙虾",
+            "hp": 500,
+            "maxHp": 650,
+            "boss": 1
+          }
+        ],
+        "turn": 4,
+        "boss": true,
+        "items": {}
+      },
+      "values": {
+        "self.hp": 140,
+        "self.hp_pct": 100,
+        "self.mp": 2,
+        "ally.hp_pct": 4.060913705583756,
+        "ally.dead": 1,
+        "party.alive": 3,
+        "enemy.count": 1,
+        "enemy.boss": 1,
+        "enemy.hp_pct": 76.92307692307692,
+        "turn": 4
+      }
+    },
+    {
+      "situation": {
+        "actor": "蕾娜",
+        "players": [
+          {
+            "name": "巴兹",
+            "hp": 8,
+            "maxHp": 197,
+            "mp": 19,
+            "jobName": "骑士"
+          },
+          {
+            "name": "蕾娜",
+            "hp": 60,
+            "maxHp": 142,
+            "mp": 16,
+            "jobName": "白魔法师"
+          },
+          {
+            "name": "加拉夫",
+            "hp": 0,
+            "maxHp": 215,
+            "mp": 19,
+            "jobName": "武僧"
+          },
+          {
+            "name": "法利斯",
+            "hp": 140,
+            "maxHp": 140,
+            "mp": 2,
+            "jobName": "黑魔法师"
+          }
+        ],
+        "enemies": [
+          {
+            "name": "龙虾",
+            "hp": 500,
+            "maxHp": 650,
+            "boss": 1
+          }
+        ],
+        "turn": 1,
+        "boss": true,
+        "items": {
+          "不死鸟之尾": 1,
+          "恢复药": 3
+        }
+      },
+      "values": {
+        "self.hp": 60,
+        "self.hp_pct": 42.25352112676056,
+        "self.mp": 16,
+        "ally.hp_pct": 4.060913705583756,
+        "ally.dead": 1,
+        "party.alive": 3,
+        "enemy.count": 1,
+        "enemy.boss": 1,
+        "enemy.hp_pct": 76.92307692307692,
+        "turn": 1
+      }
+    }
+  ],
+  "statuses": [
+    {
+      "unit": {
+        "status": ["Poison", "", "Mineralization"]
+      },
+      "out": ["毒", "石化"]
+    },
+    {
+      "unit": {
+        "status": ["Blind", "Silence"]
+      },
+      "out": ["黑暗", "沉默"]
+    },
+    {
+      "unit": {},
+      "out": []
+    }
+  ],
+  "holds": [
+    {
+      "condition": "ally.hp_pct < 50 and self.mp >= 4",
+      "situation": {
+        "actor": "蕾娜",
+        "players": [
+          {
+            "name": "巴兹",
+            "hp": 8,
+            "maxHp": 197,
+            "mp": 19,
+            "jobName": "骑士"
+          },
+          {
+            "name": "蕾娜",
+            "hp": 60,
+            "maxHp": 142,
+            "mp": 16,
+            "jobName": "白魔法师"
+          },
+          {
+            "name": "加拉夫",
+            "hp": 0,
+            "maxHp": 215,
+            "mp": 19,
+            "jobName": "武僧"
+          },
+          {
+            "name": "法利斯",
+            "hp": 140,
+            "maxHp": 140,
+            "mp": 2,
+            "jobName": "黑魔法师"
+          }
+        ],
+        "enemies": [
+          {
+            "name": "龙虾",
+            "hp": 500,
+            "maxHp": 650,
+            "boss": 1
+          }
+        ],
+        "turn": 1,
+        "boss": true,
+        "items": {}
+      },
+      "out": true
+    },
+    {
+      "condition": "ally.dead == 0",
+      "situation": {
+        "actor": "蕾娜",
+        "players": [
+          {
+            "name": "巴兹",
+            "hp": 8,
+            "maxHp": 197,
+            "mp": 19,
+            "jobName": "骑士"
+          },
+          {
+            "name": "蕾娜",
+            "hp": 60,
+            "maxHp": 142,
+            "mp": 16,
+            "jobName": "白魔法师"
+          },
+          {
+            "name": "加拉夫",
+            "hp": 0,
+            "maxHp": 215,
+            "mp": 19,
+            "jobName": "武僧"
+          },
+          {
+            "name": "法利斯",
+            "hp": 140,
+            "maxHp": 140,
+            "mp": 2,
+            "jobName": "黑魔法师"
+          }
+        ],
+        "enemies": [
+          {
+            "name": "龙虾",
+            "hp": 500,
+            "maxHp": 650,
+            "boss": 1
+          }
+        ],
+        "turn": 1,
+        "boss": true,
+        "items": {}
+      },
+      "out": false
+    },
+    {
+      "condition": "enemy.boss",
+      "situation": {
+        "actor": "蕾娜",
+        "players": [
+          {
+            "name": "巴兹",
+            "hp": 8,
+            "maxHp": 197,
+            "mp": 19,
+            "jobName": "骑士"
+          },
+          {
+            "name": "蕾娜",
+            "hp": 60,
+            "maxHp": 142,
+            "mp": 16,
+            "jobName": "白魔法师"
+          },
+          {
+            "name": "加拉夫",
+            "hp": 0,
+            "maxHp": 215,
+            "mp": 19,
+            "jobName": "武僧"
+          },
+          {
+            "name": "法利斯",
+            "hp": 140,
+            "maxHp": 140,
+            "mp": 2,
+            "jobName": "黑魔法师"
+          }
+        ],
+        "enemies": [
+          {
+            "name": "龙虾",
+            "hp": 500,
+            "maxHp": 650,
+            "boss": 1
+          }
+        ],
+        "turn": 1,
+        "boss": true,
+        "items": {}
+      },
+      "out": true
+    },
+    {
+      "condition": null,
+      "situation": {
+        "actor": "蕾娜",
+        "players": [
+          {
+            "name": "巴兹",
+            "hp": 8,
+            "maxHp": 197,
+            "mp": 19,
+            "jobName": "骑士"
+          },
+          {
+            "name": "蕾娜",
+            "hp": 60,
+            "maxHp": 142,
+            "mp": 16,
+            "jobName": "白魔法师"
+          },
+          {
+            "name": "加拉夫",
+            "hp": 0,
+            "maxHp": 215,
+            "mp": 19,
+            "jobName": "武僧"
+          },
+          {
+            "name": "法利斯",
+            "hp": 140,
+            "maxHp": 140,
+            "mp": 2,
+            "jobName": "黑魔法师"
+          }
+        ],
+        "enemies": [
+          {
+            "name": "龙虾",
+            "hp": 500,
+            "maxHp": 650,
+            "boss": 1
+          }
+        ],
+        "turn": 1,
+        "boss": true,
+        "items": {}
+      },
+      "out": true
+    },
+    {
+      "condition": "ally.status.麻痹 >= 1",
+      "situation": {
+        "actor": "法利斯",
+        "players": [
+          {
+            "name": "巴兹",
+            "hp": 8,
+            "maxHp": 197,
+            "mp": 19,
+            "jobName": "骑士"
+          },
+          {
+            "name": "蕾娜",
+            "hp": 60,
+            "maxHp": 142,
+            "mp": 16,
+            "jobName": "白魔法师"
+          },
+          {
+            "name": "加拉夫",
+            "hp": 0,
+            "maxHp": 215,
+            "mp": 19,
+            "jobName": "武僧"
+          },
+          {
+            "name": "法利斯",
+            "hp": 140,
+            "maxHp": 140,
+            "mp": 2,
+            "jobName": "黑魔法师",
+            "status": ["麻痹"]
+          }
+        ],
+        "enemies": [
+          {
+            "name": "龙虾",
+            "hp": 500,
+            "maxHp": 650,
+            "boss": 1
+          }
+        ],
+        "turn": 1,
+        "boss": true,
+        "items": {}
+      },
+      "out": true
+    },
+    {
+      "condition": "self.status.麻痹",
+      "situation": {
+        "actor": "法利斯",
+        "players": [
+          {
+            "name": "巴兹",
+            "hp": 8,
+            "maxHp": 197,
+            "mp": 19,
+            "jobName": "骑士"
+          },
+          {
+            "name": "蕾娜",
+            "hp": 60,
+            "maxHp": 142,
+            "mp": 16,
+            "jobName": "白魔法师"
+          },
+          {
+            "name": "加拉夫",
+            "hp": 0,
+            "maxHp": 215,
+            "mp": 19,
+            "jobName": "武僧"
+          },
+          {
+            "name": "法利斯",
+            "hp": 140,
+            "maxHp": 140,
+            "mp": 2,
+            "jobName": "黑魔法师",
+            "status": ["麻痹"]
+          }
+        ],
+        "enemies": [
+          {
+            "name": "龙虾",
+            "hp": 500,
+            "maxHp": 650,
+            "boss": 1
+          }
+        ],
+        "turn": 1,
+        "boss": true,
+        "items": {}
+      },
+      "out": true
+    },
+    {
+      "condition": "ally.status.石化",
+      "situation": {
+        "actor": "法利斯",
+        "players": [
+          {
+            "name": "巴兹",
+            "hp": 8,
+            "maxHp": 197,
+            "mp": 19,
+            "jobName": "骑士"
+          },
+          {
+            "name": "蕾娜",
+            "hp": 60,
+            "maxHp": 142,
+            "mp": 16,
+            "jobName": "白魔法师"
+          },
+          {
+            "name": "加拉夫",
+            "hp": 0,
+            "maxHp": 215,
+            "mp": 19,
+            "jobName": "武僧"
+          },
+          {
+            "name": "法利斯",
+            "hp": 140,
+            "maxHp": 140,
+            "mp": 2,
+            "jobName": "黑魔法师",
+            "status": ["麻痹"]
+          }
+        ],
+        "enemies": [
+          {
+            "name": "龙虾",
+            "hp": 500,
+            "maxHp": 650,
+            "boss": 1
+          }
+        ],
+        "turn": 1,
+        "boss": true,
+        "items": {}
+      },
+      "out": false
+    },
+    {
+      "condition": "ally.dead >= 1 and item.不死鸟之尾 > 0",
+      "situation": {
+        "actor": "蕾娜",
+        "players": [
+          {
+            "name": "巴兹",
+            "hp": 8,
+            "maxHp": 197,
+            "mp": 19,
+            "jobName": "骑士"
+          },
+          {
+            "name": "蕾娜",
+            "hp": 60,
+            "maxHp": 142,
+            "mp": 16,
+            "jobName": "白魔法师"
+          },
+          {
+            "name": "加拉夫",
+            "hp": 0,
+            "maxHp": 215,
+            "mp": 19,
+            "jobName": "武僧"
+          },
+          {
+            "name": "法利斯",
+            "hp": 140,
+            "maxHp": 140,
+            "mp": 2,
+            "jobName": "黑魔法师"
+          }
+        ],
+        "enemies": [
+          {
+            "name": "龙虾",
+            "hp": 500,
+            "maxHp": 650,
+            "boss": 1
+          }
+        ],
+        "turn": 1,
+        "boss": true,
+        "items": {
+          "不死鸟之尾": 1,
+          "恢复药": 3
+        }
+      },
+      "out": true
+    },
+    {
+      "condition": "item.以太 > 0",
+      "situation": {
+        "actor": "蕾娜",
+        "players": [
+          {
+            "name": "巴兹",
+            "hp": 8,
+            "maxHp": 197,
+            "mp": 19,
+            "jobName": "骑士"
+          },
+          {
+            "name": "蕾娜",
+            "hp": 60,
+            "maxHp": 142,
+            "mp": 16,
+            "jobName": "白魔法师"
+          },
+          {
+            "name": "加拉夫",
+            "hp": 0,
+            "maxHp": 215,
+            "mp": 19,
+            "jobName": "武僧"
+          },
+          {
+            "name": "法利斯",
+            "hp": 140,
+            "maxHp": 140,
+            "mp": 2,
+            "jobName": "黑魔法师"
+          }
+        ],
+        "enemies": [
+          {
+            "name": "龙虾",
+            "hp": 500,
+            "maxHp": 650,
+            "boss": 1
+          }
+        ],
+        "turn": 1,
+        "boss": true,
+        "items": {
+          "不死鸟之尾": 1,
+          "恢复药": 3
+        }
+      },
+      "out": false
+    }
+  ],
+  "choose": [
+    {
+      "rules": [
+        {
+          "if": "ally.dead >= 1",
+          "do": "白魔法:复活",
+          "target": "倒下的同伴"
+        },
+        {
+          "if": "ally.hp_pct < 50",
+          "do": "白魔法:治疗",
+          "target": "hp 最低的同伴"
+        },
+        {
+          "do": "攻击"
+        }
+      ],
+      "situation": {
+        "actor": "蕾娜",
+        "players": [
+          {
+            "name": "巴兹",
+            "hp": 8,
+            "maxHp": 197,
+            "mp": 19,
+            "jobName": "骑士"
+          },
+          {
+            "name": "蕾娜",
+            "hp": 60,
+            "maxHp": 142,
+            "mp": 16,
+            "jobName": "白魔法师"
+          },
+          {
+            "name": "加拉夫",
+            "hp": 0,
+            "maxHp": 215,
+            "mp": 19,
+            "jobName": "武僧"
+          },
+          {
+            "name": "法利斯",
+            "hp": 140,
+            "maxHp": 140,
+            "mp": 2,
+            "jobName": "黑魔法师"
+          }
+        ],
+        "enemies": [
+          {
+            "name": "龙虾",
+            "hp": 500,
+            "maxHp": 650,
+            "boss": 1
+          }
+        ],
+        "turn": 1,
+        "boss": true,
+        "items": {}
+      },
+      "skip": [],
+      "action": {
+        "command": "白魔法",
+        "ability": "复活",
+        "target": "倒下的同伴",
+        "whom": "加拉夫",
+        "rule": 1
+      }
+    },
+    {
+      "rules": [
+        {
+          "if": "ally.dead >= 1",
+          "do": "白魔法:复活",
+          "target": "倒下的同伴"
+        },
+        {
+          "if": "ally.hp_pct < 50",
+          "do": "白魔法:治疗",
+          "target": "hp 最低的同伴"
+        },
+        {
+          "do": "攻击"
+        }
+      ],
+      "situation": {
+        "actor": "蕾娜",
+        "players": [
+          {
+            "name": "巴兹",
+            "hp": 8,
+            "maxHp": 197,
+            "mp": 19,
+            "jobName": "骑士"
+          },
+          {
+            "name": "蕾娜",
+            "hp": 60,
+            "maxHp": 142,
+            "mp": 16,
+            "jobName": "白魔法师"
+          },
+          {
+            "name": "加拉夫",
+            "hp": 0,
+            "maxHp": 215,
+            "mp": 19,
+            "jobName": "武僧"
+          },
+          {
+            "name": "法利斯",
+            "hp": 140,
+            "maxHp": 140,
+            "mp": 2,
+            "jobName": "黑魔法师"
+          }
+        ],
+        "enemies": [
+          {
+            "name": "龙虾",
+            "hp": 500,
+            "maxHp": 650,
+            "boss": 1
+          }
+        ],
+        "turn": 1,
+        "boss": true,
+        "items": {}
+      },
+      "skip": [1],
+      "action": {
+        "command": "白魔法",
+        "ability": "治疗",
+        "target": "hp最低的同伴",
+        "whom": "巴兹",
+        "rule": 2
+      }
+    },
+    {
+      "rules": [
+        {
+          "if": "ally.dead >= 1",
+          "do": "白魔法:复活",
+          "target": "倒下的同伴"
+        },
+        {
+          "if": "ally.hp_pct < 50",
+          "do": "白魔法:治疗",
+          "target": "hp 最低的同伴"
+        },
+        {
+          "do": "攻击"
+        }
+      ],
+      "situation": {
+        "actor": "蕾娜",
+        "players": [
+          {
+            "name": "巴兹",
+            "hp": 197,
+            "maxHp": 197,
+            "mp": 19,
+            "jobName": "骑士"
+          },
+          {
+            "name": "蕾娜",
+            "hp": 142,
+            "maxHp": 142,
+            "mp": 16,
+            "jobName": "白魔法师"
+          },
+          {
+            "name": "加拉夫",
+            "hp": 215,
+            "maxHp": 215,
+            "mp": 19,
+            "jobName": "武僧"
+          },
+          {
+            "name": "法利斯",
+            "hp": 140,
+            "maxHp": 140,
+            "mp": 2,
+            "jobName": "黑魔法师"
+          }
+        ],
+        "enemies": [
+          {
+            "name": "龙虾",
+            "hp": 500,
+            "maxHp": 650,
+            "boss": 1
+          }
+        ],
+        "turn": 1,
+        "boss": true,
+        "items": {}
+      },
+      "skip": [],
+      "action": {
+        "command": "攻击",
+        "ability": "",
+        "target": "敌人",
+        "whom": null,
+        "rule": 3
+      }
+    },
+    {
+      "rules": [
+        {
+          "if": "turn > 3",
+          "do": "黑魔法:闪雷"
+        }
+      ],
+      "situation": {
+        "actor": "法利斯",
+        "players": [
+          {
+            "name": "巴兹",
+            "hp": 8,
+            "maxHp": 197,
+            "mp": 19,
+            "jobName": "骑士"
+          },
+          {
+            "name": "蕾娜",
+            "hp": 60,
+            "maxHp": 142,
+            "mp": 16,
+            "jobName": "白魔法师"
+          },
+          {
+            "name": "加拉夫",
+            "hp": 0,
+            "maxHp": 215,
+            "mp": 19,
+            "jobName": "武僧"
+          },
+          {
+            "name": "法利斯",
+            "hp": 140,
+            "maxHp": 140,
+            "mp": 2,
+            "jobName": "黑魔法师"
+          }
+        ],
+        "enemies": [
+          {
+            "name": "龙虾",
+            "hp": 500,
+            "maxHp": 650,
+            "boss": 1
+          }
+        ],
+        "turn": 1,
+        "boss": true,
+        "items": {}
+      },
+      "skip": [],
+      "action": {
+        "command": "攻击",
+        "ability": "",
+        "target": "敌人",
+        "whom": null,
+        "rule": 0
+      }
+    },
+    {
+      "rules": [
+        {
+          "if": "ally.dead >= 1",
+          "do": "白魔法:复活",
+          "target": "倒下的同伴"
+        },
+        {
+          "if": "ally.dead >= 1 and item.不死鸟之尾 > 0",
+          "do": "道具:不死鸟之尾",
+          "target": "倒下的同伴"
+        },
+        {
+          "if": "ally.hp_pct < 35",
+          "do": "白魔法:治疗+",
+          "target": "hp最低的同伴"
+        },
+        {
+          "if": "ally.hp_pct < 60",
+          "do": "白魔法:治疗",
+          "target": "hp最低的同伴"
+        },
+        {
+          "if": "ally.status.毒 >= 1",
+          "do": "白魔法:解毒",
+          "target": "状态:毒"
+        },
+        {
+          "if": "ally.status.毒 >= 1 and item.解毒药 > 0",
+          "do": "道具:解毒药",
+          "target": "状态:毒"
+        },
+        {
+          "if": "ally.status.黑暗 >= 1 and item.眼药 > 0",
+          "do": "道具:眼药",
+          "target": "状态:黑暗"
+        },
+        {
+          "if": "ally.status.石化 >= 1 and item.金针 > 0",
+          "do": "道具:金针",
+          "target": "状态:石化"
+        },
+        {
+          "if": "ally.status.青蛙 >= 1 and item.少女之吻 > 0",
+          "do": "道具:少女之吻",
+          "target": "状态:青蛙"
+        },
+        {
+          "if": "ally.status.迷你 >= 1 and item.木槌 > 0",
+          "do": "道具:木槌",
+          "target": "状态:迷你"
+        },
+        {
+          "if": "ally.status.沉默 >= 1 and item.回音草 > 0",
+          "do": "道具:回音草",
+          "target": "状态:沉默"
+        },
+        {
+          "do": "攻击"
+        }
+      ],
+      "situation": {
+        "actor": "蕾娜",
+        "players": [
+          {
+            "name": "巴兹",
+            "hp": 8,
+            "maxHp": 197,
+            "mp": 19,
+            "jobName": "骑士"
+          },
+          {
+            "name": "蕾娜",
+            "hp": 60,
+            "maxHp": 142,
+            "mp": 16,
+            "jobName": "白魔法师"
+          },
+          {
+            "name": "加拉夫",
+            "hp": 0,
+            "maxHp": 215,
+            "mp": 19,
+            "jobName": "武僧"
+          },
+          {
+            "name": "法利斯",
+            "hp": 140,
+            "maxHp": 140,
+            "mp": 2,
+            "jobName": "黑魔法师"
+          }
+        ],
+        "enemies": [
+          {
+            "name": "龙虾",
+            "hp": 500,
+            "maxHp": 650,
+            "boss": 1
+          }
+        ],
+        "turn": 1,
+        "boss": true,
+        "items": {
+          "不死鸟之尾": 1,
+          "恢复药": 3
+        }
+      },
+      "skip": [1],
+      "action": {
+        "command": "道具",
+        "ability": "不死鸟之尾",
+        "target": "倒下的同伴",
+        "whom": "加拉夫",
+        "rule": 2
+      }
+    },
+    {
+      "rules": [
+        {
+          "if": "ally.dead >= 1 and item.不死鸟之尾 > 0",
+          "do": "道具:不死鸟之尾",
+          "target": "倒下的同伴"
+        },
+        {
+          "if": "ally.status.毒 >= 1 and item.解毒药 > 0",
+          "do": "道具:解毒药",
+          "target": "状态:毒"
+        },
+        {
+          "if": "ally.status.黑暗 >= 1 and item.眼药 > 0",
+          "do": "道具:眼药",
+          "target": "状态:黑暗"
+        },
+        {
+          "if": "ally.status.石化 >= 1 and item.金针 > 0",
+          "do": "道具:金针",
+          "target": "状态:石化"
+        },
+        {
+          "if": "ally.status.青蛙 >= 1 and item.少女之吻 > 0",
+          "do": "道具:少女之吻",
+          "target": "状态:青蛙"
+        },
+        {
+          "if": "ally.status.迷你 >= 1 and item.木槌 > 0",
+          "do": "道具:木槌",
+          "target": "状态:迷你"
+        },
+        {
+          "if": "ally.status.沉默 >= 1 and item.回音草 > 0",
+          "do": "道具:回音草",
+          "target": "状态:沉默"
+        },
+        {
+          "do": "攻击"
+        }
+      ],
+      "situation": {
+        "actor": "巴兹",
+        "players": [
+          {
+            "name": "巴兹",
+            "hp": 197,
+            "maxHp": 197,
+            "mp": 19,
+            "jobName": "骑士"
+          },
+          {
+            "name": "蕾娜",
+            "hp": 142,
+            "maxHp": 142,
+            "mp": 16,
+            "jobName": "白魔法师",
+            "status": ["Blind"]
+          },
+          {
+            "name": "加拉夫",
+            "hp": 215,
+            "maxHp": 215,
+            "mp": 19,
+            "jobName": "武僧"
+          },
+          {
+            "name": "法利斯",
+            "hp": 140,
+            "maxHp": 140,
+            "mp": 2,
+            "jobName": "黑魔法师"
+          }
+        ],
+        "enemies": [
+          {
+            "name": "龙虾",
+            "hp": 500,
+            "maxHp": 650,
+            "boss": 1
+          }
+        ],
+        "turn": 1,
+        "boss": true,
+        "items": {
+          "眼药水": 2
+        }
+      },
+      "skip": [],
+      "action": {
+        "command": "道具",
+        "ability": "眼药",
+        "target": "状态",
+        "whom": "蕾娜",
+        "rule": 3
+      }
+    },
+    {
+      "rules": [
+        {
+          "if": "ally.dead >= 1 and item.不死鸟之尾 > 0",
+          "do": "道具:不死鸟之尾",
+          "target": "倒下的同伴"
+        },
+        {
+          "if": "ally.status.毒 >= 1 and item.解毒药 > 0",
+          "do": "道具:解毒药",
+          "target": "状态:毒"
+        },
+        {
+          "if": "ally.status.黑暗 >= 1 and item.眼药 > 0",
+          "do": "道具:眼药",
+          "target": "状态:黑暗"
+        },
+        {
+          "if": "ally.status.石化 >= 1 and item.金针 > 0",
+          "do": "道具:金针",
+          "target": "状态:石化"
+        },
+        {
+          "if": "ally.status.青蛙 >= 1 and item.少女之吻 > 0",
+          "do": "道具:少女之吻",
+          "target": "状态:青蛙"
+        },
+        {
+          "if": "ally.status.迷你 >= 1 and item.木槌 > 0",
+          "do": "道具:木槌",
+          "target": "状态:迷你"
+        },
+        {
+          "if": "ally.status.沉默 >= 1 and item.回音草 > 0",
+          "do": "道具:回音草",
+          "target": "状态:沉默"
+        },
+        {
+          "do": "攻击"
+        }
+      ],
+      "situation": {
+        "actor": "巴兹",
+        "players": [
+          {
+            "name": "巴兹",
+            "hp": 197,
+            "maxHp": 197,
+            "mp": 19,
+            "jobName": "骑士"
+          },
+          {
+            "name": "蕾娜",
+            "hp": 142,
+            "maxHp": 142,
+            "mp": 16,
+            "jobName": "白魔法师",
+            "status": ["Blind"]
+          },
+          {
+            "name": "加拉夫",
+            "hp": 215,
+            "maxHp": 215,
+            "mp": 19,
+            "jobName": "武僧"
+          },
+          {
+            "name": "法利斯",
+            "hp": 140,
+            "maxHp": 140,
+            "mp": 2,
+            "jobName": "黑魔法师"
+          }
+        ],
+        "enemies": [
+          {
+            "name": "龙虾",
+            "hp": 500,
+            "maxHp": 650,
+            "boss": 1
+          }
+        ],
+        "turn": 1,
+        "boss": true,
+        "items": {}
+      },
+      "skip": [],
+      "action": {
+        "command": "攻击",
+        "ability": "",
+        "target": "敌人",
+        "whom": null,
+        "rule": 8
+      }
+    }
+  ],
+  "check": [
+    {
+      "table": {
+        "蕾娜": [
+          {
+            "if": "ally.hp_pct < 50",
+            "do": "白魔法:治疗"
+          },
+          {
+            "do": "攻击"
+          }
+        ]
+      },
+      "problems": []
+    },
+    {
+      "table": {
+        "蕾娜": [
+          {
+            "if": "ally.hp < 50",
+            "do": "白魔法:治疗"
+          }
+        ],
+        "法利斯": [
+          {
+            "do": "黑魔法:闪雷",
+            "target": "最强的敌人"
+          }
+        ],
+        "巴兹": "攻击"
+      },
+      "problems": [
+        "蕾娜 第 1 条:条件里没有「ally.hp」这个词;能用的:self.hp、self.hp_pct、self.mp、ally.hp_pct、ally.dead、party.alive、enemy.count、enemy.boss、enemy.hp_pct、enemy.weak.<属性>、enemy.absorbs.<属性>、turn、item.<道具名>、ally.status.<状态>、self.status.<状态>",
+        "蕾娜:最后一条要不带条件(兜底),比如 {\"do\": \"攻击\"}",
+        "法利斯 第 1 条:目标「最强的敌人」不认识;能用:敌人、自己、hp最低的同伴、倒下的同伴、状态:毒(有这个状态的同伴)",
+        "巴兹:规则要写成列表"
+      ]
+    },
+    {
+      "table": {
+        "巴兹": [
+          {
+            "if": "ally.dead >= 1 and item.不死鸟之尾 > 0",
+            "do": "道具:不死鸟之尾",
+            "target": "倒下的同伴"
+          },
+          {
+            "if": "ally.status.毒 >= 1 and item.解毒药 > 0",
+            "do": "道具:解毒药",
+            "target": "状态:毒"
+          },
+          {
+            "if": "ally.status.黑暗 >= 1 and item.眼药 > 0",
+            "do": "道具:眼药",
+            "target": "状态:黑暗"
+          },
+          {
+            "if": "ally.status.石化 >= 1 and item.金针 > 0",
+            "do": "道具:金针",
+            "target": "状态:石化"
+          },
+          {
+            "if": "ally.status.青蛙 >= 1 and item.少女之吻 > 0",
+            "do": "道具:少女之吻",
+            "target": "状态:青蛙"
+          },
+          {
+            "if": "ally.status.迷你 >= 1 and item.木槌 > 0",
+            "do": "道具:木槌",
+            "target": "状态:迷你"
+          },
+          {
+            "if": "ally.status.沉默 >= 1 and item.回音草 > 0",
+            "do": "道具:回音草",
+            "target": "状态:沉默"
+          },
+          {
+            "do": "攻击"
+          }
+        ],
+        "蕾娜": [
+          {
+            "if": "ally.dead >= 1",
+            "do": "白魔法:复活",
+            "target": "倒下的同伴"
+          },
+          {
+            "if": "ally.dead >= 1 and item.不死鸟之尾 > 0",
+            "do": "道具:不死鸟之尾",
+            "target": "倒下的同伴"
+          },
+          {
+            "if": "ally.hp_pct < 35",
+            "do": "白魔法:治疗+",
+            "target": "hp最低的同伴"
+          },
+          {
+            "if": "ally.hp_pct < 60",
+            "do": "白魔法:治疗",
+            "target": "hp最低的同伴"
+          },
+          {
+            "if": "ally.status.毒 >= 1",
+            "do": "白魔法:解毒",
+            "target": "状态:毒"
+          },
+          {
+            "if": "ally.status.毒 >= 1 and item.解毒药 > 0",
+            "do": "道具:解毒药",
+            "target": "状态:毒"
+          },
+          {
+            "if": "ally.status.黑暗 >= 1 and item.眼药 > 0",
+            "do": "道具:眼药",
+            "target": "状态:黑暗"
+          },
+          {
+            "if": "ally.status.石化 >= 1 and item.金针 > 0",
+            "do": "道具:金针",
+            "target": "状态:石化"
+          },
+          {
+            "if": "ally.status.青蛙 >= 1 and item.少女之吻 > 0",
+            "do": "道具:少女之吻",
+            "target": "状态:青蛙"
+          },
+          {
+            "if": "ally.status.迷你 >= 1 and item.木槌 > 0",
+            "do": "道具:木槌",
+            "target": "状态:迷你"
+          },
+          {
+            "if": "ally.status.沉默 >= 1 and item.回音草 > 0",
+            "do": "道具:回音草",
+            "target": "状态:沉默"
+          },
+          {
+            "do": "攻击"
+          }
+        ],
+        "加拉夫": [
+          {
+            "if": "ally.dead >= 1 and item.不死鸟之尾 > 0",
+            "do": "道具:不死鸟之尾",
+            "target": "倒下的同伴"
+          },
+          {
+            "if": "ally.status.毒 >= 1 and item.解毒药 > 0",
+            "do": "道具:解毒药",
+            "target": "状态:毒"
+          },
+          {
+            "if": "ally.status.黑暗 >= 1 and item.眼药 > 0",
+            "do": "道具:眼药",
+            "target": "状态:黑暗"
+          },
+          {
+            "if": "ally.status.石化 >= 1 and item.金针 > 0",
+            "do": "道具:金针",
+            "target": "状态:石化"
+          },
+          {
+            "if": "ally.status.青蛙 >= 1 and item.少女之吻 > 0",
+            "do": "道具:少女之吻",
+            "target": "状态:青蛙"
+          },
+          {
+            "if": "ally.status.迷你 >= 1 and item.木槌 > 0",
+            "do": "道具:木槌",
+            "target": "状态:迷你"
+          },
+          {
+            "if": "ally.status.沉默 >= 1 and item.回音草 > 0",
+            "do": "道具:回音草",
+            "target": "状态:沉默"
+          },
+          {
+            "do": "攻击"
+          }
+        ],
+        "法利斯": [
+          {
+            "if": "ally.dead >= 1 and item.不死鸟之尾 > 0",
+            "do": "道具:不死鸟之尾",
+            "target": "倒下的同伴"
+          },
+          {
+            "if": "ally.status.毒 >= 1 and item.解毒药 > 0",
+            "do": "道具:解毒药",
+            "target": "状态:毒"
+          },
+          {
+            "if": "ally.status.黑暗 >= 1 and item.眼药 > 0",
+            "do": "道具:眼药",
+            "target": "状态:黑暗"
+          },
+          {
+            "if": "ally.status.石化 >= 1 and item.金针 > 0",
+            "do": "道具:金针",
+            "target": "状态:石化"
+          },
+          {
+            "if": "ally.status.青蛙 >= 1 and item.少女之吻 > 0",
+            "do": "道具:少女之吻",
+            "target": "状态:青蛙"
+          },
+          {
+            "if": "ally.status.迷你 >= 1 and item.木槌 > 0",
+            "do": "道具:木槌",
+            "target": "状态:迷你"
+          },
+          {
+            "if": "ally.status.沉默 >= 1 and item.回音草 > 0",
+            "do": "道具:回音草",
+            "target": "状态:沉默"
+          },
+          {
+            "if": "self.mp >= 4",
+            "do": "黑魔法:最强"
+          },
+          {
+            "do": "攻击"
+          }
+        ]
+      },
+      "problems": []
+    },
+    {
+      "table": {
+        "battle": {
+          "巴兹": [
+            {
+              "do": "攻击"
+            }
+          ]
+        }
+      },
+      "problems": []
+    },
+    {
+      "table": {},
+      "problems": ["规则表要写成 {角色名: [规则, ...]}"]
+    },
+    {
+      "table": "not a table",
+      "problems": ["规则表要写成 {角色名: [规则, ...]}"]
+    }
+  ],
+  "normalize": [
+    {
+      "plan": {
+        "巴兹": "攻击"
+      },
+      "out": {
+        "巴兹": [
+          {
+            "do": "攻击"
+          }
+        ]
+      }
+    },
+    {
+      "plan": {
+        "battle": {
+          "巴兹": [
+            {
+              "do": "攻击"
+            }
+          ]
+        }
+      },
+      "out": {
+        "巴兹": [
+          {
+            "do": "攻击"
+          }
+        ]
+      }
+    },
+    {
+      "plan": {
+        "蕾娜": [
+          {
+            "do": "攻击"
+          }
+        ],
+        "法利斯": "防御"
+      },
+      "out": {
+        "蕾娜": [
+          {
+            "do": "攻击"
+          }
+        ],
+        "法利斯": [
+          {
+            "do": "防御"
+          }
+        ]
+      }
+    }
+  ],
+  "defaultTable": [
+    {
+      "party": [
+        {
+          "name": "巴兹",
+          "hp": 8,
+          "maxHp": 197,
+          "mp": 19,
+          "jobName": "骑士"
+        },
+        {
+          "name": "蕾娜",
+          "hp": 60,
+          "maxHp": 142,
+          "mp": 16,
+          "jobName": "白魔法师"
+        },
+        {
+          "name": "加拉夫",
+          "hp": 0,
+          "maxHp": 215,
+          "mp": 19,
+          "jobName": "武僧"
+        },
+        {
+          "name": "法利斯",
+          "hp": 140,
+          "maxHp": 140,
+          "mp": 2,
+          "jobName": "黑魔法师"
+        }
+      ],
+      "out": {
+        "巴兹": [
+          {
+            "if": "ally.dead >= 1 and item.不死鸟之尾 > 0",
+            "do": "道具:不死鸟之尾",
+            "target": "倒下的同伴"
+          },
+          {
+            "if": "ally.status.毒 >= 1 and item.解毒药 > 0",
+            "do": "道具:解毒药",
+            "target": "状态:毒"
+          },
+          {
+            "if": "ally.status.黑暗 >= 1 and item.眼药 > 0",
+            "do": "道具:眼药",
+            "target": "状态:黑暗"
+          },
+          {
+            "if": "ally.status.石化 >= 1 and item.金针 > 0",
+            "do": "道具:金针",
+            "target": "状态:石化"
+          },
+          {
+            "if": "ally.status.青蛙 >= 1 and item.少女之吻 > 0",
+            "do": "道具:少女之吻",
+            "target": "状态:青蛙"
+          },
+          {
+            "if": "ally.status.迷你 >= 1 and item.木槌 > 0",
+            "do": "道具:木槌",
+            "target": "状态:迷你"
+          },
+          {
+            "if": "ally.status.沉默 >= 1 and item.回音草 > 0",
+            "do": "道具:回音草",
+            "target": "状态:沉默"
+          },
+          {
+            "do": "攻击"
+          }
+        ],
+        "蕾娜": [
+          {
+            "if": "ally.dead >= 1",
+            "do": "白魔法:复活",
+            "target": "倒下的同伴"
+          },
+          {
+            "if": "ally.dead >= 1 and item.不死鸟之尾 > 0",
+            "do": "道具:不死鸟之尾",
+            "target": "倒下的同伴"
+          },
+          {
+            "if": "ally.hp_pct < 35",
+            "do": "白魔法:治疗+",
+            "target": "hp最低的同伴"
+          },
+          {
+            "if": "ally.hp_pct < 60",
+            "do": "白魔法:治疗",
+            "target": "hp最低的同伴"
+          },
+          {
+            "if": "ally.status.毒 >= 1",
+            "do": "白魔法:解毒",
+            "target": "状态:毒"
+          },
+          {
+            "if": "ally.status.毒 >= 1 and item.解毒药 > 0",
+            "do": "道具:解毒药",
+            "target": "状态:毒"
+          },
+          {
+            "if": "ally.status.黑暗 >= 1 and item.眼药 > 0",
+            "do": "道具:眼药",
+            "target": "状态:黑暗"
+          },
+          {
+            "if": "ally.status.石化 >= 1 and item.金针 > 0",
+            "do": "道具:金针",
+            "target": "状态:石化"
+          },
+          {
+            "if": "ally.status.青蛙 >= 1 and item.少女之吻 > 0",
+            "do": "道具:少女之吻",
+            "target": "状态:青蛙"
+          },
+          {
+            "if": "ally.status.迷你 >= 1 and item.木槌 > 0",
+            "do": "道具:木槌",
+            "target": "状态:迷你"
+          },
+          {
+            "if": "ally.status.沉默 >= 1 and item.回音草 > 0",
+            "do": "道具:回音草",
+            "target": "状态:沉默"
+          },
+          {
+            "do": "攻击"
+          }
+        ],
+        "加拉夫": [
+          {
+            "if": "ally.dead >= 1 and item.不死鸟之尾 > 0",
+            "do": "道具:不死鸟之尾",
+            "target": "倒下的同伴"
+          },
+          {
+            "if": "ally.status.毒 >= 1 and item.解毒药 > 0",
+            "do": "道具:解毒药",
+            "target": "状态:毒"
+          },
+          {
+            "if": "ally.status.黑暗 >= 1 and item.眼药 > 0",
+            "do": "道具:眼药",
+            "target": "状态:黑暗"
+          },
+          {
+            "if": "ally.status.石化 >= 1 and item.金针 > 0",
+            "do": "道具:金针",
+            "target": "状态:石化"
+          },
+          {
+            "if": "ally.status.青蛙 >= 1 and item.少女之吻 > 0",
+            "do": "道具:少女之吻",
+            "target": "状态:青蛙"
+          },
+          {
+            "if": "ally.status.迷你 >= 1 and item.木槌 > 0",
+            "do": "道具:木槌",
+            "target": "状态:迷你"
+          },
+          {
+            "if": "ally.status.沉默 >= 1 and item.回音草 > 0",
+            "do": "道具:回音草",
+            "target": "状态:沉默"
+          },
+          {
+            "do": "攻击"
+          }
+        ],
+        "法利斯": [
+          {
+            "if": "ally.dead >= 1 and item.不死鸟之尾 > 0",
+            "do": "道具:不死鸟之尾",
+            "target": "倒下的同伴"
+          },
+          {
+            "if": "ally.status.毒 >= 1 and item.解毒药 > 0",
+            "do": "道具:解毒药",
+            "target": "状态:毒"
+          },
+          {
+            "if": "ally.status.黑暗 >= 1 and item.眼药 > 0",
+            "do": "道具:眼药",
+            "target": "状态:黑暗"
+          },
+          {
+            "if": "ally.status.石化 >= 1 and item.金针 > 0",
+            "do": "道具:金针",
+            "target": "状态:石化"
+          },
+          {
+            "if": "ally.status.青蛙 >= 1 and item.少女之吻 > 0",
+            "do": "道具:少女之吻",
+            "target": "状态:青蛙"
+          },
+          {
+            "if": "ally.status.迷你 >= 1 and item.木槌 > 0",
+            "do": "道具:木槌",
+            "target": "状态:迷你"
+          },
+          {
+            "if": "ally.status.沉默 >= 1 and item.回音草 > 0",
+            "do": "道具:回音草",
+            "target": "状态:沉默"
+          },
+          {
+            "if": "self.mp >= 4",
+            "do": "黑魔法:最强"
+          },
+          {
+            "do": "攻击"
+          }
+        ]
+      }
+    },
+    {
+      "party": [],
+      "out": {}
+    }
+  ],
+  "abilityCandidates": [
+    {
+      "wanted": "治疗+",
+      "out": ["救疗", "治疗"]
+    },
+    {
+      "wanted": "冰冻+",
+      "out": ["冰冻", "冰结"]
+    },
+    {
+      "wanted": "最强",
+      "out": ["烈炎", "冰冻", "震雷", "火炎", "冰结", "闪雷"]
+    },
+    {
+      "wanted": "解毒",
+      "out": ["解毒"]
+    },
+    {
+      "wanted": "火炎+",
+      "out": ["烈炎", "火炎"]
+    },
+    {
+      "wanted": "复活",
+      "out": ["复活"]
+    }
+  ],
+  "cures": {
+    "毒": ["解毒", "解毒药"],
+    "黑暗": [null, "眼药"],
+    "石化": [null, "金针"],
+    "青蛙": [null, "少女之吻"],
+    "迷你": [null, "木槌"],
+    "沉默": [null, "回音草"]
+  },
+  "families": {
+    "治疗": ["治疗", "救疗"],
+    "火炎": ["火炎", "烈炎"],
+    "冰结": ["冰结", "冰冻"],
+    "闪雷": ["闪雷", "震雷"]
+  },
+  "parse": [
+    {
+      "condition": "ally.hp_pct < 50",
+      "clauses": [["ally.hp_pct", "<", 50]]
+    },
+    {
+      "condition": " ally.dead >= 1 AND self.mp >= 4 ",
+      "error": "RuleError: 看不懂条件「ally.dead >= 1 AND self.mp >= 4」:写成 名字 比较符 数字,如 ally.hp_pct < 50"
+    },
+    {
+      "condition": "ally.dead >= 1 且 self.mp >= 4",
+      "clauses": [
+        ["ally.dead", ">=", 1],
+        ["self.mp", ">=", 4]
+      ]
+    },
+    {
+      "condition": "enemy.boss",
+      "clauses": [["enemy.boss", null, null]]
+    },
+    {
+      "condition": "ally.hp_pct <= 33.5",
+      "clauses": [["ally.hp_pct", "<=", 33.5]]
+    },
+    {
+      "condition": "ally.hp",
+      "error": "RuleError: 条件里没有「ally.hp」这个词;能用的:self.hp、self.hp_pct、self.mp、ally.hp_pct、ally.dead、party.alive、enemy.count、enemy.boss、enemy.hp_pct、enemy.weak.<属性>、enemy.absorbs.<属性>、turn、item.<道具名>、ally.status.<状态>、self.status.<状态>"
+    },
+    {
+      "condition": "ally.status.毒 >= 1",
+      "clauses": [["ally.status.毒", ">=", 1]]
+    },
+    {
+      "condition": "self.status.黑暗",
+      "clauses": [["self.status.黑暗", null, null]]
+    },
+    {
+      "condition": "item.恢复药 > 0",
+      "clauses": [["item.恢复药", ">", 0]]
+    },
+    {
+      "condition": "ally..hp < 1",
+      "error": "RuleError: 条件里没有「ally..hp」这个词;能用的:self.hp、self.hp_pct、self.mp、ally.hp_pct、ally.dead、party.alive、enemy.count、enemy.boss、enemy.hp_pct、enemy.weak.<属性>、enemy.absorbs.<属性>、turn、item.<道具名>、ally.status.<状态>、self.status.<状态>"
+    },
+    {
+      "condition": "ally.hp < ",
+      "error": "RuleError: 看不懂条件「ally.hp <」:写成 名字 比较符 数字,如 ally.hp_pct < 50"
+    },
+    {
+      "condition": "ally.hp > abc",
+      "error": "RuleError: 看不懂条件「ally.hp > abc」:写成 名字 比较符 数字,如 ally.hp_pct < 50"
+    },
+    {
+      "condition": "ally.hp < 50 or self.mp > 1",
+      "error": "RuleError: 看不懂条件「ally.hp < 50 or self.mp > 1」:写成 名字 比较符 数字,如 ally.hp_pct < 50"
+    }
+  ],
+  "situations": [
+    {
+      "actor": "蕾娜",
+      "players": [
+        {
+          "name": "巴兹",
+          "hp": 8,
+          "maxHp": 197,
+          "mp": 19,
+          "jobName": "骑士"
+        },
+        {
+          "name": "蕾娜",
+          "hp": 60,
+          "maxHp": 142,
+          "mp": 16,
+          "jobName": "白魔法师"
+        },
+        {
+          "name": "加拉夫",
+          "hp": 0,
+          "maxHp": 215,
+          "mp": 19,
+          "jobName": "武僧"
+        },
+        {
+          "name": "法利斯",
+          "hp": 140,
+          "maxHp": 140,
+          "mp": 2,
+          "jobName": "黑魔法师"
+        }
+      ],
+      "enemies": [
+        {
+          "name": "龙虾",
+          "hp": 500,
+          "maxHp": 650,
+          "boss": 1
+        }
+      ],
+      "turn": 1,
+      "boss": true,
+      "items": {}
+    },
+    {
+      "actor": "蕾娜",
+      "players": [
+        {
+          "name": "巴兹",
+          "hp": 197,
+          "maxHp": 197,
+          "mp": 19,
+          "jobName": "骑士"
+        },
+        {
+          "name": "蕾娜",
+          "hp": 142,
+          "maxHp": 142,
+          "mp": 16,
+          "jobName": "白魔法师"
+        },
+        {
+          "name": "加拉夫",
+          "hp": 215,
+          "maxHp": 215,
+          "mp": 19,
+          "jobName": "武僧"
+        },
+        {
+          "name": "法利斯",
+          "hp": 140,
+          "maxHp": 140,
+          "mp": 2,
+          "jobName": "黑魔法师"
+        }
+      ],
+      "enemies": [
+        {
+          "name": "龙虾",
+          "hp": 500,
+          "maxHp": 650,
+          "boss": 1
+        }
+      ],
+      "turn": 1,
+      "boss": true,
+      "items": {}
+    },
+    {
+      "actor": "法利斯",
+      "players": [
+        {
+          "name": "巴兹",
+          "hp": 8,
+          "maxHp": 197,
+          "mp": 19,
+          "jobName": "骑士"
+        },
+        {
+          "name": "蕾娜",
+          "hp": 60,
+          "maxHp": 142,
+          "mp": 16,
+          "jobName": "白魔法师"
+        },
+        {
+          "name": "加拉夫",
+          "hp": 0,
+          "maxHp": 215,
+          "mp": 19,
+          "jobName": "武僧"
+        },
+        {
+          "name": "法利斯",
+          "hp": 140,
+          "maxHp": 140,
+          "mp": 2,
+          "jobName": "黑魔法师"
+        }
+      ],
+      "enemies": [
+        {
+          "name": "龙虾",
+          "hp": 500,
+          "maxHp": 650,
+          "boss": 1
+        }
+      ],
+      "turn": 4,
+      "boss": true,
+      "items": {}
+    },
+    {
+      "actor": "蕾娜",
+      "players": [
+        {
+          "name": "巴兹",
+          "hp": 8,
+          "maxHp": 197,
+          "mp": 19,
+          "jobName": "骑士"
+        },
+        {
+          "name": "蕾娜",
+          "hp": 60,
+          "maxHp": 142,
+          "mp": 16,
+          "jobName": "白魔法师"
+        },
+        {
+          "name": "加拉夫",
+          "hp": 0,
+          "maxHp": 215,
+          "mp": 19,
+          "jobName": "武僧"
+        },
+        {
+          "name": "法利斯",
+          "hp": 140,
+          "maxHp": 140,
+          "mp": 2,
+          "jobName": "黑魔法师"
+        }
+      ],
+      "enemies": [
+        {
+          "name": "龙虾",
+          "hp": 500,
+          "maxHp": 650,
+          "boss": 1
+        }
+      ],
+      "turn": 1,
+      "boss": true,
+      "items": {
+        "不死鸟之尾": 1,
+        "恢复药": 3
+      }
+    }
+  ],
+  "rules": [
+    {
+      "if": "ally.dead >= 1",
+      "do": "白魔法:复活",
+      "target": "倒下的同伴"
+    },
+    {
+      "if": "ally.hp_pct < 50",
+      "do": "白魔法:治疗",
+      "target": "hp 最低的同伴"
+    },
+    {
+      "do": "攻击"
+    }
+  ]
+}

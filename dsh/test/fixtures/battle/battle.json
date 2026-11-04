@@ -1,0 +1,441 @@
+{
+  "cases": [
+    {
+      "name": "judge reads the party after a battle",
+      "out": [
+        ["lost", "全员倒下"],
+        ["hard", "B倒下"],
+        ["hard", "全队 HP 只剩 30%"],
+        ["ok", "全队 HP 75%"]
+      ],
+      "calls": [
+        {
+          "kind": "query",
+          "q": "sample",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "fields": {}
+        }
+      ],
+      "transcript": [
+        {
+          "kind": "query",
+          "q": "sample",
+          "reply": {
+            "sample": {
+              "party": [
+                {
+                  "name": "A",
+                  "hp": 0,
+                  "maxHp": 100
+                },
+                {
+                  "name": "B",
+                  "hp": 0,
+                  "maxHp": 100
+                },
+                {
+                  "name": "C",
+                  "hp": 0,
+                  "maxHp": 100
+                },
+                {
+                  "name": "D",
+                  "hp": 0,
+                  "maxHp": 100
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "reply": {
+            "sample": {
+              "party": [
+                {
+                  "name": "A",
+                  "hp": 50,
+                  "maxHp": 100
+                },
+                {
+                  "name": "B",
+                  "hp": 0,
+                  "maxHp": 100
+                },
+                {
+                  "name": "C",
+                  "hp": 90,
+                  "maxHp": 100
+                },
+                {
+                  "name": "D",
+                  "hp": 90,
+                  "maxHp": 100
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "reply": {
+            "sample": {
+              "party": [
+                {
+                  "name": "A",
+                  "hp": 30,
+                  "maxHp": 100
+                },
+                {
+                  "name": "B",
+                  "hp": 30,
+                  "maxHp": 100
+                },
+                {
+                  "name": "C",
+                  "hp": 30,
+                  "maxHp": 100
+                },
+                {
+                  "name": "D",
+                  "hp": 30,
+                  "maxHp": 100
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "reply": {
+            "sample": {
+              "party": [
+                {
+                  "name": "A",
+                  "hp": 90,
+                  "maxHp": 100
+                },
+                {
+                  "name": "B",
+                  "hp": 80,
+                  "maxHp": 100
+                },
+                {
+                  "name": "C",
+                  "hp": 70,
+                  "maxHp": 100
+                },
+                {
+                  "name": "D",
+                  "hp": 60,
+                  "maxHp": 100
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "items ordered this battle count as used",
+      "out": {
+        "limited": {
+          "actor": "蕾娜",
+          "turn": 1,
+          "boss": true,
+          "items": {
+            "恢复药": 1
+          }
+        },
+        "plain": {
+          "actor": "蕾娜",
+          "turn": 2,
+          "boss": true,
+          "items": {
+            "恢复药": 3
+          }
+        },
+        "held": {
+          "恢复药": 3
+        }
+      },
+      "calls": [
+        {
+          "kind": "query",
+          "q": "items",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "items",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "items",
+          "fields": {}
+        }
+      ],
+      "transcript": [
+        {
+          "kind": "query",
+          "q": "items",
+          "reply": {
+            "items": {
+              "normal": [
+                {
+                  "name": "<IC_DRAG>恢复药",
+                  "count": 3
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "items",
+          "reply": {
+            "items": {
+              "normal": [
+                {
+                  "name": "<IC_DRAG>恢复药",
+                  "count": 3
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "items",
+          "reply": {
+            "items": {
+              "normal": [
+                {
+                  "name": "<IC_DRAG>恢复药",
+                  "count": 3
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "older bridges read both sides from the sample",
+      "out": {
+        "players": [
+          {
+            "name": "巴兹",
+            "hp": 8,
+            "maxHp": 197,
+            "mp": 19
+          },
+          {
+            "name": "蕾娜",
+            "hp": 60,
+            "maxHp": 142,
+            "mp": 16
+          },
+          {
+            "name": "加拉夫",
+            "hp": 0,
+            "maxHp": 215,
+            "mp": 19
+          },
+          {
+            "name": "法利斯",
+            "hp": 140,
+            "maxHp": 140,
+            "mp": 2
+          }
+        ],
+        "enemies": [
+          {
+            "name": "龙虾",
+            "hp": 500,
+            "maxHp": 650,
+            "boss": 1
+          }
+        ],
+        "boss": true
+      },
+      "calls": [
+        {
+          "kind": "query",
+          "q": "sample",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "items",
+          "fields": {}
+        }
+      ],
+      "transcript": [
+        {
+          "kind": "query",
+          "q": "sample",
+          "reply": {
+            "sample": {
+              "battle": {
+                "players": [
+                  {
+                    "name": "巴兹",
+                    "hp": 8,
+                    "maxHp": 197,
+                    "mp": 19
+                  },
+                  {
+                    "name": "蕾娜",
+                    "hp": 60,
+                    "maxHp": 142,
+                    "mp": 16
+                  },
+                  {
+                    "name": "加拉夫",
+                    "hp": 0,
+                    "maxHp": 215,
+                    "mp": 19
+                  },
+                  {
+                    "name": "法利斯",
+                    "hp": 140,
+                    "maxHp": 140,
+                    "mp": 2
+                  }
+                ],
+                "enemies": [
+                  {
+                    "name": "龙虾",
+                    "hp": 500,
+                    "maxHp": 650,
+                    "boss": 1
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "items",
+          "reply": {
+            "items": {
+              "normal": [
+                {
+                  "name": "<IC_DRAG>恢复药",
+                  "count": 3
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "menus": [
+    {
+      "menu": {
+        "actor": "巴兹",
+        "commands": [
+          {
+            "name": "攻击"
+          }
+        ],
+        "menuState": "CommandSelecting",
+        "target": {
+          "state": "None"
+        }
+      },
+      "ready": true,
+      "targetOpen": false,
+      "listOpen": false
+    },
+    {
+      "menu": {
+        "actor": "巴兹",
+        "commands": [
+          {
+            "name": "攻击"
+          }
+        ],
+        "target": {
+          "state": "Enemys"
+        }
+      },
+      "ready": false,
+      "targetOpen": true,
+      "listOpen": false
+    },
+    {
+      "menu": {
+        "actor": "巴兹",
+        "commands": [
+          {
+            "name": "攻击"
+          }
+        ],
+        "menuState": "Animation"
+      },
+      "ready": false,
+      "targetOpen": false,
+      "listOpen": false
+    },
+    {
+      "menu": {
+        "actor": null,
+        "commands": [],
+        "menuState": "Animation"
+      },
+      "ready": false,
+      "targetOpen": false,
+      "listOpen": false
+    },
+    {
+      "menu": {
+        "actor": "巴兹",
+        "commands": [
+          {
+            "name": "攻击"
+          }
+        ],
+        "abilityState": "MagicList"
+      },
+      "ready": true,
+      "targetOpen": false,
+      "listOpen": true
+    },
+    {
+      "menu": {
+        "actor": "巴兹",
+        "commands": [
+          {
+            "name": "攻击"
+          }
+        ],
+        "itemState": "UseSelect"
+      },
+      "ready": true,
+      "targetOpen": false,
+      "listOpen": true
+    }
+  ]
+}
