@@ -1,0 +1,170 @@
+[
+  {
+    "api_name": "all_achievement",
+    "name": "ＦＦ２大师！",
+    "description": "获得了所有成就。",
+    "hidden": false
+  },
+  {
+    "api_name": "scenario_1",
+    "name": "口令是“野玫瑰”",
+    "description": "开始了对帕拉美奇亚帝国的反抗。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_2",
+    "name": "帝国军的猛攻",
+    "description": "多个城镇遭到了帝国大战舰的破坏。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_3",
+    "name": "拉开反击的序幕",
+    "description": "击破了帝国的大战舰。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_4",
+    "name": "与海贼结盟",
+    "description": "遇到了海贼蕾拉，得到了船。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_5",
+    "name": "反抗军的胜利",
+    "description": "打倒了司令官高特斯，夺回了菲因城。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_6",
+    "name": "最后的龙骑士",
+    "description": "龙骑士理查德成为了同伴。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_7",
+    "name": "飞龙的诞生",
+    "description": "飞龙之卵中诞生了最后的飞龙。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_8",
+    "name": "新生帕拉美奇亚帝国",
+    "description": "暗黑骑士即位成为了新的皇帝。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_9",
+    "name": "久别重逢与并肩作战",
+    "description": "曾经的同伴加入了反抗军。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_10",
+    "name": "漫长战斗的终结",
+    "description": "打倒了皇帝，为世界取回了和平。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_11",
+    "name": "最棒的宝剑",
+    "description": "获得了王者之剑。",
+    "hidden": false
+  },
+  {
+    "api_name": "word_master",
+    "name": "追忆的旅程",
+    "description": "学会了所有口令。",
+    "hidden": false
+  },
+  {
+    "api_name": "equip_skill_master",
+    "name": "战斗高手",
+    "description": "某一装备的熟练度达到了16。",
+    "hidden": false
+  },
+  {
+    "api_name": "magic_skill_master",
+    "name": "魔法高手",
+    "description": "某一魔法的熟练度达到了16。",
+    "hidden": false
+  },
+  {
+    "api_name": "monster_hunt_100",
+    "name": "见习战士",
+    "description": "打倒了100只怪物。",
+    "hidden": false
+  },
+  {
+    "api_name": "monster_hunt_300",
+    "name": "熟练战士",
+    "description": "打倒了300只怪物。",
+    "hidden": false
+  },
+  {
+    "api_name": "monster_hunt_500",
+    "name": "传说战士",
+    "description": "打倒了500只怪物。",
+    "hidden": false
+  },
+  {
+    "api_name": "picture_book_12",
+    "name": "魔物图鉴·基础知识篇",
+    "description": "怪物图鉴的完成率达到了10%。",
+    "hidden": false
+  },
+  {
+    "api_name": "picture_book_64",
+    "name": "魔物图鉴·战斗解析篇",
+    "description": "怪物图鉴的完成率达到了50%。",
+    "hidden": false
+  },
+  {
+    "api_name": "picture_book_128",
+    "name": "魔物图鉴·完全攻略篇",
+    "description": "怪物图鉴的完成率达到了100%。",
+    "hidden": false
+  },
+  {
+    "api_name": "total_gil_10000",
+    "name": "中产",
+    "description": "累计获得了10000金币。",
+    "hidden": false
+  },
+  {
+    "api_name": "total_gil_50000",
+    "name": "富人",
+    "description": "累计获得了50000金币。",
+    "hidden": false
+  },
+  {
+    "api_name": "total_gil_100000",
+    "name": "大富豪",
+    "description": "累计获得了100000金币。",
+    "hidden": false
+  },
+  {
+    "api_name": "treasure_box_23",
+    "name": "新手宝物猎人",
+    "description": "宝箱的回收率达到了10%。",
+    "hidden": false
+  },
+  {
+    "api_name": "treasure_box_117",
+    "name": "老练宝物猎人",
+    "description": "宝箱的回收率达到了50%。",
+    "hidden": false
+  },
+  {
+    "api_name": "treasure_box_234",
+    "name": "传奇宝物猎人",
+    "description": "宝箱的回收率达到了100%。",
+    "hidden": false
+  },
+  {
+    "api_name": "area_visit",
+    "name": "探求的冒险者",
+    "description": "造访了所有地方。",
+    "hidden": false
+  }
+]

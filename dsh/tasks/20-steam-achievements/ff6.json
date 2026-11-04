@@ -1,0 +1,224 @@
+[
+  {
+    "api_name": "all_achievement",
+    "name": "ＦＦ６大师！",
+    "description": "获得了所有成就。",
+    "hidden": false
+  },
+  {
+    "api_name": "scenario_1",
+    "name": "魔导少女",
+    "description": "遇到了冰封的幻兽并获得了觉醒。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_2",
+    "name": "残存的希望",
+    "description": "与巴南相遇，下定了与帝国对抗的决心。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_3",
+    "name": "幻兽攻防战",
+    "description": "成功击退帝国军，保护了冰封的幻兽。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_4",
+    "name": "被托付的力量",
+    "description": "与拉姆相遇，获得了魔石。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_5",
+    "name": "翱翔天空",
+    "description": "让歌剧大获成功，获得了飞空艇。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_6",
+    "name": "为了和平",
+    "description": "与格斯塔拉皇帝会餐，并进行了和平交涉。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_7",
+    "name": "世界的毁灭",
+    "description": "三斗神复活，给世界带来了毁灭。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_8",
+    "name": "寻找同伴 I",
+    "description": "与1名同伴重逢。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_9",
+    "name": "寻找同伴 II",
+    "description": "与5名同伴重逢。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_10",
+    "name": "寻找同伴 III",
+    "description": "与10名同伴重逢。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_11",
+    "name": "复苏的生机",
+    "description": "打倒了凯夫卡，为世界夺回了和平。",
+    "hidden": true
+  },
+  {
+    "api_name": "magicite_collect_15",
+    "name": "魔石收藏家",
+    "description": "获得了15个魔石。",
+    "hidden": false
+  },
+  {
+    "api_name": "magicite_collect_25",
+    "name": "魔石达人",
+    "description": "获得了所有魔石。",
+    "hidden": false
+  },
+  {
+    "api_name": "machinery_master",
+    "name": "机械师大师",
+    "description": "获得了所有“机械”。",
+    "hidden": false
+  },
+  {
+    "api_name": "monk_master",
+    "name": "武僧大师",
+    "description": "学会了所有“必杀技”。",
+    "hidden": false
+  },
+  {
+    "api_name": "samurai_master",
+    "name": "武士大师",
+    "description": "学会了所有“必杀剑”。",
+    "hidden": false
+  },
+  {
+    "api_name": "gambler_master",
+    "name": "赌博师大师",
+    "description": "在“老虎机”中掷出了“致命鬼牌”。",
+    "hidden": false
+  },
+  {
+    "api_name": "blue_magic_master_20",
+    "name": "青魔法师大师",
+    "description": "学会了20种敌人的招数。",
+    "hidden": false
+  },
+  {
+    "api_name": "wild_master_50",
+    "name": "野孩子大师",
+    "description": "使用“跳入”学会了50种敌人的招数。",
+    "hidden": false
+  },
+  {
+    "api_name": "auction_battle",
+    "name": "竞拍中标者",
+    "description": "通过竞拍中标了道具。",
+    "hidden": false
+  },
+  {
+    "api_name": "coliseum_champion",
+    "name": "竞技场霸者",
+    "description": "在竞技场获得了10场胜利。",
+    "hidden": false
+  },
+  {
+    "api_name": "level_all_50",
+    "name": "身经百战的强者们",
+    "description": "全员达到了50级。",
+    "hidden": false
+  },
+  {
+    "api_name": "monster_hunt_100",
+    "name": "见习战士",
+    "description": "打倒了100只怪物。",
+    "hidden": false
+  },
+  {
+    "api_name": "monster_hunt_1000",
+    "name": "熟练战士",
+    "description": "打倒了1000只怪物。",
+    "hidden": false
+  },
+  {
+    "api_name": "monster_hunt_2000",
+    "name": "传说战士",
+    "description": "打倒了2000只怪物。",
+    "hidden": false
+  },
+  {
+    "api_name": "picture_book_34",
+    "name": "魔物图鉴·基础知识篇",
+    "description": "怪物图鉴的完成率达到了10%。",
+    "hidden": false
+  },
+  {
+    "api_name": "picture_book_173",
+    "name": "魔物图鉴·战斗解析篇",
+    "description": "怪物图鉴的完成率达到了50%。",
+    "hidden": false
+  },
+  {
+    "api_name": "picture_book_346",
+    "name": "魔物图鉴·完全攻略篇",
+    "description": "怪物图鉴的完成率达到了100%。",
+    "hidden": false
+  },
+  {
+    "api_name": "total_gil_10000",
+    "name": "中产",
+    "description": "累计获得了10000金币。",
+    "hidden": false
+  },
+  {
+    "api_name": "total_gil_100000",
+    "name": "富人",
+    "description": "累计获得了100000金币。",
+    "hidden": false
+  },
+  {
+    "api_name": "total_gil_500000",
+    "name": "大富豪",
+    "description": "累计获得了500000金币。",
+    "hidden": false
+  },
+  {
+    "api_name": "treasure_box_22",
+    "name": "新手宝物猎人",
+    "description": "宝箱的回收率达到了10%。",
+    "hidden": false
+  },
+  {
+    "api_name": "treasure_box_107",
+    "name": "老练宝物猎人",
+    "description": "宝箱的回收率达到了50%。",
+    "hidden": false
+  },
+  {
+    "api_name": "treasure_box_214",
+    "name": "传奇宝物猎人",
+    "description": "宝箱的回收率达到了100%。",
+    "hidden": false
+  },
+  {
+    "api_name": "get_hidden_item",
+    "name": "道具猎人",
+    "description": "获得了所有隐藏道具。",
+    "hidden": false
+  },
+  {
+    "api_name": "area_visit",
+    "name": "探求的冒险者",
+    "description": "造访了所有地方。",
+    "hidden": false
+  }
+]

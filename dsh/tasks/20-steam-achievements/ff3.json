@@ -1,0 +1,188 @@
+[
+  {
+    "api_name": "all_achievement",
+    "name": "ＦＦ３大师！",
+    "description": "获得了所有成就。",
+    "hidden": false
+  },
+  {
+    "api_name": "scenario_1",
+    "name": "风之希望",
+    "description": "领取了风之水晶的力量。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_2",
+    "name": "击碎巨岩",
+    "description": "击碎了巨岩，开辟了道路。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_3",
+    "name": "守卫的使命",
+    "description": "阻止了欧文塔的毁坏。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_4",
+    "name": "火之希望",
+    "description": "领取了火之水晶的力量。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_5",
+    "name": "水之希望",
+    "description": "领取了水之水晶的力量。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_6",
+    "name": "萨罗尼亚的和平",
+    "description": "打倒了迦楼罗，拯救了萨罗尼亚。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_7",
+    "name": "从梦之世界中苏醒",
+    "description": "使用诺亚之琴让乌内苏醒了过来。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_8",
+    "name": "土之希望",
+    "description": "领取了土之水晶的力量。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_9",
+    "name": "前往暗之世界",
+    "description": "打倒了赞德，前往了暗之世界。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_10",
+    "name": "希望之光迹",
+    "description": "打倒了暗黑之云，为世界夺回了和平。",
+    "hidden": true
+  },
+  {
+    "api_name": "get_weapon",
+    "name": "禁忌武器",
+    "description": "获得了封印在优雷卡的所有武器。",
+    "hidden": false
+  },
+  {
+    "api_name": "all_summon",
+    "name": "召唤大师",
+    "description": "学会了所有召唤魔法。",
+    "hidden": false
+  },
+  {
+    "api_name": "job_master_10",
+    "name": "职业新人",
+    "description": "某职业的熟练度达到了10。",
+    "hidden": false
+  },
+  {
+    "api_name": "job_master_50",
+    "name": "职业挑战者",
+    "description": "某职业的熟练度达到了50。",
+    "hidden": false
+  },
+  {
+    "api_name": "job_master_99",
+    "name": "职业大师",
+    "description": "某职业的熟练度达到了99。",
+    "hidden": false
+  },
+  {
+    "api_name": "level_all_50",
+    "name": "身经百战的强者们",
+    "description": "全员达到了50级。",
+    "hidden": false
+  },
+  {
+    "api_name": "monster_hunt_100",
+    "name": "见习战士",
+    "description": "打倒了100只怪物。",
+    "hidden": false
+  },
+  {
+    "api_name": "monster_hunt_300",
+    "name": "熟练战士",
+    "description": "打倒了300只怪物。",
+    "hidden": false
+  },
+  {
+    "api_name": "monster_hunt_500",
+    "name": "传说战士",
+    "description": "打倒了500只怪物。",
+    "hidden": false
+  },
+  {
+    "api_name": "picture_book_22",
+    "name": "魔物图鉴·基础知识篇",
+    "description": "怪物图鉴的完成率达到了10%。",
+    "hidden": false
+  },
+  {
+    "api_name": "picture_book_112",
+    "name": "魔物图鉴·战斗解析篇",
+    "description": "怪物图鉴的完成率达到了50%。",
+    "hidden": false
+  },
+  {
+    "api_name": "picture_book_225",
+    "name": "魔物图鉴·完全攻略篇",
+    "description": "怪物图鉴的完成率达到了100%。",
+    "hidden": false
+  },
+  {
+    "api_name": "total_gil_10000",
+    "name": "中产",
+    "description": "累计获得了10000金币。",
+    "hidden": false
+  },
+  {
+    "api_name": "total_gil_100000",
+    "name": "富人",
+    "description": "累计获得了100000金币。",
+    "hidden": false
+  },
+  {
+    "api_name": "total_gil_500000",
+    "name": "大富豪",
+    "description": "累计获得了500000金币。",
+    "hidden": false
+  },
+  {
+    "api_name": "treasure_box_37",
+    "name": "新手宝物猎人",
+    "description": "宝箱的回收率达到了10%。",
+    "hidden": false
+  },
+  {
+    "api_name": "treasure_box_184",
+    "name": "老练宝物猎人",
+    "description": "宝箱的回收率达到了50%。",
+    "hidden": false
+  },
+  {
+    "api_name": "treasure_box_367",
+    "name": "传奇宝物猎人",
+    "description": "宝箱的回收率达到了100%。",
+    "hidden": false
+  },
+  {
+    "api_name": "get_hidden_item",
+    "name": "道具猎人",
+    "description": "获得了所有隐藏道具。",
+    "hidden": false
+  },
+  {
+    "api_name": "area_visit",
+    "name": "探求的冒险者",
+    "description": "造访了所有地方。",
+    "hidden": false
+  }
+]

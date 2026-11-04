@@ -1,0 +1,236 @@
+[
+  {
+    "api_name": "all_achievement",
+    "name": "ＦＦ５大师！",
+    "description": "获得了所有成就。",
+    "hidden": false
+  },
+  {
+    "api_name": "scenario_1",
+    "name": "旅行的决心",
+    "description": "救助了蕾娜和加拉夫并一同踏上了旅程。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_2",
+    "name": "风之心“探求”",
+    "description": "领取了风之水晶的力量。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_3",
+    "name": "水之心“怜悯”",
+    "description": "领取了水之水晶的力量。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_4",
+    "name": "火之心“勇气”",
+    "description": "领取了火之水晶的力量。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_5",
+    "name": "梦幻黑陆行鸟",
+    "description": "发现了黑陆行鸟。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_6",
+    "name": "古代文明的遗物",
+    "description": "获得了飞空艇。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_7",
+    "name": "土之心“希望”",
+    "description": "领取了土之水晶的力量。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_8",
+    "name": "前往另一个世界",
+    "description": "来到了加拉夫的世界。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_9",
+    "name": "被托付的心愿",
+    "description": "获得了潜水艇。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_10",
+    "name": "被继承之心",
+    "description": "可露儿继承了加拉夫的力量。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_11",
+    "name": "回到原来的世界",
+    "description": "打倒了艾克斯迪司，回到了原来的世界。",
+    "hidden": true
+  },
+  {
+    "api_name": "scenario_12",
+    "name": "四颗心",
+    "description": "打倒了新生艾克斯迪司，为世界夺回了和平。",
+    "hidden": true
+  },
+  {
+    "api_name": "get_sealed_weapon",
+    "name": "传说中的武器",
+    "description": "获得了所有12件被封印的武器。",
+    "hidden": false
+  },
+  {
+    "api_name": "get_hidden_job",
+    "name": "模仿师格格",
+    "description": "获得了隐藏职业。",
+    "hidden": false
+  },
+  {
+    "api_name": "ultimate_omega",
+    "name": "最强兵器",
+    "description": "打倒了欧米茄。",
+    "hidden": false
+  },
+  {
+    "api_name": "ultimate_dragon",
+    "name": "最强之龙",
+    "description": "打倒了神龙。",
+    "hidden": false
+  },
+  {
+    "api_name": "piano_master",
+    "name": "钢琴大师",
+    "description": "掌握了钢琴。",
+    "hidden": false
+  },
+  {
+    "api_name": "magic_learning_10",
+    "name": "学习·初级",
+    "description": "通过学习学会了10种青魔法。",
+    "hidden": false
+  },
+  {
+    "api_name": "magic_learning_30",
+    "name": "学习·高级",
+    "description": "通过学习学会了所有青魔法。",
+    "hidden": false
+  },
+  {
+    "api_name": "job_master_1",
+    "name": "职业新人",
+    "description": "掌握了某种职业。",
+    "hidden": false
+  },
+  {
+    "api_name": "job_master_5",
+    "name": "职业挑战者",
+    "description": "掌握了5种职业。",
+    "hidden": false
+  },
+  {
+    "api_name": "job_master_15",
+    "name": "职业高手",
+    "description": "掌握了15种职业。",
+    "hidden": false
+  },
+  {
+    "api_name": "job_master_22",
+    "name": "职业大师",
+    "description": "掌握了所有职业。",
+    "hidden": false
+  },
+  {
+    "api_name": "level_all_50",
+    "name": "身经百战的强者们",
+    "description": "全员达到了50级。",
+    "hidden": false
+  },
+  {
+    "api_name": "total_gil_10000",
+    "name": "中产",
+    "description": "累计获得了10000金币。",
+    "hidden": false
+  },
+  {
+    "api_name": "total_gil_100000",
+    "name": "富人",
+    "description": "累计获得了100000金币。",
+    "hidden": false
+  },
+  {
+    "api_name": "total_gil_500000",
+    "name": "大富豪",
+    "description": "累计获得了500000金币。",
+    "hidden": false
+  },
+  {
+    "api_name": "monster_hunt_100",
+    "name": "见习战士",
+    "description": "打倒了100只怪物。",
+    "hidden": false
+  },
+  {
+    "api_name": "monster_hunt_1000",
+    "name": "熟练战士",
+    "description": "打倒了1000只怪物。",
+    "hidden": false
+  },
+  {
+    "api_name": "monster_hunt_2000",
+    "name": "传说战士",
+    "description": "打倒了2000只怪物。",
+    "hidden": false
+  },
+  {
+    "api_name": "picture_book_30",
+    "name": "魔物图鉴·基础知识篇",
+    "description": "怪物图鉴的完成率达到了10%。",
+    "hidden": false
+  },
+  {
+    "api_name": "picture_book_151",
+    "name": "魔物图鉴·战斗解析篇",
+    "description": "怪物图鉴的完成率达到了50%。",
+    "hidden": false
+  },
+  {
+    "api_name": "picture_book_302",
+    "name": "魔物图鉴·完全攻略篇",
+    "description": "怪物图鉴的完成率达到了100%。",
+    "hidden": false
+  },
+  {
+    "api_name": "treasure_box_21",
+    "name": "新手宝物猎人",
+    "description": "宝箱的回收率达到了10%。",
+    "hidden": false
+  },
+  {
+    "api_name": "treasure_box_112",
+    "name": "老练宝物猎人",
+    "description": "宝箱的回收率达到了50%。",
+    "hidden": false
+  },
+  {
+    "api_name": "treasure_box_225",
+    "name": "传奇宝物猎人",
+    "description": "宝箱的回收率达到了100%。",
+    "hidden": false
+  },
+  {
+    "api_name": "get_hidden_item",
+    "name": "道具猎人",
+    "description": "获得了所有隐藏道具。",
+    "hidden": false
+  },
+  {
+    "api_name": "area_visit",
+    "name": "探求的冒险者",
+    "description": "造访了所有地方。",
+    "hidden": false
+  }
+]
