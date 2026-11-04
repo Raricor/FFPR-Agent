@@ -24,7 +24,7 @@ void test("the tactician has a complete rule-table persona and a required schema
   assert.match(prompt, /你是《最终幻想5 像素重制版》的战术官/);
   assert.match(prompt, /walker_notes/);
   assert.match(prompt, /ask_up/);
-  assert.match(prompt, /enemy\.weak\.冰/);
+  assert.match(prompt, /enemy\.first\(weak\(冰\)\)/);
   assert.match(prompt, /最强/);
   assert.match(prompt, /事实单里列了会的法术时/);
   assert.match(prompt, /300 字以内/);

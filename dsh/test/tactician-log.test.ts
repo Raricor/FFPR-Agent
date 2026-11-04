@@ -52,7 +52,15 @@ function pilot(): FakePilot {
   fake.on("route", { route: { from: [1, 2], cells: [] } });
   fake.on("walk", { ok: true, pos: { state: "Player", map: 30, cell: [2, 2] } });
   fake.on("wait", { ok: true });
-  fake.onQuery("items", { items: { normal: [], important: [] } });
+  fake.onQuery("items", {
+    items: {
+      normal: [
+        { name: "恢复药", count: 2 },
+        { name: "不死鸟之尾", count: 2 },
+      ],
+      important: [],
+    },
+  });
   fake.onQuery("sample", { sample: live() });
   fake.onQuery("battlemenu", { battlemenu: { battle: false } });
   return fake;

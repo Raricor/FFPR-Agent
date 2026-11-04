@@ -31,44 +31,84 @@ const TACTICIAN_PROMPT_FF5 = `你是《最终幻想5 像素重制版》的战术
 然后交回结构化结果。
 
 结果有三个字段,都必须填:
-- tactics:1–3 套规则表。每套写成 {角色名: [规则, ...]},规则是 {if?, do, target?}。
-  第 1 套是主策略,后面是备用。普通战斗先用第 1 套,打得不好代码会换下一套。
+- tactics:1–3 套规则表。优先写 2.0 格式,旧格式也接受。
 - walker_notes:给第一层玩家的走法说明,300 字以内。
-- ask_up:给第一层玩家的建议(比如缺眼药,回卡纳克买),没有就填空串。
-  可以在 ask_up 里建议换职业:写清楚谁换成什么、为什么。
+- ask_up:给第一层玩家的建议(缺道具、缺职业、缺装备、要不要先回城),没有就填空串。
 
-规则表的写法:
-- 每个角色一组规则,从上往下检查;第一条条件成立、而且做得到的规则就执行。
-  做不到的规则会被跳过(没学会的魔法、MP 不够、没有倒下的人可以复活,都算做不到)。
-- 每个人最后一条必须不带条件,写 {"do": "攻击"} 这样的兜底;没有兜底的规则表会被退回。
-- 先说复活、回复、治状态,最后再攻击。复活优先用白魔法:复活或道具:不死鸟之尾;
-  回复用白魔法:治疗(或 治疗+),治状态用对应的魔法或道具。
-- 条件词汇:self.hp、self.hp_pct、self.mp、ally.hp_pct(活着的同伴里最低的 HP 百分比)、
-  ally.dead(倒下人数)、party.alive、enemy.count、enemy.boss、enemy.hp_pct、turn、
-  item.道具名(持有数量,如 item.不死鸟之尾)、
-  enemy.name.怪名(有几只活着的敌人叫这个名字,如 enemy.name.喧嚣鬼)、
-  enemy.id.编号(有几只活着的敌人是这个编号,如 enemy.id.282;变身、合翅膀时编号会变)、
-  ally.status.状态名(有该状态的人数,如 ally.status.麻痹)、self.status.状态名。
-  写成「名字 比较符 数字」,多个条件用 and 连接。
-- do:「攻击」「防御」,或「指令:魔法名」,如「白魔法:治疗」「黑魔法:闪雷」,
-  或「道具:道具名」,如「道具:不死鸟之尾」(复活)、「道具:恢复药」。
-  魔法名后加 + 表示用这一系里学会的、MP 够的最高级,如「白魔法:治疗+」(会用救疗);
-  「黑魔法:最强」用最高级的攻击魔法(烈炎、冰冻、震雷)。
-- target:敌人(默认)、自己、hp最低的同伴、倒下的同伴、状态:毒(有这个状态的同伴)、
-  敌人:怪名(第一只叫这个名字的活敌人,如 敌人:喧嚣鬼)、敌人:hp最低、
-  敌人:弱冰(第一只弱冰的活敌人)。
-  治状态要写对应的 target,如 {"if": "ally.status.毒 >= 1", "do": "白魔法:解毒", "target": "状态:毒"}。
-- 只能用角色自己职业的指令:白魔法师用白魔法,黑魔法师用黑魔法;其他职业用攻击、防御或道具。
-- 事实单里列了会的法术时,规则表可以直接写具体法术(如「白魔法:救疗」);「最强」「X+」照样能用。
-- 「最强」和「X+」会看当前目标的属性:避开它吸收、无效的属性,优先打弱点;
-  写死的属性魔法碰上吸收也会跳过、交给下一条规则。
-- 条件里可以用 enemy.weak.冰(有几只敌人弱冰)、enemy.absorbs.冰(有几只敌人吸收冰)。
-  属性词汇:火、冰、雷、水、风、土、圣、毒。
-- 用事实单里的弱点和攻略说明写;敌人吸收的属性不要用。治状态要的道具包里没有,就写进 ask_up。
-- 遇敌表里各种怪的弱点、吸收不一样时,用 enemy.name.X 和 敌人:X 分开写;
-  绝不用某只怪吸收的属性打它。某只怪什么法术都打不动,就写物理攻击或道具,目标写 敌人:X。
-- 状态异常都要有对应规则:毒→白魔法:解毒 或 道具:解毒药;黑暗→道具:眼药;
-  石化→道具:金针;青蛙→道具:少女之吻;迷你→道具:木槌;沉默→道具:回音草。
+2.0 规则表:
+{"version":2,"summary":"一句话","roles":{"蕾娜":"治疗"},
+ "reactions":[{"who":"all","on":"ally.any(not alive) and item(不死鸟之尾) > 0",
+               "do":"道具:不死鸟之尾","to":"ally.first(not alive)","note":"先救人"}],
+ "phases":[{"name":"合翅膀","when":"enemy(282).alive","note":"别平砍",
+            "rules":[{"who":"all","if":"ally.any(hp_pct < 60)","do":"白魔法:治疗",
+                      "to":"ally.lowest(hp_pct)"},
+                     {"who":"all","do":"防御"}]}],
+ "rules":[]}
+- phases 和 rules 二选一:分阶段就把规则放进 phases;不分阶段就写在 rules。
+- roles 写「角色名:定位」;规则 who 可以写角色名、roles 里的定位名,或者 all / any。
+- 对策 reactions 有 on(什么时候做),先于阶段的 if 检查。
+- note 可以写在规则或阶段上,说明为什么这么做。
+- 旧格式 {角色名:[{if?,do,target?}]} 仍然接受,但事实单里的反击、变身、吸收
+  用 2.0 的 phases / reactions 写得清楚。
+
+表达式(if / on / when / to):
+- ally.any(hp_pct < 60)、ally.count(not alive)、ally.all(has(毒))、ally.first(not alive)
+- ally.lowest(hp_pct)、enemy.lowest(hp)、enemy.boss、enemy(282).alive、enemy(巨翼猛禽).hp
+- item(不死鸟之尾) > 0、turn > 3、battle.boss、enemy.any(absorbs(火))
+- used(魔法名) 或 used(魔法名, 30):敌人最近(或 30 秒内)用过这招;used(any_magic)
+- not、and、or;条件写成「名字 比较符 数字」或上面这些函数。
+- 目标 to:ally.lowest(hp_pct)、ally.first(not alive)、ally.first(has(毒))、
+  enemy.boss、enemy.lowest(hp)、enemy(巨翼猛禽)、enemy.first(weak(冰))。
+
+动作 do:
+- 「攻击」「防御」「换列」,「道具:道具名」,或「指令:能力」,如「白魔法:治疗」
+  「黑魔法:闪雷」「时魔法:重力」。
+- 魔法名后加 + 表示这一系里学会的、MP 够的最高级,如「白魔法:治疗+」;
+  「黑魔法:最强」用最高级的攻击魔法。
+- 只能用行动的人现在职业真的有的指令:白魔法师用白魔法、黑魔法师用黑魔法;
+  其他职业用攻击、防御、道具。事实单的「指令」一栏就是现在能用的。
+- 事实单里列了会的法术时,直接写具体法术(如「白魔法:救疗」)。
+- 「最强」「X+」会避开吸收、无效,优先打弱点;写死的属性魔法碰上吸收会跳过、交给下一条。
+
+写表前先看事实单的敌人档案,必须做到:
+- 至少两个人能复活,或者背包里有足够的不死鸟之尾;不够就写进 ask_up。
+- 有回复手段;靠魔法的人 MP 不够时要有攻击或道具的退路。
+- 档案里会造成的每种状态,都要有对策,而且背包里真有对应的道具;不够就写进 ask_up。
+- 档案里标了反击、变身、吸收的,要用阶段或对策提到它(变身用编号,吸收用 enemy.absorbs)。
+- 每条规则用到的指令,行动的人现在真的有;换过职业的,按事实单现在的职业写。
+- 先说复活、回复、治状态,最后再攻击;状态:毒→白魔法:解毒 或 道具:解毒药;
+  黑暗→道具:眼药;石化→道具:金针;青蛙→道具:少女之吻;迷你→道具:木槌;沉默→道具:回音草。
+
+两个完整例子:
+
+例 1,巨翼猛禽(合翅膀时反击,编号 282):
+{"version":2,"summary":"巨翼猛禽","roles":{"蕾娜":"治疗"},
+ "reactions":[],
+ "phases":[
+   {"name":"合翅膀","when":"enemy(282).alive","note":"合翅膀会反击,先防御",
+    "rules":[{"who":"蕾娜","if":"ally.any(hp_pct < 60)","do":"白魔法:治疗",
+              "to":"ally.lowest(hp_pct)"},
+             {"who":"all","do":"防御"}]},
+   {"name":"张开","when":"not enemy(282).alive","note":"张开后平砍",
+    "rules":[{"who":"all","do":"攻击","to":"enemy.boss"}]}],
+ "rules":[]}
+
+例 2,玛基莎与弗扎(先复活,再治魔法护盾):
+{"version":2,"summary":"玛基莎与弗扎","roles":{"蕾娜":"治疗","加拉夫":"黑魔"},
+ "reactions":[
+   {"who":"all","on":"ally.any(not alive) and item(不死鸟之尾) > 0",
+    "do":"道具:不死鸟之尾","to":"ally.first(not alive)"},
+   {"who":"蕾娜","on":"enemy(玛基莎).used(魔法)",
+    "do":"白魔法:魔法护盾","to":"ally.first(not has(魔法护盾))"}],
+ "phases":[
+   {"name":"两只都在","when":"enemy(弗扎).alive and enemy(玛基莎).alive",
+    "rules":[{"who":"蕾娜","if":"ally.any(hp_pct < 60)","do":"白魔法:治疗",
+              "to":"ally.lowest(hp_pct)"},
+             {"who":"加拉夫","if":"self.mp >= 4","do":"黑魔法:最强","to":"enemy(玛基莎)"},
+             {"who":"all","do":"攻击","to":"enemy(玛基莎)"}]},
+   {"name":"收尾","when":"enemy.alive > 0",
+    "rules":[{"who":"all","do":"攻击","to":"enemy.lowest(hp)"}]}],
+ "rules":[]}
 
 走法说明:
 - 从事实单的攻略里找这张图的那一段,写清楚:机关和开关的顺序、传送带会把人带到哪、
@@ -115,6 +155,10 @@ const SYSTEM_PROMPT_FF5 = `你在玩《最终幻想5 像素重制版》(中文�
 - 宝箱在 look_around 里写作 TresureBox。用 interact 给出宝箱的坐标就会自动打开。
 - 每张地图(世界地图按区域)要拿全宝箱和隐藏道具,并把本图会出的怪刷进本档图鉴再离开;
   工具结果里的「本图完成度」就是进度,没完成就离开会被拒绝。
+- 钱不够买要紧的魔法、装备,或者本图(本区域)的图鉴还没齐时:优先在有旅店的城镇附近刷怪,
+  状态不好就回城住店,再接着刷。不要为了凑钱卖掉还有用的装备,只卖确实用不上的。
+- 刷怪用 grind,不要一步步走:它会在附近来回走、按本图的策略打、回店休息,然后报告
+  打了多少场、赚了多少钱、升了几级、图鉴新登记了什么。
 - 实在拿不到就用 walk_to/go_to/interact 的 leave_incomplete 写具体理由(如「需要钥匙」
   「打不过，等升级」「剧情强制离开」),离开会记一条欠账,以后回来补齐;一次性地点的宝箱
   错过是严重事故、无法挽回,进这类地点前先存档。
@@ -249,70 +293,48 @@ export function tacticianPrompt(game: string): string {
   if (info.key === "ff5") return TACTICIAN_PROMPT_FF5;
   const name = GAME_NAMES[info.key];
   if (name === undefined) throw new Error(`没有 ${info.label} 的战术官提示词`);
-  const text = TACTICIAN_PROMPT_FF5.replace(
-    "你是《最终幻想5 像素重制版》的战术官",
-    `你是《${name} 像素重制版》的战术官`,
-  )
-    .replace(
-      "你不走路、不按键、不操作游戏:读事实单,按需用 guide 查攻略,用 atlas 看走过的地图,\n" +
-        "然后交回结构化结果。",
-      "你不走路、不按键、不操作游戏:读事实单,按需用 atlas 看走过的地图," + "然后交回结构化结果。",
-    )
-    .replace("  可以在 ask_up 里建议换职业:写清楚谁换成什么、为什么。\n", "")
-    .replace("(比如缺眼药,回卡纳克买)", "(比如缺眼药,回城买)")
-    .replace(
-      "  做不到的规则会被跳过(没学会的魔法、MP 不够、没有倒下的人可以复活,都算做不到)。",
-      "  做不到的规则会被跳过(没有这种指令、没有这种道具、没有倒下的人可以复活,都算做不到)。",
-    )
-    .replace(
-      "- 先说复活、回复、治状态,最后再攻击。复活优先用白魔法:复活或道具:不死鸟之尾;\n" +
-        "  回复用白魔法:治疗(或 治疗+),治状态用对应的魔法或道具。",
-      "- 先说复活、回复、治状态,最后再攻击。复活用道具:不死鸟之尾;" + "回复和治状态都用道具。",
-    )
-    .replace(
-      "- do:「攻击」「防御」,或「指令:魔法名」,如「白魔法:治疗」「黑魔法:闪雷」,\n" +
-        "  或「道具:道具名」,如「道具:不死鸟之尾」(复活)、「道具:恢复药」。\n" +
-        "  魔法名后加 + 表示用这一系里学会的、MP 够的最高级,如「白魔法:治疗+」(会用救疗);\n" +
-        "  「黑魔法:最强」用最高级的攻击魔法(烈炎、冰冻、震雷)。",
-      "- do 只能写「攻击」「防御」,或「道具:道具名」,如「道具:不死鸟之尾」(复活)、" +
-        "「道具:恢复药」。\n" +
-        "  这一作的魔法和特技暂时不能写进规则表:桥插件在这几作里读不到战斗中的魔法列表。",
-    )
-    .replace(
-      "- target:敌人(默认)、自己、hp最低的同伴、倒下的同伴、状态:毒(有这个状态的同伴)、\n" +
-        "  敌人:怪名(第一只叫这个名字的活敌人,如 敌人:喧嚣鬼)、敌人:hp最低、\n" +
-        "  敌人:弱冰(第一只弱冰的活敌人)。",
-      "- target:敌人(默认)、自己、hp最低的同伴、倒下的同伴、状态:毒(有这个状态的同伴)、\n" +
-        "  敌人:怪名(第一只叫这个名字的活敌人,如 敌人:喧嚣鬼)、敌人:hp最低。",
-    )
-    .replace(
-      "- 只能用角色自己职业的指令:白魔法师用白魔法,黑魔法师用黑魔法;其他职业用攻击、防御或道具。\n" +
-        "- 事实单里列了会的法术时,规则表可以直接写具体法术(如「白魔法:救疗」);" +
-        "「最强」「X+」照样能用。\n" +
-        "- 「最强」和「X+」会看当前目标的属性:避开它吸收、无效的属性,优先打弱点;\n" +
-        "  写死的属性魔法碰上吸收也会跳过、交给下一条规则。\n" +
-        "- 条件里可以用 enemy.weak.冰(有几只敌人弱冰)、enemy.absorbs.冰(有几只敌人吸收冰)。\n" +
-        "  属性词汇:火、冰、雷、水、风、土、圣、毒。\n" +
-        "- 用事实单里的弱点和攻略说明写;敌人吸收的属性不要用。治状态要的道具包里没有," +
-        "就写进 ask_up。\n" +
-        "- 遇敌表里各种怪的弱点、吸收不一样时,用 enemy.name.X 和 敌人:X 分开写;\n" +
-        "  绝不用某只怪吸收的属性打它。某只怪什么法术都打不动,就写物理攻击或道具," +
-        "目标写 敌人:X。",
-      "- 遇敌表里各种怪不一样时,用 enemy.name.X 和 敌人:X 分开写。",
-    )
-    .replace('"do": "白魔法:解毒"', '"do": "道具:解毒药"')
-    .replace(
-      "- 状态异常都要有对应规则:毒→白魔法:解毒 或 道具:解毒药;黑暗→道具:眼药;\n" +
-        "  石化→道具:金针;青蛙→道具:少女之吻;迷你→道具:木槌;沉默→道具:回音草。",
-      "- 状态异常都要有对应规则,用道具治:毒→道具:解毒药;黑暗→道具:眼药;\n" +
-        "  石化→道具:金针;青蛙→道具:少女之吻;迷你→道具:木槌;沉默→道具:回音草。\n" +
-        "  这几作的道具名可能不同,以游戏里的道具名为准。",
-    )
-    .replace(
-      "- 从事实单的攻略里找这张图的那一段,写清楚:机关和开关的顺序、传送带会把人带到哪、",
-      "- 从事实单的地图记录里找这张图的那一段,写清楚:机关和开关的顺序、传送带会把人带到哪、",
-    );
-  return dropLines(text, [/^ {2}可以在 ask_up 里建议换职业/u]);
+  return `你是《${name} 像素重制版》的战术官,只管事实单里的这一张地图。
+你不走路、不按键、不操作游戏:读事实单,按需用 atlas 看走过的地图,然后交回结构化结果。
+
+结果有三个字段,都必须填:
+- tactics:1–3 套规则表。优先写 2.0 格式,旧格式也接受。
+- walker_notes:给第一层玩家的走法说明,300 字以内。
+- ask_up:给第一层玩家的建议(缺道具、缺职业、缺装备、要不要先回城),没有就填空串。
+
+2.0 规则表:
+{"version":2,"summary":"一句话","roles":{"角色名":"定位"},
+ "reactions":[{"who":"all","on":"ally.any(not alive) and item(不死鸟之尾) > 0",
+               "do":"道具:不死鸟之尾","to":"ally.first(not alive)","note":"先救人"}],
+ "phases":[{"name":"阶段名","when":"enemy.alive > 0","note":"为什么",
+            "rules":[{"who":"all","if":"ally.any(hp_pct < 60)","do":"道具:恢复药",
+                      "to":"ally.lowest(hp_pct)"},
+                     {"who":"all","do":"攻击"}]}],
+ "rules":[]}
+- phases 和 rules 二选一;roles 写角色名到定位;who 可以写角色名、定位名、all 或 any。
+- 对策 reactions 有 on,先于阶段的 if 检查。note 说明为什么。
+- 旧格式 {角色名:[{if?,do,target?}]} 仍然接受,但优先 2.0。
+
+表达式(if / on / when / to):
+- ally.any(hp_pct < 60)、ally.count(not alive)、ally.first(not alive)
+- ally.lowest(hp_pct)、enemy.lowest(hp)、enemy.boss、enemy(怪名).alive
+- item(不死鸟之尾) > 0、turn > 3、battle.boss、not、and、or
+- 目标 to:ally.lowest(hp_pct)、ally.first(not alive)、enemy.boss、enemy.lowest(hp)。
+
+动作 do 只能写「攻击」「防御」,或「道具:道具名」,如「道具:不死鸟之尾」「道具:恢复药」。
+这一作的魔法和特技暂时不能写进规则表:桥插件在这几作里读不到战斗中的魔法列表。
+道具名可能不同,以游戏里的道具名为准。
+
+写表前先看事实单的敌人档案,必须做到:
+- 至少两个人能复活,或者背包里有足够的不死鸟之尾;不够就写进 ask_up。
+- 有回复手段;档案里会造成的每种状态都要有对策,而且背包里真有对应的道具。
+- 档案里标了反击、变身、吸收的,要用阶段或对策提到它。
+- 每条规则用到的指令,行动的人现在真的有;换过职业的按事实单现在的职业写。
+
+走法说明:
+- 从事实单的地图记录里找这张图的那一段,写清楚机关顺序、传送带会把人带到哪、先拿哪些宝箱、出口在哪。
+- 300 字以内,只写这张图。
+
+只交结构化结果,不要在结果里重复事实单。`;
 }
 
 /** The shape the plugin hands to `ctx.tools.register`, still OpenAI's function format. */
@@ -593,6 +615,42 @@ const TOOLS_BASE = [
   {
     type: "function",
     function: {
+      name: "grind",
+      description:
+        "在附近刷怪,代码自动来回走、遇敌按本图策略打、状态差回旅店住店,中间不问模型。" +
+        "until_gold、until_level、until_bestiary 至少要给一个,否则拒绝执行。" +
+        "默认最多刷 20 分钟;结果报告刷了多久、打了几场、赚了多少钱、升了几级、" +
+        "本档图鉴新登记了哪些怪、用掉的道具、住了几次店和为什么停。" +
+        "钱不够或本图鉴没齐时优先用它,不要一步步 walk_to。",
+      parameters: {
+        type: "object",
+        properties: {
+          until_gold: { type: "integer", description: "钱攒到多少就停" },
+          until_level: { type: "integer", description: "全队最低等级到几级就停" },
+          until_bestiary: {
+            type: "boolean",
+            description: "true:刷到本图(世界地图是当前区域)的怪都进本档图鉴",
+          },
+          max_minutes: { type: "number", description: "最多刷多少分钟,默认 20" },
+          rest_hp_pct: {
+            type: "number",
+            description: "全队最低 HP 百分比低于多少就回店,默认 40",
+          },
+          rest_mp_pct: {
+            type: "number",
+            description: "全队最低 MP 百分比低于多少就回店,默认 25",
+          },
+          inn: {
+            type: ["integer", "string"],
+            description: "去哪住店(地图号或地图名);不填就用地图记录里最近、有旅店的城镇",
+          },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "sell",
       description:
         "在已经打开的武器店、防具店、道具店把背包里的东西卖掉换钱(魔法店不收)。" +
@@ -768,7 +826,7 @@ export function toolSchemas(saveSlot: number): readonly GameToolSchema[] {
   );
 }
 
-/** FF5's 26 tools with the shared default slot, for callers that already know the game. */
+/** FF5's 27 tools with the shared default slot, for callers that already know the game. */
 export const TOOLS: readonly GameToolSchema[] = toolSchemas(20);
 
 /**

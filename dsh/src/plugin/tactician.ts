@@ -34,7 +34,8 @@ export const TACTICIAN_OUTPUT_SCHEMA: ObjectJsonSchema = {
   properties: {
     tactics: {
       type: "array",
-      description: "1–3 套规则表,每套是 {角色名: [规则...]},规则是 {if?, do, target?}",
+      description:
+        "1–3 套规则表:2.0 {version,roles,reactions,phases,rules} 或旧 {角色名: [规则...]}",
       items: {
         type: "object",
         description: "角色名 → 规则列表",

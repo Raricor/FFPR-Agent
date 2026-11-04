@@ -163,7 +163,7 @@ export class KeyEvents {
   private readonly told = new Map<KeyEntry, string>(); // entry → the text news() last reported
   private numbersShown = false; // this run's bridge sends the numbers the bestiary shows
   private entryListener: ((entry: KeyEntry) => void) | undefined;
-  private recordListener: ((record: Json) => void) | undefined;
+  private readonly recordListeners = new Set<(record: Json) => void>();
 
   /**
    * The game is one resource but JavaScript runs one statement at a time, so Python's
@@ -200,7 +200,9 @@ export class KeyEvents {
       return; // before the first hello, or already fed (seeded, then streamed)
     }
     this.seq = seq;
-    if (record.type !== "sample" && record.type !== "hello") this.recordListener?.(record);
+    if (record.type !== "sample" && record.type !== "hello") {
+      for (const listener of this.recordListeners) listener(record);
+    }
     if (record.type === "sample") {
       this.sample = record;
       this.sampleAt = live ? this.monotonic() : 0;
@@ -258,9 +260,9 @@ export class KeyEvents {
    * for `battle.act` / `battle.hit`, which are not key events.
    */
   onRecord(listener: (record: Json) => void): () => void {
-    this.recordListener = listener;
+    this.recordListeners.add(listener);
     return () => {
-      if (this.recordListener === listener) this.recordListener = undefined;
+      this.recordListeners.delete(listener);
     };
   }
 

@@ -14,6 +14,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { describeError, isMissingFile } from "./errors.ts";
 import { isRecord, list, type Json } from "./values.ts";
+import type { PartySnapshotMember } from "./dossier.ts";
 
 const BAD = new Set(["lost", "hard"]); // a wipe, or someone down / the party under 40% HP
 
@@ -39,6 +40,7 @@ function bossRecord(value: unknown): BossRecord | null {
     ...(typeof value.walkerNotes === "string" ? { walkerNotes: value.walkerNotes } : {}),
     ...(typeof value.askUp === "string" ? { askUp: value.askUp } : {}),
     ...(rewrites === undefined ? {} : { rewrites }),
+    ...(value.prepared === true ? { prepared: true } : {}),
   };
 }
 
@@ -60,6 +62,8 @@ export interface BossRecord {
     readonly ok: boolean;
     readonly summary: string;
   }[];
+  /** True for a boss table written before the fight (task 42 boss-prep), not a result. */
+  readonly prepared?: boolean;
 }
 
 /**
@@ -76,6 +80,8 @@ export interface TacticsEntry {
   walkerNotes?: string;
   askUp?: string;
   writtenAt?: string;
+  /** The jobs and commands the table was written with (task 42 party-changed). */
+  party?: PartySnapshotMember[];
   boss?: BossRecord;
 }
 
@@ -84,6 +90,20 @@ export interface TacticianNote {
   readonly walkerNotes: string;
   readonly askUp: string;
   readonly writtenAt: string;
+}
+
+function partySnapshotFrom(value: unknown): PartySnapshotMember[] | null {
+  if (!Array.isArray(value)) return null;
+  const out: PartySnapshotMember[] = [];
+  for (const row of value) {
+    if (!isRecord(row)) continue;
+    const name = typeof row.name === "string" ? row.name : "";
+    const job = typeof row.job === "string" ? row.job : "";
+    const commands = stringList(row.commands) ?? [];
+    if (name === "") continue;
+    out.push({ name, job, commands });
+  }
+  return out.length > 0 ? out : null;
 }
 
 /** Map ids are strings at the file boundary; a Map keeps Python's insertion order. */
@@ -130,6 +150,8 @@ export class Tactics {
       if (typeof raw.walkerNotes === "string") entry.walkerNotes = raw.walkerNotes;
       if (typeof raw.askUp === "string") entry.askUp = raw.askUp;
       if (typeof raw.writtenAt === "string") entry.writtenAt = raw.writtenAt;
+      const party = partySnapshotFrom(raw.party);
+      if (party !== null) entry.party = party;
       const boss = bossRecord(raw.boss);
       if (boss !== null) entry.boss = boss;
       tactics.maps.set(mapId, entry);
@@ -142,10 +164,13 @@ export class Tactics {
     tables: readonly Json[],
     monsters?: readonly string[],
     note?: TacticianNote,
+    party?: readonly PartySnapshotMember[],
   ): Promise<void> {
     const previous = this.maps.get(String(mapId));
     const entry: TacticsEntry = { tables: [...tables], current: 0, results: [] };
     if (monsters !== undefined) entry.monsters = [...monsters];
+    if (party !== undefined) entry.party = [...party];
+    else if (previous?.party !== undefined) entry.party = previous.party;
     if (note !== undefined) {
       entry.walkerNotes = note.walkerNotes;
       entry.askUp = note.askUp;
@@ -190,6 +215,12 @@ export class Tactics {
       };
     }
     return null;
+  }
+
+  /** The party snapshot stored with the map's tables, if any (task 42). */
+  party(mapId: unknown): readonly PartySnapshotMember[] | null {
+    const party = this.maps.get(String(mapId))?.party;
+    return party ?? null;
   }
 
   /** The boss table written for a map, if any. */

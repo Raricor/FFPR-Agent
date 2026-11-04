@@ -72,7 +72,15 @@ class BossBattle {
     this.pilot.on("keys", (fields) => this.keys(fields));
     this.pilot.on("wait", { ok: true });
     this.pilot.on("entities", { entities: { total: 0, entities: [] } });
-    this.pilot.onQuery("items", { items: { normal: [], important: [] } });
+    this.pilot.onQuery("items", {
+      items: {
+        normal: [
+          { name: "恢复药", count: 2 },
+          { name: "不死鸟之尾", count: 2 },
+        ],
+        important: [],
+      },
+    });
     this.pilot.onQuery("battlemenu", () => ({ battlemenu: this.menu() }));
     this.pilot.onQuery("sample", () => ({ sample: this.sample() }));
   }

@@ -8,7 +8,7 @@
  */
 
 import type { Atlas } from "./atlas.ts";
-import { describeElements, type ElementKnowledge } from "./elements.ts";
+import type { ElementKnowledge } from "./elements.ts";
 import type { KeyEvents } from "./events.ts";
 import type { Guide } from "./guide/kb.ts";
 import type { Pilot } from "./pilot.ts";
@@ -16,6 +16,16 @@ import { FF5_PROFILE } from "./profiles/ff5.ts";
 import type { Tactics } from "./tactics.ts";
 import { formationLines, encounterMonsters, parseEncounters } from "./encounters.ts";
 import { enemyFacts } from "./tactics-view.ts";
+import {
+  battleRecordSummary,
+  equipmentText,
+  monsterDossierLines,
+  MonsterAiCache,
+  readParty,
+  type DossierInput,
+  type DossierMonster,
+} from "./dossier.ts";
+import type { BattleRecord } from "./battle-record.ts";
 import { elementNames, type MonsterCache, type MonsterInfo } from "./bestiary.ts";
 import * as gambit from "./skills/gambit.ts";
 import * as battle from "./skills/battle.ts";
@@ -43,7 +53,14 @@ const MAGIC_ORDER: readonly string[] = ["白魔法", "黑魔法", "时魔法", "
 
 /** Why the tactician was called; the wording is what the fact sheet's 起因 says. */
 export type TriggerKind =
-  "new-map" | "new-monster" | "bad-battle" | "blocked" | "conveyor" | "boss";
+  | "new-map"
+  | "new-monster"
+  | "bad-battle"
+  | "blocked"
+  | "conveyor"
+  | "boss"
+  | "party-changed"
+  | "boss-prep";
 
 export interface TriggerReason {
   readonly kind: TriggerKind;
@@ -51,6 +68,8 @@ export interface TriggerReason {
   readonly detail: string;
   /** The monsters that appeared after the tables were written (new-monster only). */
   readonly monsters?: readonly string[];
+  /** The battle the debrief is about (bad-battle / boss wipe). */
+  readonly record?: BattleRecord;
 }
 
 /** A reason plus the call's pilot and, for a boss, the battle it is being called for. */
@@ -75,6 +94,10 @@ export interface FactsGame {
   readonly guide: Guide | null;
   readonly mapId: number | null;
   readonly monsterCache?: MonsterCache;
+  /** Task 42: the cached monster AI scripts (FF5 only); absent in old tests. */
+  readonly monsterAi?: MonsterAiCache | null;
+  /** Task 42: the last battle records, for the dossier's "last fight" summary. */
+  readonly battles?: { recentRecords(): readonly BattleRecord[] };
   /** Task 45: the current map's completion line, when the game has read it. */
   readonly completionText?: () => string;
 }
@@ -91,6 +114,8 @@ export interface TriggerState {
   } | null;
   readonly blocked?: { readonly count: number; readonly detail: string } | null;
   readonly ride?: string | null;
+  /** Why the stored table no longer fits the current party (task 42 party-changed). */
+  readonly partyChanged?: string | null;
   /** The map's name in the atlas ("卡纳克镇 旅店"); the area is the part before the space. */
   readonly mapName?: string;
   /** Town areas the tactician already covered on one of their maps. */
@@ -120,6 +145,9 @@ const BAD = new Set(["hard", "lost"]);
 export function chooseTrigger(state: TriggerState): TriggerReason | null {
   const mapId = state.mapId;
   if (mapId === null || mapId === 1) return null;
+  if (state.partyChanged && state.partyChanged !== "") {
+    return { kind: "party-changed", mapId, detail: state.partyChanged };
+  }
   if (!state.tactics.has(mapId)) {
     const area = areaOf(state.mapName ?? "");
     if (isTown(area) && state.townsCovered?.has(area)) return null;
@@ -165,15 +193,31 @@ export async function buildFacts(game: FactsGame, trigger: FactsTrigger): Promis
   const mapName = text(map?.name) ?? area;
   const battleRows = records(trigger.battle?.enemies);
   const met = monstersMet(game, mapId, battleRows);
+  const infos =
+    game.monsterCache === undefined ? [] : ((await game.monsterCache.load(trigger.pilot)) ?? []);
+  if (game.monsterAi !== undefined && game.monsterAi !== null) {
+    const ids = met
+      .map((enemy) => infoOf(infos, enemy))
+      .map((info) => info?.monster ?? info?.number)
+      .filter((id): id is number => id !== undefined && id !== null);
+    await game.monsterAi.ensure(trigger.pilot, ids);
+  }
   const encounter = await encounterText(game, trigger);
   const sections: string[] = [
     "你是战术官。下面是代码整理的事实单,只为这张地图写战术。",
     "### 起因\n" + causeText(trigger),
     "### 地图\n" + (await mapText(game, trigger.pilot, mapId, mapName)),
     "### 攻略\n" + guideText(game.guide, area, mapName),
-    "### 怪物\n" + monsterText(game, met, battleRows),
+    "### 怪物\n" + monsterText(game, met, battleRows, infos),
   ];
   if (trigger.kind === "boss") sections.push("### 首领\n" + bossText(game, battleRows));
+  if (trigger.kind === "boss-prep") {
+    const dossier = await dossierForTrigger(game, trigger);
+    sections.push("### 首领\n" + monsterDossierLines(dossier).join("\n"));
+  }
+  if (trigger.record !== undefined) {
+    sections.push("### 这一场的战斗记录\n" + battleRecordSummary(trigger.record));
+  }
   if (encounter !== "") sections.push(encounter);
   const completion = game.completionText?.() ?? "";
   if (completion !== "") sections.push("### 本图完成度\n" + completion);
@@ -186,6 +230,48 @@ export async function buildFacts(game: FactsGame, trigger: FactsTrigger): Promis
   return sections.join("\n\n") + (uncast !== "" ? `\n\n${uncast}` : "");
 }
 
+/** The same monster set the fact sheet describes, for the coverage check (task 42). */
+export async function dossierForTrigger(
+  game: FactsGame,
+  trigger: FactsTrigger,
+): Promise<DossierInput> {
+  const battleRows = records(trigger.battle?.enemies);
+  const met = monstersMet(game, trigger.mapId, battleRows);
+  const infos =
+    game.monsterCache === undefined ? [] : ((await game.monsterCache.load(trigger.pilot)) ?? []);
+  const byName = new Map<string, MonsterInfo>();
+  for (const info of infos) {
+    if (info.name !== null && !byName.has(info.name)) byName.set(info.name, info);
+  }
+  const names = new Map(met.map((enemy) => [enemy.name, enemy]));
+  for (const name of trigger.monsters ?? []) {
+    if (!names.has(name)) names.set(name, { name, book: null, maxHp: null, id: null });
+  }
+  const monsters: DossierMonster[] = [...names.values()].map((enemy) => {
+    const info = infoOf(infos, enemy);
+    return {
+      name: enemy.name,
+      book: enemy.book ?? info?.number ?? null,
+      id: enemy.id,
+      maxHp: enemy.maxHp,
+      info,
+    };
+  });
+  if (game.monsterAi !== undefined && game.monsterAi !== null) {
+    const ids = monsters
+      .map((monster) => monster.info?.monster ?? monster.info?.number)
+      .filter((id): id is number => id !== undefined && id !== null);
+    await game.monsterAi.ensure(trigger.pilot, ids);
+  }
+  return {
+    monsters,
+    ai: game.monsterAi ?? null,
+    elements: game.elements,
+    guide: game.guide,
+    records: game.battles?.recentRecords() ?? [],
+  };
+}
+
 /** Read a schema-validated structured reply as a plan; throws a Chinese error when malformed. */
 export function readTacticianPlan(value: unknown): TacticianPlan {
   if (!isRecord(value)) throw new Error("战术官没有交回结构化结果");
@@ -193,7 +279,10 @@ export function readTacticianPlan(value: unknown): TacticianPlan {
   const tables: Json[] = [];
   for (const [index, table] of value.tactics.entries()) {
     if (!isRecord(table)) throw new Error(`战术官的第 ${index + 1} 套规则表不是对象`);
-    tables.push(gambit.normalize(table));
+    // Task 42: keep a strategy-2.0 object as written so the executor can use its reactions
+    // and phases; an old {角色: [规则…]} table is normalized as before.
+    if (table.version === 2) tables.push(table);
+    else tables.push(gambit.normalize(table));
   }
   if (typeof value.walker_notes !== "string") throw new Error("战术官的结果里没有 walker_notes");
   if (typeof value.ask_up !== "string") throw new Error("战术官的结果里没有 ask_up");
@@ -250,6 +339,10 @@ function causeText(trigger: TriggerReason): string {
       return `被传送带带走:${trigger.detail}。`;
     case "boss":
       return `首领战开始:${trigger.detail}。写一张首领战的规则表。`;
+    case "party-changed":
+      return `队伍变了,旧规则表用不了:${trigger.detail}。按现在的职业和指令重写。`;
+    case "boss-prep":
+      return `快到首领了:${trigger.detail}。先写一张首领战的规则表,并说明缺什么、要不要先回城。`;
   }
 }
 
@@ -329,10 +422,19 @@ function monstersMet(game: FactsGame, mapId: number, battleRows: readonly Json[]
   return [...seen.values()].sort((left, right) => left.name.localeCompare(right.name));
 }
 
+function infoOf(infos: readonly MonsterInfo[], enemy: MetMonster): MonsterInfo | null {
+  if (enemy.book !== null) {
+    const byBook = infos.find((info) => info.number === enemy.book);
+    if (byBook !== undefined) return byBook;
+  }
+  return infos.find((info) => info.name === enemy.name) ?? null;
+}
+
 function monsterText(
   game: FactsGame,
   met: readonly MetMonster[],
   battleRows: readonly Json[],
+  infos: readonly MonsterInfo[],
 ): string {
   if (met.length === 0) return "还没有在这张地图见过怪。";
   const battleByName = new Map(
@@ -341,27 +443,26 @@ function monsterText(
       return name === undefined ? [] : [[name, enemy] as const];
     }),
   );
-  return met
-    .map((enemy) => {
-      const book = enemy.book;
-      const known = game.elements.lookup({
-        ...(book === null ? {} : { book }),
-        name: enemy.name,
-      });
-      const hp = enemy.maxHp ?? guideHp(game.guide, book, enemy.name);
-      const row = battleByName.get(enemy.name);
-      const rowHp = row === undefined ? null : (num(row.maxHp) ?? num(row.hp) ?? null);
-      const label = book === null ? "图鉴号 ?" : `图鉴 #${String(book).padStart(3, "0")}`;
-      const id = enemy.id === null ? "" : `(编号 ${enemy.id})`;
-      const parts = [
-        `- ${enemy.name}${id} ${label}`,
-        `HP ${hp ?? rowHp ?? "?"}`,
-        known === null ? "属性未知" : describeElements(known),
-      ];
-      const note = book === null || game.guide === null ? "" : game.guide.monsterNote(book);
-      return parts.join(" ") + (note !== "" ? `\n  攻略:${note}` : "");
-    })
-    .join("\n");
+  const monsters: DossierMonster[] = met.map((enemy) => {
+    const info = infoOf(infos, enemy);
+    const row = battleByName.get(enemy.name);
+    const rowHp = row === undefined ? null : (num(row.maxHp) ?? num(row.hp) ?? null);
+    const guideHpValue = guideHp(game.guide, enemy.book, enemy.name);
+    return {
+      name: enemy.name,
+      book: enemy.book ?? info?.number ?? null,
+      id: enemy.id,
+      maxHp: enemy.maxHp ?? rowHp ?? guideHpValue,
+      info,
+    };
+  });
+  return monsterDossierLines({
+    monsters,
+    ai: game.monsterAi ?? null,
+    elements: game.elements,
+    guide: game.guide,
+    records: game.battles?.recentRecords() ?? [],
+  }).join("\n");
 }
 
 /**
@@ -415,6 +516,7 @@ function partyText(sample: Json): string {
   const party = records(sample.party);
   if (party.length === 0) return "读不到队伍。";
   const abilities = party.map(memberAbilities);
+  const roster = readParty(sample);
   const magic = magicByKind(abilities);
   const hasAbilities = abilities.some((known) => known.length > 0);
   const lines: string[] = [];
@@ -434,6 +536,7 @@ function partyText(sample: Json): string {
     const known = abilities[index] ?? [];
     const castable = (JOB_MAGIC[job] ?? []).filter((kind) => (magic.get(kind)?.length ?? 0) > 0);
     const own = known.filter((ability) => magicKind(ability) === null);
+    const actor = roster[index];
     lines.push(
       `- ${name} ${job} Lv${pyText(member.lv)} ` +
         `HP ${pyText(member.hp)}/${pyText(member.maxHp)} MP ${pyText(member.mp)}/${pyText(member.maxMp)}` +
@@ -441,7 +544,9 @@ function partyText(sample: Json): string {
         (castable.length > 0 ? ` 能放:${castable.join("、")}` : "") +
         (own.length > 0
           ? ` 能力:${[...new Set(own.map((ability) => ability.name))].join("、")}`
-          : ""),
+          : "") +
+        (actor !== undefined ? ` 指令:${actor.commands.join("、")}` : "") +
+        (actor !== undefined ? ` ${equipmentText(actor)}` : ""),
     );
   });
   const joined = lines.join("\n");

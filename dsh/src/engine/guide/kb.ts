@@ -294,6 +294,42 @@ export class Guide {
   }
 
   /**
+   * Boss names the guide lists for an area (task 42 boss-prep). The ludo chapters carry
+   * `bosses` by area; the Steam sections only have prose, so a name is used when the section
+   * text names it beside "Boss". Empty for an area the guide does not mark.
+   */
+  bossNames(area: string): string[] {
+    if (area.trim() === "") return [];
+    const keys = this.areasFor(area);
+    const out = new Set<string>();
+    for (const chapter of this.ludo) {
+      const match = keys.some(
+        (key) =>
+          chapter.title.toLowerCase() === key.toLowerCase() ||
+          chapter.title.toLowerCase().startsWith(`${key.toLowerCase()}:`),
+      );
+      if (!match) continue;
+      for (const names of Object.values(chapter.bosses)) {
+        for (const name of names) {
+          const clean = name.replace(/[☆★*]/g, "").trim();
+          if (clean !== "") out.add(clean);
+        }
+      }
+    }
+    for (const section of this.walkthrough) {
+      if (!keys.includes(section.title)) continue;
+      for (const line of section.text.split("\n")) {
+        if (!/boss/i.test(line)) continue;
+        for (const match of line.matchAll(/([A-Z][A-Za-z' ]{2,30})\s*\(Boss\)/gu)) {
+          const name = (match[1] ?? "").trim();
+          if (name !== "") out.add(name);
+        }
+      }
+    }
+    return [...out];
+  }
+
+  /**
    * Short things to know before going in: one-visit locations, missables, and the tips that
    * tell to run or call something tough.
    */

@@ -337,6 +337,16 @@ void test("the simple tools answer through the pilot, one after another", async 
   assert.match(await game.run("sell", { item: "恢复药" }, pilot), /^商店没有打开/);
   assert.match(await game.run("shop_gear", {}, pilot), /^商店没有打开/);
   assert.match(await game.run("fight", { plan: {} }, pilot), /规则表没有通过检查/);
+  // Task 42: fight reads a 2.0 strategy with checkStrategy instead of normalizing it as an
+  // old {角色: [规则…]} table.
+  assert.match(
+    await game.run(
+      "fight",
+      { plan: { version: 2, roles: {}, reactions: [], phases: [], rules: [] } },
+      pilot,
+    ),
+    /策略里没有规则/,
+  );
   assert.match(await game.run("set_tactics", { tables: [] }, pilot), /策略没有通过检查/);
   assert.ok((await game.run("guide", { query: "图尔村" }, pilot)).length > 0);
   assert.match(await game.run("atlas", {}, pilot), /地图 30/);

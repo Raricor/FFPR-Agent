@@ -77,7 +77,13 @@ function pilotFor(live: Json, options: { conveyor?: boolean; blocked?: boolean }
   );
   pilot.on("wait", { ok: true });
   pilot.onQuery("items", {
-    items: { normal: [{ name: "恢复药", count: 2 }], important: [] },
+    items: {
+      normal: [
+        { name: "恢复药", count: 2 },
+        { name: "不死鸟之尾", count: 2 },
+      ],
+      important: [],
+    },
   });
   pilot.onQuery("sample", { sample: live });
   pilot.onQuery("battlemenu", { battlemenu: { battle: false } });

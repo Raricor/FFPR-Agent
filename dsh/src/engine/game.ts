@@ -8,6 +8,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Laptop } from "./laptop.ts";
 import { MonsterCache } from "./bestiary.ts";
+import { MonsterAiCache, monsterAiPath, partySnapshot, readBag, readParty } from "./dossier.ts";
 import { BestiarySave } from "./bestiary-save.ts";
 import { missedTreasureByArea, parseAchievements } from "./achievements.ts";
 import {
@@ -35,6 +36,7 @@ import {
   areaOf,
   buildFacts,
   chooseTrigger,
+  dossierForTrigger,
   isTown,
   type FactsTrigger,
   type TacticianPlan,
@@ -62,6 +64,7 @@ import {
 import * as gambit from "./skills/gambit.ts";
 import { mentionedSkills } from "./strategy/execute.ts";
 import { checkStrategy } from "./strategy/strategy.ts";
+import { coverageProblems, partyChangedProblem } from "./coverage.ts";
 import * as menu from "./skills/menu.ts";
 import * as move from "./skills/move.ts";
 import * as battle from "./skills/battle.ts";
@@ -70,6 +73,7 @@ import type { MoveState } from "./skills/move.ts";
 import * as save from "./skills/save.ts";
 import * as screens from "./skills/screens.ts";
 import * as shop from "./skills/shop.ts";
+import * as grind from "./skills/grind.ts";
 import { cursorPath, stateScript, parseState } from "./state-script.ts";
 import * as nav from "./nav.ts";
 import type { Cell } from "./nav.ts";
@@ -132,6 +136,8 @@ export interface GameOptions {
   readonly incidentsFile?: string;
   readonly incidentsStateFile?: string;
   readonly bestiarySaveFile?: string;
+  /** Task 42: monster AI scripts, cached under .deps/ds/monsterai-<game>.json. */
+  readonly monsterAiFile?: string;
   readonly signal?: AbortSignal;
   /** The second layer, when this build has one: facts in, a plan back. */
   readonly tactician?: (facts: string) => Promise<TacticianPlan>;
@@ -257,6 +263,8 @@ export class Game {
   readonly backlog: Backlog;
   readonly incidents: Incidents;
   readonly bestiary: BestiarySave;
+  /** Task 42: monster AI scripts, also read by the fact sheet outside battle. */
+  readonly monsterAi: MonsterAiCache;
   /** The plugin's activity log sink for an incident (task 45); unset in tests. */
   onIncident: ((message: string) => void) | undefined;
   readonly advised = new Set<string>();
@@ -302,6 +310,7 @@ export class Game {
     backlog: Backlog,
     incidents: Incidents,
     bestiary: BestiarySave,
+    monsterAi: MonsterAiCache,
     tactician: ((facts: string) => Promise<TacticianPlan>) | undefined,
     tacticianBoss: boolean,
   ) {
@@ -319,8 +328,13 @@ export class Game {
     this.backlog = backlog;
     this.incidents = incidents;
     this.bestiary = bestiary;
+    this.monsterAi = monsterAi;
     this.tactician = tactician;
     this.tacticianBoss = tacticianBoss;
+    // Task 42: a `battle.ai` push says a script exists; the body is queried later by `ensure`.
+    this.events?.onRecord((record) => {
+      if (record.type === "battle.ai") this.monsterAi.recordEvent(record);
+    });
     // The player's tactics per map fight the regular battles (control plan §4.10).
     this.hooks = {
       tableFor: (mapId) => this.tactics.current(mapId),
@@ -351,6 +365,7 @@ export class Game {
       ["press", (args, pilot) => this.toolPress(args, pilot)],
       ["choose", (args, pilot) => this.toolChoose(args, pilot)],
       ["fight", (args, pilot) => this.toolFight(args, pilot)],
+      ["grind", (args, pilot) => this.toolGrind(args, pilot)],
       ["sell", (args, pilot) => this.toolSell(args, pilot)],
       ["shop_gear", (_args, pilot) => this.toolShopGear(pilot)],
       ["buy", (args, pilot) => this.toolBuy(args, pilot)],
@@ -397,6 +412,8 @@ export class Game {
       signal,
     );
     const bestiary = await BestiarySave.load(game, options.bestiarySaveFile, signal);
+    const aiFile = options.monsterAiFile ?? (game === "ff5" ? monsterAiPath(game) : undefined);
+    const monsterAi = await MonsterAiCache.load(game, aiFile, signal);
     const created = new Game(
       options.laptop,
       game,
@@ -412,6 +429,7 @@ export class Game {
       backlog,
       incidents,
       bestiary,
+      monsterAi,
       options.tactician,
       options.tacticianBoss ?? true,
     );
@@ -505,6 +523,22 @@ export class Game {
     return null;
   }
 
+  /** Task 42: cache the AI scripts of the enemies now on screen, once per monster. */
+  private async ensureMonsterAi(pilot: Pilot, enemies: readonly Json[]): Promise<void> {
+    const infos = (await this.monsterCache.load(pilot)) ?? [];
+    const ids: number[] = [];
+    for (const enemy of enemies) {
+      const book = num(enemy.book) ?? null;
+      const name = text(enemy.name) ?? "";
+      const info =
+        (book === null ? undefined : infos.find((known) => known.number === book)) ??
+        infos.find((known) => known.name === name);
+      const id = info?.monster ?? info?.number ?? book;
+      if (id !== null && !ids.includes(id)) ids.push(id);
+    }
+    await this.monsterAi.ensure(pilot, ids);
+  }
+
   /**
    * Finish a regular battle locally, so the model never waits on enemies. A boss battle
    * (bridge 0.4.0+ reads the flag) is left running for the model to plan with `fight`.
@@ -514,6 +548,7 @@ export class Game {
     if (!(truthy(pos.battle) || pos.state === "Battle")) return "";
     const sample = record((await pilot.query("sample")).sample);
     const fight = record(sample.battle);
+    await this.ensureMonsterAi(pilot, records(fight.enemies));
     if (truthy(fight.boss)) {
       const old =
         "首领战开始了!战斗暂停等你决定:用 fight 交一张规则表。\n" +
@@ -525,10 +560,13 @@ export class Game {
       const mapId = num(record(sample.user).mapId) ?? this.mapId;
       if (mapId === null) return old;
       const detail = describeBattle(fight, list(sample.party), this.elements);
-      const outcome = await this.runTactician(
-        { kind: "boss", mapId, detail, battle: fight, pilot },
-        false,
-      );
+      // Task 42: a boss table written before the fight (boss-prep) is used as it is; the
+      // battle does not spend its first seconds writing the same table again.
+      const prepared = this.tactics.boss(mapId);
+      const outcome =
+        prepared?.prepared === true
+          ? { text: `用首领战前写好的表(地图 ${mapId})`, tables: [prepared.table], facts: "" }
+          : await this.runTactician({ kind: "boss", mapId, detail, battle: fight, pilot }, false);
       const table = outcome.tables[0];
       if (table === undefined) return [outcome.text, old].filter((part) => part !== "").join("\n");
       const initial = records(fight.enemies);
@@ -675,7 +713,7 @@ export class Game {
               : verdict === "hard"
                 ? "hard"
                 : "ok";
-      await session.finish(
+      const finished = await session.finish(
         foughtAt,
         recorded,
         result.error === "wiped"
@@ -720,6 +758,40 @@ export class Game {
         ...(bossNote === null ? {} : { walkerNotes: bossNote.walkerNotes, askUp: bossNote.askUp }),
         rewrites: watch.rewrites,
       });
+      // Task 42: after a boss wipe the next table is written with this battle's record.
+      if (wiped) {
+        const debrief = await this.runTactician(
+          {
+            kind: "bad-battle",
+            mapId,
+            detail: "首领战全灭",
+            battle: {
+              ...fight,
+              enemies: watch.latestEnemies,
+              players: watch.latestPlayers,
+            },
+            record: finished,
+            pilot,
+          },
+          false,
+        );
+        const next = debrief.tables[0];
+        if (next !== undefined) {
+          await this.tactics.setBoss(mapId, {
+            table: next,
+            result: fought,
+            at: this.lastBoss.at,
+            ...(bossNote === null
+              ? {}
+              : { walkerNotes: bossNote.walkerNotes, askUp: bossNote.askUp }),
+            prepared: true,
+          });
+          this.lastBoss = { ...this.lastBoss, table: next };
+          fought += `\n战后复盘:${debrief.text}`;
+        } else if (debrief.text !== "") {
+          fought += `\n战后复盘:${debrief.text}`;
+        }
+      }
       return [outcome.text, fought].filter((part) => part !== "").join("\n");
     }
     return `(途中遇敌,${await battle.regular(pilot, this.hooks, () => undefined, this.saveSlot)})`;
@@ -746,6 +818,12 @@ export class Game {
       await this.recordTacticianCall(trigger, 0, [text], "");
       return { text, tables: [], facts: givenFacts ?? "" };
     }
+    // Task 42: the coverage check reads the party, the bag and the enemy dossier, not just
+    // the table's shape. A failed read leaves empty data; the shape check still runs.
+    const sample = record((await trigger.pilot.query("sample")).sample);
+    const party = readParty(sample);
+    const bag = readBag(await battle.heldItems(trigger.pilot));
+    const dossier = await dossierForTrigger(this, trigger);
     let plan: TacticianPlan | null = null;
     let problems: string[] = [];
     for (let attempt = 0; attempt <= 2; attempt++) {
@@ -757,7 +835,10 @@ export class Game {
         await this.recordTacticianCall(trigger, 0, [text], "");
         return { text, tables: [], facts };
       }
-      problems = tacticianProblems(plan.tables, this.game);
+      problems = [
+        ...tacticianProblems(plan.tables, this.game, party),
+        ...coverageProblems({ tables: plan.tables, party, bag, dossier }),
+      ];
       if (problems.length === 0) break;
       if (attempt < 2) {
         facts +=
@@ -770,9 +851,7 @@ export class Game {
       await this.recordTacticianCall(trigger, 0, ["战术官没有交回结果"], "");
       return { text: "战术官没有交回结果", tables: [], facts };
     }
-    const good = plan.tables
-      .filter((table) => gambit.check(table, this.game).length === 0)
-      .slice(0, 3);
+    const good = plan.tables.filter((table) => tablePasses(table, this.game, party)).slice(0, 3);
     const note = {
       walkerNotes: plan.walkerNotes,
       askUp: plan.askUp,
@@ -791,7 +870,7 @@ export class Game {
     }
     if (install && good.length > 0) {
       const met = [...(this.events?.enemies.get(trigger.mapId) ?? new Set<string>())].sort();
-      await this.tactics.set(trigger.mapId, good, met, note);
+      await this.tactics.set(trigger.mapId, good, met, note, partySnapshot(party));
     } else if (this.tactics.maps.has(String(trigger.mapId))) {
       // A boss rewrite has no new regular table, but its walker notes still belong to the map.
       // Creating an empty table entry here would change the boss flow's own bookkeeping.
@@ -897,6 +976,8 @@ export class Game {
   /** After a tool: the one trigger chooseTrigger finds, if the tactician has not spoken yet. */
   /** Town areas whose maps share the tactician's one call (chooseTrigger). */
   private readonly townsCovered = new Set<string>();
+  /** Maps whose boss-prep call has been made (task 42). */
+  private readonly bossPrepAsked = new Set<number>();
 
   /** A map's atlas name; "" when the atlas has not seen it. */
   mapNameOf(mapId: number | null): string {
@@ -911,6 +992,59 @@ export class Game {
 
   private async afterTool(pilot: Pilot): Promise<string> {
     if (this.tactician === undefined || this.tacticianCalled) return "";
+    const mapId = this.mapId;
+    if (mapId !== null) {
+      // Task 42: before the map's next battle, check the table against the party as it is now.
+      const table = this.tactics.current(mapId);
+      if (table !== null) {
+        const sample = await this.sampleNow(pilot);
+        const changed = partyChangedProblem(table, readParty(sample), this.tactics.party(mapId));
+        if (changed.length > 0) {
+          this.lastBattle = null;
+          const outcome = await this.runTactician(
+            {
+              kind: "party-changed",
+              mapId,
+              detail: changed.join(";"),
+              pilot,
+            },
+            true,
+          );
+          return outcome.text;
+        }
+      }
+      // Task 42: the guide marks a boss on this map (or look_around named one): write its
+      // table once, before the fight, and keep it for the battle that starts by itself.
+      if (this.tactics.boss(mapId) === null && !this.bossPrepAsked.has(mapId)) {
+        const names = await this.bossNamesHere(pilot);
+        if (names.length > 0) {
+          this.bossPrepAsked.add(mapId);
+          const outcome = await this.runTactician(
+            {
+              kind: "boss-prep",
+              mapId,
+              detail: `攻略标了首领:${names.join("、")}`,
+              monsters: names,
+              pilot,
+            },
+            false,
+          );
+          const table = outcome.tables[0];
+          if (table !== undefined) {
+            const info = this.tacticianInfoByMap.get(mapId);
+            await this.tactics.setBoss(mapId, {
+              table,
+              result: "首领战前准备",
+              at: new Date().toISOString(),
+              ...(info === undefined ? {} : { walkerNotes: info.walkerNotes, askUp: info.askUp }),
+              prepared: true,
+            });
+            return `${outcome.text}\n首领表已经按地图 ${mapId} 存好,开打时直接用。`;
+          }
+          return outcome.text;
+        }
+      }
+    }
     const met = [...(this.events?.enemies.get(this.mapId) ?? new Set<string>())];
     const reason = chooseTrigger({
       mapId: this.mapId,
@@ -919,6 +1053,7 @@ export class Game {
       lastBattle: this.lastBattle,
       blocked: this.blocked,
       ride: this.ride,
+      partyChanged: null,
       mapName: this.mapName(),
       townsCovered: this.townsCovered,
     });
@@ -926,12 +1061,57 @@ export class Game {
     if (reason.kind === "new-map" && isTown(areaOf(this.mapName()))) {
       this.townsCovered.add(areaOf(this.mapName()));
     }
+    const last = this.recentRecord(this.mapId);
     this.lastBattle = null;
     if (reason.kind === "blocked") this.blockedCounts.clear();
     this.blocked = null;
     this.ride = null;
-    const outcome = await this.runTactician({ ...reason, pilot }, true);
+    const trigger: FactsTrigger = {
+      ...reason,
+      pilot,
+      ...(last === undefined ? {} : { record: last }),
+    };
+    const outcome = await this.runTactician(trigger, true);
     return outcome.text;
+  }
+
+  /** The freshest party read, for the party-changed check. */
+  private async sampleNow(pilot: Pilot): Promise<Json> {
+    const live = this.events?.liveSample() ?? null;
+    if (live !== null) return live;
+    return record((await pilot.query("sample")).sample);
+  }
+
+  /** The newest battle on this map, for the debrief fact sheet. */
+  private recentRecord(mapId: number | null) {
+    if (mapId === null) return undefined;
+    const found = this.battles.recentRecords().filter((record) => record.mapId === mapId);
+    return found[found.length - 1];
+  }
+
+  /** Boss names the guide marks for this area, or a boss-looking event cell (task 42). */
+  private async bossNamesHere(pilot: Pilot): Promise<string[]> {
+    const sample = await this.sampleNow(pilot);
+    const area = text(record(sample.user).areaText) ?? this.mapName();
+    const names = new Set(this.guide?.bossNames(area) ?? []);
+    let entities: readonly Json[];
+    try {
+      entities = records(
+        record((await pilot.send("entities", { kind: "Event", max: 200 })).entities).entities,
+      );
+    } catch {
+      entities = [];
+    }
+    const eventNames = entities
+      .map((entity) => text(entity.name) ?? "")
+      .filter((name) => name !== "");
+    for (const name of [...names]) {
+      if (eventNames.some((event) => event.includes(name) || name.includes(event))) names.add(name);
+    }
+    for (const event of eventNames) {
+      if (/boss|首领|ボス/iu.test(event)) names.add(event);
+    }
+    return [...names];
   }
 
   /** Remember blocked steps and conveyor rides from this tool's walking messages. */
@@ -1844,8 +2024,10 @@ export class Game {
   }
 
   private async toolFight(args: Json, pilot: Pilot): Promise<HandlerResult> {
-    const plan = gambit.normalize(record(args.plan));
-    const problems = gambit.check(plan, this.game);
+    const raw = record(args.plan);
+    // Task 42: fight takes either language, like set_tactics and the tactician's own tables.
+    const plan = raw.version === 2 ? raw : gambit.normalize(raw);
+    const problems = raw.version === 2 ? checkStrategy(raw) : gambit.check(plan, this.game);
     if (problems.length > 0) {
       // Sent back before a key is pressed (§4.6): the battle waits for a full table.
       return { text: "规则表没有通过检查,请改好再交:\n" + problems.join("\n"), early: true };
@@ -1897,6 +2079,29 @@ export class Game {
       if (healed.length > 0) text += "\n战后回复:" + healed.join(";");
     }
     return { text };
+  }
+
+  /**
+   * Task 47: the code-driven farm loop. A missing stopping condition is refused before a key
+   * is pressed; every in-game failure comes back in the report as the reason it stopped.
+   */
+  private async toolGrind(args: Json, pilot: Pilot): Promise<HandlerResult> {
+    const parsed = grind.parseGrindOptions(args);
+    if (!parsed.ok) return { text: `grind 没有执行:${parsed.error}`, early: true };
+    const report = await grind.grind(pilot, parsed.options, {
+      atlas: this.atlas,
+      moveState: this.moveState,
+      fighter: (runner, say) => battle.regular(runner, this.hooks, say, this.saveSlot),
+      refresh: async (runner) => {
+        const completion = await this.refreshCompletion(runner);
+        const names = new Map<number, string>();
+        for (const [name, number] of this.bestiaryNames()) {
+          if (!names.has(number)) names.set(number, name);
+        }
+        return { completion, known: new Set(this.bestiary.numbers), names };
+      },
+    });
+    return { text: report.text };
   }
 
   private async toolSell(args: Json, pilot: Pilot): Promise<HandlerResult> {
@@ -2020,7 +2225,15 @@ export class Game {
     const mapId = args.map || record((await pilot.send("pos")).pos).map;
     const id = integer(mapId);
     const met = [...(this.events?.enemies.get(id) ?? new Set<string>())].sort();
-    await this.tactics.set(id, tables, met);
+    let roster: ReturnType<typeof partySnapshot> | undefined;
+    try {
+      const sample = record((await pilot.query("sample")).sample);
+      roster = partySnapshot(readParty(sample));
+    } catch {
+      // Older bridges or tests without a sample still store the table; the party-changed
+      // check then has no snapshot and simply waits for the next tactician call.
+    }
+    await this.tactics.set(id, tables, met, undefined, roster);
     return {
       text:
         `已为地图 ${id} 设好 ${tables.length} 套战斗策略;` +
@@ -2153,14 +2366,29 @@ function isAbortError(error: unknown): boolean {
 }
 
 /** What makes a tactician table unusable, numbered by table (1-based). */
-export function tacticianProblems(tables: readonly Json[], game = "ff5"): string[] {
+export function tacticianProblems(
+  tables: readonly Json[],
+  game = "ff5",
+  party?: readonly unknown[],
+): string[] {
   const problems: string[] = [];
   if (tables.length === 0) problems.push("一套规则表都没有");
   if (tables.length > 3) problems.push(`最多 3 套,这次交了 ${tables.length} 套`);
   for (const [index, table] of tables.entries()) {
-    problems.push(...gambit.check(table, game).map((problem) => `第 ${index + 1} 套:${problem}`));
+    const bad = tableProblems(table, game, party);
+    problems.push(...bad.map((problem) => `第 ${index + 1} 套:${problem}`));
   }
   return problems;
+}
+
+/** Shape checks for either language: 2.0 through checkStrategy, old through gambit.check. */
+function tableProblems(table: Json, game: string, party?: readonly unknown[]): string[] {
+  if (isRecord(table) && table.version === 2) return checkStrategy(table, party);
+  return gambit.check(table, game);
+}
+
+function tablePasses(table: Json, game: string, party: readonly unknown[]): boolean {
+  return tableProblems(table, game, party).length === 0;
 }
 
 /** A cells reply narrowed to the grid nav and prompt renderers take. */

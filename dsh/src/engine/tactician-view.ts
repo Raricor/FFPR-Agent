@@ -7,10 +7,11 @@
 
 import type { BattleRecord } from "./battle-record.ts";
 import { byKey, gameHeading } from "./games.ts";
-import { fromLegacy, describe } from "./strategy/index.ts";
+import { fromLegacy, describe, parseStrategy } from "./strategy/index.ts";
 import type { Tactics, TacticsEntry } from "./tactics.ts";
 import type { TacticianCall } from "./tactician-log.ts";
 import { firstSentence } from "./tactician-log.ts";
+import { isRecord } from "./values.ts";
 
 export interface TacticianRuleLine {
   readonly text: string;
@@ -146,7 +147,7 @@ function tableView(
   record: string,
 ): TacticianTableView {
   try {
-    const strategy = fromLegacy(table);
+    const strategy = strategyOf(table);
     const members = new Map<string, TacticianRuleLine[]>();
     for (const rule of strategy.rules) {
       const lines = members.get(rule.who) ?? [];
@@ -272,11 +273,18 @@ export function tacticianView(input: TacticianViewInput): TacticianPanelView {
 /** A table stored in a battle record, translated for the ③ 战斗 tab's rule-hit summary. */
 export function translatedRules(table: unknown): string[] {
   try {
-    const strategy = fromLegacy(table);
-    return strategy.rules.map((rule) => describe(rule));
+    return strategyOf(table).rules.map((rule) => describe(rule));
   } catch {
     return [];
   }
+}
+
+/** A stored table in either language: 2.0 parsed as written, old tables converted. */
+function strategyOf(table: unknown): ReturnType<typeof fromLegacy> {
+  if (!isRecord(table) || table.version !== 2) return fromLegacy(table);
+  const parsed = parseStrategy(table);
+  if (Array.isArray(parsed)) throw new Error(parsed.join(";"));
+  return parsed;
 }
 
 /** "法利斯 黑魔法:火炎 → 跳过 2 次：没有这个指令(现在是武僧)" */
