@@ -1,0 +1,434 @@
+{
+  "highlighted": [11, 3],
+  "cases": [
+    {
+      "name": "move to slot by display order",
+      "out": {
+        "ui": {
+          "open": true,
+          "cursor": 4,
+          "slots": [21, 22, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+        }
+      },
+      "calls": [
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Down*4"],
+            "gap": 150
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "saveui",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Down*4"],
+            "gap": 150
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "saveui",
+          "fields": {}
+        }
+      ],
+      "transcript": [
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {
+            "ok": true
+          }
+        },
+        {
+          "kind": "query",
+          "q": "saveui",
+          "reply": {
+            "saveui": {
+              "open": true,
+              "cursor": 0,
+              "slots": [
+                21, 22, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {
+            "ok": true
+          }
+        },
+        {
+          "kind": "query",
+          "q": "saveui",
+          "reply": {
+            "saveui": {
+              "open": true,
+              "cursor": 4,
+              "slots": [
+                21, 22, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "save to an empty slot",
+      "out": [true, "已存到 3 号位(第 3 次存档)"],
+      "calls": [
+        {
+          "kind": "send",
+          "op": "pos",
+          "fields": {},
+          "wait": 30
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Tab"],
+            "gap": 100
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Enter"],
+            "gap": 100
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "saveui",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Down*4"],
+            "gap": 150
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "saveui",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Down*4"],
+            "gap": 150
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "saveui",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Enter"],
+            "gap": 100
+          },
+          "wait": 30
+        },
+        {
+          "kind": "send",
+          "op": "pos",
+          "fields": {},
+          "wait": 30
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Enter"],
+            "gap": 300
+          },
+          "wait": 30
+        },
+        {
+          "kind": "send",
+          "op": "leave",
+          "fields": {},
+          "wait": 30
+        }
+      ],
+      "transcript": [
+        {
+          "kind": "send",
+          "op": "pos",
+          "reply": {
+            "pos": {
+              "state": "Player",
+              "saves": 2
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {
+            "ok": true
+          }
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "reply": {
+            "menu": {
+              "open": true,
+              "commands": [
+                {
+                  "id": "Items"
+                },
+                {
+                  "id": "Save",
+                  "enabled": true
+                }
+              ],
+              "cursor": 1
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "reply": {
+            "menu": {
+              "open": true,
+              "commands": [
+                {
+                  "id": "Items"
+                },
+                {
+                  "id": "Save",
+                  "enabled": true
+                }
+              ],
+              "cursor": 1
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {
+            "ok": true
+          }
+        },
+        {
+          "kind": "query",
+          "q": "saveui",
+          "reply": {
+            "saveui": {
+              "open": true,
+              "cursor": 0,
+              "slots": [
+                21, 22, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {
+            "ok": true
+          }
+        },
+        {
+          "kind": "query",
+          "q": "saveui",
+          "reply": {
+            "saveui": {
+              "open": true,
+              "cursor": 0,
+              "slots": [
+                21, 22, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {
+            "ok": true
+          }
+        },
+        {
+          "kind": "query",
+          "q": "saveui",
+          "reply": {
+            "saveui": {
+              "open": true,
+              "cursor": 4,
+              "slots": [
+                21, 22, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {
+            "ok": true
+          }
+        },
+        {
+          "kind": "send",
+          "op": "pos",
+          "reply": {
+            "pos": {
+              "state": "Player",
+              "saves": 3
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {
+            "ok": true
+          }
+        },
+        {
+          "kind": "send",
+          "op": "leave",
+          "reply": {
+            "ok": true,
+            "presses": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "load from the title screen",
+      "out": [true, "已读取 3 号位,现在在地图 1 [20, 10]"],
+      "calls": [
+        {
+          "kind": "query",
+          "q": "saveui",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Down*4"],
+            "gap": 150
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "saveui",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Enter", "Left", "Enter"],
+            "gap": 600
+          },
+          "wait": 30
+        },
+        {
+          "kind": "send",
+          "op": "wait",
+          "fields": {
+            "timeout": 60000
+          },
+          "wait": 80
+        }
+      ],
+      "transcript": [
+        {
+          "kind": "query",
+          "q": "saveui",
+          "reply": {
+            "saveui": {
+              "open": true,
+              "cursor": 0,
+              "slots": [
+                21, 22, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {
+            "ok": true
+          }
+        },
+        {
+          "kind": "query",
+          "q": "saveui",
+          "reply": {
+            "saveui": {
+              "open": true,
+              "cursor": 4,
+              "slots": [
+                21, 22, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {
+            "ok": true
+          }
+        },
+        {
+          "kind": "send",
+          "op": "wait",
+          "reply": {
+            "ok": true,
+            "pos": {
+              "map": 1,
+              "cell": [20, 10]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,2233 @@
+{
+  "whoCan": "巴兹 更强、加拉夫 已经装着、蕾娜 不能装备、法利斯 更弱、可露儿 差不多",
+  "cases": [
+    {
+      "name": "buy only for members it helps",
+      "out": [
+        true,
+        "买了「<IC_HEAD>铁盔」×2,花了 700,剩 4300(只买 2 件:用得上的只有 巴兹、法利斯)"
+      ],
+      "calls": [
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Enter"],
+            "gap": 300
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Right"],
+            "gap": 120
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Enter"],
+            "gap": 500
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "fields": {}
+        }
+      ],
+      "transcript": [
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "open": true,
+              "state": "SelectProduct",
+              "listCursor": 0,
+              "products": [
+                {
+                  "name": "<IC_HEAD>铁盔",
+                  "buy": 350,
+                  "type": "Armor"
+                }
+              ],
+              "party": [
+                {
+                  "name": "巴兹",
+                  "canEquip": true,
+                  "up": true
+                },
+                {
+                  "name": "加拉夫",
+                  "canEquip": true,
+                  "up": false,
+                  "equipped": true
+                },
+                {
+                  "name": "蕾娜",
+                  "canEquip": false
+                },
+                {
+                  "name": "法利斯",
+                  "canEquip": true,
+                  "up": true
+                }
+              ],
+              "trade": {
+                "count": 1
+              }
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "open": true,
+              "state": "SelectProduct",
+              "listCursor": 0,
+              "products": [
+                {
+                  "name": "<IC_HEAD>铁盔",
+                  "buy": 350,
+                  "type": "Armor"
+                }
+              ],
+              "party": [
+                {
+                  "name": "巴兹",
+                  "canEquip": true,
+                  "up": true
+                },
+                {
+                  "name": "加拉夫",
+                  "canEquip": true,
+                  "up": false,
+                  "equipped": true
+                },
+                {
+                  "name": "蕾娜",
+                  "canEquip": false
+                },
+                {
+                  "name": "法利斯",
+                  "canEquip": true,
+                  "up": true
+                }
+              ],
+              "trade": {
+                "count": 1
+              }
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "reply": {
+            "sample": {
+              "user": {
+                "gil": 5000
+              }
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {
+            "ok": true
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "open": true,
+              "state": "SelectProduct",
+              "listCursor": 0,
+              "products": [
+                {
+                  "name": "<IC_HEAD>铁盔",
+                  "buy": 350,
+                  "type": "Armor"
+                }
+              ],
+              "party": [
+                {
+                  "name": "巴兹",
+                  "canEquip": true,
+                  "up": true
+                },
+                {
+                  "name": "加拉夫",
+                  "canEquip": true,
+                  "up": false,
+                  "equipped": true
+                },
+                {
+                  "name": "蕾娜",
+                  "canEquip": false
+                },
+                {
+                  "name": "法利斯",
+                  "canEquip": true,
+                  "up": true
+                }
+              ],
+              "trade": {
+                "count": 1
+              }
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {
+            "ok": true
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "open": true,
+              "state": "SelectProduct",
+              "listCursor": 0,
+              "products": [
+                {
+                  "name": "<IC_HEAD>铁盔",
+                  "buy": 350,
+                  "type": "Armor"
+                }
+              ],
+              "party": [
+                {
+                  "name": "巴兹",
+                  "canEquip": true,
+                  "up": true
+                },
+                {
+                  "name": "加拉夫",
+                  "canEquip": true,
+                  "up": false,
+                  "equipped": true
+                },
+                {
+                  "name": "蕾娜",
+                  "canEquip": false
+                },
+                {
+                  "name": "法利斯",
+                  "canEquip": true,
+                  "up": true
+                }
+              ],
+              "trade": {
+                "count": 2
+              }
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {
+            "ok": true
+          }
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "reply": {
+            "sample": {
+              "user": {
+                "gil": 4300
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "nobody can use the gear",
+      "out": [
+        false,
+        "不买「<IC_HEAD>铁盔」:巴兹 差不多、加拉夫 已经装着、蕾娜 不能装备、法利斯 差不多,没有人用得上"
+      ],
+      "calls": [
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        }
+      ],
+      "transcript": [
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "open": true,
+              "state": "SelectProduct",
+              "listCursor": 0,
+              "products": [
+                {
+                  "name": "<IC_HEAD>铁盔",
+                  "buy": 350,
+                  "type": "Armor"
+                }
+              ],
+              "party": [
+                {
+                  "name": "巴兹",
+                  "canEquip": true,
+                  "up": false
+                },
+                {
+                  "name": "加拉夫",
+                  "canEquip": true,
+                  "equipped": true
+                },
+                {
+                  "name": "蕾娜",
+                  "canEquip": false
+                },
+                {
+                  "name": "法利斯",
+                  "canEquip": true,
+                  "up": false
+                }
+              ],
+              "trade": {
+                "count": 1
+              }
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "open": true,
+              "state": "SelectProduct",
+              "listCursor": 0,
+              "products": [
+                {
+                  "name": "<IC_HEAD>铁盔",
+                  "buy": 350,
+                  "type": "Armor"
+                }
+              ],
+              "party": [
+                {
+                  "name": "巴兹",
+                  "canEquip": true,
+                  "up": false
+                },
+                {
+                  "name": "加拉夫",
+                  "canEquip": true,
+                  "equipped": true
+                },
+                {
+                  "name": "蕾娜",
+                  "canEquip": false
+                },
+                {
+                  "name": "法利斯",
+                  "canEquip": true,
+                  "up": false
+                }
+              ],
+              "trade": {
+                "count": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "scroll down to a late item",
+      "out": {
+        "name": "<IC_X>青铜铠",
+        "focus": true
+      },
+      "calls": [
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Down"],
+            "gap": 110
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Down"],
+            "gap": 110
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Down"],
+            "gap": 110
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Down"],
+            "gap": 110
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Down"],
+            "gap": 110
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Down"],
+            "gap": 110
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        }
+      ],
+      "transcript": [
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>恢复药",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>恢复药",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>恢复药",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>恢复药",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>恢复药",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>恢复药",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>恢复药",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>铁盔",
+                  "focus": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>铁盔",
+                  "focus": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>铁盔",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>青铜铠",
+                  "focus": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>铁盔",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>青铜铠",
+                  "focus": true
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "scroll back up for an early item",
+      "out": {
+        "name": "<IC_X>帐篷",
+        "focus": true
+      },
+      "calls": [
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Down"],
+            "gap": 110
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        }
+      ],
+      "transcript": [
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>恢复药",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>恢复药",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>恢复药",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "item not in the bag",
+      "out": null,
+      "calls": [
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Down"],
+            "gap": 110
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Down"],
+            "gap": 110
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Down"],
+            "gap": 110
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Down"],
+            "gap": 110
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Down"],
+            "gap": 110
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Down"],
+            "gap": 110
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Down"],
+            "gap": 110
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Down"],
+            "gap": 110
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Up"],
+            "gap": 110
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Up"],
+            "gap": 110
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Up"],
+            "gap": 110
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Up"],
+            "gap": 110
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Up"],
+            "gap": 110
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Up"],
+            "gap": 110
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Up"],
+            "gap": 110
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Up"],
+            "gap": 110
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "fields": {}
+        }
+      ],
+      "transcript": [
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>恢复药",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>恢复药",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>恢复药",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>恢复药",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>恢复药",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>恢复药",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>恢复药",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>铁盔",
+                  "focus": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>铁盔",
+                  "focus": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>铁盔",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>青铜铠",
+                  "focus": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>铁盔",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>青铜铠",
+                  "focus": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>铁盔",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>青铜铠",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>不死鸟之尾",
+                  "focus": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>铁盔",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>青铜铠",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>不死鸟之尾",
+                  "focus": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>铁盔",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>青铜铠",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>不死鸟之尾",
+                  "focus": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>铁盔",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>青铜铠",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>不死鸟之尾",
+                  "focus": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>铁盔",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>青铜铠",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>不死鸟之尾",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>铁盔",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>青铜铠",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>不死鸟之尾",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>铁盔",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>青铜铠",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>不死鸟之尾",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>铁盔",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>青铜铠",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>不死鸟之尾",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>铁盔",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>青铜铠",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>不死鸟之尾",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>铁盔",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>青铜铠",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>不死鸟之尾",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>铁盔",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>青铜铠",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>铁盔",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>青铜铠",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>铁盔",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>铁盔",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>宽刃剑",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>恢复药",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>恢复药",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {}
+        },
+        {
+          "kind": "query",
+          "q": "shop",
+          "reply": {
+            "shop": {
+              "rows": [
+                {
+                  "name": "<IC_X>恢复药",
+                  "focus": true
+                },
+                {
+                  "name": "<IC_X>帐篷",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮帽",
+                  "focus": false
+                },
+                {
+                  "name": "<IC_X>皮衣",
+                  "focus": false
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,792 @@
+{
+  "cases": [
+    {
+      "name": "cast from the field menu",
+      "out": [true, "蕾娜 用了「治疗」:巴兹 HP 8→50,MP 16→12"],
+      "calls": [
+        {
+          "kind": "send",
+          "op": "pos",
+          "fields": {},
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Tab"],
+            "gap": 100
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Enter"],
+            "gap": 120
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Enter"],
+            "gap": 120
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Enter"],
+            "gap": 120
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Enter"],
+            "gap": 120
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "leave",
+          "fields": {},
+          "wait": 30
+        }
+      ],
+      "transcript": [
+        {
+          "kind": "send",
+          "op": "pos",
+          "reply": {
+            "pos": {
+              "state": "Player",
+              "cell": [10, 5]
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "reply": {
+            "sample": {
+              "party": [
+                {
+                  "name": "巴兹",
+                  "hp": 8,
+                  "maxHp": 197,
+                  "mp": 10
+                },
+                {
+                  "name": "蕾娜",
+                  "hp": 60,
+                  "maxHp": 142,
+                  "mp": 16
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {
+            "ok": true
+          }
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "reply": {
+            "menu": {
+              "open": true,
+              "commands": [
+                {
+                  "id": "Items"
+                },
+                {
+                  "id": "Magic"
+                }
+              ],
+              "cursor": 1
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "reply": {
+            "menu": {
+              "open": true,
+              "commands": [
+                {
+                  "id": "Items"
+                },
+                {
+                  "id": "Magic"
+                }
+              ],
+              "cursor": 1
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {
+            "ok": true
+          }
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "reply": {
+            "menu": {
+              "state": "Magic",
+              "magic": {
+                "character": "蕾娜",
+                "commands": [
+                  {
+                    "name": "白魔法",
+                    "enabled": true
+                  }
+                ],
+                "commandCursor": 0
+              }
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "reply": {
+            "menu": {
+              "state": "Magic",
+              "magic": {
+                "character": "蕾娜",
+                "commands": [
+                  {
+                    "name": "白魔法",
+                    "enabled": true
+                  }
+                ],
+                "commandCursor": 0
+              }
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {
+            "ok": true
+          }
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "reply": {
+            "menu": {
+              "state": "Magic",
+              "magic": {
+                "character": "蕾娜",
+                "state": "MagicList",
+                "abilities": [
+                  {
+                    "name": "治疗",
+                    "id": 10,
+                    "mp": 4,
+                    "usable": true
+                  }
+                ],
+                "contentIds": [10],
+                "abilityCursor": 0
+              }
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "reply": {
+            "menu": {
+              "state": "Magic",
+              "magic": {
+                "character": "蕾娜",
+                "state": "MagicList",
+                "abilities": [
+                  {
+                    "name": "治疗",
+                    "id": 10,
+                    "mp": 4,
+                    "usable": true
+                  }
+                ],
+                "contentIds": [10],
+                "abilityCursor": 0
+              }
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {
+            "ok": true
+          }
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "reply": {
+            "menu": {
+              "state": "Magic",
+              "magic": {
+                "character": "蕾娜",
+                "state": "MagicList",
+                "targets": [
+                  {
+                    "name": "巴兹"
+                  },
+                  {
+                    "name": "蕾娜"
+                  }
+                ],
+                "targetMode": "One",
+                "targetCursor": 0
+              }
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "reply": {
+            "menu": {
+              "state": "Magic",
+              "magic": {
+                "character": "蕾娜",
+                "state": "MagicList",
+                "targets": [
+                  {
+                    "name": "巴兹"
+                  },
+                  {
+                    "name": "蕾娜"
+                  }
+                ],
+                "targetMode": "One",
+                "targetCursor": 0
+              }
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {
+            "ok": true
+          }
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "reply": {
+            "sample": {
+              "party": [
+                {
+                  "name": "巴兹",
+                  "hp": 50,
+                  "maxHp": 197,
+                  "mp": 10
+                },
+                {
+                  "name": "蕾娜",
+                  "hp": 60,
+                  "maxHp": 142,
+                  "mp": 12
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "leave",
+          "reply": {
+            "ok": true,
+            "presses": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "caster has no such target",
+      "out": [false, "队伍里没有「加拉夫」"],
+      "calls": [
+        {
+          "kind": "send",
+          "op": "pos",
+          "fields": {},
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "fields": {}
+        }
+      ],
+      "transcript": [
+        {
+          "kind": "send",
+          "op": "pos",
+          "reply": {
+            "pos": {
+              "state": "Player"
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "reply": {
+            "sample": {
+              "party": [
+                {
+                  "name": "巴兹",
+                  "hp": 8,
+                  "maxHp": 197,
+                  "mp": 10
+                },
+                {
+                  "name": "蕾娜",
+                  "hp": 60,
+                  "maxHp": 142,
+                  "mp": 16
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "strongest equipment for one member",
+      "out": [true, "最强装备:巴兹:皮帽→铁盔"],
+      "calls": [
+        {
+          "kind": "send",
+          "op": "pos",
+          "fields": {},
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Tab"],
+            "gap": 100
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Enter"],
+            "gap": 120
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Enter"],
+            "gap": 120
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "fields": {}
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Enter"],
+            "gap": 120
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "fields": {
+            "keys": ["Backspace"],
+            "gap": 120
+          },
+          "wait": 30
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "fields": {}
+        },
+        {
+          "kind": "send",
+          "op": "leave",
+          "fields": {},
+          "wait": 30
+        }
+      ],
+      "transcript": [
+        {
+          "kind": "send",
+          "op": "pos",
+          "reply": {
+            "pos": {
+              "state": "Player"
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "sample",
+          "reply": {
+            "sample": {
+              "party": [
+                {
+                  "name": "巴兹",
+                  "hp": 100,
+                  "maxHp": 100,
+                  "mp": 10
+                }
+              ]
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {
+            "ok": true
+          }
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "reply": {
+            "menu": {
+              "open": true,
+              "commands": [
+                {
+                  "id": "Items"
+                },
+                {
+                  "id": "Equipment"
+                }
+              ],
+              "cursor": 1
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "reply": {
+            "menu": {
+              "open": true,
+              "commands": [
+                {
+                  "id": "Items"
+                },
+                {
+                  "id": "Equipment"
+                }
+              ],
+              "cursor": 1
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {
+            "ok": true
+          }
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "reply": {
+            "menu": {
+              "state": "Equipment",
+              "partyCursor": 0
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "reply": {
+            "menu": {
+              "state": "Equipment",
+              "partyCursor": 0
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {
+            "ok": true
+          }
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "reply": {
+            "menu": {
+              "equipment": {
+                "state": "Command",
+                "commandCursor": 1,
+                "slots": [
+                  {
+                    "item": "皮帽"
+                  },
+                  {
+                    "item": "皮衣"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "reply": {
+            "menu": {
+              "equipment": {
+                "state": "Command",
+                "commandCursor": 1,
+                "slots": [
+                  {
+                    "item": "皮帽"
+                  },
+                  {
+                    "item": "皮衣"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {
+            "ok": true
+          }
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "reply": {
+            "menu": {
+              "equipment": {
+                "state": "Command",
+                "commandCursor": 1,
+                "slots": [
+                  {
+                    "item": "铁盔"
+                  },
+                  {
+                    "item": "皮衣"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "keys",
+          "reply": {
+            "ok": true
+          }
+        },
+        {
+          "kind": "query",
+          "q": "menu",
+          "reply": {
+            "menu": {
+              "equipment": {
+                "state": "Member",
+                "slots": [
+                  {
+                    "item": "铁盔"
+                  },
+                  {
+                    "item": "皮衣"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "kind": "send",
+          "op": "leave",
+          "reply": {
+            "ok": true,
+            "presses": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "leave the menu",
+      "out": "已回到地图(按了 3 次返回)",
+      "calls": [
+        {
+          "kind": "send",
+          "op": "leave",
+          "fields": {},
+          "wait": 30
+        }
+      ],
+      "transcript": [
+        {
+          "kind": "send",
+          "op": "leave",
+          "reply": {
+            "ok": true,
+            "presses": 3
+          }
+        }
+      ]
+    },
+    {
+      "name": "leave fails",
+      "out": "没能退出:没有可以退出的菜单(状态 Menu)",
+      "calls": [
+        {
+          "kind": "send",
+          "op": "leave",
+          "fields": {},
+          "wait": 30
+        }
+      ],
+      "transcript": [
+        {
+          "kind": "send",
+          "op": "leave",
+          "reply": {
+            "ok": false,
+            "error": "没有可以退出的菜单",
+            "pos": {
+              "state": "Menu"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
