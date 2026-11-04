@@ -1,0 +1,761 @@
+{
+  "source": "bridge 0.10.0 achievements query at the FF2 title screen, 2026-10-28",
+  "treasure": [
+    {
+      "area": 2,
+      "name": "阿尔提亚镇",
+      "type": 1,
+      "total": 1
+    },
+    {
+      "area": 9,
+      "name": "菲因镇",
+      "type": 1,
+      "total": 11
+    },
+    {
+      "area": 15,
+      "name": "南岛",
+      "type": 1,
+      "total": 20
+    },
+    {
+      "area": 16,
+      "name": "菲因城",
+      "type": 1,
+      "total": 27
+    },
+    {
+      "area": 17,
+      "name": "塞米特瀑布",
+      "type": 1,
+      "total": 11
+    },
+    {
+      "area": 18,
+      "name": "巴弗斯科洞窟",
+      "type": 1,
+      "total": 3
+    },
+    {
+      "area": 19,
+      "name": "雪原洞窟",
+      "type": 1,
+      "total": 13
+    },
+    {
+      "area": 20,
+      "name": "卡修安城",
+      "type": 1,
+      "total": 11
+    },
+    {
+      "area": 21,
+      "name": "迪斯特城",
+      "type": 1,
+      "total": 14
+    },
+    {
+      "area": 22,
+      "name": "迪斯特洞窟",
+      "type": 1,
+      "total": 13
+    },
+    {
+      "area": 23,
+      "name": "斗技场",
+      "type": 1,
+      "total": 4
+    },
+    {
+      "area": 24,
+      "name": "大战舰",
+      "type": 1,
+      "total": 10
+    },
+    {
+      "area": 25,
+      "name": "密西迪亚洞窟",
+      "type": 1,
+      "total": 19
+    },
+    {
+      "area": 26,
+      "name": "利维亚桑",
+      "type": 1,
+      "total": 5
+    },
+    {
+      "area": 27,
+      "name": "密西迪亚塔",
+      "type": 1,
+      "total": 24
+    },
+    {
+      "area": 28,
+      "name": "龙卷",
+      "type": 1,
+      "total": 7
+    },
+    {
+      "area": 29,
+      "name": "帕拉美奇亚城",
+      "type": 1,
+      "total": 17
+    },
+    {
+      "area": 30,
+      "name": "翡翠通道",
+      "type": 1,
+      "total": 14
+    },
+    {
+      "area": 31,
+      "name": "万魔殿",
+      "type": 1,
+      "total": 10
+    }
+  ],
+  "bestiary": [
+    {
+      "number": 1,
+      "name": "食腿荆棘",
+      "areas": [0, 9, 18, 20]
+    },
+    {
+      "number": 2,
+      "name": "吸血荆棘",
+      "areas": [0, 18, 20]
+    },
+    {
+      "number": 3,
+      "name": "大黄蜂",
+      "areas": [0, 9, 18, 20]
+    },
+    {
+      "number": 4,
+      "name": "女王蜂",
+      "areas": [0, 18, 20]
+    },
+    {
+      "number": 5,
+      "name": "雪人",
+      "areas": [0, 19]
+    },
+    {
+      "number": 6,
+      "name": "雪怪",
+      "areas": [0, 17]
+    },
+    {
+      "number": 7,
+      "name": "冰锥尖兵",
+      "areas": [0, 19]
+    },
+    {
+      "number": 8,
+      "name": "钟乳石尖兵",
+      "areas": [0, 22]
+    },
+    {
+      "number": 9,
+      "name": "石笋尖兵",
+      "areas": [16, 23]
+    },
+    {
+      "number": 10,
+      "name": "骇鸟",
+      "areas": [0, 9, 17]
+    },
+    {
+      "number": 11,
+      "name": "恐鹤",
+      "areas": [0]
+    },
+    {
+      "number": 12,
+      "name": "精金龟",
+      "areas": [0, 16, 19, 20, 22]
+    },
+    {
+      "number": 13,
+      "name": "陆龟",
+      "areas": [0, 17, 20, 22]
+    },
+    {
+      "number": 14,
+      "name": "食人魔",
+      "areas": [0, 20, 22]
+    },
+    {
+      "number": 15,
+      "name": "食人魔法师",
+      "areas": [0, 16, 20, 22]
+    },
+    {
+      "number": 16,
+      "name": "食人魔盗贼",
+      "areas": [16, 22]
+    },
+    {
+      "number": 17,
+      "name": "双头鬼",
+      "areas": [0, 15, 16, 19, 22, 23]
+    },
+    {
+      "number": 18,
+      "name": "僵尸双头鬼",
+      "areas": [15, 16, 23]
+    },
+    {
+      "number": 19,
+      "name": "变异鼠",
+      "areas": [0, 15, 20, 24]
+    },
+    {
+      "number": 20,
+      "name": "强袭鼠",
+      "areas": [15, 16, 24]
+    },
+    {
+      "number": 21,
+      "name": "死首",
+      "areas": [0, 18, 19, 20]
+    },
+    {
+      "number": 22,
+      "name": "髑髅",
+      "areas": [29]
+    },
+    {
+      "number": 23,
+      "name": "僵尸",
+      "areas": [0, 17, 18, 19, 20]
+    },
+    {
+      "number": 24,
+      "name": "尸鬼",
+      "areas": [0, 15, 19, 20, 22, 24]
+    },
+    {
+      "number": 25,
+      "name": "妖鬼",
+      "areas": [0, 15, 16, 20, 22, 24, 25, 27]
+    },
+    {
+      "number": 26,
+      "name": "亡魂",
+      "areas": [0, 16, 22, 23, 25, 27]
+    },
+    {
+      "number": 27,
+      "name": "暗影",
+      "areas": [0, 15, 19, 20, 22, 24]
+    },
+    {
+      "number": 28,
+      "name": "死灵",
+      "areas": [0, 15, 16, 20, 22, 24, 25, 27]
+    },
+    {
+      "number": 29,
+      "name": "幽鬼",
+      "areas": [0, 16, 23, 25, 27]
+    },
+    {
+      "number": 30,
+      "name": "游魂",
+      "areas": [25, 27]
+    },
+    {
+      "number": 31,
+      "name": "蚁狮",
+      "areas": [0]
+    },
+    {
+      "number": 32,
+      "name": "锯嘴蚁狮",
+      "areas": [0, 30]
+    },
+    {
+      "number": 33,
+      "name": "高特斯",
+      "areas": [16, 27, 28, 29]
+    },
+    {
+      "number": 34,
+      "name": "兽魔",
+      "areas": [30]
+    },
+    {
+      "number": 35,
+      "name": "奇美拉",
+      "areas": [0, 16, 22, 23, 27]
+    },
+    {
+      "number": 36,
+      "name": "强化奇美拉",
+      "areas": [16, 25]
+    },
+    {
+      "number": 37,
+      "name": "兽化奇美拉",
+      "areas": [30]
+    },
+    {
+      "number": 38,
+      "name": "死亡之花",
+      "areas": [0, 16, 23, 25, 27, 29]
+    },
+    {
+      "number": 39,
+      "name": "恶魔之花",
+      "areas": [27, 28, 29, 30]
+    },
+    {
+      "number": 40,
+      "name": "食人鱼",
+      "areas": [0]
+    },
+    {
+      "number": 41,
+      "name": "电气鱼",
+      "areas": [0, 26]
+    },
+    {
+      "number": 42,
+      "name": "冲鹰兽",
+      "areas": [0, 24]
+    },
+    {
+      "number": 43,
+      "name": "蛇鸡兽",
+      "areas": [0, 25, 28, 29]
+    },
+    {
+      "number": 44,
+      "name": "海贼",
+      "areas": [0]
+    },
+    {
+      "number": 45,
+      "name": "海盗",
+      "areas": [0]
+    },
+    {
+      "number": 46,
+      "name": "伯根",
+      "areas": [19]
+    },
+    {
+      "number": 47,
+      "name": "僵尸伯根",
+      "areas": [30]
+    },
+    {
+      "number": 48,
+      "name": "大角犀牛",
+      "areas": [0, 15, 27, 28]
+    },
+    {
+      "number": 49,
+      "name": "利角犀牛",
+      "areas": [0, 15, 25]
+    },
+    {
+      "number": 50,
+      "name": "毒蛙",
+      "areas": [0, 15]
+    },
+    {
+      "number": 51,
+      "name": "巨蛙",
+      "areas": [0, 22, 25]
+    },
+    {
+      "number": 52,
+      "name": "海蛇",
+      "areas": [0]
+    },
+    {
+      "number": 53,
+      "name": "海龙",
+      "areas": [0, 26]
+    },
+    {
+      "number": 54,
+      "name": "陆魟",
+      "areas": [0]
+    },
+    {
+      "number": 55,
+      "name": "蝠魟",
+      "areas": [0, 26]
+    },
+    {
+      "number": 56,
+      "name": "飞魟",
+      "areas": [0, 25, 27, 29]
+    },
+    {
+      "number": 57,
+      "name": "小脑",
+      "areas": [15, 16, 25]
+    },
+    {
+      "number": 58,
+      "name": "大脑",
+      "areas": [0, 16, 25]
+    },
+    {
+      "number": 59,
+      "name": "寄生魔",
+      "areas": [0, 16, 23, 25]
+    },
+    {
+      "number": 60,
+      "name": "大寄生魔",
+      "areas": [0, 30]
+    },
+    {
+      "number": 61,
+      "name": "人狼",
+      "areas": [27]
+    },
+    {
+      "number": 62,
+      "name": "鬼狼",
+      "areas": [30]
+    },
+    {
+      "number": 63,
+      "name": "小魔精",
+      "areas": [0, 27]
+    },
+    {
+      "number": 64,
+      "name": "小魔鬼",
+      "areas": [0, 30]
+    },
+    {
+      "number": 65,
+      "name": "魔界花",
+      "areas": [0, 25]
+    },
+    {
+      "number": 66,
+      "name": "地魔界花",
+      "areas": [0, 27, 28]
+    },
+    {
+      "number": 67,
+      "name": "大魔界花",
+      "areas": [0, 30]
+    },
+    {
+      "number": 68,
+      "name": "石化蜥蜴",
+      "areas": [27]
+    },
+    {
+      "number": 69,
+      "name": "火焰蜥蜴",
+      "areas": [0, 30]
+    },
+    {
+      "number": 70,
+      "name": "寒冰蜥蜴",
+      "areas": [27, 30]
+    },
+    {
+      "number": 71,
+      "name": "多眼妖",
+      "areas": [28, 29]
+    },
+    {
+      "number": 72,
+      "name": "百目妖",
+      "areas": [0, 30]
+    },
+    {
+      "number": 73,
+      "name": "大地巨虫",
+      "areas": [26, 30]
+    },
+    {
+      "number": 74,
+      "name": "沙地巨虫",
+      "areas": [0]
+    },
+    {
+      "number": 75,
+      "name": "深渊巨虫",
+      "areas": [0, 30]
+    },
+    {
+      "number": 76,
+      "name": "绿色粘液怪",
+      "areas": [17]
+    },
+    {
+      "number": 77,
+      "name": "黄色胶质怪",
+      "areas": [15, 25]
+    },
+    {
+      "number": 78,
+      "name": "红色果酱怪",
+      "areas": [0, 15, 25, 27]
+    },
+    {
+      "number": 79,
+      "name": "黑色软糊怪",
+      "areas": [0, 25, 27]
+    },
+    {
+      "number": 80,
+      "name": "红之魂",
+      "areas": [20, 25, 26, 27]
+    },
+    {
+      "number": 81,
+      "name": "绿之魂",
+      "areas": [16, 22]
+    },
+    {
+      "number": 82,
+      "name": "黄之魂",
+      "areas": [22, 25]
+    },
+    {
+      "number": 83,
+      "name": "吸血少女",
+      "areas": [0, 27, 28, 29]
+    },
+    {
+      "number": 84,
+      "name": "吸血女郎",
+      "areas": [28, 30]
+    },
+    {
+      "number": 85,
+      "name": "皇帝",
+      "areas": [28]
+    },
+    {
+      "number": 86,
+      "name": "皇帝之影",
+      "areas": [0, 29]
+    },
+    {
+      "number": 87,
+      "name": "螳螂杀手",
+      "areas": [0, 16, 27, 28, 29, 30]
+    },
+    {
+      "number": 88,
+      "name": "螳螂国王",
+      "areas": [0]
+    },
+    {
+      "number": 89,
+      "name": "螳螂恶魔",
+      "areas": [30]
+    },
+    {
+      "number": 90,
+      "name": "亲卫骑士",
+      "areas": [28]
+    },
+    {
+      "number": 91,
+      "name": "黑骑士",
+      "areas": [29]
+    },
+    {
+      "number": 92,
+      "name": "死亡骑士",
+      "areas": [30]
+    },
+    {
+      "number": 93,
+      "name": "硬木巨像",
+      "areas": [28, 29]
+    },
+    {
+      "number": 94,
+      "name": "岩石巨像",
+      "areas": [29]
+    },
+    {
+      "number": 95,
+      "name": "秘银巨像",
+      "areas": [30]
+    },
+    {
+      "number": 96,
+      "name": "哥布林",
+      "areas": [0, 9, 17, 19]
+    },
+    {
+      "number": 97,
+      "name": "哥布林守卫",
+      "areas": [0, 17, 18, 19, 20]
+    },
+    {
+      "number": 98,
+      "name": "哥布林王子",
+      "areas": [0, 20]
+    },
+    {
+      "number": 99,
+      "name": "气球怪",
+      "areas": [0, 17, 18, 19, 20, 24]
+    },
+    {
+      "number": 100,
+      "name": "榴弹怪",
+      "areas": [19]
+    },
+    {
+      "number": 101,
+      "name": "地雷怪",
+      "areas": [0, 20, 24]
+    },
+    {
+      "number": 102,
+      "name": "爆弹怪",
+      "areas": [0, 25, 27, 28, 30]
+    },
+    {
+      "number": 103,
+      "name": "士兵",
+      "areas": [0, 17, 18, 20, 24]
+    },
+    {
+      "number": 104,
+      "name": "中士",
+      "areas": [0, 16, 17, 20, 23, 24]
+    },
+    {
+      "number": 105,
+      "name": "上校",
+      "areas": [0, 9, 16, 23, 24, 28, 29]
+    },
+    {
+      "number": 106,
+      "name": "将军",
+      "areas": [28, 29]
+    },
+    {
+      "number": 107,
+      "name": "魔术师",
+      "areas": [0, 16, 23, 24]
+    },
+    {
+      "number": 108,
+      "name": "魔法师",
+      "areas": [0, 16, 23]
+    },
+    {
+      "number": 109,
+      "name": "魔导师",
+      "areas": [16, 23, 28, 29]
+    },
+    {
+      "number": 110,
+      "name": "变异豹",
+      "areas": [0, 24]
+    },
+    {
+      "number": 111,
+      "name": "长须豹",
+      "areas": [29, 30]
+    },
+    {
+      "number": 112,
+      "name": "拉米亚",
+      "areas": [28, 29, 30]
+    },
+    {
+      "number": 113,
+      "name": "拉米亚女王",
+      "areas": [2, 29, 30]
+    },
+    {
+      "number": 114,
+      "name": "山岭巨人",
+      "areas": [0, 22, 24, 27, 28]
+    },
+    {
+      "number": 115,
+      "name": "烈焰巨人",
+      "areas": [27, 30]
+    },
+    {
+      "number": 116,
+      "name": "寒冰巨人",
+      "areas": [27, 30]
+    },
+    {
+      "number": 117,
+      "name": "闪雷巨人",
+      "areas": [27, 30]
+    },
+    {
+      "number": 118,
+      "name": "贝希摩斯",
+      "areas": [0, 23]
+    },
+    {
+      "number": 119,
+      "name": "贝希摩斯王",
+      "areas": [30]
+    },
+    {
+      "number": 120,
+      "name": "白龙",
+      "areas": [27, 30]
+    },
+    {
+      "number": 121,
+      "name": "绿龙",
+      "areas": [28, 30]
+    },
+    {
+      "number": 122,
+      "name": "蓝龙",
+      "areas": [30]
+    },
+    {
+      "number": 123,
+      "name": "红龙",
+      "areas": [30]
+    },
+    {
+      "number": 124,
+      "name": "铁巨人",
+      "areas": [30]
+    },
+    {
+      "number": 125,
+      "name": "提亚马特",
+      "areas": [30]
+    },
+    {
+      "number": 126,
+      "name": "苍蝇王",
+      "areas": [30]
+    },
+    {
+      "number": 127,
+      "name": "阿斯塔罗特",
+      "areas": [30]
+    },
+    {
+      "number": 128,
+      "name": "皇帝",
+      "areas": [30]
+    }
+  ]
+}

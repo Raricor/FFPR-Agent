@@ -1,0 +1,58 @@
+{
+  "games": [
+    {
+      "key": "ff1",
+      "app_id": 1173770,
+      "title": "FINAL FANTASY",
+      "achievement_count": 24,
+      "label": "FF1"
+    },
+    {
+      "key": "ff2",
+      "app_id": 1173780,
+      "title": "FINAL FANTASY II",
+      "achievement_count": 28,
+      "label": "FF2"
+    },
+    {
+      "key": "ff3",
+      "app_id": 1173790,
+      "title": "FINAL FANTASY III",
+      "achievement_count": 31,
+      "label": "FF3"
+    },
+    {
+      "key": "ff4",
+      "app_id": 1173800,
+      "title": "FINAL FANTASY IV",
+      "achievement_count": 30,
+      "label": "FF4"
+    },
+    {
+      "key": "ff5",
+      "app_id": 1173810,
+      "title": "FINAL FANTASY V",
+      "achievement_count": 39,
+      "label": "FF5"
+    },
+    {
+      "key": "ff6",
+      "app_id": 1173820,
+      "title": "FINAL FANTASY VI",
+      "achievement_count": 37,
+      "label": "FF6"
+    }
+  ],
+  "total_achievements": 189,
+  "by_key": {
+    "ff1": "ff1",
+    "FF5": "ff5",
+    "fF6": "ff6"
+  },
+  "by_app_id": {
+    "1173770": "ff1",
+    "1173820": "ff6"
+  },
+  "unknown_key": "未知的作品 'ff7',可选:ff1, ff2, ff3, ff4, ff5, ff6",
+  "unknown_app_id": "未知的 App ID 42"
+}

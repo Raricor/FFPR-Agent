@@ -1,0 +1,1558 @@
+{
+  "source": "bridge 0.10.0 achievements query at the FF3 title screen, 2026-10-28",
+  "treasure": [
+    {
+      "area": 2,
+      "name": "祭坛洞窟",
+      "type": 1,
+      "total": 14
+    },
+    {
+      "area": 3,
+      "name": "乌尔村",
+      "type": 1,
+      "total": 8
+    },
+    {
+      "area": 3,
+      "name": "乌尔村",
+      "type": 2,
+      "total": 6
+    },
+    {
+      "area": 4,
+      "name": "卡兹斯村",
+      "type": 2,
+      "total": 5
+    },
+    {
+      "area": 5,
+      "name": "萨斯恩城",
+      "type": 1,
+      "total": 13
+    },
+    {
+      "area": 5,
+      "name": "萨斯恩城",
+      "type": 2,
+      "total": 1
+    },
+    {
+      "area": 6,
+      "name": "封印洞窟",
+      "type": 1,
+      "total": 5
+    },
+    {
+      "area": 7,
+      "name": "秘银矿山",
+      "type": 1,
+      "total": 2
+    },
+    {
+      "area": 8,
+      "name": "迦南镇",
+      "type": 1,
+      "total": 12
+    },
+    {
+      "area": 8,
+      "name": "迦南镇",
+      "type": 2,
+      "total": 3
+    },
+    {
+      "area": 9,
+      "name": "巨龙峰",
+      "type": 1,
+      "total": 3
+    },
+    {
+      "area": 10,
+      "name": "巨龙巢穴",
+      "type": 2,
+      "total": 1
+    },
+    {
+      "area": 12,
+      "name": "托扎斯村",
+      "type": 1,
+      "total": 2
+    },
+    {
+      "area": 12,
+      "name": "托扎斯村",
+      "type": 2,
+      "total": 4
+    },
+    {
+      "area": 13,
+      "name": "维京人据点",
+      "type": 1,
+      "total": 6
+    },
+    {
+      "area": 14,
+      "name": "涅普特神殿",
+      "type": 1,
+      "total": 3
+    },
+    {
+      "area": 14,
+      "name": "涅普特神殿",
+      "type": 2,
+      "total": 2
+    },
+    {
+      "area": 15,
+      "name": "托库尔村",
+      "type": 1,
+      "total": 2
+    },
+    {
+      "area": 15,
+      "name": "托库尔村",
+      "type": 2,
+      "total": 5
+    },
+    {
+      "area": 16,
+      "name": "古代人之村",
+      "type": 2,
+      "total": 1
+    },
+    {
+      "area": 18,
+      "name": "阿加斯城",
+      "type": 1,
+      "total": 21
+    },
+    {
+      "area": 18,
+      "name": "阿加斯城",
+      "type": 2,
+      "total": 2
+    },
+    {
+      "area": 19,
+      "name": "古尔冈山谷",
+      "type": 1,
+      "total": 3
+    },
+    {
+      "area": 19,
+      "name": "古尔冈山谷",
+      "type": 2,
+      "total": 1
+    },
+    {
+      "area": 20,
+      "name": "欧文塔",
+      "type": 1,
+      "total": 9
+    },
+    {
+      "area": 21,
+      "name": "基萨尔村",
+      "type": 1,
+      "total": 1
+    },
+    {
+      "area": 21,
+      "name": "基萨尔村",
+      "type": 2,
+      "total": 5
+    },
+    {
+      "area": 22,
+      "name": "矮人洞窟",
+      "type": 1,
+      "total": 16
+    },
+    {
+      "area": 22,
+      "name": "矮人洞窟",
+      "type": 2,
+      "total": 1
+    },
+    {
+      "area": 23,
+      "name": "地底湖",
+      "type": 1,
+      "total": 7
+    },
+    {
+      "area": 23,
+      "name": "地底湖",
+      "type": 2,
+      "total": 1
+    },
+    {
+      "area": 24,
+      "name": "炎之洞窟",
+      "type": 1,
+      "total": 7
+    },
+    {
+      "area": 25,
+      "name": "海因城",
+      "type": 1,
+      "total": 11
+    },
+    {
+      "area": 25,
+      "name": "海因城",
+      "type": 2,
+      "total": 1
+    },
+    {
+      "area": 26,
+      "name": "生命之森",
+      "type": 2,
+      "total": 1
+    },
+    {
+      "area": 27,
+      "name": "遇难船",
+      "type": 1,
+      "total": 2
+    },
+    {
+      "area": 30,
+      "name": "阿穆尔镇",
+      "type": 2,
+      "total": 7
+    },
+    {
+      "area": 31,
+      "name": "下水道",
+      "type": 1,
+      "total": 5
+    },
+    {
+      "area": 31,
+      "name": "下水道",
+      "type": 2,
+      "total": 1
+    },
+    {
+      "area": 32,
+      "name": "金德尔庄园",
+      "type": 1,
+      "total": 12
+    },
+    {
+      "area": 33,
+      "name": "达斯特村",
+      "type": 2,
+      "total": 2
+    },
+    {
+      "area": 34,
+      "name": "雷普利特村",
+      "type": 1,
+      "total": 1
+    },
+    {
+      "area": 34,
+      "name": "雷普利特村",
+      "type": 2,
+      "total": 4
+    },
+    {
+      "area": 35,
+      "name": "萨罗尼亚城",
+      "type": 1,
+      "total": 20
+    },
+    {
+      "area": 36,
+      "name": "萨罗尼亚 西南",
+      "type": 1,
+      "total": 11
+    },
+    {
+      "area": 36,
+      "name": "萨罗尼亚 西南",
+      "type": 2,
+      "total": 2
+    },
+    {
+      "area": 38,
+      "name": "萨罗尼亚 东北",
+      "type": 2,
+      "total": 1
+    },
+    {
+      "area": 40,
+      "name": "多加庄园",
+      "type": 2,
+      "total": 1
+    },
+    {
+      "area": 43,
+      "name": "海底洞窟",
+      "type": 1,
+      "total": 19
+    },
+    {
+      "area": 44,
+      "name": "萨罗尼亚地下迷宫",
+      "type": 1,
+      "total": 13
+    },
+    {
+      "area": 44,
+      "name": "萨罗尼亚地下迷宫",
+      "type": 2,
+      "total": 1
+    },
+    {
+      "area": 45,
+      "name": "时之神殿",
+      "type": 1,
+      "total": 10
+    },
+    {
+      "area": 45,
+      "name": "时之神殿",
+      "type": 2,
+      "total": 1
+    },
+    {
+      "area": 46,
+      "name": "乌内之祠",
+      "type": 2,
+      "total": 1
+    },
+    {
+      "area": 47,
+      "name": "古代遗迹",
+      "type": 1,
+      "total": 5
+    },
+    {
+      "area": 49,
+      "name": "法尔加巴德村",
+      "type": 2,
+      "total": 5
+    },
+    {
+      "area": 50,
+      "name": "法尔加巴德洞窟",
+      "type": 1,
+      "total": 4
+    },
+    {
+      "area": 51,
+      "name": "暗黑洞窟",
+      "type": 1,
+      "total": 9
+    },
+    {
+      "area": 51,
+      "name": "暗黑洞窟",
+      "type": 2,
+      "total": 2
+    },
+    {
+      "area": 52,
+      "name": "多加洞窟",
+      "type": 1,
+      "total": 6
+    },
+    {
+      "area": 52,
+      "name": "多加洞窟",
+      "type": 2,
+      "total": 2
+    },
+    {
+      "area": 53,
+      "name": "多尔湖",
+      "type": 1,
+      "total": 19
+    },
+    {
+      "area": 53,
+      "name": "多尔湖",
+      "type": 2,
+      "total": 1
+    },
+    {
+      "area": 54,
+      "name": "巴哈姆特洞窟",
+      "type": 1,
+      "total": 13
+    },
+    {
+      "area": 54,
+      "name": "巴哈姆特洞窟",
+      "type": 2,
+      "total": 1
+    },
+    {
+      "area": 55,
+      "name": "古代人迷宫",
+      "type": 1,
+      "total": 15
+    },
+    {
+      "area": 56,
+      "name": "禁地优雷卡",
+      "type": 1,
+      "total": 19
+    },
+    {
+      "area": 56,
+      "name": "禁地优雷卡",
+      "type": 2,
+      "total": 5
+    },
+    {
+      "area": 57,
+      "name": "水晶塔",
+      "type": 1,
+      "total": 23
+    },
+    {
+      "area": 58,
+      "name": "暗之世界",
+      "type": 1,
+      "total": 4
+    },
+    {
+      "area": 61,
+      "name": "龙塔",
+      "type": 1,
+      "total": 12
+    }
+  ],
+  "bestiary": [
+    {
+      "number": 1,
+      "name": "哥布林",
+      "areas": [0, 2, 3]
+    },
+    {
+      "number": 2,
+      "name": "红宝石兽",
+      "areas": [2]
+    },
+    {
+      "number": 3,
+      "name": "瞳牙",
+      "areas": [2]
+    },
+    {
+      "number": 4,
+      "name": "蓝色幽光",
+      "areas": [2]
+    },
+    {
+      "number": 5,
+      "name": "杀人蜂",
+      "areas": [0]
+    },
+    {
+      "number": 6,
+      "name": "人狼",
+      "areas": [0]
+    },
+    {
+      "number": 7,
+      "name": "狂战士",
+      "areas": [0]
+    },
+    {
+      "number": 8,
+      "name": "红色幽光",
+      "areas": [5]
+    },
+    {
+      "number": 9,
+      "name": "暗瞳",
+      "areas": [5]
+    },
+    {
+      "number": 10,
+      "name": "僵尸",
+      "areas": [5]
+    },
+    {
+      "number": 11,
+      "name": "木乃伊",
+      "areas": [6, 7]
+    },
+    {
+      "number": 12,
+      "name": "骨骼战士",
+      "areas": [6, 7]
+    },
+    {
+      "number": 13,
+      "name": "诅咒的铜币",
+      "areas": [6, 7]
+    },
+    {
+      "number": 14,
+      "name": "夜灵幼体",
+      "areas": [6, 7]
+    },
+    {
+      "number": 15,
+      "name": "暗影",
+      "areas": [6, 7]
+    },
+    {
+      "number": 16,
+      "name": "亡魂",
+      "areas": [6]
+    },
+    {
+      "number": 17,
+      "name": "烈炎飞魟",
+      "areas": [57]
+    },
+    {
+      "number": 18,
+      "name": "俯冲鹰",
+      "areas": [9]
+    },
+    {
+      "number": 19,
+      "name": "铁锈鸟",
+      "areas": [9]
+    },
+    {
+      "number": 20,
+      "name": "鲁克鸟",
+      "areas": [9]
+    },
+    {
+      "number": 21,
+      "name": "石化蜥蜴",
+      "areas": [0]
+    },
+    {
+      "number": 22,
+      "name": "地精熊",
+      "areas": [0]
+    },
+    {
+      "number": 23,
+      "name": "曼德拉",
+      "areas": [0]
+    },
+    {
+      "number": 24,
+      "name": "小矮妖",
+      "areas": [60]
+    },
+    {
+      "number": 25,
+      "name": "暗黑鬼脸",
+      "areas": [60]
+    },
+    {
+      "number": 26,
+      "name": "小鬼",
+      "areas": [14]
+    },
+    {
+      "number": 27,
+      "name": "毒蝠",
+      "areas": [14]
+    },
+    {
+      "number": 28,
+      "name": "微角兽",
+      "areas": [14]
+    },
+    {
+      "number": 29,
+      "name": "变异鼠",
+      "areas": [14]
+    },
+    {
+      "number": 30,
+      "name": "鲜血巨虫",
+      "areas": [14]
+    },
+    {
+      "number": 31,
+      "name": "食人鱼",
+      "areas": [0]
+    },
+    {
+      "number": 32,
+      "name": "寄居魔",
+      "areas": [0]
+    },
+    {
+      "number": 33,
+      "name": "海元素",
+      "areas": [0]
+    },
+    {
+      "number": 34,
+      "name": "唐吉水马",
+      "areas": [0]
+    },
+    {
+      "number": 35,
+      "name": "鱼人",
+      "areas": [0]
+    },
+    {
+      "number": 36,
+      "name": "拟似恶魔",
+      "areas": [0]
+    },
+    {
+      "number": 37,
+      "name": "狮鹫",
+      "areas": [0, 5]
+    },
+    {
+      "number": 38,
+      "name": "妖狼",
+      "areas": [0]
+    },
+    {
+      "number": 39,
+      "name": "大黄蜂",
+      "areas": [0]
+    },
+    {
+      "number": 40,
+      "name": "哥布林打手",
+      "areas": [0]
+    },
+    {
+      "number": 41,
+      "name": "飞虫战士",
+      "areas": [0]
+    },
+    {
+      "number": 42,
+      "name": "蜥蜴人",
+      "areas": [0]
+    },
+    {
+      "number": 43,
+      "name": "戈尔贡",
+      "areas": [0]
+    },
+    {
+      "number": 44,
+      "name": "红帽哥布林",
+      "areas": [0]
+    },
+    {
+      "number": 45,
+      "name": "狗脊蕨",
+      "areas": [0]
+    },
+    {
+      "number": 46,
+      "name": "粘液怪",
+      "areas": [0]
+    },
+    {
+      "number": 47,
+      "name": "狼蛛",
+      "areas": [0]
+    },
+    {
+      "number": 48,
+      "name": "卡夫杰尔",
+      "areas": [0]
+    },
+    {
+      "number": 49,
+      "name": "绿角兽",
+      "areas": [20]
+    },
+    {
+      "number": 50,
+      "name": "小红妖",
+      "areas": [20]
+    },
+    {
+      "number": 51,
+      "name": "血蝠",
+      "areas": [20]
+    },
+    {
+      "number": 52,
+      "name": "小鬼法师",
+      "areas": [20]
+    },
+    {
+      "number": 53,
+      "name": "愤怒鸟妖",
+      "areas": [20]
+    },
+    {
+      "number": 54,
+      "name": "水精鬼脸",
+      "areas": [20]
+    },
+    {
+      "number": 55,
+      "name": "爆弹怪",
+      "areas": [23]
+    },
+    {
+      "number": 56,
+      "name": "曼提克",
+      "areas": [23]
+    },
+    {
+      "number": 57,
+      "name": "钟乳石尖兵",
+      "areas": [23]
+    },
+    {
+      "number": 58,
+      "name": "海魔鱼",
+      "areas": [23]
+    },
+    {
+      "number": 59,
+      "name": "半鱼人",
+      "areas": [23]
+    },
+    {
+      "number": 60,
+      "name": "毁灭波",
+      "areas": [23]
+    },
+    {
+      "number": 61,
+      "name": "气球怪",
+      "areas": [24]
+    },
+    {
+      "number": 62,
+      "name": "蝎尾狮",
+      "areas": [24]
+    },
+    {
+      "number": 63,
+      "name": "犬狼兽",
+      "areas": [24]
+    },
+    {
+      "number": 64,
+      "name": "精金龟",
+      "areas": [24]
+    },
+    {
+      "number": 65,
+      "name": "红色果酱怪",
+      "areas": [24]
+    },
+    {
+      "number": 66,
+      "name": "法老王",
+      "areas": [25]
+    },
+    {
+      "number": 67,
+      "name": "夜灵成体",
+      "areas": [25]
+    },
+    {
+      "number": 68,
+      "name": "拉米亚",
+      "areas": [25]
+    },
+    {
+      "number": 69,
+      "name": "恶魔",
+      "areas": [25]
+    },
+    {
+      "number": 70,
+      "name": "无头骑士",
+      "areas": [25]
+    },
+    {
+      "number": 71,
+      "name": "导向鱼",
+      "areas": [0]
+    },
+    {
+      "number": 72,
+      "name": "美人鱼",
+      "areas": [0]
+    },
+    {
+      "number": 73,
+      "name": "海马",
+      "areas": [0]
+    },
+    {
+      "number": 74,
+      "name": "海蟒",
+      "areas": [40, 43]
+    },
+    {
+      "number": 75,
+      "name": "石化蛇蜥",
+      "areas": [29]
+    },
+    {
+      "number": 76,
+      "name": "毒蛙",
+      "areas": [29]
+    },
+    {
+      "number": 77,
+      "name": "双头兽",
+      "areas": [29]
+    },
+    {
+      "number": 78,
+      "name": "结绳妖",
+      "areas": [9]
+    },
+    {
+      "number": 79,
+      "name": "阿加利亚雷普特",
+      "areas": [29]
+    },
+    {
+      "number": 80,
+      "name": "黑足蛛",
+      "areas": [29]
+    },
+    {
+      "number": 81,
+      "name": "巨蛙",
+      "areas": [0]
+    },
+    {
+      "number": 82,
+      "name": "双头狮虎兽",
+      "areas": [0]
+    },
+    {
+      "number": 83,
+      "name": "套索妖",
+      "areas": [0, 61]
+    },
+    {
+      "number": 84,
+      "name": "黑色软糊怪",
+      "areas": [57]
+    },
+    {
+      "number": 85,
+      "name": "地狱跳龙",
+      "areas": [40]
+    },
+    {
+      "number": 86,
+      "name": "火山巨龙",
+      "areas": [31]
+    },
+    {
+      "number": 87,
+      "name": "龙狼兽",
+      "areas": [0]
+    },
+    {
+      "number": 88,
+      "name": "魔术师",
+      "areas": [0]
+    },
+    {
+      "number": 89,
+      "name": "彷徨的金币",
+      "areas": [40]
+    },
+    {
+      "number": 90,
+      "name": "黄金鹰",
+      "areas": [43, 47]
+    },
+    {
+      "number": 91,
+      "name": "金战士",
+      "areas": [45]
+    },
+    {
+      "number": 92,
+      "name": "黄金熊",
+      "areas": [57]
+    },
+    {
+      "number": 93,
+      "name": "金骑士",
+      "areas": [0]
+    },
+    {
+      "number": 94,
+      "name": "梦魇之马",
+      "areas": [55]
+    },
+    {
+      "number": 95,
+      "name": "地狱魔跳龙",
+      "areas": [40]
+    },
+    {
+      "number": 96,
+      "name": "针猿",
+      "areas": [0]
+    },
+    {
+      "number": 97,
+      "name": "卡托布莱帕斯",
+      "areas": [0]
+    },
+    {
+      "number": 98,
+      "name": "魔法师",
+      "areas": [0]
+    },
+    {
+      "number": 99,
+      "name": "沙地巨虫",
+      "areas": [29]
+    },
+    {
+      "number": 100,
+      "name": "寒冰飞魟",
+      "areas": [43, 47]
+    },
+    {
+      "number": 101,
+      "name": "西牟鸟",
+      "areas": [43, 50, 51]
+    },
+    {
+      "number": 102,
+      "name": "掠夺鸟妖",
+      "areas": [0]
+    },
+    {
+      "number": 103,
+      "name": "石像鬼",
+      "areas": [0, 61]
+    },
+    {
+      "number": 104,
+      "name": "奇美拉",
+      "areas": [40]
+    },
+    {
+      "number": 105,
+      "name": "恶魔之马",
+      "areas": [31]
+    },
+    {
+      "number": 106,
+      "name": "岩像鬼",
+      "areas": [32, 36]
+    },
+    {
+      "number": 107,
+      "name": "牛头人",
+      "areas": [43, 50, 51]
+    },
+    {
+      "number": 108,
+      "name": "黑骑士",
+      "areas": [55]
+    },
+    {
+      "number": 109,
+      "name": "飞虫法师",
+      "areas": [29]
+    },
+    {
+      "number": 110,
+      "name": "诺格尔水马",
+      "areas": [43]
+    },
+    {
+      "number": 111,
+      "name": "领航鱼",
+      "areas": [43]
+    },
+    {
+      "number": 112,
+      "name": "海龙",
+      "areas": [29]
+    },
+    {
+      "number": 113,
+      "name": "暗海马",
+      "areas": [43]
+    },
+    {
+      "number": 114,
+      "name": "漩涡珊瑚",
+      "areas": [45]
+    },
+    {
+      "number": 115,
+      "name": "深海狮鹫",
+      "areas": [29]
+    },
+    {
+      "number": 116,
+      "name": "海魔女",
+      "areas": [44]
+    },
+    {
+      "number": 117,
+      "name": "杀人寄居魔",
+      "areas": [44, 53]
+    },
+    {
+      "number": 118,
+      "name": "欧罗海",
+      "areas": [45]
+    },
+    {
+      "number": 119,
+      "name": "水鬼",
+      "areas": [0]
+    },
+    {
+      "number": 120,
+      "name": "艾吉尔",
+      "areas": [45]
+    },
+    {
+      "number": 121,
+      "name": "独眼巨人",
+      "areas": [44]
+    },
+    {
+      "number": 122,
+      "name": "巨魔首领",
+      "areas": [43]
+    },
+    {
+      "number": 123,
+      "name": "法罕",
+      "areas": [44]
+    },
+    {
+      "number": 124,
+      "name": "肯科斯",
+      "areas": [45]
+    },
+    {
+      "number": 125,
+      "name": "巴洛魔",
+      "areas": [43]
+    },
+    {
+      "number": 126,
+      "name": "恐惧鸟妖",
+      "areas": [45]
+    },
+    {
+      "number": 127,
+      "name": "魔化奇美拉",
+      "areas": [0]
+    },
+    {
+      "number": 128,
+      "name": "蜥蜴人之王",
+      "areas": [0]
+    },
+    {
+      "number": 129,
+      "name": "翼手龙",
+      "areas": [44]
+    },
+    {
+      "number": 130,
+      "name": "双足飞龙",
+      "areas": [44]
+    },
+    {
+      "number": 131,
+      "name": "贝希摩斯",
+      "areas": [45]
+    },
+    {
+      "number": 132,
+      "name": "海马王",
+      "areas": [0]
+    },
+    {
+      "number": 133,
+      "name": "飞龙",
+      "areas": [43]
+    },
+    {
+      "number": 134,
+      "name": "萤光巨龙",
+      "areas": [57]
+    },
+    {
+      "number": 135,
+      "name": "西勒诺斯",
+      "areas": [0]
+    },
+    {
+      "number": 136,
+      "name": "嘉波",
+      "areas": [40]
+    },
+    {
+      "number": 137,
+      "name": "亚兹拉尔",
+      "areas": [0, 61]
+    },
+    {
+      "number": 138,
+      "name": "吞食魔",
+      "areas": [32]
+    },
+    {
+      "number": 139,
+      "name": "衔尾蛇",
+      "areas": [44, 53]
+    },
+    {
+      "number": 140,
+      "name": "浮动岩",
+      "areas": [53]
+    },
+    {
+      "number": 141,
+      "name": "海狮",
+      "areas": [53]
+    },
+    {
+      "number": 142,
+      "name": "印鱼群",
+      "areas": [53]
+    },
+    {
+      "number": 143,
+      "name": "榴弹怪",
+      "areas": [54]
+    },
+    {
+      "number": 144,
+      "name": "翼龙",
+      "areas": [54]
+    },
+    {
+      "number": 145,
+      "name": "大衔尾蛇",
+      "areas": [54]
+    },
+    {
+      "number": 146,
+      "name": "剑齿狮虎兽",
+      "areas": [54]
+    },
+    {
+      "number": 147,
+      "name": "拉米亚女王",
+      "areas": [54]
+    },
+    {
+      "number": 148,
+      "name": "僵尸龙",
+      "areas": [40]
+    },
+    {
+      "number": 149,
+      "name": "死亡之爪",
+      "areas": [57]
+    },
+    {
+      "number": 150,
+      "name": "地狱之马",
+      "areas": [40]
+    },
+    {
+      "number": 151,
+      "name": "科罗诺斯",
+      "areas": [0]
+    },
+    {
+      "number": 152,
+      "name": "瓦利弗",
+      "areas": [0]
+    },
+    {
+      "number": 153,
+      "name": "哈尼艾尔",
+      "areas": [40]
+    },
+    {
+      "number": 154,
+      "name": "瓦沙克",
+      "areas": [57]
+    },
+    {
+      "number": 155,
+      "name": "佩利冬",
+      "areas": [57]
+    },
+    {
+      "number": 156,
+      "name": "食人魔",
+      "areas": [0]
+    },
+    {
+      "number": 157,
+      "name": "独眼狂人",
+      "areas": [43, 47]
+    },
+    {
+      "number": 158,
+      "name": "复仇恶魔",
+      "areas": [29]
+    },
+    {
+      "number": 159,
+      "name": "洪巴巴",
+      "areas": [47]
+    },
+    {
+      "number": 160,
+      "name": "死亡针猿",
+      "areas": [0, 61]
+    },
+    {
+      "number": 161,
+      "name": "狮虎兽",
+      "areas": [43, 47]
+    },
+    {
+      "number": 162,
+      "name": "阿伊翁",
+      "areas": [32]
+    },
+    {
+      "number": 163,
+      "name": "弥诺陶洛斯",
+      "areas": [55]
+    },
+    {
+      "number": 164,
+      "name": "钢铁之爪",
+      "areas": [0, 61]
+    },
+    {
+      "number": 165,
+      "name": "大恶魔",
+      "areas": [32]
+    },
+    {
+      "number": 166,
+      "name": "乌内克隆体",
+      "areas": [40]
+    },
+    {
+      "number": 167,
+      "name": "塔纳托斯",
+      "areas": [0]
+    },
+    {
+      "number": 168,
+      "name": "骸骨龙",
+      "areas": [32]
+    },
+    {
+      "number": 169,
+      "name": "贝希摩斯王",
+      "areas": [47]
+    },
+    {
+      "number": 170,
+      "name": "阿巴伊",
+      "areas": [47, 50, 51]
+    },
+    {
+      "number": 171,
+      "name": "奥丁之马",
+      "areas": [0]
+    },
+    {
+      "number": 172,
+      "name": "哈奥卡",
+      "areas": [40]
+    },
+    {
+      "number": 173,
+      "name": "阿刻戎",
+      "areas": [47, 50, 51]
+    },
+    {
+      "number": 174,
+      "name": "俄刻阿诺斯",
+      "areas": [55]
+    },
+    {
+      "number": 175,
+      "name": "戈莫莉",
+      "areas": [29]
+    },
+    {
+      "number": 176,
+      "name": "布拉克",
+      "areas": [0]
+    },
+    {
+      "number": 177,
+      "name": "多加克隆体",
+      "areas": [49, 57]
+    },
+    {
+      "number": 178,
+      "name": "火魔人",
+      "areas": [44]
+    },
+    {
+      "number": 179,
+      "name": "铂纳尔",
+      "areas": [31]
+    },
+    {
+      "number": 180,
+      "name": "库姆库姆",
+      "areas": [57]
+    },
+    {
+      "number": 181,
+      "name": "忍兵",
+      "areas": [55]
+    },
+    {
+      "number": 182,
+      "name": "女忍首领",
+      "areas": [51]
+    },
+    {
+      "number": 183,
+      "name": "影忍",
+      "areas": [57]
+    },
+    {
+      "number": 184,
+      "name": "暗黑将军",
+      "areas": [57]
+    },
+    {
+      "number": 185,
+      "name": "黄龙",
+      "areas": [57]
+    },
+    {
+      "number": 186,
+      "name": "绿龙",
+      "areas": [57]
+    },
+    {
+      "number": 187,
+      "name": "红龙",
+      "areas": [57]
+    },
+    {
+      "number": 188,
+      "name": "格莱杨拉波尔",
+      "areas": [57]
+    },
+    {
+      "number": 189,
+      "name": "约尔曼冈德",
+      "areas": [55]
+    },
+    {
+      "number": 190,
+      "name": "托尔",
+      "areas": [40]
+    },
+    {
+      "number": 191,
+      "name": "赫卡通凯伊尔",
+      "areas": [51]
+    },
+    {
+      "number": 192,
+      "name": "许德拉",
+      "areas": [57]
+    },
+    {
+      "number": 193,
+      "name": "六兽妖女王",
+      "areas": [57]
+    },
+    {
+      "number": 194,
+      "name": "加姆",
+      "areas": [57]
+    },
+    {
+      "number": 195,
+      "name": "双头龙",
+      "areas": [57]
+    },
+    {
+      "number": 196,
+      "name": "陆龟",
+      "areas": [2]
+    },
+    {
+      "number": 197,
+      "name": "魔人",
+      "areas": [6]
+    },
+    {
+      "number": 198,
+      "name": "涅普特龙",
+      "areas": [0]
+    },
+    {
+      "number": 199,
+      "name": "巨鼠",
+      "areas": [14]
+    },
+    {
+      "number": 200,
+      "name": "美杜莎",
+      "areas": [20]
+    },
+    {
+      "number": 201,
+      "name": "盗贼古茨科",
+      "areas": [23]
+    },
+    {
+      "number": 202,
+      "name": "火焰蜥蜴",
+      "areas": [24]
+    },
+    {
+      "number": 203,
+      "name": "魔法师海因",
+      "areas": [25]
+    },
+    {
+      "number": 204,
+      "name": "克拉肯",
+      "areas": [29]
+    },
+    {
+      "number": 205,
+      "name": "金德尔",
+      "areas": [31]
+    },
+    {
+      "number": 206,
+      "name": "迦楼罗",
+      "areas": [57]
+    },
+    {
+      "number": 207,
+      "name": "奥丁",
+      "areas": [45]
+    },
+    {
+      "number": 208,
+      "name": "利维亚桑",
+      "areas": [53]
+    },
+    {
+      "number": 209,
+      "name": "巴哈姆特",
+      "areas": [54]
+    },
+    {
+      "number": 210,
+      "name": "多加",
+      "areas": [57]
+    },
+    {
+      "number": 211,
+      "name": "乌内",
+      "areas": [55]
+    },
+    {
+      "number": 212,
+      "name": "泰坦",
+      "areas": [50, 51]
+    },
+    {
+      "number": 213,
+      "name": "忍者",
+      "areas": [57]
+    },
+    {
+      "number": 214,
+      "name": "亚蒙",
+      "areas": [51]
+    },
+    {
+      "number": 215,
+      "name": "女忍者",
+      "areas": [57]
+    },
+    {
+      "number": 216,
+      "name": "将军",
+      "areas": [51]
+    },
+    {
+      "number": 217,
+      "name": "守护者",
+      "areas": [50, 51]
+    },
+    {
+      "number": 218,
+      "name": "六兽妖",
+      "areas": [57]
+    },
+    {
+      "number": 219,
+      "name": "魔王赞德",
+      "areas": [57]
+    },
+    {
+      "number": 220,
+      "name": "赞德克隆体",
+      "areas": [57]
+    },
+    {
+      "number": 221,
+      "name": "刻耳柏洛斯",
+      "areas": [57]
+    },
+    {
+      "number": 222,
+      "name": "双头巨龙",
+      "areas": [57]
+    },
+    {
+      "number": 223,
+      "name": "艾奇德娜",
+      "areas": [57]
+    },
+    {
+      "number": 224,
+      "name": "阿里曼",
+      "areas": [57]
+    },
+    {
+      "number": 225,
+      "name": "暗黑之云",
+      "areas": [57]
+    }
+  ]
+}
