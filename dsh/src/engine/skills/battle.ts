@@ -31,11 +31,14 @@ import {
 import {
   cureAilmentOf,
   enemyIndex,
+  fallbackSteps,
   snapshotEvents,
   strategyFor,
   StrategyRuntime,
+  type StrategyChoice,
   type StrategyStep,
 } from "../strategy/execute.ts";
+import { StrategyError as StrategyFailure } from "../strategy/types.ts";
 import type { BattleSnapshot, SnapshotUnit, Strategy } from "../strategy/types.ts";
 
 type Say = (line: string) => void;
@@ -177,6 +180,104 @@ export function commandReady(menu: Reply): boolean {
 }
 
 /**
+ * 11-05: FF5 escapes with L1+R1 held down for a moment. The bridge's `hold` keeps a virtual
+ * gamepad button down for at most 5 s; renewing before that keeps both held. How long the game
+ * needs, and whether an open command window swallows the keys, is not verified on the real
+ * game yet (11-05 was already a game-over screen), so both are constants to tune there.
+ */
+export const FLEE_HOLD_MS = 2500;
+export const FLEE_TIMEOUT_MS = 20_000;
+export const FLEE_POLL_MS = 250;
+/** Renew the hold this long before it lapses, so L1+R1 never let go (11-05 live: 8 s held). */
+export const FLEE_RENEW_MARGIN_MS = 1000;
+/**
+ * Close an open magic/item list or target cursor before holding L1+R1. Never press cancel on
+ * the command list itself: that passes the turn to the next character (10-20).
+ */
+export const FLEE_CLOSE_MENU = false;
+
+export interface FleeOptions {
+  /** Close an open magic/item list before holding, when FLEE_CLOSE_MENU is tuned to true. */
+  readonly closeMenu?: boolean;
+}
+
+export interface FleeResult {
+  readonly fled: boolean;
+  /** Seconds from the first hold to the battle scene ending. */
+  readonly seconds: number;
+  /** Why it did not escape; "" when it did. */
+  readonly reason: string;
+}
+
+function secondsText(seconds: number): string {
+  return String(pyRound(seconds, 1));
+}
+
+/** Let go of both shoulders; the hold's own deadline would release them anyway. */
+async function releaseFlee(pilot: Pilot): Promise<void> {
+  try {
+    await pilot.send("stop", {}, 5000);
+  } catch (error) {
+    // Cancellation belongs to dsh, not to a failed release: let the tool boundary see it.
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    // A failed release is harmless: the bridge drops a held button when its ms runs out.
+  }
+}
+
+/**
+ * Hold L1+R1 until the battle scene is gone or `timeoutMs` runs out. Returns what happened;
+ * the caller decides whether the encounter could be fled at all.
+ */
+export async function flee(
+  pilot: Pilot,
+  timeoutMs = FLEE_TIMEOUT_MS,
+  options: FleeOptions = {},
+): Promise<FleeResult> {
+  const started = pilot.now();
+  const before = await battleMenu(pilot);
+  if (!truthy(before.battle)) {
+    return { fled: false, seconds: 0, reason: "战斗已经结束" };
+  }
+  if (options.closeMenu === true && (listOpen(before) || targetOpen(before))) {
+    await backToCommands(pilot);
+  }
+  let reason = "";
+  while (pilot.now() - started < timeoutMs) {
+    const holdMs = Math.min(FLEE_HOLD_MS, timeoutMs - (pilot.now() - started));
+    const left = await pilot.send(
+      "hold",
+      { key: "PadL1", down: true, ms: holdMs, via: "game" },
+      10_000,
+    );
+    const right = await pilot.send(
+      "hold",
+      { key: "PadR1", down: true, ms: holdMs, via: "game" },
+      10_000,
+    );
+    if (!truthy(left.ok) || !truthy(right.ok)) {
+      reason = `按住 L1/R1 失败:${show(left.error ?? right.error)}`;
+      break;
+    }
+    const renewAt = pilot.now() + Math.max(FLEE_POLL_MS, holdMs - FLEE_RENEW_MARGIN_MS);
+    while (pilot.now() < renewAt && pilot.now() - started < timeoutMs) {
+      await pilot.sleep(FLEE_POLL_MS);
+      if (!truthy((await battleMenu(pilot)).battle)) {
+        const seconds = (pilot.now() - started) / 1000;
+        await releaseFlee(pilot);
+        return { fled: true, seconds, reason: "" };
+      }
+    }
+  }
+  const seconds = (pilot.now() - started) / 1000;
+  await releaseFlee(pilot);
+  return {
+    fled: false,
+    seconds,
+    reason: reason === "" ? `按了 ${secondsText(seconds)} 秒还没逃掉` : reason,
+  };
+}
+
+/**
  * Press `key` until the reading shows `done`: a window that just opened ignores keys for
  * a moment (its inputWait), so a press can be lost (10-20, the target confirm).
  */
@@ -206,6 +307,9 @@ export interface FightResult {
   readonly enemies: readonly Reply[];
   /** Rules that kept hitting a missing item (task 41). */
   readonly gaps: readonly BattleGap[];
+  /** 11-05: the party escaped; no result judging and no patch-up after it. */
+  readonly fled?: boolean;
+  readonly fledSeconds?: number;
 }
 
 /** One completed turn, for a caller watching the battle (boss rewrites, task 34; records 36). */
@@ -223,6 +327,9 @@ export interface ActDecision {
   readonly text: string;
   readonly skipped: readonly BattleSkipped[];
   readonly done: boolean;
+  /** 11-05: this turn's 逃跑 rule got the party out. */
+  readonly fled?: boolean;
+  readonly fledSeconds?: number;
 }
 
 /**
@@ -351,6 +458,7 @@ export async function fight(
       turn,
       seconds: Math.max(0, (pilot.now() - battleStarted) / 1000),
       boss: situation.boss,
+      notEscape: situation.notEscape,
       events: snapshotEvents(eventsOf(options)),
     };
     const table = options.hold?.() === true ? HOLD_STRATEGY : (options.table?.() ?? plan);
@@ -372,6 +480,22 @@ export async function fight(
       },
       { runtime, snapshot },
     );
+    if (decided.value?.fled === true) {
+      // 11-05: the escape animation is over and the battle menu is gone. Stop here rather than
+      // judging a party that never finished the fight; the turn still belongs in the record.
+      turns.push(`${actor}→${done}`);
+      say(`  ${actor}:${done}`);
+      return {
+        ok: true,
+        fled: true,
+        fledSeconds: decided.value.fledSeconds ?? 0,
+        turns,
+        learned,
+        players: records(situation.players),
+        enemies: records(situation.enemies),
+        gaps: runtime.gaps(),
+      };
+    }
     let usedItem: string | null = null;
     if (done.startsWith("道具:")) {
       const item = iconName((done.slice("道具:".length).split("→")[0] ?? "").split("(")[0] ?? "");
@@ -478,6 +602,7 @@ function snapshotOfSituation(
     turn: situation.turn,
     seconds,
     boss: situation.boss,
+    notEscape: situation.notEscape,
     events: snapshotEvents(events),
   };
 }
@@ -503,15 +628,19 @@ export async function situationOf(
 ): Promise<gambit.Situation> {
   let players = menu.players;
   let enemies = menu.enemies;
+  let sampleNotEscape = false;
   if (players === null || players === undefined) {
     // bridge before 0.6.0: the sample has both sides
     const battle = record(record((await pilot.query("sample")).sample).battle);
     players = battle.players;
     enemies = battle.enemies;
+    sampleNotEscape = truthy(battle.notEscape);
   }
   const playerRows = records(players);
   const enemyRows = records(enemies);
-  const boss = enemyRows.some((enemy) => truthy(enemy.boss));
+  const boss = enemyRows.some((enemy) => truthy(enemy.boss)) || truthy(menu.boss);
+  // The battlemenu keeps Battle()'s fields (party, notEscape, boss) next to the units.
+  const notEscape = truthy(menu.notEscape) || sampleNotEscape;
   let items = await heldItems(pilot);
   if (Object.keys(bag).length > 0 && Object.keys(ordered).length > 0) {
     const reduced: Record<string, number> = {};
@@ -521,7 +650,7 @@ export async function situationOf(
     }
     items = reduced;
   }
-  return new gambit.Situation(actor, playerRows, enemyRows, turn, boss, items, elements);
+  return new gambit.Situation(actor, playerRows, enemyRows, turn, boss, items, elements, notEscape);
 }
 
 /** This rule cannot be done now (the reason is the message); try the next one. */
@@ -553,14 +682,31 @@ export async function act(
   onDecision: (decision: ActDecision) => void = () => undefined,
   context: ActContext = {},
 ): Promise<string> {
-  const read = Array.isArray(table)
-    ? strategyFor({ [situation.actor]: table }, situation.actor)
-    : strategyFor(table, situation.actor);
-  const strategy = Array.isArray(read) ? EMPTY_STRATEGY : read;
   const runtime = context.runtime ?? new StrategyRuntime();
+  let read: Strategy | string[];
+  try {
+    read = Array.isArray(table)
+      ? strategyFor({ [situation.actor]: table }, situation.actor)
+      : strategyFor(table, situation.actor);
+  } catch (error) {
+    // Task 53: a table that cannot even be read must not break the battle.
+    if (!(error instanceof StrategyFailure)) throw error;
+    read = [error.message];
+  }
+  if (Array.isArray(read)) runtime.noteTableProblem(read);
+  const strategy = Array.isArray(read) ? EMPTY_STRATEGY : read;
   const snapshot = context.snapshot ?? snapshotOfSituation(situation, 0, []);
   runtime.observe(snapshot, pilot.now());
-  const { steps, skipped } = runtime.choices(strategy, snapshot);
+  let choice: StrategyChoice;
+  try {
+    choice = runtime.choices(strategy, snapshot);
+  } catch (error) {
+    // Task 53: never let a broken expression escape the executor; fall back to an attack.
+    if (!(error instanceof StrategyFailure)) throw error;
+    runtime.noteProblem("策略执行", error.message);
+    choice = { steps: fallbackSteps(strategy, snapshot), skipped: [] };
+  }
+  const { steps, skipped } = choice;
   const passed: string[] = [];
   const legacy = legacyRules(table, situation.actor);
   const tried: BattleSkipped[] = skipped.map((skip) => ({
@@ -575,6 +721,45 @@ export async function act(
     if (reading.actor !== situation.actor) {
       // Never press on: these would be someone else's commands (10-20).
       return "回合已经轮到别人" + note(passed);
+    }
+    if (step.action.command === "逃跑") {
+      const escaped = await flee(pilot, FLEE_TIMEOUT_MS, { closeMenu: FLEE_CLOSE_MENU });
+      if (escaped.fled) {
+        runtime.done(step, snapshot, pilot.now());
+        const action: gambit.Action = {
+          command: "逃跑",
+          ability: "",
+          target: gambit.SELF,
+          whom: null,
+          enemy: null,
+          rule: step.ruleIndex,
+        };
+        onAction(action);
+        onDecision({
+          action,
+          condition: conditionFor(step, legacy, situation),
+          basis: step.basis,
+          text: step.text,
+          skipped: [...tried],
+          done: true,
+          fled: true,
+          fledSeconds: escaped.seconds,
+        });
+        return `逃跑成功(用了 ${secondsText(escaped.seconds)} 秒)` + note(passed);
+      }
+      const why = `逃跑失败:${escaped.reason}`;
+      passed.push(why);
+      if (step.ruleIndex > 0) {
+        tried.push({
+          rule: step.ruleIndex,
+          condition: conditionFor(step, legacy, situation) || step.text,
+          why,
+          basis: step.basis,
+          text: step.text,
+        });
+      }
+      await backToCommands(pilot);
+      continue;
     }
     if (step.effect === "revive" && !(step.target?.kind === "unit" && step.target.unit.hp <= 0)) {
       tried.push({
@@ -1135,11 +1320,17 @@ export async function wipeReport(pilot: Pilot, names: string, slot = 3): Promise
  * not change and the title never came back, so a wipe must not load: look at where the game
  * actually went (wipeReport) before deciding.
  */
+export interface RegularOptions {
+  /** 11-05 (go/explore flee): try to run before the rule table fights. */
+  readonly flee?: boolean;
+}
+
 export async function regular(
   pilot: Pilot,
   hooks: BattleHooks = {},
   say: Say = () => undefined,
   slot = 3,
+  options: RegularOptions = {},
 ): Promise<string> {
   const started = pilot.now();
   const startedAt = new Date().toISOString();
@@ -1161,8 +1352,11 @@ export async function regular(
   }
   const sample = record((await pilot.query("sample")).sample);
   const mapId = num(record(sample.user).mapId) ?? null;
-  const enemies = records(record(sample.battle).enemies);
+  const sampleBattle = record(sample.battle);
+  const enemies = records(sampleBattle.enemies);
   const names = enemyNames(enemies);
+  const boss = truthy(sampleBattle.boss) || enemies.some((enemy) => truthy(enemy.boss));
+  const notEscape = truthy(sampleBattle.notEscape);
   const table = hooks.tableFor ? hooks.tableFor(mapId) : null;
   const which = truthy(table) ? "这张地图的策略" : "默认规则";
   const index = hooks.tableIndexFor?.(mapId) ?? null;
@@ -1178,6 +1372,25 @@ export async function regular(
     startedAt,
     startedMs: started,
   });
+  // 11-05: on the way through a map the party runs first; a boss or a notEscape formation is
+  // fought with the rule table as usual.
+  let fleeNote = "";
+  if (options.flee === true) {
+    if (boss) {
+      fleeNote = "这场逃不了(首领战)";
+    } else if (notEscape) {
+      fleeNote = "这场逃不了(遇敌组 notEscape)";
+    } else {
+      const attempt = await flee(pilot, FLEE_TIMEOUT_MS, { closeMenu: FLEE_CLOSE_MENU });
+      if (attempt.fled) {
+        const detail = `逃跑成功(用了 ${secondsText(attempt.seconds)} 秒)`;
+        await session?.finish(pilot.now(), "ok", detail);
+        const note = hooks.report ? await hooks.report(mapId, "ok", detail) : "";
+        return detail + (names === "" ? "" : `(敌人:${names})`) + (note ? `;${note}` : "");
+      }
+      fleeNote = `逃跑没成功(${attempt.reason})`;
+    }
+  }
   const result = await fight(
     pilot,
     truthy(table) ? table : gambit.defaultTable(records(sample.party)),
@@ -1187,6 +1400,12 @@ export async function regular(
     { record: session },
   );
   const foughtAt = pilot.now();
+  if (result.fled === true) {
+    const detail = `逃跑成功(用了 ${secondsText(result.fledSeconds ?? 0)} 秒)`;
+    await session?.finish(foughtAt, "ok", detail);
+    const note = hooks.report ? await hooks.report(mapId, "ok", detail) : "";
+    return detail + (names === "" ? "" : `(敌人:${names})`) + (note ? `;${note}` : "");
+  }
   if (result.error === "wiped") {
     await session?.finish(foughtAt, "wipe", "全员倒下");
     const note = hooks.report ? await hooks.report(mapId, "lost", "全员倒下") : "";
@@ -1213,6 +1432,7 @@ export async function regular(
   const healed = await patchUp(pilot, say);
   let message = `按${which}打完 ${show(pyRound((pilot.now() - started) / 1000, 0))} 秒(敌人:${names};${detail})`;
   if (!truthy(result.ok)) message = `战斗没打完:${show(result.error)}`;
+  if (fleeNote !== "") message = `${fleeNote},${message}`;
   return (
     message +
     (result.learned.length > 0 ? `;${result.learned.join(";")}` : "") +

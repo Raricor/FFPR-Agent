@@ -401,12 +401,15 @@ export function describe(
   return describeRule(value);
 }
 
-/** Translate `do`: 攻击, 防御, 换列, 道具「…」, 指令「能力」. */
+/** Translate `do`: 攻击, 防御, 换列, 逃跑, 道具「…」, 指令「能力」. */
 export function describeAction(action: string): string {
   const parsed = parseAction(action);
   if (parsed === null) return action;
   if (parsed.ability === "") {
-    return parsed.command === "攻击" || parsed.command === "防御" || parsed.command === "换列"
+    return parsed.command === "攻击" ||
+      parsed.command === "防御" ||
+      parsed.command === "换列" ||
+      parsed.command === "逃跑"
       ? parsed.command
       : `用${parsed.command}`;
   }

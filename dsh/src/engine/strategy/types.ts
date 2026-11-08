@@ -56,6 +56,8 @@ export interface BattleSnapshot {
   readonly seconds?: number;
   /** Whether this is a boss battle; `battle.boss` falls back to an enemy's boss flag. */
   readonly boss?: boolean;
+  /** The game's MonsterParty.NotEscape: the party cannot run from this encounter. */
+  readonly notEscape?: boolean;
   readonly events?: readonly BattleEvent[];
 }
 

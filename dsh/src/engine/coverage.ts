@@ -124,6 +124,7 @@ function magicAction(rule: ActionRule): boolean {
     rule.command !== "攻击" &&
     rule.command !== "防御" &&
     rule.command !== "换列" &&
+    rule.command !== "逃跑" &&
     rule.command !== "道具"
   );
 }

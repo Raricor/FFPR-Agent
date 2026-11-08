@@ -16,13 +16,13 @@ export interface ParsedAction {
 }
 
 /**
- * Read `do`: 攻击/防御/换列, 道具:名字, or 指令:能力 (the ability may be empty). `X+` and
- * 最强 stay as written; expanding them belongs to the executor.
+ * Read `do`: 攻击/防御/换列/逃跑, 道具:名字, or 指令:能力 (the ability may be empty). `X+`
+ * and 最强 stay as written; expanding them belongs to the executor.
  */
 export function parseAction(action: string): ParsedAction | null {
   const trimmed = action.trim();
   if (trimmed === "" || /[\r\n]/u.test(trimmed)) return null;
-  if (trimmed === "攻击" || trimmed === "防御" || trimmed === "换列") {
+  if (trimmed === "攻击" || trimmed === "防御" || trimmed === "换列" || trimmed === "逃跑") {
     return { command: trimmed, ability: "" };
   }
   const separator = trimmed.indexOf(":");
@@ -113,7 +113,7 @@ function parseRule(raw: unknown, context: string, errors: string[]): StrategyRul
     errors.push(`${context}:缺少 do(比如 攻击、白魔法:治疗、道具:不死鸟之尾)`);
   } else if (parseAction(doText) === null) {
     errors.push(
-      `${context}的 do:「${doText}」看不懂;写成 攻击、防御、换列、道具:名字 或 指令:能力`,
+      `${context}的 do:「${doText}」看不懂;写成 攻击、防御、换列、逃跑、道具:名字 或 指令:能力`,
     );
   }
   const condition = readExpression(raw.if, `${context}的 if`, errors);

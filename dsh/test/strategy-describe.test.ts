@@ -66,6 +66,7 @@ void test("actions translate into commands, items and abilities", () => {
   assert.equal(describeAction("攻击"), "攻击");
   assert.equal(describeAction("防御"), "防御");
   assert.equal(describeAction("换列"), "换列");
+  assert.equal(describeAction("逃跑"), "逃跑");
   assert.equal(describeAction("道具:不死鸟之尾"), "用道具「不死鸟之尾」");
   assert.equal(describeAction("白魔法:治疗"), "用白魔法「治疗」");
   assert.equal(describeAction("叫唤:最强"), "用叫唤「最强」");

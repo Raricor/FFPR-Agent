@@ -46,6 +46,10 @@ export interface FakeBattleOptions {
   readonly itemOpenFailures?: number;
   /** Keep the target down after a phoenix down, to model a command still queued in the ATB. */
   readonly reviveOnUse?: boolean;
+  /** 11-05: MonsterParty.NotEscape, visible as `notEscape` in the battle menu. */
+  readonly notEscape?: boolean;
+  /** 11-05: L1+R1 ends the battle after this many fake milliseconds; 0 never escapes. */
+  readonly fleeAfterMs?: number;
 }
 
 type Phase = "command" | "items" | "ability" | "enemy" | "ally";
@@ -60,6 +64,10 @@ export class FakeBattle {
   private readonly maxTurns: number;
   private itemOpenFailures: number;
   private readonly reviveOnUse: boolean;
+  readonly notEscape: boolean;
+  private readonly fleeAfterMs: number;
+  private fleeStartedAt: number | null = null;
+  private readonly fleeHeld = new Set<string>();
   private phase: Phase = "command";
   private actorIndex = 0;
   private cursor = 0;
@@ -82,6 +90,8 @@ export class FakeBattle {
     this.maxTurns = options.maxTurns ?? 6;
     this.itemOpenFailures = options.itemOpenFailures ?? 0;
     this.reviveOnUse = options.reviveOnUse ?? true;
+    this.notEscape = options.notEscape ?? false;
+    this.fleeAfterMs = options.fleeAfterMs ?? 0;
     this.pilot.onQuery("battlemenu", () => ({ battlemenu: this.menu() }));
     this.pilot.onQuery("items", () => ({
       items: {
@@ -91,6 +101,14 @@ export class FakeBattle {
     }));
     this.pilot.on("keys", (fields) => {
       for (const key of keysOf(fields)) this.press(key);
+      return { ok: true };
+    });
+    this.pilot.on("hold", (fields) => {
+      this.hold(fields);
+      return { ok: true };
+    });
+    this.pilot.on("stop", () => {
+      this.fleeHeld.clear();
       return { ok: true };
     });
   }
@@ -121,6 +139,16 @@ export class FakeBattle {
 
   private menu(): Reply {
     if (this.endedNow()) return { battle: false };
+    if (
+      this.fleeAfterMs > 0 &&
+      !this.notEscape &&
+      !this.enemies.some((enemy) => enemy.boss === true) &&
+      this.fleeStartedAt !== null &&
+      this.pilot.now() - this.fleeStartedAt >= this.fleeAfterMs
+    ) {
+      this.ended = true;
+      return { battle: false };
+    }
     const common: Record<string, unknown> = {
       battle: true,
       menuState: "CommandSelecting",
@@ -142,6 +170,8 @@ export class FakeBattle {
         maxHp: enemy.maxHp,
         boss: enemy.boss === true,
       })),
+      boss: this.enemies.some((enemy) => enemy.boss === true),
+      notEscape: this.notEscape,
     };
     if (this.waiting) {
       // One reading without the command list: the game is between turns / animating.
@@ -180,6 +210,19 @@ export class FakeBattle {
     ];
     if (spells.length > 0) list.push({ name: "白魔法", enabled: true });
     return list;
+  }
+
+  private hold(fields: Fields): void {
+    const key = typeof fields.key === "string" ? fields.key : "";
+    if (key === "") return;
+    if (fields.down === false) {
+      this.fleeHeld.delete(key);
+      return;
+    }
+    this.fleeHeld.add(key);
+    if (this.fleeHeld.has("PadL1") && this.fleeHeld.has("PadR1")) {
+      this.fleeStartedAt ??= this.pilot.now();
+    }
   }
 
   private press(key: string): void {

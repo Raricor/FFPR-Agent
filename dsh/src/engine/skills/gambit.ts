@@ -204,6 +204,8 @@ export class Situation {
   readonly enemies: readonly Json[];
   readonly turn: number;
   readonly boss: boolean;
+  /** The game's MonsterParty.NotEscape; the strategy skips 逃跑 rules when true (11-05). */
+  readonly notEscape: boolean;
   readonly elements: ElementKnowledge | null;
   items: Record<string, number>;
 
@@ -215,6 +217,7 @@ export class Situation {
     boss = false,
     items: Record<string, number> = {},
     elements: ElementKnowledge | null = null,
+    notEscape = false,
   ) {
     this.actor = actor;
     this.players = players;
@@ -223,6 +226,7 @@ export class Situation {
     this.boss = boss;
     this.items = items;
     this.elements = elements;
+    this.notEscape = notEscape;
   }
 
   me(): Json {

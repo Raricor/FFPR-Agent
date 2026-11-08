@@ -118,6 +118,7 @@ void test("do accepts the commands, items and abilities with or without an abili
   assert.deepEqual(parseAction("攻击"), { command: "攻击", ability: "" });
   assert.deepEqual(parseAction("防御"), { command: "防御", ability: "" });
   assert.deepEqual(parseAction("换列"), { command: "换列", ability: "" });
+  assert.deepEqual(parseAction("逃跑"), { command: "逃跑", ability: "" });
   assert.deepEqual(parseAction("道具:不死鸟之尾"), { command: "道具", ability: "不死鸟之尾" });
   assert.deepEqual(parseAction("白魔法:治疗+"), { command: "白魔法", ability: "治疗+" });
   assert.deepEqual(parseAction("召唤"), { command: "召唤", ability: "" });
@@ -126,6 +127,17 @@ void test("do accepts the commands, items and abilities with or without an abili
   assert.equal(parseAction("道具:"), null);
   assert.equal(parseAction(":"), null);
   assert.equal(parseAction("白魔法:治:疗"), null);
+});
+
+void test("checkStrategy accepts 逃跑 as a rule action", () => {
+  const strategy = parsed({
+    version: 2,
+    rules: [
+      { who: "all", if: "enemy.boss", do: "逃跑" },
+      { who: "all", do: "攻击" },
+    ],
+  });
+  assert.deepEqual(checkStrategy(strategy, ["蕾娜", "巴兹"]), []);
 });
 
 void test("checkStrategy accepts a party that matches the names and roles", async () => {
@@ -154,4 +166,26 @@ void test("checkStrategy rejects duplicate phase names and an empty strategy", (
     checkStrategy(duplicate).some((problem) => problem.includes("阶段名「第一阶段」重复了")),
   );
   assert.deepEqual(checkStrategy({ version: 2 }), ["策略里没有规则"]);
+});
+
+void test("the map 64 table that compared a unit with a number fails checkStrategy", () => {
+  const table = {
+    version: 2,
+    summary: "地下1层",
+    roles: { 蕾娜: "治疗" },
+    reactions: [],
+    phases: [
+      {
+        name: "保命",
+        when: "ally.count(not alive) >= 2 or ally.lowest(hp_pct) < 30",
+        rules: [{ who: "all", do: "防御" }],
+      },
+    ],
+    rules: [],
+  };
+  const problems = checkStrategy(table);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0] ?? "", /阶段「保命」的 when 第 \d+ 个字/u);
+  assert.match(problems[0] ?? "", /不是数/u);
+  assert.match(problems[0] ?? "", /ally\.lowest\(hp_pct\)\.hp_pct < 30/u);
 });
