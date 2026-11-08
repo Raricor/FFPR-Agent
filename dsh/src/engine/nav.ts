@@ -272,8 +272,9 @@ export function hasTerrain(cells: CellGrid): boolean {
 }
 
 /**
- * 3 and 5 are also the cells a stair runs through: a vertical step through one may change
- * height (Ship Graveyard 215, Carwen's terraces, seen 10-20).
+ * 3 and 5 mark the upper landing of a stair on some indoor maps (Ship Graveyard 215, Carwen's
+ * terraces, seen 10-20); layeredRoute only changes height when the higher cell has the code.
+ * 11-05, Sunken Ship 5 (216): a 5 on the bottom floor is a plain half-wall, not a stair up.
  */
 export const STAIRS: ReadonlySet<string> = new Set(["3", "5"]);
 
@@ -506,7 +507,8 @@ function layerNode(node: LayerNode): LayerNode {
 
 /**
  * Breadth-first over (x, y, height). Within a height, open cells connect to their
- * neighbours; a vertical step through a stair cell (3, 5) or a ToLayer cell changes height.
+ * neighbours; a vertical step whose upper cell is a stair (3, 5), or a ToLayer cell, changes
+ * height.
  * The goal counts on any height. Returns the path's cells with their heights, or the path to
  * the reachable cell nearest the goal.
  *
@@ -571,10 +573,13 @@ export function layeredRoute(
           const there = cellAt(grid, nx, ny, nz);
           if (!OPEN.has(there) && !(nx === goal[0] && ny === goal[1])) continue;
           // A change of height through a plain step needs a stair cell. A ToLayer cell
-          // names its target layer itself (11-03, Fire-Powered Ship 261).
-          if (nz !== z && change === undefined && !(STAIRS.has(here) || STAIRS.has(there))) {
-            continue;
-          }
+          // names its target layer itself (11-03, Fire-Powered Ship 261). The stair is on
+          // the upper floor: climbing needs the cell entered there to be a stair, going
+          // down the cell left there. 11-05, Sunken Ship 5 (216): (4,14) on the bottom
+          // floor is a "5" half-wall, not a stair up; accepting it planned
+          // (4,14,0)→(4,13,1), a step the game keeps on the bottom floor.
+          const stair = nz > z ? STAIRS.has(there) : STAIRS.has(here);
+          if (nz !== z && change === undefined && !stair) continue;
           if (halfWallBlocks(here, there, nx - x, ny - y)) continue;
           enqueue(node, [nx, ny, nz]);
         }
