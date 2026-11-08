@@ -71,7 +71,7 @@ void test("the completion line names missing chests, hidden items and monsters",
   assert.equal(
     completionLine(state),
     "本图完成度(火力船)：宝箱 1/2(没拿：(2,2) 金针) · 隐藏道具 0/1(没拿：(3,3) 精灵披风)" +
-      " · 本图的怪 2 种，本档图鉴还缺 1 种：败怨魔",
+      " · 本图的怪 2 种，本档图鉴还缺 1 种：败怨魔(概率未知,以后还会出现)",
   );
   assert.equal(isComplete(state), false);
   assert.deepEqual(state.exits, [[9, 9]]);
@@ -79,6 +79,70 @@ void test("the completion line names missing chests, hidden items and monsters",
     state.storyEvents.map((event) => event.label),
     ["首领战"],
   );
+});
+
+void test("the wind shrine table gives a 7% monster its chance and later-appearance category", () => {
+  const parties = [
+    { id: 14, rate: 350, monsters: [{ name: "黑哥布林", book: 90 }] },
+    { id: 15, rate: 350, monsters: [{ name: "白蛇", book: 91 }] },
+    {
+      id: 16,
+      rate: 230,
+      monsters: [
+        { name: "黑哥布林", book: 90 },
+        { name: "白蛇", book: 91 },
+      ],
+    },
+    {
+      id: 17,
+      rate: 70,
+      monsters: [
+        { name: "黑哥布林", book: 90 },
+        { name: "风形魔", book: 99 },
+        { name: "白蛇", book: 91 },
+      ],
+    },
+  ];
+  const table = parseEncounters({
+    encounters: {
+      monsterSet: 17,
+      parties,
+      map: { scope: "map", grids: [203], parties, debug: { setIds: [17] } },
+    },
+  });
+  const state = completionState({
+    mapId: 203,
+    areaId: 203,
+    mapName: "风之神殿 2 层",
+    world: false,
+    treasure: [],
+    entities: [],
+    monsters: [{ name: "风形魔", book: 99 }],
+    known: new Set(),
+    encounterTable: table,
+  });
+  const monster = state.monsters.missing[0];
+  assert.ok(monster);
+  assert.equal(monster.chance, 0.07);
+  assert.equal(monster.expectedBattles, 15);
+  assert.equal(monster.missable, null);
+  assert.equal(monster.lost, false);
+  assert.match(completionLine(state), /风形魔\(7%,以后还会出现\)/);
+
+  const missable = completionState({
+    mapId: 203,
+    areaId: 203,
+    mapName: "风之神殿 2 层",
+    world: false,
+    treasure: [],
+    entities: [],
+    monsters: [{ name: "风形魔", book: 99 }],
+    known: new Set(),
+    encounterTable: table,
+    monsterStatuses: new Map([[99, "限时:打倒隆卡遗迹首领前"]]),
+  });
+  assert.equal(missable.monsters.missing[0]?.missable, "打倒隆卡遗迹首领前");
+  assert.match(completionLine(missable), /风形魔\(7%,限时：打倒隆卡遗迹首领前\)/);
 });
 
 void test("the encounters reply carries the world map's region and its monsters", () => {
@@ -429,6 +493,89 @@ void test("leaving an incomplete map is refused, allowed with a reason, and the 
     game.bestiary.numbers.add(42);
     const done = await guard({}, pilot, [9, 9]);
     assert.equal(done, null);
+    assert.equal(game.backlog.pending().length, 0);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("a deferred bestiary monster no longer blocks leaving, but other gaps still do", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-deferred-"));
+  const pilot = new FakePilot();
+  try {
+    const game = await completionGame(directory);
+    const bestiary = [{ number: 99, name: "风形魔", areas: [203] }];
+    answerCompletion(pilot, true, 203, "风之神殿 2 层", bestiary);
+    const parties = [
+      { id: 14, rate: 350, monsters: [{ name: "黑哥布林", book: 90 }] },
+      { id: 15, rate: 350, monsters: [{ name: "白蛇", book: 91 }] },
+      {
+        id: 16,
+        rate: 230,
+        monsters: [
+          { name: "黑哥布林", book: 90 },
+          { name: "白蛇", book: 91 },
+        ],
+      },
+      {
+        id: 17,
+        rate: 70,
+        monsters: [
+          { name: "黑哥布林", book: 90 },
+          { name: "风形魔", book: 99 },
+          { name: "白蛇", book: 91 },
+        ],
+      },
+    ];
+    const windEncounters = {
+      encounters: {
+        enabled: true,
+        monsterSet: 17,
+        parties,
+        map: { scope: "map", grids: [203], parties, debug: { setIds: [17] } },
+      },
+    };
+    const registerWind = (): void => {
+      pilot.onQuery("encounters", windEncounters);
+    };
+    registerWind();
+    const state = await (
+      game as unknown as {
+        refreshCompletion(pilot: Pilot): Promise<ReturnType<typeof completionState> | null>;
+      }
+    ).refreshCompletion(pilot);
+    assert.equal(
+      state?.monsters.missing.find((monster) => monster.name === "风形魔")?.chance,
+      0.07,
+    );
+    // The other two monsters are already in this save's bestiary; only the 7% one is left.
+    game.bestiary.numbers.add(90);
+    game.bestiary.numbers.add(91);
+
+    await game.backlog.add({
+      mapId: 203,
+      areaId: 203,
+      region: null,
+      mapName: "风之神殿 2 层",
+      missing: ["本图鉴：风形魔(7%,以后还会出现)"],
+      bestiary: [99],
+      reason: "低概率(7%),刷了 15 场没遇到;以后还会出现，留到以后补",
+    });
+    assert.equal(await guardOf(game)({}, pilot, [9, 9]), null);
+    assert.equal(game.backlog.pending().length, 1);
+
+    // A missing chest on the same map still blocks, and its line does not name the deferred mon.
+    answerCompletion(pilot, false, 203, "风之神殿 2 层", bestiary);
+    registerWind();
+    const blocked = await guardOf(game)({}, pilot, [9, 9]);
+    assert.ok(blocked !== null);
+    assert.match(blocked.text, /宝箱 1\/2/);
+    assert.doesNotMatch(blocked.text, /风形魔/);
+
+    answerCompletion(pilot, true, 203, "风之神殿 2 层", bestiary);
+    registerWind();
+    game.bestiary.numbers.add(99);
+    assert.equal(await guardOf(game)({}, pilot, [9, 9]), null);
     assert.equal(game.backlog.pending().length, 0);
   } finally {
     await rm(directory, { recursive: true, force: true });

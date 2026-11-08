@@ -10,7 +10,7 @@
  */
 
 import { Atlas } from "../atlas.ts";
-import type { CompletionState } from "../completion.ts";
+import type { CompletionMonster, CompletionState } from "../completion.ts";
 import type { EncounterRegion } from "../encounters.ts";
 import { parseEncounters } from "../encounters.ts";
 import { describeError } from "../errors.ts";
@@ -50,6 +50,10 @@ const REVIVE_ITEMS: readonly string[] = ["不死鸟之尾", "凤凰尾"];
 const YES = /^(是|はい|yes)$/iu;
 /** The old grind walk had eight hops and no clock of its own; keep both for its callers. */
 const GRIND_TRAVEL = { maxHops: 8, maxMinutes: Number.POSITIVE_INFINITY } as const;
+/** Task 68: a monster that comes back later gets at most this many battles before deferring. */
+export const DEFAULT_BESTIARY_DEFER_BATTLES = 15;
+/** Task 68: a missable monster's grind stops after this many minutes even if still missing. */
+export const DEFAULT_BESTIARY_MISSABLE_MINUTES = 40;
 
 export interface GrindOptions {
   readonly untilGold?: number;
@@ -59,6 +63,10 @@ export interface GrindOptions {
   readonly restHpPct: number;
   readonly restMpPct: number;
   readonly inn?: number | string;
+  /** Task 68 config: per-monster deferral cap for monsters that appear again later. */
+  readonly bestiaryDeferBattles?: number;
+  /** Task 68 config: wall-clock cap for a missable monster (max_minutes still caps it too). */
+  readonly bestiaryMissableMinutes?: number;
 }
 
 export type GrindParse =
@@ -162,6 +170,8 @@ export interface GrindContext {
     readonly known: ReadonlySet<number>;
     readonly names: ReadonlyMap<number, string>;
   }>;
+  /** Task 68: write the deferred low-probability monsters into the backlog. */
+  readonly defer?: (monsters: readonly CompletionMonster[], reason: string) => Promise<void> | void;
   readonly say?: Say;
 }
 
@@ -446,8 +456,136 @@ function stopReason(
     if (completion.monsters.missing.length === 0) {
       return { reached: true, reason: "本图的怪都登记进本档图鉴了" };
     }
+    if (completion.monsters.missing.every((monster) => monster.lost)) {
+      return { reached: true, reason: "本图剩下的怪已经错过，刷不到了" };
+    }
   }
   return { reached: false, reason: "" };
+}
+
+interface BestiaryBudgetItem {
+  readonly number: number | null;
+  readonly name: string;
+  readonly chance: number | null;
+  readonly expectedBattles: number | null;
+  readonly missable: string | null;
+  readonly lost: boolean;
+  readonly deferBattles: number | null;
+  readonly missableBattles: number | null;
+  givenUp: boolean;
+  /** The battle count when it gave up; null while its budget is not used up. */
+  gaveUpAt: number | null;
+  registered: boolean;
+}
+
+function clampBudget(expected: number, low: number, high: number): number {
+  return Math.max(low, Math.min(expected, Math.max(low, high)));
+}
+
+/** Task 68: one budget per missing monster, from its chance and misses-forever category. */
+function bestiaryBudget(
+  completion: CompletionState | null,
+  options: GrindOptions,
+): BestiaryBudgetItem[] {
+  const deferMax = options.bestiaryDeferBattles ?? DEFAULT_BESTIARY_DEFER_BATTLES;
+  return (completion?.monsters.missing ?? [])
+    .filter((monster) => !monster.lost)
+    .map((monster) => {
+      const expected = monster.expectedBattles;
+      const deferBattles =
+        monster.chance !== null &&
+        monster.chance > 0 &&
+        monster.missable === null &&
+        expected !== null
+          ? clampBudget(expected, 3, deferMax)
+          : null;
+      const missableBattles =
+        monster.missable !== null && expected !== null
+          ? Math.max(5 * expected, Math.max(3, deferMax))
+          : null;
+      return {
+        number: monster.number,
+        name: monster.name,
+        chance: monster.chance,
+        expectedBattles: expected,
+        missable: monster.missable,
+        lost: monster.lost,
+        deferBattles,
+        missableBattles,
+        givenUp: false,
+        gaveUpAt: null,
+        registered: false,
+      };
+    });
+}
+
+function refreshBudget(budget: BestiaryBudgetItem[], completion: CompletionState | null): void {
+  if (completion?.encounter !== "ok") return;
+  const missing = new Set<number>();
+  for (const monster of completion.monsters.missing) {
+    if (monster.number !== null) missing.add(monster.number);
+  }
+  for (const item of budget) {
+    item.registered = item.number === null || !missing.has(item.number);
+  }
+}
+
+function pendingBudget(budget: readonly BestiaryBudgetItem[]): BestiaryBudgetItem[] {
+  return budget.filter((item) => !item.registered && !item.givenUp && !item.lost);
+}
+
+function percentText(chance: number | null): string {
+  return chance === null ? "?" : `${Math.round(chance * 100)}%`;
+}
+
+function deferredReason(budget: readonly BestiaryBudgetItem[]): string {
+  const parts = budget.map((item) => {
+    const body =
+      `低概率(${percentText(item.chance)}),刷了 ${item.gaveUpAt ?? 0} 场没遇到;` +
+      "以后还会出现，留到以后补";
+    return budget.length === 1 ? body : `${item.name}:${body}`;
+  });
+  return parts.join("；");
+}
+
+function missableReason(budget: readonly BestiaryBudgetItem[], battles: number): string {
+  const parts = budget.map(
+    (item) =>
+      `${budget.length === 1 ? "这只怪" : item.name}会错过(期限：${item.missable ?? "?"})，` +
+      `刷了 ${battles} 场(平均 ${item.expectedBattles ?? "?"} 场一次)还没遇到，可能是数据有误`,
+  );
+  return `${parts.join("；")};要接着刷就再调 grind`;
+}
+
+/** After each refresh: stop when a missable one hit either cap, or every deferrable gave up. */
+function budgetCheck(
+  budget: BestiaryBudgetItem[],
+  battles: number,
+  elapsedMinutes: number,
+  missableMinutes: number,
+): StopCheck {
+  for (const item of pendingBudget(budget)) {
+    if (item.deferBattles !== null && battles >= item.deferBattles) {
+      item.givenUp = true;
+      item.gaveUpAt ??= battles;
+    }
+  }
+  const missed = pendingBudget(budget).filter(
+    (item) =>
+      item.missable !== null &&
+      ((item.missableBattles !== null && battles >= item.missableBattles) ||
+        elapsedMinutes >= missableMinutes),
+  );
+  if (missed.length > 0) {
+    return { reached: true, reason: missableReason(missed, battles) };
+  }
+  const left = pendingBudget(budget);
+  if (left.length > 0) return { reached: false, reason: "" };
+  const deferred = budget.filter((item) => item.givenUp && !item.registered && !item.lost);
+  if (deferred.length > 0) {
+    return { reached: true, reason: deferredReason(deferred) };
+  }
+  return { reached: true, reason: "本图的怪都登记进本档图鉴了" };
 }
 
 function innName(name: string): boolean {
@@ -754,10 +892,23 @@ export async function grind(
   };
   markNew(knowledge.known, knowledge.names);
 
+  // Task 68: until_bestiary sets its own per-monster budget; max_minutes stays the outer cap.
+  const budgetEnabled = options.untilBestiary === true;
+  const budget = budgetEnabled ? bestiaryBudget(knowledge.completion, options) : [];
+  const missableMinutes = options.bestiaryMissableMinutes ?? DEFAULT_BESTIARY_MISSABLE_MINUTES;
+
   const atGoal = (): boolean => {
     const check = stopReason(options, snapshot, knowledge.completion);
-    if (check.reached) stop = check.reason;
-    return check.reached;
+    if (check.reached) {
+      stop = check.reason;
+      return true;
+    }
+    if (!budgetEnabled) return false;
+    refreshBudget(budget, knowledge.completion);
+    const elapsedMinutes = (pilot.now() - startedMs) / 60_000;
+    const result = budgetCheck(budget, battles, elapsedMinutes, missableMinutes);
+    if (result.reached) stop = result.reason;
+    return result.reached;
   };
 
   if (atGoal()) {
@@ -888,6 +1039,10 @@ export async function grind(
         }
         continue;
       }
+      if (error.startsWith("interrupted:")) {
+        stop = `被剧情或对话打断(${error})，先停下：翻完剧情再接着刷`;
+        break;
+      }
       stop = `走不过去(${error})，先停下`;
       break;
     }
@@ -907,6 +1062,23 @@ export async function grind(
       }
     }
     if (atGoal()) break;
+  }
+
+  refreshBudget(budget, knowledge.completion);
+  const deferred = budget.filter((item) => item.givenUp && !item.registered && !item.lost);
+  if (deferred.length > 0) {
+    const reason = deferredReason(deferred);
+    let note = `已记欠账:${reason}。可以直接离开，以后回来补。`;
+    if (context.defer === undefined) {
+      note = `本该记欠账但没记成:${reason}`;
+    } else {
+      try {
+        await context.defer(deferred, reason);
+      } catch (error) {
+        note = `记欠账失败(${describeError(error)}):${reason}`;
+      }
+    }
+    stop = stop === reason ? note : `${stop}；${note}`;
   }
 
   if (stop === "") stop = `到 ${options.maxMinutes} 分钟了`;

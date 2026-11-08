@@ -7,10 +7,10 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Laptop } from "./laptop.ts";
-import { MonsterCache } from "./bestiary.ts";
+import { MonsterCache, monsterStatus } from "./bestiary.ts";
 import { MonsterAiCache, monsterAiPath, partySnapshot, readBag, readParty } from "./dossier.ts";
 import { BestiarySave } from "./bestiary-save.ts";
-import { missedTreasureByArea, parseAchievements } from "./achievements.ts";
+import { missedTreasureByArea, parseAchievements, progressRows } from "./achievements.ts";
 import {
   Backlog,
   Incidents,
@@ -154,6 +154,9 @@ export interface GameOptions {
   /** Task 48: a map route/explore's hop and wall-clock caps (Config). */
   readonly travelMaxHops?: number;
   readonly travelMaxMinutes?: number;
+  /** Task 68: until_bestiary's low-probability deferral and missable grinding caps. */
+  readonly bestiaryDeferBattles?: number;
+  readonly bestiaryMissableMinutes?: number;
   /** Task 58: the bridge walkpath's base timeout, blocked wait and turn lead (Config). */
   readonly walkpathTimeoutMs?: number;
   readonly walkpathBlockedMs?: number;
@@ -200,12 +203,19 @@ function cellOf(value: unknown): Cell | null {
   return [value[0], value[1]];
 }
 
-/** Task 58: `go`'s `to` may be a cell as [x, y] or as "x,y"; anything else is a map. */
+/**
+ * Task 58/66: `go`'s `to` may be a cell as [x, y] or as a string such as "x,y", "x y",
+ * "[x, y]" or "(x, y)"; anything else is a map. The sign stays optional as before.
+ */
 function targetCell(value: unknown): Cell | null {
   const cell = cellOf(value);
   if (cell !== null) return cell;
   if (typeof value !== "string") return null;
-  const match = /^\s*(-?\d+)\s*,\s*(-?\d+)\s*$/u.exec(value);
+  const trimmed = value
+    .trim()
+    .replace(/^[[(]\s*/u, "")
+    .replace(/\s*[\])]$/u, "");
+  const match = /^(-?\d+)\s*(?:,|\s)\s*(-?\d+)$/u.exec(trimmed);
   if (match === null) return null;
   return [Number(match[1]), Number(match[2])];
 }
@@ -322,6 +332,9 @@ export class Game {
   /** Task 48: the configured route caps, also used by tests that never set them. */
   readonly travelMaxHops: number;
   readonly travelMaxMinutes: number;
+  /** Task 68: until_bestiary's per-monster deferral and missable grinding caps. */
+  readonly bestiaryDeferBattles: number;
+  readonly bestiaryMissableMinutes: number;
   private tactician: ((facts: string) => Promise<TacticianPlan>) | undefined;
   private tacticianCalled = false; // one call per tool invocation (task 10)
   private readonly blockedCounts = new Map<string, number>(); // map+cell → times blocked
@@ -358,6 +371,8 @@ export class Game {
     tacticianBoss: boolean,
     travelMaxHops: number,
     travelMaxMinutes: number,
+    bestiaryDeferBattles: number,
+    bestiaryMissableMinutes: number,
   ) {
     this.laptop = laptop;
     this.game = game;
@@ -379,6 +394,8 @@ export class Game {
     this.tacticianBoss = tacticianBoss;
     this.travelMaxHops = travelMaxHops;
     this.travelMaxMinutes = travelMaxMinutes;
+    this.bestiaryDeferBattles = bestiaryDeferBattles;
+    this.bestiaryMissableMinutes = bestiaryMissableMinutes;
     // Task 42: a `battle.ai` push says a script exists; the body is queried later by `ensure`.
     this.events?.onRecord((record) => {
       if (record.type === "battle.ai") this.monsterAi.recordEvent(record);
@@ -499,6 +516,8 @@ export class Game {
       options.tacticianBoss ?? true,
       options.travelMaxHops ?? travel.DEFAULT_TRAVEL_MAX_HOPS,
       options.travelMaxMinutes ?? travel.DEFAULT_TRAVEL_MAX_MINUTES,
+      options.bestiaryDeferBattles ?? grind.DEFAULT_BESTIARY_DEFER_BATTLES,
+      options.bestiaryMissableMinutes ?? grind.DEFAULT_BESTIARY_MISSABLE_MINUTES,
     );
     created.moveState.walkpathTimeoutMs = options.walkpathTimeoutMs;
     created.moveState.walkpathBlockedMs = options.walkpathBlockedMs;
@@ -1770,6 +1789,29 @@ export class Game {
     const oneTime = profile.oneTimePlaces.find((place) => place.area === area);
     const timedUntil =
       oneTime !== undefined && /限时|逃/u.test(oneTime.until) ? oneTime.until : null;
+    // Task 68: the guide's missable rules, with the save's story flags, per missing monster.
+    const passed = new Set(
+      progressRows(data, profile)
+        .filter((row) => row.current === 1)
+        .map((row) => row.api),
+    );
+    const areasByNumber = new Map<number, readonly number[]>();
+    for (const entry of data.bestiary?.entries ?? []) {
+      if (entry.number !== null) areasByNumber.set(entry.number, entry.areas);
+    }
+    const statuses = new Map<number, string | null>();
+    for (const monster of monsters) {
+      if (monster.book === null) continue;
+      statuses.set(
+        monster.book,
+        monsterStatus(
+          monster.book,
+          areasByNumber.get(monster.book) ?? [],
+          (api) => passed.has(api),
+          profile.bestiaryMissables,
+        ),
+      );
+    }
     const state = completionState({
       mapId: pos.map,
       areaId: area,
@@ -1782,6 +1824,8 @@ export class Game {
       monsters,
       encounter,
       known: this.bestiary.numbers,
+      encounterTable: encounters,
+      monsterStatuses: statuses,
       timedUntil,
       oneTime: oneTime !== undefined,
     });
@@ -1858,6 +1902,11 @@ export class Game {
   private async guardLeave(args: Json, pilot: Pilot, goal: Cell): Promise<HandlerResult | null> {
     const state = await this.refreshCompletion(pilot);
     if (state === null || isComplete(state)) return null;
+    // Task 68: a monster automatically deferred by grind(until_bestiary), or one already lost
+    // for good, is not a reason to stay. Other gaps on this map still block.
+    const excused = this.excusedBestiary(state);
+    const remaining = missingLines(state, excused);
+    if (remaining.length === 0) return null;
     const leaving = this.isLeaving(state, goal);
     const story = state.oneTime ? this.storyEventAt(state, goal) : null;
     if (!leaving && !story) return null;
@@ -1871,14 +1920,14 @@ export class Game {
         areaId: state.areaId,
         region: state.world ? (state.region?.grid ?? null) : null,
         mapName: this.completionWhere(state),
-        missing: missingLines(state),
+        missing: remaining,
         reason,
       });
       this.leaveNotice = `已按理由「${reason}」放行，记了一条欠账；回来补齐后自动销掉。`;
       return null;
     }
     const where = this.completionWhere(state);
-    const missing = missingLines(state).join("；");
+    const missing = remaining.join("；");
     const storyName = story === null || story.label === "" ? "" : `「${story.label}」`;
     const why = story
       ? `「${where}」是一次性地点，你正要踩剧情/首领事件格 ${goal[0]},${goal[1]}${storyName}`
@@ -2005,6 +2054,25 @@ export class Game {
         return { text: result.text, early: true };
       }),
     );
+  }
+
+  /**
+   * Task 68: bestiary numbers this map's leave check may ignore: already impossible ones and
+   * the ones a low-probability grind deferred into the backlog for this exact place.
+   */
+  private excusedBestiary(state: import("./completion.ts").CompletionState): Set<number> {
+    const numbers = new Set<number>();
+    for (const monster of state.monsters.missing) {
+      if (monster.lost && monster.number !== null) numbers.add(monster.number);
+    }
+    const region = state.world ? (state.region?.grid ?? null) : null;
+    for (const entry of this.backlog.pending()) {
+      if (entry.mapId !== state.mapId || entry.areaId !== state.areaId || entry.region !== region) {
+        continue;
+      }
+      for (const number of entry.bestiary) numbers.add(number);
+    }
+    return numbers;
   }
 
   private completionWhere(state: import("./completion.ts").CompletionState): string {
@@ -2356,19 +2424,45 @@ export class Game {
     const parsed = grind.parseGrindOptions(args);
     if (!parsed.ok) return { text: `grind 没有执行:${parsed.error}`, early: true };
     return await this.withWalkLabel("grind(刷怪)", async () => {
-      const report = await grind.grind(pilot, parsed.options, {
-        atlas: this.atlas,
-        moveState: this.moveState,
-        fighter: (runner, say) => battle.regular(runner, this.hooks, say, this.saveSlot),
-        refresh: async (runner) => {
-          const completion = await this.refreshCompletion(runner);
-          const names = new Map<number, string>();
-          for (const [name, number] of this.bestiaryNames()) {
-            if (!names.has(number)) names.set(number, name);
-          }
-          return { completion, known: new Set(this.bestiary.numbers), names };
+      const report = await grind.grind(
+        pilot,
+        {
+          ...parsed.options,
+          bestiaryDeferBattles: this.bestiaryDeferBattles,
+          bestiaryMissableMinutes: this.bestiaryMissableMinutes,
         },
-      });
+        {
+          atlas: this.atlas,
+          moveState: this.moveState,
+          fighter: (runner, say) => battle.regular(runner, this.hooks, say, this.saveSlot),
+          refresh: async (runner) => {
+            const completion = await this.refreshCompletion(runner);
+            const names = new Map<number, string>();
+            for (const [name, number] of this.bestiaryNames()) {
+              if (!names.has(number)) names.set(number, name);
+            }
+            return { completion, known: new Set(this.bestiary.numbers), names };
+          },
+          defer: async (monsters, reason) => {
+            const state = this.lastCompletion;
+            if (state === null) return;
+            await this.backlog.add({
+              mapId: state.mapId,
+              areaId: state.areaId,
+              region: state.world ? (state.region?.grid ?? null) : null,
+              mapName: this.completionWhere(state),
+              missing: missingLines(state),
+              bestiary: monsters.flatMap((monster) =>
+                monster.number === null ? [] : [monster.number],
+              ),
+              reason,
+            });
+            this.leaveNotice =
+              `grind 已把 ${monsters.map((monster) => monster.name).join("、")} ` +
+              "记进欠账，可以直接离开，以后回来补。";
+          },
+        },
+      );
       return { text: report.text };
     });
   }

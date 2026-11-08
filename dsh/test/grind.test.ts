@@ -64,10 +64,23 @@ function makeWorld(patch: Partial<World> = {}): World {
   };
 }
 
-function completionOf(
-  world: World,
-  monsters: readonly { number: number; name: string }[],
-): CompletionState {
+/** A fighter that ends the battle and registers nothing, for budget tests. */
+function idleFighter(world: World): () => string {
+  return () => {
+    world.state = "Player";
+    return "按这张地图的策略打完 1 秒";
+  };
+}
+
+interface TestMonster {
+  number: number;
+  name: string;
+  chance?: number | null;
+  missable?: string | null;
+  lost?: boolean;
+}
+
+function completionOf(world: World, monsters: readonly TestMonster[]): CompletionState {
   return {
     mapId: world.map,
     areaId: 0,
@@ -78,7 +91,19 @@ function completionOf(
     hidden: { total: 0, open: 0, missing: [], elsewhere: 0 },
     monsters: {
       total: monsters.length,
-      missing: monsters.filter((monster) => !world.known.has(monster.number)),
+      missing: monsters
+        .filter((monster) => !world.known.has(monster.number))
+        .map((monster) => {
+          const chance = monster.chance ?? null;
+          return {
+            number: monster.number,
+            name: monster.name,
+            chance,
+            expectedBattles: chance === null || chance <= 0 ? null : Math.ceil(1 / chance),
+            missable: monster.missable ?? null,
+            lost: monster.lost === true,
+          };
+        }),
     },
     encounter: monsters.length > 0 ? "ok" : "unknown",
     areaName: world.mapName,
@@ -96,10 +121,7 @@ function cellsReply(world: World): Reply {
   return { cells: { origin: [0, 0], center: [world.cell[0], world.cell[1]], attr } };
 }
 
-function pilotFor(
-  world: World,
-  monsters: readonly { number: number; name: string }[] = [],
-): FakePilot {
+function pilotFor(world: World, monsters: readonly TestMonster[] = []): FakePilot {
   const pilot = new FakePilot();
   const party = (): Reply[] => [
     {
@@ -207,8 +229,9 @@ function pilotFor(
 
 function contextFor(
   world: World,
-  monsters: readonly { number: number; name: string }[],
+  monsters: readonly TestMonster[],
   atlas = new Atlas(),
+  defer?: GrindContext["defer"],
 ): GrindContext {
   const names = new Map(monsters.map((monster) => [monster.number, monster.name]));
   return {
@@ -221,6 +244,7 @@ function contextFor(
         known: new Set(world.known),
         names,
       }),
+    ...(defer === undefined ? {} : { defer }),
   };
 }
 
@@ -264,6 +288,98 @@ void test("grind stops when every monster of this map is registered", async () =
   assert.deepEqual(report.bestiary, ["祖", "艾吉尔"]);
   assert.equal(report.stop, "本图的怪都登记进本档图鉴了");
   assert.match(report.text, /本档图鉴新登记 2 种:祖、艾吉尔/);
+});
+
+void test("until_bestiary defers a 7% monster after 15 battles and records one debt", async () => {
+  const monsters: TestMonster[] = [{ number: 99, name: "风形魔", chance: 0.07 }];
+  const world = makeWorld({ battleEvery: 1 });
+  const pilot = pilotFor(world, monsters);
+  world.fighter = idleFighter(world);
+  const deferred: { names: readonly string[]; reason: string }[] = [];
+  const report = await grind(
+    pilot,
+    { ...parseOptions({ until_bestiary: true }), bestiaryDeferBattles: 15 },
+    contextFor(world, monsters, new Atlas(), (list, reason) => {
+      deferred.push({ names: list.map((monster) => monster.name), reason });
+    }),
+  );
+  assert.equal(report.battles, 15);
+  assert.match(report.stop, /低概率\(7%\)/);
+  assert.match(report.stop, /刷了 15 场没遇到/);
+  assert.match(report.stop, /可以直接离开/);
+  assert.equal(deferred.length, 1);
+  const entry = deferred[0];
+  assert.ok(entry);
+  assert.deepEqual(entry.names, ["风形魔"]);
+  assert.match(entry.reason, /低概率\(7%\),刷了 15 场没遇到;以后还会出现/);
+});
+
+void test("a missable monster is not deferred at 15 battles and stops at its own cap", async () => {
+  const monsters: TestMonster[] = [
+    {
+      number: 99,
+      name: "风形魔",
+      chance: 0.07,
+      missable: "打倒隆卡遗迹首领前",
+    },
+  ];
+  const world = makeWorld({ battleEvery: 1 });
+  const pilot = pilotFor(world, monsters);
+  world.fighter = idleFighter(world);
+  const deferred: string[] = [];
+  const report = await grind(
+    pilot,
+    {
+      ...parseOptions({ until_bestiary: true, max_minutes: 120 }),
+      bestiaryDeferBattles: 15,
+      bestiaryMissableMinutes: 120,
+    },
+    contextFor(world, monsters, new Atlas(), (list) => {
+      deferred.push(...list.map((monster) => monster.name));
+    }),
+  );
+  // 7% is 1/14.3, rounded up to 15; the cap is 5 × 15 = 75, not the 15-battle deferral.
+  assert.equal(report.battles, 75);
+  assert.match(report.stop, /会错过/);
+  assert.match(report.stop, /期限：打倒隆卡遗迹首领前/);
+  assert.match(report.stop, /平均 15 场一次/);
+  assert.match(report.stop, /要接着刷就再调 grind/);
+  assert.deepEqual(deferred, []);
+});
+
+void test("a 35% monster gets the minimum three-battle budget", async () => {
+  const monsters: TestMonster[] = [{ number: 98, name: "常见怪", chance: 0.35 }];
+  const world = makeWorld({ battleEvery: 1 });
+  const pilot = pilotFor(world, monsters);
+  world.fighter = idleFighter(world);
+  const deferred: string[] = [];
+  const report = await grind(
+    pilot,
+    { ...parseOptions({ until_bestiary: true }), bestiaryDeferBattles: 15 },
+    contextFor(world, monsters, new Atlas(), (list) => {
+      deferred.push(...list.map((monster) => monster.name));
+    }),
+  );
+  assert.equal(report.battles, 3);
+  assert.match(report.stop, /低概率\(35%\),刷了 3 场没遇到/);
+  assert.deepEqual(deferred, ["常见怪"]);
+});
+
+void test("an unknown chance keeps the old max_minutes behaviour and records no debt", async () => {
+  const monsters: TestMonster[] = [{ number: 97, name: "看不清的怪", chance: null }];
+  const world = makeWorld({ battleEvery: 1 });
+  const pilot = pilotFor(world, monsters);
+  world.fighter = idleFighter(world);
+  const deferred: string[] = [];
+  const report = await grind(
+    pilot,
+    parseOptions({ until_bestiary: true, max_minutes: 1 }),
+    contextFor(world, monsters, new Atlas(), (list) => {
+      deferred.push(...list.map((monster) => monster.name));
+    }),
+  );
+  assert.match(report.stop, /到 1 分钟/);
+  assert.deepEqual(deferred, []);
 });
 
 void test("grind sleeps at the inn when HP is low, then farms again", async () => {
@@ -560,4 +676,30 @@ void test("a brief state event in a grind step replans instead of stopping", asy
   assert.match(report.stop, /到 1 分钟/);
   assert.doesNotMatch(report.stop, /走不过去/);
   assert.ok(sent >= 2, "walked on after the event");
+});
+
+void test("a dialog in a grind step stops with the dialog reason, not 走不过去", async () => {
+  const world = makeWorld();
+  const pilot = pilotFor(world);
+  pilot.on("walkpath", () => ({
+    ok: false,
+    reason: "dialog",
+    index: 0,
+    steps: 1,
+    pos: { state: "Event", dialog: true, map: world.map, cell: world.cell },
+    next: null,
+    turns: [],
+  }));
+  pilot.on("pos", () => ({
+    pos: { state: "Event", dialog: true, map: world.map, cell: world.cell },
+  }));
+  const report = await grind(
+    pilot,
+    parseOptions({ until_gold: 9999, max_minutes: 1 }),
+    contextFor(world, []),
+  );
+  assert.match(report.stop, /被剧情或对话打断/);
+  assert.match(report.stop, /interrupted:dialog/);
+  assert.match(report.stop, /翻完剧情再接着刷/);
+  assert.doesNotMatch(report.stop, /走不过去/);
 });

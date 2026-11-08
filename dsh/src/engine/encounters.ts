@@ -41,6 +41,8 @@ export interface EncounterMap {
   readonly scope: "map" | "area" | null;
   readonly grids: readonly number[];
   readonly parties: readonly EncounterParty[];
+  /** MonsterSet ids behind the union (bridge 0.13.8 `map.debug.setIds`). */
+  readonly setIds: readonly number[];
   readonly error: string | null;
 }
 
@@ -94,12 +96,14 @@ function parseRegion(value: unknown): EncounterRegion | null {
 function parseMap(value: unknown): EncounterMap | null {
   if (!isRecord(value)) return null;
   const scope = value.scope === "map" || value.scope === "area" ? value.scope : null;
+  const debug = isRecord(value.debug) ? value.debug : null;
   return {
     scope,
     grids: list(value.grids).filter((grid): grid is number => typeof grid === "number"),
     parties: list(value.parties)
       .map(parseParty)
       .filter((party): party is EncounterParty => party !== null && party.monsters.length > 0),
+    setIds: list(debug?.setIds).filter((id): id is number => typeof id === "number"),
     error: text(value.error) ?? null,
   };
 }
@@ -210,4 +214,70 @@ export function encounterMonsters(table: EncounterTable | null): EncounterMonste
     }
   }
   return out;
+}
+
+function partyHas(party: EncounterParty, target: EncounterMonster): boolean {
+  return party.monsters.some((monster) =>
+    target.book !== null && monster.book !== null
+      ? monster.book === target.book
+      : monster.name === target.name,
+  );
+}
+
+/** A party set's chance for one monster: its weight over the set's total weight. */
+function chanceIn(parties: readonly EncounterParty[], target: EncounterMonster): number | null {
+  const active = activeParties(parties);
+  const total = active.reduce((sum, party) => sum + party.rate, 0);
+  if (total <= 0) return null;
+  const hit = active.reduce((sum, party) => sum + (partyHas(party, target) ? party.rate : 0), 0);
+  return hit / total;
+}
+
+/**
+ * The whole-map union loses the MonsterSet boundaries: its parties are deduplicated by party
+ * id and its total spans every set. With N sets the average must be multiplied by N to
+ * estimate the best set's chance (task 68; the bridge reports the set ids but not their rows).
+ */
+function unionChance(
+  parties: readonly EncounterParty[],
+  target: EncounterMonster,
+  sets: number,
+): number | null {
+  const chance = chanceIn(parties, target);
+  if (chance === null || sets <= 1) return chance;
+  return Math.min(1, chance * sets);
+}
+
+/**
+ * Task 68: the chance that one battle in this map/region contains `target`, 0-1. Use the
+ * MonsterSet underfoot when it can roll the monster; otherwise the best available table: the
+ * current region, each loaded region, then the whole-map union. Null when no table has rates.
+ */
+export function monsterChance(
+  table: EncounterTable | null,
+  target: EncounterMonster,
+): number | null {
+  if (table === null) return null;
+  const underfoot = chanceIn(table.parties, target);
+  if (underfoot !== null && underfoot > 0) return underfoot;
+  const candidates: number[] = [];
+  if (table.region !== undefined && table.region !== null) {
+    const region = chanceIn(table.region.parties, target);
+    if (region !== null) candidates.push(region);
+  }
+  for (const region of table.regions) {
+    const chance = chanceIn(region.parties, target);
+    if (chance !== null) candidates.push(chance);
+  }
+  if (table.map !== null) {
+    const chance = unionChance(table.map.parties, target, Math.max(1, table.map.setIds.length));
+    if (chance !== null) candidates.push(chance);
+  }
+  if (underfoot !== null) candidates.push(underfoot);
+  return candidates.length === 0 ? null : Math.max(...candidates);
+}
+
+/** One over the chance, rounded up; null when the chance is unknown or zero. */
+export function expectedBattles(chance: number | null): number | null {
+  return chance === null || chance <= 0 ? null : Math.ceil(1 / chance);
 }

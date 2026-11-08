@@ -13,7 +13,8 @@
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { AchievementTreasure } from "./achievements.ts";
-import type { EncounterMonster, EncounterRegion } from "./encounters.ts";
+import type { EncounterMonster, EncounterRegion, EncounterTable } from "./encounters.ts";
+import { expectedBattles, monsterChance } from "./encounters.ts";
 import { describeError, isMissingFile } from "./errors.ts";
 import { isRecord, list, num, record, text, type Json } from "./values.ts";
 
@@ -29,6 +30,14 @@ export interface TreasureSpot {
 export interface CompletionMonster {
   readonly number: number | null;
   readonly name: string;
+  /** Task 68: chance that one battle here contains this monster (0-1), null when unreadable. */
+  readonly chance: number | null;
+  /** 1/chance rounded up; null when the chance is unknown. */
+  readonly expectedBattles: number | null;
+  /** The deadline text when this monster is missable, else null. */
+  readonly missable: string | null;
+  /** Already gone for good in this save (bestiary status 不可再获得); never worth grinding. */
+  readonly lost: boolean;
 }
 
 export interface CompletionSection {
@@ -88,6 +97,10 @@ export interface CompletionInput {
   readonly encounter?: EncounterStatus;
   /** Bestiary numbers this save has registered. */
   readonly known: ReadonlySet<number>;
+  /** Task 68: the encounter table the chances come from; null/unset leaves them unknown. */
+  readonly encounterTable?: EncounterTable | null;
+  /** Task 68: bestiary status per number (`限时:…`, `不可再获得` or null). */
+  readonly monsterStatuses?: ReadonlyMap<number, string | null>;
   readonly timedUntil?: string | null;
   readonly oneTime?: boolean;
 }
@@ -152,9 +165,11 @@ function order(spot: TreasureSpot): number {
   return spot.cell === null ? Number.MAX_SAFE_INTEGER : spot.cell[1] * 10_000 + spot.cell[0];
 }
 
-function monsterList(monsters: readonly EncounterMonster[]): CompletionMonster[] {
+function monsterList(
+  monsters: readonly EncounterMonster[],
+): { number: number | null; name: string }[] {
   const seen = new Set<string>();
-  const out: CompletionMonster[] = [];
+  const out: { number: number | null; name: string }[] = [];
   for (const monster of monsters) {
     const key = monster.book === null ? `name:${monster.name}` : `no:${monster.book}`;
     if (seen.has(key)) continue;
@@ -162,6 +177,26 @@ function monsterList(monsters: readonly EncounterMonster[]): CompletionMonster[]
     out.push({ number: monster.book, name: monster.name });
   }
   return out;
+}
+
+/** One missing monster with its task 68 chance and missable category. */
+function missingMonster(
+  monster: { readonly number: number; readonly name: string },
+  input: CompletionInput,
+): CompletionMonster {
+  const status = input.monsterStatuses?.get(monster.number) ?? null;
+  const chance = monsterChance(input.encounterTable ?? null, {
+    name: monster.name,
+    book: monster.number,
+  });
+  return {
+    number: monster.number,
+    name: monster.name,
+    chance,
+    expectedBattles: expectedBattles(chance),
+    missable: status?.startsWith("限时:") ? status.slice("限时:".length) : null,
+    lost: status === "不可再获得",
+  };
 }
 
 const WORLD_EXIT = "ワールドマップ";
@@ -216,9 +251,12 @@ export function completionState(input: CompletionInput): CompletionState {
   const rows = areaRows(input.treasure, input.areaId, input.world);
   const spots = parseTreasureEntities(input.entities);
   const monsters = monsterList(input.monsters);
-  const missingMonsters = monsters.filter(
-    (monster) => monster.number !== null && !input.known.has(monster.number),
-  );
+  const missingMonsters = monsters
+    .filter(
+      (monster): monster is { number: number; name: string } =>
+        monster.number !== null && !input.known.has(monster.number),
+    )
+    .map((monster) => missingMonster(monster, input));
   const region =
     input.world && input.region !== null && input.region !== undefined
       ? {
@@ -254,6 +292,16 @@ function missingText(section: CompletionSection, limit = 12): string {
   const shown = section.missing.slice(0, limit).map(spotText);
   const rest = section.missing.length - shown.length;
   return shown.join("、") + (rest > 0 ? `、另 ${rest} 个` : "");
+}
+
+/** Task 68: 「风形魔(7%,以后还会出现)」 or 「XX(2%,限时：打倒…前)」. */
+export function monsterText(monster: CompletionMonster): string {
+  const tags: string[] = [];
+  tags.push(monster.chance === null ? "概率未知" : `${Math.round(monster.chance * 100)}%`);
+  if (monster.lost) tags.push("已错过，不用刷");
+  else if (monster.missable !== null) tags.push(`限时：${monster.missable}`);
+  else tags.push("以后还会出现");
+  return `${monster.name}(${tags.join(",")})`;
 }
 
 export function isComplete(state: CompletionState): boolean {
@@ -298,16 +346,16 @@ export function completionLine(state: CompletionState): string {
         : state.monsters.missing.length === 0
           ? ` · 本图的怪 ${state.monsters.total} 种，本档图鉴已齐`
           : ` · 本图的怪 ${state.monsters.total} 种，本档图鉴还缺 ${state.monsters.missing.length} 种：` +
-            state.monsters.missing
-              .slice(0, 12)
-              .map((item) => item.name)
-              .join("、") +
+            state.monsters.missing.slice(0, 12).map(monsterText).join("、") +
             (state.monsters.missing.length > 12 ? ` 等 ${state.monsters.missing.length} 种` : "");
   return `本图完成度(${where})：${chests}${hidden}${monster}`;
 }
 
 /** What a leave check would lose, one Chinese phrase per missing kind. */
-export function missingLines(state: CompletionState): string[] {
+export function missingLines(
+  state: CompletionState,
+  skipMonsters: ReadonlySet<number> = new Set<number>(),
+): string[] {
   const out: string[] = [];
   if (state.chests.missing.length > 0) {
     out.push(`宝箱 ${state.chests.open}/${state.chests.total}(没拿：${missingText(state.chests)})`);
@@ -317,11 +365,11 @@ export function missingLines(state: CompletionState): string[] {
       `隐藏道具 ${state.hidden.open}/${state.hidden.total}(没拿：${missingText(state.hidden)})`,
     );
   }
-  if (state.monsters.missing.length > 0) {
-    out.push(
-      `本图鉴还缺 ${state.monsters.missing.length} 种：` +
-        state.monsters.missing.map((item) => item.name).join("、"),
-    );
+  const monsters = state.monsters.missing.filter(
+    (item) => item.number === null || !skipMonsters.has(item.number),
+  );
+  if (monsters.length > 0) {
+    out.push(`本图鉴还缺 ${monsters.length} 种：` + monsters.map(monsterText).join("、"));
   }
   return out;
 }
@@ -382,6 +430,8 @@ export interface BacklogEntry {
   readonly region: number | null;
   readonly mapName: string;
   readonly missing: readonly string[];
+  /** Task 68: bestiary numbers deferred by a low-probability grind; these no longer block. */
+  readonly bestiary: readonly number[];
   readonly reason: string;
   readonly resolvedAt: string | null;
 }
@@ -392,6 +442,7 @@ export interface BacklogInput {
   readonly region: number | null;
   readonly mapName: string;
   readonly missing: readonly string[];
+  readonly bestiary?: readonly number[];
   readonly reason: string;
   readonly at?: string;
 }
@@ -418,6 +469,7 @@ function parseBacklog(value: unknown): BacklogEntry | null {
     region: num(value.region) ?? null,
     mapName: text(value.mapName) ?? "",
     missing: list(value.missing).filter((item): item is string => typeof item === "string"),
+    bestiary: list(value.bestiary).filter((item): item is number => typeof item === "number"),
     reason,
     resolvedAt: text(value.resolvedAt) ?? null,
   };
@@ -470,6 +522,11 @@ export class Backlog {
     const existing = this.pending().find(
       (entry) => entryKey(entry) === backlogKey(input.mapId, input.areaId, input.region),
     );
+    // A manual leave note and a later automatic bestiary deferral share one entry; keep the
+    // deferred monster numbers from both so neither call loses the other's excused monsters.
+    const bestiary = [...new Set([...(existing?.bestiary ?? []), ...(input.bestiary ?? [])])].sort(
+      (left, right) => left - right,
+    );
     const entry: BacklogEntry = {
       id: existing?.id ?? `b${this.next++}`,
       at: input.at ?? new Date().toISOString(),
@@ -478,6 +535,7 @@ export class Backlog {
       region: input.region,
       mapName: input.mapName,
       missing: [...input.missing],
+      bestiary,
       reason: input.reason,
       resolvedAt: null,
     };
