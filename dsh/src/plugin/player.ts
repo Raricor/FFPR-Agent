@@ -9,6 +9,7 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Context } from "@deepseek-ai/cordis";
 import type { Agent, PreStepDecision } from "@deepseek-ai/dsh-agent";
+import type { WorkspaceController } from "@deepseek-ai/dsh-api-workspace-controller";
 import type { SessionEvent } from "@deepseek-ai/dsh-session";
 import { createUserMessage, type ContextFormed } from "@deepseek-ai/dsh-llm";
 import { PERSONA_PREFIX_SECTION } from "@deepseek-ai/dsh-system-prompt";
@@ -38,7 +39,7 @@ import { formatNotes, formatTactician, notesContext, tacticianContext } from "./
 import { registerPresetMount } from "./preset-hooks.ts";
 import { installPresetSwitch, playerPresetId, type PresetSelector } from "./preset-switch.ts";
 import type { EngineSlot } from "./registry.ts";
-import { callTactician } from "./tactician.ts";
+import { callTactician, TacticianArchiveQueue } from "./tactician.ts";
 import { gameToolDefinitions, type GameToolHost } from "./tools.ts";
 
 declare module "@deepseek-ai/dsh-llm" {
@@ -246,6 +247,8 @@ export async function startEngine(
       tacticianBoss: config.tacticianBoss,
       travelMaxHops: config.travelMaxHops,
       travelMaxMinutes: config.travelMaxMinutes,
+      bestiaryDeferBattles: config.bestiaryDeferBattles,
+      bestiaryMissableMinutes: config.bestiaryMissableMinutes,
       walkpathTimeoutMs: config.walkpathTimeoutMs,
       walkpathBlockedMs: config.walkpathBlockedMs,
       walkpathTurnLead: config.walkpathTurnLead,
@@ -563,6 +566,18 @@ export function installPlayer(
   presets?: PresetSelector,
   journal: PlayerJournal = new PlayerJournal(),
 ): void {
+  // Task 67: archive finished tactician child sessions after keeping the newest few visible.
+  // `ctx.get` is the documented optional service read (@deepseek-ai/cordis reflect.get); an
+  // instance without the Host Workspace controller still plays, it just cannot archive.
+  const workspaceController: WorkspaceController | undefined =
+    typeof ctx.get === "function" ? ctx.get("workspaceController") : undefined;
+  const tacticianSessions = new TacticianArchiveQueue({
+    keepVisible: config.tacticianKeepVisible,
+    archive: workspaceController,
+    warn: (message) => {
+      log.warn(message);
+    },
+  });
   let binding: TacticianBinding | null = null;
   const prepare = (engine: PlayerEngine): void => {
     // The tactician runs under the same agent and cancellation as the tool call that needed it.
@@ -576,6 +591,7 @@ export function installPlayer(
         binding.signal,
         engine.game.game,
         facts,
+        tacticianSessions,
       );
     });
   };

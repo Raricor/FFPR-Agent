@@ -10,6 +10,10 @@ import Schema from "@deepseek-ai/schemastery";
 import { byKey, type Game } from "../engine/games.ts";
 import { DEPS, LAPTOP_ENV } from "../engine/paths.ts";
 import {
+  DEFAULT_BESTIARY_DEFER_BATTLES,
+  DEFAULT_BESTIARY_MISSABLE_MINUTES,
+} from "../engine/skills/grind.ts";
+import {
   WALKPATH_BLOCKED_MS,
   WALKPATH_EVENT_POLL_MS,
   WALKPATH_EVENT_WAIT_MS,
@@ -79,6 +83,8 @@ const DEFAULT_CHECK_EVERY_MS = 60_000;
 const DEFAULT_DETECT_CACHE_MS = 10_000;
 /** How long agent/created may wait for the first "which game is open" answer (task 32). */
 const DEFAULT_AUTO_PRESET_WAIT_MS = 3_000;
+/** Task 67: keep this many finished tactician child sessions visible per game. */
+const DEFAULT_TACTICIAN_KEEP_VISIBLE = 2;
 
 const RawConfig = Schema.object({
   /**
@@ -134,6 +140,10 @@ const RawConfig = Schema.object({
   travelMaxHops: Schema.number().default(DEFAULT_TRAVEL_MAX_HOPS),
   /** Task 48/58: the whole call stops after this many minutes. */
   travelMaxMinutes: Schema.number().default(DEFAULT_TRAVEL_MAX_MINUTES),
+  /** Task 68: a low-probability monster is deferred after at most this many battles. */
+  bestiaryDeferBattles: Schema.number().default(DEFAULT_BESTIARY_DEFER_BATTLES),
+  /** Task 68: a missable monster's grind stops after this many minutes. */
+  bestiaryMissableMinutes: Schema.number().default(DEFAULT_BESTIARY_MISSABLE_MINUTES),
   /** Task 58: the bridge walkpath's base timeout, blocked wait and turn lead. */
   walkpathTimeoutMs: Schema.number().default(WALKPATH_TIMEOUT_MS),
   walkpathBlockedMs: Schema.number().default(WALKPATH_BLOCKED_MS),
@@ -141,6 +151,8 @@ const RawConfig = Schema.object({
   /** Task 63: how often and how long a walkpath Event/dialog stop is watched for battle. */
   walkpathEventPollMs: Schema.number().default(WALKPATH_EVENT_POLL_MS),
   walkpathEventWaitMs: Schema.number().default(WALKPATH_EVENT_WAIT_MS),
+  /** Task 67: finished tactician child sessions left visible; older ones are archived. */
+  tacticianKeepVisible: Schema.number().default(DEFAULT_TACTICIAN_KEEP_VISIBLE),
 });
 
 /**
@@ -173,11 +185,14 @@ export const Config = Schema.transform(RawConfig, (config) => {
     autoPresetWaitMs: config.autoPresetWaitMs ?? DEFAULT_AUTO_PRESET_WAIT_MS,
     travelMaxHops: config.travelMaxHops ?? DEFAULT_TRAVEL_MAX_HOPS,
     travelMaxMinutes: config.travelMaxMinutes ?? DEFAULT_TRAVEL_MAX_MINUTES,
+    bestiaryDeferBattles: config.bestiaryDeferBattles ?? DEFAULT_BESTIARY_DEFER_BATTLES,
+    bestiaryMissableMinutes: config.bestiaryMissableMinutes ?? DEFAULT_BESTIARY_MISSABLE_MINUTES,
     walkpathTimeoutMs: config.walkpathTimeoutMs ?? WALKPATH_TIMEOUT_MS,
     walkpathBlockedMs: config.walkpathBlockedMs ?? WALKPATH_BLOCKED_MS,
     walkpathTurnLead: config.walkpathTurnLead ?? WALKPATH_TURN_LEAD,
     walkpathEventPollMs: config.walkpathEventPollMs ?? WALKPATH_EVENT_POLL_MS,
     walkpathEventWaitMs: config.walkpathEventWaitMs ?? WALKPATH_EVENT_WAIT_MS,
+    tacticianKeepVisible: config.tacticianKeepVisible ?? DEFAULT_TACTICIAN_KEEP_VISIBLE,
   };
 });
 

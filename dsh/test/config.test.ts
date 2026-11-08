@@ -22,11 +22,16 @@ void test("Config defaults point at FF5's deployment paths and slot", () => {
   assert.equal(config.checkEveryMs, 60000);
   assert.equal(config.detectCacheMs, 10000);
   assert.equal(config.autoPresetWaitMs, 3000);
+  assert.equal(config.travelMaxHops, 12);
+  assert.equal(config.travelMaxMinutes, 10);
+  assert.equal(config.bestiaryDeferBattles, 15);
+  assert.equal(config.bestiaryMissableMinutes, 40);
   assert.equal(config.walkpathTimeoutMs, 60000);
   assert.equal(config.walkpathBlockedMs, 800);
   assert.equal(config.walkpathTurnLead, 0.6);
   assert.equal(config.walkpathEventPollMs, 200);
   assert.equal(config.walkpathEventWaitMs, 2500);
+  assert.equal(config.tacticianKeepVisible, 2);
   assert.equal(config.bridgeUrl, undefined);
 });
 
@@ -92,11 +97,16 @@ void test("Config keeps explicit values", () => {
     checkEveryMs: 250,
     detectCacheMs: 1234,
     autoPresetWaitMs: 25,
+    travelMaxHops: 20,
+    travelMaxMinutes: 45,
+    bestiaryDeferBattles: 8,
+    bestiaryMissableMinutes: 25,
     walkpathTimeoutMs: 15000,
     walkpathBlockedMs: 120,
     walkpathTurnLead: 0.8,
     walkpathEventPollMs: 50,
     walkpathEventWaitMs: 900,
+    tacticianKeepVisible: 5,
   });
   assert.equal(config.role, "tactician");
   assert.equal(config.tacticianBoss, false);
@@ -110,6 +120,10 @@ void test("Config keeps explicit values", () => {
   assert.equal(config.tacticsFile, "/tmp/tactics.json");
   assert.equal(config.elementsFile, "/tmp/elements.json");
   assert.equal(config.battlesFile, "/tmp/battles.jsonl");
+  assert.equal(config.travelMaxHops, 20);
+  assert.equal(config.travelMaxMinutes, 45);
+  assert.equal(config.bestiaryDeferBattles, 8);
+  assert.equal(config.bestiaryMissableMinutes, 25);
   assert.equal(config.checkEveryMs, 250);
   assert.equal(config.detectCacheMs, 1234);
   assert.equal(config.autoPresetWaitMs, 25);
@@ -118,4 +132,5 @@ void test("Config keeps explicit values", () => {
   assert.equal(config.walkpathTurnLead, 0.8);
   assert.equal(config.walkpathEventPollMs, 50);
   assert.equal(config.walkpathEventWaitMs, 900);
+  assert.equal(config.tacticianKeepVisible, 5);
 });
