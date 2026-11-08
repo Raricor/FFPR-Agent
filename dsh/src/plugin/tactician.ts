@@ -6,7 +6,9 @@
 
 import type { Context } from "@deepseek-ai/cordis";
 import type { Agent } from "@deepseek-ai/dsh-agent";
+import type { WorkspaceController } from "@deepseek-ai/dsh-api-workspace-controller";
 import type { ContentBlock } from "@deepseek-ai/dsh-llm";
+import type { SessionId } from "@deepseek-ai/dsh-session";
 import type { SubagentActivationSpec, SubagentResult } from "@deepseek-ai/dsh-subagent";
 import { PERSONA_PREFIX_SECTION } from "@deepseek-ai/dsh-system-prompt";
 import type { ObjectJsonSchema, ToolDefinition } from "@deepseek-ai/dsh-tools";
@@ -57,6 +59,8 @@ export const TACTICIAN_OUTPUT_SCHEMA: ObjectJsonSchema = {
 
 /** The part of ctx.subagents this module uses; tests can supply a fake. */
 export interface TacticianActivation {
+  /** The durable child session (dsh-subagent `startActivation`); archived when it gets old. */
+  readonly childId: SessionId;
   readonly result: Promise<SubagentResult>;
 }
 
@@ -66,6 +70,75 @@ export interface TacticianStarter {
 
 interface Log {
   warn(message: string): void;
+}
+
+/** The queue callTactician reports finished children to; a fake in tests. */
+export interface TacticianSessionRecorder {
+  finished(game: string, childId: SessionId): void;
+}
+
+/**
+ * Keep only the newest `keepVisible` finished tactician sessions per game and archive older
+ * ones through dsh's Host `ctx.workspaceController` (dsh-api-workspace-controller
+ * `WorkspaceController.archiveSession`, fetched with the documented `ctx.get()` optional
+ * service read). The list lives in memory: after a web restart it is empty, so sessions opened
+ * before the restart stay visible (accepted, task 67). Archiving never deletes files and can be
+ * undone from the workspace UI. A missing service or a failed archive only warns once; the
+ * tactician still works.
+ */
+export class TacticianArchiveQueue implements TacticianSessionRecorder {
+  private readonly keepVisible: number;
+  private readonly archive: Pick<WorkspaceController, "archiveSession"> | undefined;
+  private readonly warn: (message: string) => void;
+  private readonly visible = new Map<string, SessionId[]>();
+  private warned = false;
+
+  constructor(options: {
+    readonly keepVisible: number;
+    readonly archive: Pick<WorkspaceController, "archiveSession"> | undefined;
+    readonly warn: (message: string) => void;
+  }) {
+    this.keepVisible = options.keepVisible;
+    this.archive = options.archive;
+    this.warn = options.warn;
+  }
+
+  /** Record one finished child (success, failure or timeout) and archive the oldest overflow. */
+  finished(game: string, childId: SessionId): void {
+    const sessions = this.visible.get(game) ?? [];
+    sessions.push(childId);
+    this.visible.set(game, sessions);
+    while (sessions.length > this.keepVisible) {
+      const oldest = sessions.shift();
+      if (oldest === undefined) return;
+      this.archiveOne(oldest);
+    }
+  }
+
+  private archiveOne(sessionId: SessionId): void {
+    if (this.archive === undefined) {
+      this.warnOnce(
+        "dsh 没有提供 workspaceController 服务,战术官子会话不会自动归档;战术官照常工作",
+      );
+      return;
+    }
+    try {
+      void this.archive
+        .archiveSession({ sessionId, stopActivity: true })
+        .catch((error: unknown) => {
+          this.warnOnce(`自动归档战术官子会话失败:${describeError(error)};战术官照常工作`);
+        });
+    } catch (error) {
+      // A service may throw before returning its promise; keep that out of the tactician call.
+      this.warnOnce(`自动归档战术官子会话失败:${describeError(error)};战术官照常工作`);
+    }
+  }
+
+  private warnOnce(message: string): void {
+    if (this.warned) return;
+    this.warned = true;
+    this.warn(message);
+  }
 }
 
 /**
@@ -78,6 +151,7 @@ export async function callTactician(
   signal: AbortSignal,
   game: string,
   facts: string,
+  sessions: TacticianSessionRecorder,
 ): Promise<TacticianPlan> {
   const map = /地图[:：]?\s*(\d+)/u.exec(facts)?.[1] ?? "?";
   const prompt: ContentBlock[] = [{ type: "text", text: facts }];
@@ -105,6 +179,9 @@ export async function callTactician(
   } catch (error) {
     signal.throwIfAborted();
     throw new Error(`战术官没有回答:${describeError(error)}`, { cause: error });
+  } finally {
+    // Covers success, a non-completed stop and a result rejection (including the timeout).
+    sessions.finished(game, activation.childId);
   }
   if (result.stopReason !== "completed") {
     signal.throwIfAborted();
