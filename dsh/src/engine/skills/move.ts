@@ -1,7 +1,7 @@
 /**
- * Walking: closed-loop legs on the laptop, planned here, re-planned when blocked; and
- * stepping up to a chest, NPC or counter to interact with it. Ported from
- * ffpr_agent/skills/move.py.
+ * Walking: one whole route per bridge command (0.14.0's walkpath), planned here, re-planned
+ * when blocked; closed-loop legs on older bridges; and stepping up to a chest, NPC or counter
+ * to interact with it. Ported from ffpr_agent/skills/move.py.
  */
 
 import type { Pilot, Reply } from "../pilot.ts";
@@ -16,9 +16,29 @@ import {
   search,
   terrainRule,
 } from "../nav.ts";
-import type { Cell, CellGrid, LayerChange, LayerNode, ObservedMove } from "../nav.ts";
-import { isRecord, record, records, text, truthy, type Json } from "../values.ts";
+import type { Cell, CellGrid, CellRule, LayerChange, LayerNode, ObservedMove } from "../nav.ts";
+import { isRecord, num, record, records, text, truthy, type Json } from "../values.ts";
 import { eventBaseName, fallMoves } from "../view.ts";
+import {
+  beginWalk,
+  finishWalk,
+  indoorBase,
+  updateWalk,
+  updateWalkFromReply,
+  worldBase,
+  type WalkBase,
+  type WalkView,
+} from "../walk-view.ts";
+import {
+  MAX_WORLD_WINDOWS,
+  WORLD_RADIUS,
+  createWorldCache,
+  hasAt,
+  mergeWindow,
+  windowCenters,
+  worldGrid,
+} from "../world-grid.ts";
+import type { WorldCache } from "../world-grid.ts";
 import type { BattleHooks } from "./battle.ts";
 import { regular } from "./battle.ts";
 import { FIELD_HELP_STUCK, dismissFieldHelp } from "./screens.ts";
@@ -31,9 +51,26 @@ type Say = (line: string) => void;
  */
 export interface MoveState {
   drake: Cell | null;
+  /** The game key (ffN), for the walk view the dsh page reads (task 61). */
+  game?: string;
+  /** What this walk is for, set by the Game's tool handler; `walkpath` sends it. */
+  label?: string;
+  /** Which map hop is walking (travel.ts), appended to the label as "第 k 跳". */
+  hop?: number;
+  /** The current walk view, one per game (task 61). */
+  walk?: WalkView | null;
   battle?: BattleHooks;
   /** Save slot a wipe loads during a walk; the Game sets it from its config. */
   saveSlot?: number;
+  /** 11-05: battles met while walking run first; set by go/explore. */
+  flee?: boolean;
+  /** Task 58: the bridge walkpath's base timeout, blocked wait and turn lead (Config). */
+  walkpathTimeoutMs?: number;
+  walkpathBlockedMs?: number;
+  walkpathTurnLead?: number;
+  /** Task 63: how often and how long a walkpath's Event/dialog stop is watched for battle. */
+  walkpathEventPollMs?: number;
+  walkpathEventWaitMs?: number;
   /** Records a way found or refused while walking in the atlas; the Game wires it in. */
   link?: (
     mapId: unknown,
@@ -50,9 +87,62 @@ export interface MoveState {
   cuts?: Map<string, Set<string>>;
   /** Ways seen earlier on a map (conveyors, falls, layer changes), for the next plan. */
   moves?: (mapId: unknown) => readonly ObservedMove[];
+  /**
+   * World-map terrain read through bridge 0.14.0's `cells.at`, by map id. Memory only and one
+   * per game's MoveState; the story can change terrain, so every plan rereads the player's
+   * window over it (task 56).
+   */
+  world?: WorldCache;
 }
 
 const EMPTY_CUT: ReadonlySet<string> = new Set<string>();
+
+// Task 58: these are the defaults; Config carries the live values on MoveState.
+export const WALKPATH_TIMEOUT_MS = 60_000;
+export const WALKPATH_BLOCKED_MS = 800;
+export const WALKPATH_TURN_LEAD = 0.6;
+// Task 63: an encounter starts on a MainState=Event frame before the battle is up (11-08).
+export const WALKPATH_EVENT_POLL_MS = 200;
+export const WALKPATH_EVENT_WAIT_MS = 2_500;
+/** The link waits for the bridge's walk plus this margin; the bridge's own timeout is smaller. */
+export const WALKPATH_WAIT_MS = WALKPATH_TIMEOUT_MS + 5_000;
+
+/**
+ * A whole-map route on the world map can run past 100 cells; a fixed 60 s would end such a walk
+ * with "timeout" and stop the call (11-05 review). One second a cell, between the configured
+ * base and the bridge's 300 s cap.
+ */
+export function walkpathTimeout(cells: number, state?: MoveState): number {
+  const base = state?.walkpathTimeoutMs ?? WALKPATH_TIMEOUT_MS;
+  return Math.min(300_000, Math.max(base, cells * 1_000));
+}
+
+/** The label `walkpath` and a walk push carry: the tool's base plus the current hop. */
+export function walkLabel(state?: MoveState): string {
+  const base = state?.label ?? "";
+  if (base === "") return "";
+  const hop = state?.hop;
+  return (hop === undefined ? base : `${base} 第 ${hop} 跳`).slice(0, 80);
+}
+
+/** Task 58: Config's values for the bridge walkpath, defaulting like before. */
+export function walkpathBlockedMs(state?: MoveState): number {
+  return state?.walkpathBlockedMs ?? WALKPATH_BLOCKED_MS;
+}
+
+export function walkpathTurnLead(state?: MoveState): number {
+  return state?.walkpathTurnLead ?? WALKPATH_TURN_LEAD;
+}
+
+export function walkpathEventPollMs(state?: MoveState): number {
+  return state?.walkpathEventPollMs ?? WALKPATH_EVENT_POLL_MS;
+}
+
+export function walkpathEventWaitMs(state?: MoveState): number {
+  return state?.walkpathEventWaitMs ?? WALKPATH_EVENT_WAIT_MS;
+}
+/** A whole navigate call's loop cap; battles do not count against `legs`, so this bounds them. */
+const MAX_WALK_TURNS = 200;
 
 // Named events that move the party although their cells are open floor (10-27: the
 // Fire-Powered Ship's conveyor 流される carried the player off the path).
@@ -79,8 +169,68 @@ function cellOf(value: unknown): Cell | null {
   return [value[0], value[1]];
 }
 
+/** A bridge map id as a number, for the walk view; null when it cannot be read. */
+function mapNumber(value: unknown): number | null {
+  const map = num(value);
+  return map === undefined ? null : Math.trunc(map);
+}
+
 function sameCell(a: Cell | null, b: Cell | null): boolean {
   return a !== null && b !== null && a[0] === b[0] && a[1] === b[1];
+}
+
+function adjacent(a: Cell, b: Cell): boolean {
+  return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) === 1;
+}
+
+/**
+ * The game's route given only at its turns, filled in cell by cell. Two consecutive points
+ * that are neither on one row nor in one column are not a corner pair at all (a diagonal jump
+ * or a broken route), so the caller uses its own plan instead (task 56).
+ */
+export function expandCorners(route: readonly Cell[]): Cell[] | null {
+  const out: Cell[] = [];
+  for (const cell of route) {
+    const before = out[out.length - 1];
+    if (before === undefined || sameCell(before, cell)) {
+      out.push(cell);
+      continue;
+    }
+    const dx = cell[0] - before[0];
+    const dy = cell[1] - before[1];
+    if (dx !== 0 && dy !== 0) return null;
+    const stepX = Math.sign(dx);
+    const stepY = Math.sign(dy);
+    for (let i = 1; i <= Math.abs(dx) + Math.abs(dy); i++) {
+      out.push([before[0] + stepX * i, before[1] + stepY * i]);
+    }
+  }
+  return out;
+}
+
+/**
+ * The part of a planned route walkpath can walk: every cell is four-way adjacent. Our search
+ * gives every cell except where a conveyor, fall or other move carries the party: that step is
+ * a jump, so the command stops on the cell before it and the next plan starts from wherever the
+ * game put the party (task 56).
+ */
+export function walkPathCells(route: readonly Cell[]): Cell[] {
+  const out: Cell[] = [];
+  for (const cell of route) {
+    const before = out[out.length - 1];
+    if (before === undefined || sameCell(before, cell)) {
+      out.push(cell);
+      continue;
+    }
+    if (adjacent(before, cell)) {
+      out.push(cell);
+      continue;
+    }
+    // A planned route is cell by cell except where a move carries the party; any gap is that
+    // jump, even along one row or column, so the command stops on the cell before it.
+    break;
+  }
+  return out;
 }
 
 /** The blocked steps already found on this map, created on first use. */
@@ -126,7 +276,10 @@ export async function walkLeg(
     const pos = record(result.pos);
     if (truthy(result.ok)) return result;
     if (truthy(pos.battle) || pos.state === "Battle") {
-      say(`  途中遇敌,${await regular(pilot, state.battle ?? {}, say, state.saveSlot)}`);
+      const battle = await regular(pilot, state.battle ?? {}, say, state.saveSlot, {
+        flee: state.flee === true,
+      });
+      say(`  途中遇敌,${battle}`);
     } else if (pos.state === "FieldHelp") {
       // First visit to a map: the walk stops on the hint overlay. Close it and walk on.
       const help = await dismissFieldHelp(pilot);
@@ -248,6 +401,8 @@ interface Planned {
   readonly falls: ReadonlySet<string>;
   /** Set on a multi-floor map (11-03, Fire-Powered Ship 261); undefined on one floor. */
   readonly layer?: LayerInfo;
+  /** The grid this plan searched, for the walk view's cropped rows (task 61). */
+  readonly base?: WalkBase;
 }
 
 /**
@@ -266,6 +421,60 @@ export async function plan(
   return [here, path];
 }
 
+/**
+ * The world map's known terrain, extended toward goal while the plan cannot reach it (task 56).
+ * The first window is always the player's own, read over the cache so a story change is seen.
+ * Extra windows need bridge 0.14.0's `at`; without it the old one-window behaviour stays.
+ * At most MAX_WORLD_WINDOWS windows are read in one plan.
+ */
+async function worldPlanGrid(
+  pilot: Pilot,
+  first: unknown,
+  cells: CellGrid,
+  goal: Cell,
+  aloft: boolean,
+  rule: CellRule,
+  entrances: readonly Cell[],
+  cut: ReadonlySet<string>,
+  state: MoveState | undefined,
+  map: unknown,
+): Promise<CellGrid> {
+  const firstWindow = (): CellGrid => (aloft ? cells : withoutEntrances(cells, entrances, goal));
+  if (state === undefined || map === undefined) return firstWindow();
+  const cache = (state.world ??= createWorldCache());
+  if (hasAt(first)) cache.at = true;
+  const terrain = mergeWindow(cache, map, cells);
+  const merged = (): CellGrid => {
+    const grid = cache.at === true ? worldGrid(terrain, cells.center) : cells;
+    return aloft ? grid : withoutEntrances(grid, entrances, goal);
+  };
+  let grid = merged();
+  let path = pathToward(grid, goal, rule, cut);
+  if (cache.at === false || sameCell(path[path.length - 1] ?? null, goal)) return grid;
+  let reads = 1;
+  const centers = windowCenters(terrain, cells.center, goal, MAX_WORLD_WINDOWS - reads);
+  for (const center of centers) {
+    if (reads >= MAX_WORLD_WINDOWS) break;
+    // An old bridge ignores `at`; the missing echo marks it once and the old way stays.
+    const raw = record(
+      (await pilot.send("cells", { r: WORLD_RADIUS, at: [center[0], center[1]] })).cells,
+    );
+    if (!hasAt(raw)) {
+      cache.at = false;
+      break;
+    }
+    cache.at = true;
+    const read = cellGridOf(raw);
+    if (read === null) break;
+    mergeWindow(cache, map, read);
+    reads += 1;
+    grid = merged();
+    path = pathToward(grid, goal, rule, cut);
+    if (sameCell(path[path.length - 1] ?? null, goal)) break;
+  }
+  return grid;
+}
+
 async function plannedRoute(
   pilot: Pilot,
   goal: Cell,
@@ -274,7 +483,8 @@ async function plannedRoute(
   state?: MoveState,
   map?: unknown,
 ): Promise<Planned> {
-  const cells = cellGridOf((await pilot.send("cells", { r: 24 })).cells);
+  const raw = (await pilot.send("cells", { r: WORLD_RADIUS })).cells;
+  const cells = cellGridOf(raw);
   if (cells === null)
     return { here: null, path: [], conveyors: new Set(), falls: new Set<string>() };
   if (hasTerrain(cells)) {
@@ -283,12 +493,25 @@ async function plannedRoute(
     // On foot or by ship, stepping on another place's entrance walks into it (10-27, twice:
     // the way from (87, 76) to the Fire-Powered Ship at (84, 79) crossed Karnak Castle's door).
     // The drake does not land by flying over one, so flying keeps every cell.
-    const grid = aloft ? cells : withoutEntrances(cells, await entranceCells(pilot), goal);
+    const entrances = aloft ? [] : await entranceCells(pilot);
+    const grid = await worldPlanGrid(
+      pilot,
+      raw,
+      cells,
+      goal,
+      aloft,
+      rule,
+      entrances,
+      cut,
+      state,
+      map,
+    );
     return {
       here: cells.center,
       path: pathToward(grid, goal, rule, cut),
       conveyors: new Set(),
       falls: new Set(),
+      base: worldBase(state?.game ?? "", mapNumber(map), grid),
     };
   }
   const collision = record((await pilot.send("collision")).collision);
@@ -333,6 +556,7 @@ async function plannedRoute(
     conveyors,
     falls: new Set(falls.map((cell) => cellKey(cell[0], cell[1]))),
     layer: layerInfo(grid, route, transitions),
+    base: indoorBase(state?.game ?? "", mapNumber(map), grid),
   };
 }
 
@@ -721,6 +945,37 @@ async function enteredAfterArriving(
 }
 
 /**
+ * What a walkpath's Event/dialog stop turned out to be: `battle` once the fight is up, `clear`
+ * when the party is back in Player/Transport, `event` when it is still a story stop.
+ */
+export type EventSettle =
+  | { readonly outcome: "battle"; readonly pos: Reply }
+  | { readonly outcome: "clear"; readonly pos: Reply }
+  | { readonly outcome: "event"; readonly pos: Reply };
+
+/**
+ * Task 63: an encounter starts on a MainState=Event frame (11-08, bridge 0.14.1: walkpath
+ * stopped at `state:Event` with battle false, and 1.5 s later the battle was up). Watch pos
+ * rather than trust that first frame: a fight takes over, a short cutscene leaves the party in
+ * Player/Transport, and anything still in Event or dialog is a real story stop.
+ */
+export async function settleWalkEvent(pilot: Pilot, state: MoveState): Promise<EventSettle> {
+  const pollMs = Math.max(1, walkpathEventPollMs(state));
+  const deadline = pilot.now() + Math.max(0, walkpathEventWaitMs(state));
+  let pos: Reply = {};
+  for (;;) {
+    const left = deadline - pilot.now();
+    if (left <= 0) return { outcome: "event", pos };
+    await pilot.sleep(Math.min(pollMs, left));
+    pos = record((await pilot.send("pos")).pos);
+    if (truthy(pos.battle) || pos.state === "Battle") return { outcome: "battle", pos };
+    if (!truthy(pos.dialog) && (pos.state === "Player" || pos.state === "Transport")) {
+      return { outcome: "clear", pos };
+    }
+  }
+}
+
+/**
  * Route to goal and walk it, replanning when something gets in the way. World maps use
  * the terrain codes; towns and dungeons use the map's collision grid (bridge 0.2.5+).
  * Returns (reached, message).
@@ -738,14 +993,34 @@ export async function navigate(
   // Steps that turned out blocked though the map data says open (a closed gate, an object
   // the collision data lacks, the walled side of a 3/5 cell): the next plan goes around that
   // step instead of into it again; the cell stays usable from other sides. Kept on the map
-  // in MoveState, so the next walk_to on the same map also knows (11-03, Fire-Powered Ship
+  // in MoveState, so the next go on the same map also knows (11-03, Fire-Powered Ship
   // 261: the same step was walked into twice).
   const cut = cutsFor(state, startMap);
   const seen = new Set<string>();
-  for (let leg = 0; leg < legs; leg++) {
+  // A bridge without walkpath (0.13.x) or a LAN that cannot be reached falls back to the
+  // old corner-by-corner walk for the rest of this call; the pilot remembers it across calls.
+  let useWalkpath = true;
+  let plans = 0;
+  let turns = 0;
+  // A fight met on the way does not use up one of the caller's legs; the next plan is free.
+  let freePlan = false;
+  const endWalk = (reason: string): void => {
+    if (state.walk !== null && state.walk !== undefined) {
+      state.walk = finishWalk(state.walk, reason, new Date().toISOString());
+    }
+  };
+  for (;;) {
+    if (turns >= MAX_WALK_TURNS) break;
+    turns += 1;
+    if (!freePlan) {
+      if (plans >= legs) break;
+      plans += 1;
+    }
+    freePlan = false;
     const pos = record((await pilot.send("pos")).pos);
     if (pos.map !== startMap) {
       // Walked onto an entrance or stairs: the goal's coordinates belonged to the old map.
+      endWalk("map_changed");
       await pilot.send("wait", { timeout: 30000 }, 40_000);
       const now = record((await pilot.send("pos")).pos);
       return [true, `进入了地图 ${show(now.map)},现在在 ${show(now.cell)}`];
@@ -757,34 +1032,38 @@ export async function navigate(
       continue;
     }
     if (sameCell(here, goal)) {
+      endWalk("arrived");
       const entered = await enteredAfterArriving(pilot, startMap);
       const floor = planned.layer
         ? `,第 ${planned.layer.end} 层(共 ${planned.layer.count} 层)`
         : "";
       return entered ?? [true, `到达 ${cellText(goal)}${floor}`];
     }
-    let path = initial;
+    let path = walkPathCells(initial);
     if (!byShip && !(await onWorldMap(pilot))) {
       // Indoors the game's own search comes first: it knows heights, stairs and which
       // side a cell can be entered from (control plan §4.9). Ours is the fallback, and
       // also when the game's route takes a step that already failed or crosses a conveyor.
-      const theirs = await gameRoute(pilot, goal);
-      const steps = new Set<string>();
-      for (let i = 1; i < theirs.length; i++) {
-        const before = theirs[i - 1];
-        const after = theirs[i];
-        if (before && after) steps.add(edgeKey(before, after));
-      }
-      const crossesConveyor = theirs.some(
-        (cell) => !sameCell(cell, goal) && planned.conveyors.has(cellKey(cell[0], cell[1])),
-      );
-      if (
-        theirs.length > 0 &&
-        sameCell(theirs[0] ?? null, here) &&
-        !crossesConveyor &&
-        ![...steps].some((step) => cut.has(step))
-      ) {
-        path = theirs;
+      // 0.14.0: its points may only be the turns; fill them into cells first, and drop the
+      // route when two points are diagonal (task 56).
+      const theirs = expandCorners(await gameRoute(pilot, goal));
+      if (theirs !== null && theirs.length > 0) {
+        const steps = new Set<string>();
+        for (let i = 1; i < theirs.length; i++) {
+          const before = theirs[i - 1];
+          const after = theirs[i];
+          if (before && after) steps.add(edgeKey(before, after));
+        }
+        const crossesConveyor = theirs.some(
+          (cell) => !sameCell(cell, goal) && planned.conveyors.has(cellKey(cell[0], cell[1])),
+        );
+        if (
+          sameCell(theirs[0] ?? null, here) &&
+          !crossesConveyor &&
+          ![...steps].some((step) => cut.has(step))
+        ) {
+          path = theirs;
+        }
       }
     }
     if (planned.layer) {
@@ -801,6 +1080,7 @@ export async function navigate(
       );
     }
     if (path.length < 2) {
+      endWalk("blocked");
       const floor = planned.layer
         ? `(第 ${planned.layer.start} 层,共 ${planned.layer.count} 层)`
         : "";
@@ -810,10 +1090,149 @@ export async function navigate(
       ];
     }
     say(`  ${cellText(here)} → ${cellText(path[path.length - 1] ?? null)}:${path.length - 1} 格`);
+
+    if (useWalkpath) {
+      const timeoutMs = walkpathTimeout(path.length, state);
+      const label = walkLabel(state);
+      // The map view belongs to this command: a push from an earlier walk has another seq,
+      // and the page would otherwise show the last route against the new one.
+      if (planned.base !== undefined) {
+        state.walk = beginWalk(planned.base, path, goal, label, new Date().toISOString());
+      }
+      let result = await pilot.send(
+        "walkpath",
+        {
+          path: path.map((cell) => [cell[0], cell[1]]),
+          goal: [goal[0], goal[1]],
+          label,
+          timeoutMs,
+          blockedMs: walkpathBlockedMs(state),
+          turnLead: walkpathTurnLead(state),
+        },
+        timeoutMs + 5_000,
+      );
+      if (text(result.error) === "walkpath_unsupported") {
+        useWalkpath = false;
+        // No push and no walkpath reply: the old closed-loop walk below moves the view on
+        // segment by segment, so keep the plan that is about to be walked.
+      } else {
+        state.walk = updateWalkFromReply(state.walk ?? null, result, new Date().toISOString());
+        let current = record(result.pos);
+        let reason = text(result.reason) ?? (truthy(result.ok) ? "arrived" : "");
+        if (reason === "state:Event" || reason === "dialog") {
+          // Task 63: an encounter's opening Event frame looks like a story stop; wait to see
+          // whether it turns into a battle or just a short cutscene.
+          const settled = await settleWalkEvent(pilot, state);
+          if (settled.outcome === "clear") continue;
+          if (settled.outcome === "battle") {
+            result = { ...result, reason: "battle", pos: settled.pos };
+            state.walk = updateWalkFromReply(state.walk ?? null, result, new Date().toISOString());
+            current = record(result.pos);
+            reason = "battle";
+          }
+        }
+        if (reason === "battle" || truthy(current.battle) || current.state === "Battle") {
+          // The bridge stops on the frame a fight starts, so the keypresses cannot reach the
+          // battle menu; the ordinary battle handler takes over from here.
+          const battle = await regular(pilot, state.battle ?? {}, say, state.saveSlot, {
+            flee: state.flee === true,
+          });
+          say(`  途中遇敌,${battle}`);
+          const moved = await afterWalk(pilot, result.pos, startMap, planned, path, state, seen);
+          if (moved) return moved;
+          // Not one of the caller's legs: a long walk may meet several fights (task 56).
+          freePlan = true;
+          continue;
+        }
+        const moved = await afterWalk(pilot, result.pos, startMap, planned, path, state, seen);
+        if (moved) return moved;
+        if (truthy(result.ok) || reason === "arrived") {
+          if (sameCell(cellOf(current.cell), goal)) {
+            const entered = await enteredAfterArriving(pilot, startMap);
+            const floor = planned.layer
+              ? `,第 ${planned.layer.end} 层(共 ${planned.layer.count} 层)`
+              : "";
+            return entered ?? [true, `到达 ${cellText(goal)}${floor}`];
+          }
+          // The command stopped on the cell before a jump or at the window's edge: replan.
+          continue;
+        }
+        if (reason === "state:FieldHelp" || current.state === "FieldHelp") {
+          const help = await dismissFieldHelp(pilot);
+          if (help === "stuck") return [false, FIELD_HELP_STUCK];
+          if (help === "closed") say("  关掉了操作提示");
+          continue;
+        }
+        if (
+          reason === "state:Gimmick" ||
+          current.state === "Gimmick" ||
+          String(result.error).includes("Gimmick")
+        ) {
+          // The bridge already waited 5 s for the door; one more wait then replan.
+          await pilot.send("wait", { timeout: 30000 }, 40_000);
+          continue;
+        }
+        if (
+          reason === "map_changed" ||
+          reason === "state:ChangeMap" ||
+          reason === "state:FieldReady" ||
+          current.state === "ChangeMap" ||
+          current.state === "FieldReady" ||
+          String(result.error).includes("ChangeMap")
+        ) {
+          await pilot.send("wait", { timeout: 30000 }, 40_000);
+          const now = record((await pilot.send("pos")).pos);
+          return [true, `进入了地图 ${show(now.map)},现在在 ${show(now.cell)}`];
+        }
+        if (reason === "blocked") {
+          const index =
+            typeof result.index === "number" && Number.isFinite(result.index)
+              ? Math.trunc(result.index)
+              : -1;
+          const stuck =
+            index >= 0 && index < path.length
+              ? (path[index] ?? cellOf(current.cell))
+              : cellOf(current.cell);
+          const ahead = cellOf(result.next) ?? (index >= 0 ? path[index + 1] : undefined);
+          if (stuck !== null && ahead !== undefined) {
+            cut.add(edgeKey(stuck, ahead));
+            if (state.link) await state.link(startMap, stuck, ahead, "走不过去");
+          }
+          say(
+            `  在 ${show(current.cell)} 被挡住` +
+              (ahead === undefined ? "" : `(到 ${cellText(ahead)} 这一步走不过去)`),
+          );
+          continue;
+        }
+        if (reason === "off_path") continue;
+        if (reason === "dialog" || reason.startsWith("state:")) {
+          return [
+            false,
+            `停在 ${show(current.cell)}:${show(`interrupted:${reason || "walkpath"}`)}`,
+          ];
+        }
+        return [false, `停在 ${show(current.cell)}:${show(reason === "" ? result.error : reason)}`];
+      }
+    }
+
+    // The old way, kept for bridge 0.13.x and a LAN that is down: one closed-loop walk per
+    // turn of the route. Battles inside walkLeg do not use a leg either.
     for (const [x, y] of corners(path)) {
       const result = await walkLeg(pilot, x, y, say, state);
+      const reached = cellOf(record(result.pos).cell);
+      if (state.walk !== null && state.walk !== undefined && reached !== null) {
+        const index = path.findIndex((cell) => sameCell(cell, reached));
+        state.walk = updateWalk(state.walk, {
+          ...(index < 0 ? {} : { index }),
+          cell: reached,
+          steps: Math.max(0, path.length - 1),
+        });
+      }
       const moved = await afterWalk(pilot, result.pos, startMap, planned, path, state, seen);
-      if (moved) return moved;
+      if (moved) {
+        endWalk("stopped");
+        return moved;
+      }
       if (truthy(result.ok)) continue;
       const current = record(result.pos);
       // Stepping onto an entrance swaps the map: that is arriving, not failing.
@@ -822,6 +1241,7 @@ export async function navigate(
         current.state === "FieldReady" ||
         String(result.error).includes("ChangeMap")
       ) {
+        endWalk("map_changed");
         await pilot.send("wait", { timeout: 30000 }, 40_000);
         const now = record((await pilot.send("pos")).pos);
         return [true, `进入了地图 ${show(now.map)},现在在 ${show(now.cell)}`];
@@ -838,13 +1258,21 @@ export async function navigate(
           `  在 ${show(current.cell)} 被挡住` +
             (ahead === undefined ? "" : `(到 ${cellText(ahead)} 这一步走不过去)`),
         );
+        endWalk("blocked");
         break;
       }
+      endWalk("stopped");
       return [false, `停在 ${show(current.cell)}:${show(result.error)}`];
     }
+    endWalk("arrived");
     // A goal beyond the planning window: this leg ended at the nearest cell in view, and
     // the next plan, from there, sees further. One that gets no closer stops above.
   }
+  if (turns >= MAX_WALK_TURNS) {
+    endWalk("timeout");
+    return [false, `走了 ${turns} 次还没到 ${cellText(goal)}`];
+  }
+  endWalk("stopped");
   return [false, `走了 ${legs} 段还没到 ${cellText(goal)}`];
 }
 

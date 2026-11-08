@@ -339,6 +339,7 @@ void test("a two-floor walk says which floor it is on", async () => {
   }));
   pilot.on("entities", { entities: { total: 0, entities: [] } });
   pilot.on("route", { route: {} });
+  pilot.on("walkpath", { ok: false, error: "walkpath_unsupported" });
   pilot.on("walk", () => {
     here = [1, 0];
     return { ok: true, pos: { map: 261, cell: [1, 0] } };
@@ -389,6 +390,7 @@ void test("a layer change walked through is kept in the atlas", async () => {
       : { entities: { total: 0, entities: [] } },
   );
   pilot.on("route", { route: {} });
+  pilot.on("walkpath", { ok: false, error: "walkpath_unsupported" });
   pilot.on("walk", () => {
     here = [1, 1];
     layer = 2;
@@ -439,6 +441,7 @@ void test("a blocked step is kept for the next walk on the same map", async () =
   });
   pilot.on("entities", { entities: { total: 0, entities: [] } });
   pilot.on("route", { route: {} });
+  pilot.on("walkpath", { ok: false, error: "walkpath_unsupported" });
   pilot.on("walk", () => {
     walks += 1;
     return { ok: false, error: "blocked", pos: { map: 42, cell: [0, 0] } };

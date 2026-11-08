@@ -133,6 +133,25 @@ void test("keys commands say who pressed the keys", async () => {
   assert.equal(call.fields.from, "FF3 玩家");
 });
 
+void test("hold and stop go over the LAN command socket", async () => {
+  const link = new FakeLink({ ok: true });
+  const pilot = createPilot(laptop(), link, SIGNAL, {
+    timingFile: "/dev/null",
+    game: "ff5",
+  });
+  assert.deepEqual(await pilot.send("hold", { key: "PadL1", down: true, ms: 2500 }), {
+    ok: true,
+  });
+  assert.deepEqual(await pilot.send("stop"), { ok: true });
+  assert.deepEqual(
+    link.calls.map((call) => ({ method: call.method, op: call.op, fields: call.fields })),
+    [
+      { method: "command", op: "hold", fields: { key: "PadL1", down: true, ms: 2500 } },
+      { method: "command", op: "stop", fields: {} },
+    ],
+  );
+});
+
 void test("agentDir keeps FF5's path and gives each new game its own", () => {
   assert.equal(agentDir(LAPTOP, "ff5"), "C:/ffpr/session/pilot");
   assert.equal(agentDir(LAPTOP, "FF6"), "C:/ffpr/session/pilot-ff6");
@@ -523,6 +542,144 @@ void test("a retry that fails again is reported without another restart", async 
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+void test("walkpath is a command whose wait outlasts the bridge's own timeout", async () => {
+  const link = new FakeLink({
+    ok: true,
+    reason: "arrived",
+    index: 2,
+    steps: 2,
+    pos: { map: 1, cell: [2, 0] },
+    next: null,
+    turns: [],
+  });
+  const result = await throughLink(
+    link,
+    "walkpath",
+    {
+      path: [
+        [0, 0],
+        [1, 0],
+        [2, 0],
+      ],
+      timeoutMs: 60_000,
+      blockedMs: 800,
+      turnLead: 0.6,
+    },
+    65_000,
+    SIGNAL,
+    "FF5 玩家",
+  );
+  assert.deepEqual(result, {
+    ok: true,
+    reason: "arrived",
+    index: 2,
+    steps: 2,
+    pos: { map: 1, cell: [2, 0] },
+    next: null,
+    turns: [],
+  });
+  assert.deepEqual(link.calls, [
+    {
+      method: "command",
+      op: "walkpath",
+      timeoutMs: 65_000,
+      fields: {
+        path: [
+          [0, 0],
+          [1, 0],
+          [2, 0],
+        ],
+        timeoutMs: 60_000,
+        blockedMs: 800,
+        turnLead: 0.6,
+      },
+    },
+  ]);
+});
+
+void test("an old bridge says unknown op once; the same link is not asked again", async () => {
+  const link = new FakeLink({ ok: false, error: "未知的 op:walkpath" });
+  const fields = {
+    path: [
+      [0, 0],
+      [1, 0],
+    ],
+    timeoutMs: 10_000,
+  };
+  const first = createPilot(laptop(), link, SIGNAL, { timingFile: "/dev/null", game: "ff5" });
+  assert.deepEqual(await first.send("walkpath", fields), {
+    ok: false,
+    error: "walkpath_unsupported",
+  });
+  const second = createPilot(laptop(), link, SIGNAL, { timingFile: "/dev/null", game: "ff5" });
+  assert.deepEqual(await second.send("walkpath", fields), {
+    ok: false,
+    error: "walkpath_unsupported",
+  });
+  assert.equal(link.calls.length, 1, "the remembered answer must not cost another round trip");
+});
+
+void test("walkpath without a LAN fails locally instead of falling back to SSH", async () => {
+  const pilot = createPilot(laptop(), undefined, SIGNAL, {
+    timingFile: "/dev/null",
+    game: "ff5",
+  });
+  assert.deepEqual(
+    await pilot.send("walkpath", {
+      path: [
+        [0, 0],
+        [1, 0],
+      ],
+      timeoutMs: 10_000,
+    }),
+    { ok: false, error: "walkpath_unsupported" },
+  );
+});
+
+void test("a cancelled walkpath rejects and does not report unsupported", async () => {
+  class HangingLink implements PilotLink {
+    command(_op: string, _fields: Fields, signal: AbortSignal): Promise<unknown> {
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener(
+          "abort",
+          () => {
+            reject(new DOMException("操作已取消", "AbortError"));
+          },
+          { once: true },
+        );
+      });
+    }
+
+    query(): Promise<unknown> {
+      return Promise.resolve({});
+    }
+  }
+  const controller = new AbortController();
+  const pilot = createPilot(laptop(), new HangingLink(), controller.signal, {
+    timingFile: "/dev/null",
+    game: "ff5",
+  });
+  const pending = pilot.send(
+    "walkpath",
+    {
+      path: [
+        [0, 0],
+        [1, 0],
+      ],
+      timeoutMs: 60_000,
+    },
+    65_000,
+  );
+  setTimeout(() => {
+    controller.abort();
+  }, 10);
+  await assert.rejects(pending, (error: unknown) => {
+    assert.ok(error instanceof Error);
+    assert.equal(error.name, "AbortError");
+    return true;
+  });
 });
 
 async function useFakeSsh(directory: string, responses: readonly SshResponse[]): Promise<string> {

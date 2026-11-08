@@ -74,12 +74,14 @@ function completionOf(
     mapName: world.mapName,
     world: world.world,
     region: null,
-    chests: { total: 0, open: 0, missing: [] },
-    hidden: { total: 0, open: 0, missing: [] },
+    chests: { total: 0, open: 0, missing: [], elsewhere: 0 },
+    hidden: { total: 0, open: 0, missing: [], elsewhere: 0 },
     monsters: {
       total: monsters.length,
       missing: monsters.filter((monster) => !world.known.has(monster.number)),
     },
+    encounter: monsters.length > 0 ? "ok" : "unknown",
+    areaName: world.mapName,
     timedUntil: null,
     oneTime: false,
     exits: [],
@@ -137,6 +139,8 @@ function pilotFor(
     return { entities: { total: entities.length, entities } };
   });
   pilot.on("route", { route: {} });
+  // Task 56: the old walk is the default; a test that wants walkpath overrides this.
+  pilot.on("walkpath", { ok: false, error: "walkpath_unsupported" });
   pilot.on("walk", (fields) => {
     const to = fields.to;
     if (!Array.isArray(to) || typeof to[0] !== "number" || typeof to[1] !== "number") {
@@ -388,3 +392,172 @@ function parseOptions(args: Record<string, unknown>): {
   if (!parsed.ok) throw new Error(parsed.error);
   return parsed.options;
 }
+
+void test("the grind's single step uses walkpath when the bridge has it", async () => {
+  const world = makeWorld();
+  const pilot = pilotFor(world);
+  pilot.on("walkpath", (fields) => {
+    const path = fields.path as Cell[];
+    const last = path[path.length - 1];
+    assert.ok(last);
+    world.cell = [last[0], last[1]];
+    world.walks += 1;
+    pilot.advance(45_000);
+    return {
+      ok: true,
+      reason: "arrived",
+      index: path.length - 1,
+      steps: path.length - 1,
+      pos: { state: "Player", map: world.map, cell: [world.cell[0], world.cell[1]] },
+      next: null,
+      turns: [],
+    };
+  });
+  const report = await grind(
+    pilot,
+    parseOptions({ until_gold: 9999, max_minutes: 1 }),
+    contextFor(world, []),
+  );
+  assert.match(report.stop, /到 1 分钟/);
+  const paths = pilot.calls.flatMap((call) => {
+    if (call.kind !== "send" || call.op !== "walkpath") return [];
+    const path = call.fields.path;
+    return Array.isArray(path) ? [path as Cell[]] : [];
+  });
+  assert.ok(paths.length > 0);
+  const path = paths[0];
+  assert.ok(path);
+  assert.deepEqual(path, [
+    [5, 5],
+    [6, 5],
+  ]);
+  assert.ok(!pilot.calls.some((call) => call.kind === "send" && call.op === "walk"));
+});
+
+void test("the grind's single step falls back to walk without walkpath", async () => {
+  const world = makeWorld();
+  const pilot = pilotFor(world);
+  const report = await grind(
+    pilot,
+    parseOptions({ until_gold: 9999, max_minutes: 1 }),
+    contextFor(world, []),
+  );
+  assert.match(report.stop, /到 1 分钟/);
+  const ops = pilot.calls.flatMap((call) => (call.kind === "send" ? [call.op] : []));
+  assert.ok(ops.includes("walkpath"), "tried walkpath first");
+  assert.ok(ops.includes("walk"), "used the old walk after the unsupported answer");
+});
+
+void test("a state event in a grind step becomes a battle, not a blocked step", async () => {
+  const world = makeWorld();
+  const pilot = pilotFor(world);
+  let event = false;
+  let polls = 0;
+  pilot.on("pos", () => {
+    if (event) {
+      polls += 1;
+      if (polls === 1) {
+        return { pos: { state: "Event", map: world.map, cell: world.cell } };
+      }
+      if (polls === 2) {
+        return { pos: { state: "Battle", battle: true, map: world.map, cell: world.cell } };
+      }
+    }
+    return { pos: { state: world.state, map: world.map, cell: world.cell } };
+  });
+  let sent = 0;
+  pilot.on("walkpath", (fields) => {
+    sent += 1;
+    const path = fields.path as Cell[];
+    if (sent === 1) {
+      event = true;
+      world.walks += 1;
+      pilot.advance(45_000);
+      return {
+        ok: false,
+        reason: "state:Event",
+        index: 0,
+        steps: 1,
+        pos: { state: "Event", map: world.map, cell: world.cell },
+        next: null,
+        turns: [],
+      };
+    }
+    const last = path[path.length - 1];
+    assert.ok(last);
+    world.cell = [last[0], last[1]];
+    pilot.advance(45_000);
+    return {
+      ok: true,
+      reason: "arrived",
+      index: path.length - 1,
+      steps: path.length - 1,
+      pos: { state: "Player", map: world.map, cell: world.cell },
+      next: null,
+      turns: [],
+    };
+  });
+  world.fighter = () => {
+    event = false;
+    world.state = "Player";
+    return "按这张地图的策略打完 1 秒";
+  };
+  const report = await grind(
+    pilot,
+    parseOptions({ until_gold: 9999, max_minutes: 1 }),
+    contextFor(world, []),
+  );
+  assert.equal(report.battles, 1);
+  assert.match(report.stop, /到 1 分钟/);
+  assert.doesNotMatch(report.stop, /走不过去/);
+});
+
+void test("a brief state event in a grind step replans instead of stopping", async () => {
+  const world = makeWorld();
+  const pilot = pilotFor(world);
+  let sent = 0;
+  pilot.on("walkpath", (fields) => {
+    sent += 1;
+    const path = fields.path as Cell[];
+    if (sent === 1) {
+      world.state = "Event";
+      pilot.advance(45_000);
+      return {
+        ok: false,
+        reason: "state:Event",
+        index: 0,
+        steps: 1,
+        pos: { state: "Event", map: world.map, cell: world.cell },
+        next: null,
+        turns: [],
+      };
+    }
+    world.state = "Player";
+    const last = path[path.length - 1];
+    assert.ok(last);
+    world.cell = [last[0], last[1]];
+    pilot.advance(45_000);
+    return {
+      ok: true,
+      reason: "arrived",
+      index: path.length - 1,
+      steps: path.length - 1,
+      pos: { state: "Player", map: world.map, cell: world.cell },
+      next: null,
+      turns: [],
+    };
+  });
+  pilot.on("pos", () => {
+    if (world.state === "Event") world.state = "Player";
+    return { pos: { state: world.state, map: world.map, cell: world.cell } };
+  });
+  const report = await grind(
+    pilot,
+    parseOptions({ until_gold: 9999, max_minutes: 1 }),
+    contextFor(world, []),
+  );
+  assert.equal(report.battles, 0);
+  assert.match(report.stop, /到 1 分钟/);
+  assert.doesNotMatch(report.stop, /走不过去/);
+  assert.ok(sent >= 2, "walked on after the event");
+});

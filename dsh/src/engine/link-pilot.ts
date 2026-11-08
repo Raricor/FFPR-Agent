@@ -41,8 +41,14 @@ export const LINK_OPS = new Set([
   "route",
   "bridge",
   "keys",
+  "hold",
+  "stop",
   "status",
+  "walkpath",
 ]);
+export const WALKPATH_UNSUPPORTED = "walkpath_unsupported";
+/** What an old bridge calls an op it does not know (task 55: `未知的 op:walkpath`). */
+const UNKNOWN_OP = /未知的\s*op|unknown\s+op/iu;
 export const LINK_REST_SECONDS = 30;
 const DEFAULT_WAIT_MS = 30_000;
 /** A status probe that takes longer than this means the agent is busy, not absent. */
@@ -58,6 +64,28 @@ const ABORT_WRITE_TIMEOUT_MS = 5_000;
 
 /** Rest state is per laptop, not per tool call: Python keeps it in a module-level dict. */
 const LINK_REST_UNTIL = new WeakMap<object, number>();
+
+/**
+ * Whether this bridge connection has answered walkpath with an unknown op (task 56). An old
+ * plugin says so once and the caller falls back to SSH `walk`; keeping the mark on the link
+ * stops every later plan from paying for the same failed round trip. A dropped link clears it,
+ * so the bridge that comes back is asked once more (0.14.0 may have replaced 0.13.x).
+ */
+const WALKPATH_SUPPORT = new WeakMap<PilotLink, { unsupported: boolean }>();
+
+function supportOf(link: PilotLink): { unsupported: boolean } {
+  let support = WALKPATH_SUPPORT.get(link);
+  if (support === undefined) {
+    support = { unsupported: false };
+    WALKPATH_SUPPORT.set(link, support);
+  }
+  return support;
+}
+
+/** A failed connection says nothing about the bridge version; ask the next one again. */
+function forgetUnsupported(link: PilotLink | undefined): void {
+  if (link !== undefined) supportOf(link).unsupported = false;
+}
 
 /**
  * In-flight restarts, keyed by game: the pilot agent quits after 30 idle minutes, and several
@@ -110,6 +138,34 @@ export function createPilot(
     waitMs = DEFAULT_WAIT_MS,
   ): Promise<Reply> => {
     const started = performance.now();
+    if (op === "walkpath") {
+      // There is no SSH version of walkpath: the pilot agent's walk is one corner at a time.
+      // An old bridge, or no LAN at all, answers walkpath_unsupported so the caller can fall
+      // back to that walk instead of waiting on a command the agent does not know.
+      const support = link === undefined ? undefined : supportOf(link);
+      const canUseLink =
+        link !== undefined &&
+        env.FFPR_LINK !== "off" &&
+        performance.now() >= (LINK_REST_UNTIL.get(laptop) ?? 0) &&
+        support?.unsupported !== true;
+      let result: Reply = { ok: false, error: WALKPATH_UNSUPPORTED };
+      let via = "none";
+      if (link !== undefined && canUseLink) {
+        via = "lan";
+        try {
+          result = await throughLink(link, op, fields, waitMs, signal, `${byKey(game).label} 玩家`);
+        } catch (error) {
+          if (!(error instanceof LinkError)) throw error;
+          // The connection is gone; a bridge that reconnects may be 0.14.0 after all.
+          signal.throwIfAborted();
+          forgetUnsupported(link);
+          LINK_REST_UNTIL.set(laptop, performance.now() + LINK_REST_SECONDS * 1000);
+          result = { ok: false, error: WALKPATH_UNSUPPORTED };
+        }
+      }
+      await recordTime(timingFile, op, via, started);
+      return result;
+    }
     let result: Reply | undefined;
     let via = "ssh";
     const canUseLink =
@@ -124,6 +180,7 @@ export function createPilot(
         via = "lan";
       } catch (error) {
         if (!(error instanceof LinkError)) throw error;
+        forgetUnsupported(link);
         LINK_REST_UNTIL.set(laptop, performance.now() + LINK_REST_SECONDS * 1000);
       }
     }
@@ -150,6 +207,26 @@ export async function throughLink(
   signal: AbortSignal,
   sender: string,
 ): Promise<Reply> {
+  if (op === "hold") {
+    // 11-05: escape (and later other held keys) uses the bridge's virtual gamepad hold. The
+    // pilot agent has no hold op, so this one must go over the LAN link; without a link the
+    // caller gets the agent's unknown_op and reports that the keys could not be held.
+    const reply = await link.command(
+      "hold",
+      {
+        key: fields.key,
+        down: fields.down === true,
+        ms: fields.ms ?? 2500,
+      },
+      signal,
+      waitMs,
+    );
+    return pick(asReply(reply), ["ok", "error"]);
+  }
+  if (op === "stop") {
+    const reply = await link.command("stop", {}, signal, waitMs);
+    return pick(asReply(reply), ["ok", "error"]);
+  }
   if (op === "keys") {
     // via "game": the bridge presses a virtual gamepad inside the game, so the window can stay
     // in the background (bridge 0.9.0; older bridges ignore the field and use SendInput).
@@ -175,6 +252,26 @@ export async function throughLink(
       "error",
     ]);
     return { running: true, ...kept };
+  }
+  if (op === "walkpath") {
+    // 0.14.0: the bridge walks the whole route itself. Its command waits for the walk, so the
+    // link must outlast the walk's own timeout by a margin (task 55 holds the command thread).
+    const support = supportOf(link);
+    if (support.unsupported) return { ok: false, error: WALKPATH_UNSUPPORTED };
+    const timeoutMs =
+      typeof fields.timeoutMs === "number" && Number.isFinite(fields.timeoutMs)
+        ? fields.timeoutMs
+        : waitMs;
+    const payload: Fields = { path: fields.path };
+    for (const key of ["timeoutMs", "blockedMs", "turnLead"]) {
+      if (fields[key] !== undefined) payload[key] = fields[key];
+    }
+    const reply = asReply(await link.command("walkpath", payload, signal, timeoutMs + 5_000));
+    if (!truthy(reply.ok) && UNKNOWN_OP.test(pythonText(reply.error))) {
+      support.unsupported = true;
+      return { ok: false, error: WALKPATH_UNSUPPORTED };
+    }
+    return pick(reply, ["ok", "reason", "index", "steps", "pos", "next", "turns", "error"]);
   }
   if (op === "bridge") {
     const rest = Object.fromEntries(Object.entries(fields).filter(([key]) => key !== "q"));

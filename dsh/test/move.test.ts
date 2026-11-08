@@ -80,12 +80,12 @@ const runners: Record<string, (pilot: FakePilot) => Promise<unknown>> = {
   },
   "navigate goes on past the planning window": async (pilot) => {
     const said: string[] = [];
-    const out = await navigate(pilot, [10, 0], true, (line) => said.push(line));
+    const out = await navigate(pilot, [10, 0], true, (line) => said.push(line), 8, oldWorld());
     return { out, said };
   },
   "a blocked step closes that step": async (pilot) => {
     const said: string[] = [];
-    const out = await navigate(pilot, [17, 17], true, (line) => said.push(line));
+    const out = await navigate(pilot, [17, 17], true, (line) => said.push(line), 8, oldWorld());
     return { out, said };
   },
   "occupied cells keep props off": async (pilot) => {
@@ -126,10 +126,13 @@ for (const item of fixture.cases) {
     const extraReply = extra ? [{ kind: "send" as const, op: "entities", reply: extra.reply }] : [];
     scriptReplies(pilot, [...item.transcript, ...extraReply, ...settle.map(toPosReply)]);
     noEntrances(pilot);
+    noWalkpath(pilot);
     assert.deepEqual(await run(pilot), item.out);
     const settleCalls = settle.map(() => ({ kind: "send", op: "pos", fields: {}, wait: 30 }));
     const extraCalls = extra ? [extra.call] : [];
-    const calls = recordedCalls(pilot).filter((call) => !isEntranceQuery(call));
+    const calls = recordedCalls(pilot).filter(
+      (call) => !isEntranceQuery(call) && !isWalkpathCall(call),
+    );
     assert.deepEqual(calls, [...item.calls, ...extraCalls, ...settleCalls]);
   });
 }
@@ -149,6 +152,20 @@ function isEntranceQuery(call: unknown): boolean {
   return op === "entities" && fields?.kind === "GotoMap" && fields.max === 300;
 }
 
+/** The window-only world plan the Python transcripts recorded (no bridge `cells.at`). */
+function oldWorld(): MoveState {
+  return { drake: null, world: { maps: new Map(), at: false } };
+}
+
+/** A bridge without walkpath, as the Python-era transcripts and the old walk tests assume. */
+function noWalkpath(pilot: FakePilot): void {
+  pilot.on("walkpath", { ok: false, error: "walkpath_unsupported" });
+}
+
+function isWalkpathCall(call: unknown): boolean {
+  return (call as { op?: unknown }).op === "walkpath";
+}
+
 function toPosReply(pos: { map: number; cell: Cell }): TranscriptEntry {
   return { kind: "send", op: "pos", reply: { pos } };
 }
@@ -156,6 +173,7 @@ function toPosReply(pos: { map: number; cell: Cell }): TranscriptEntry {
 void test("an entrance that swaps the map just after the last step is entering, not arriving", async () => {
   const pilot = new FakePilot();
   noEntrances(pilot);
+  noWalkpath(pilot);
   const open = Array.from({ length: 5 }, () => [3, 3, 3, 3, 3]);
   scriptReplies(pilot, [
     { kind: "send", op: "pos", reply: { pos: { map: 258, cell: [4, 8] } } },
@@ -202,6 +220,7 @@ function conveyorPilot(here: () => Cell): FakePilot {
         }
       : { entities: { total: 0, entities: [] } },
   );
+  noWalkpath(pilot);
   return pilot;
 }
 
@@ -342,6 +361,7 @@ void test("a clerk behind a counter is talked to through the counter, not from b
   });
   pilot.on("keys", { ok: true });
   pilot.on("story", { pages: 1 });
+  noWalkpath(pilot);
   const text = await openAt(pilot, [2, 1]);
   assert.equal(text, "站在 (2, 3) 隔着柜台面朝Up按了确认,之后翻了 1 页对话");
 });
@@ -450,4 +470,649 @@ void test("a straight-line fallback route is not taken for the game's route", as
   assert.deepEqual(await gameRoute(pilot, [14, 18]), []);
   assert.deepEqual((await gameRoute(pilot, [14, 18])).at(-1), [14, 18]);
   assert.deepEqual((await gameRoute(pilot, [14, 18])).at(-1), [14, 18], "another height counts");
+});
+
+/** An open indoor map whose position follows `here`, with no entities and no game route. */
+function indoorPilot(here: () => Cell, size = 8): FakePilot {
+  const pilot = new FakePilot();
+  pilot.on("pos", () => ({ pos: { map: 260, cell: [here()[0], here()[1]] } }));
+  pilot.on("cells", () => ({
+    cells: {
+      origin: [0, 0],
+      center: [here()[0], here()[1]],
+      attr: Array.from({ length: size }, () => Array.from({ length: size }, () => 0)),
+    },
+  }));
+  pilot.on("collision", () => ({
+    collision: {
+      searchLayer: 1,
+      playerCell: [here()[0], here()[1]],
+      layers: [
+        { name: "GroundCollision", rows: Array.from({ length: size }, () => "0".repeat(size)) },
+      ],
+    },
+  }));
+  pilot.on("entities", { entities: { total: 0, entities: [] } });
+  pilot.on("route", { route: {} });
+  pilot.on("wait", { ok: true });
+  return pilot;
+}
+
+function walkpathCalls(pilot: FakePilot): Cell[][] {
+  return pilot.calls.flatMap((call) => {
+    if (call.kind !== "send" || call.op !== "walkpath") return [];
+    const path = call.fields.path;
+    if (!Array.isArray(path)) return [];
+    return [
+      path.flatMap((cell) =>
+        Array.isArray(cell) && typeof cell[0] === "number" && typeof cell[1] === "number"
+          ? [[cell[0], cell[1]] as Cell]
+          : [],
+      ),
+    ];
+  });
+}
+
+function isCellPath(path: readonly Cell[]): boolean {
+  return path.every((cell, index) => {
+    const before = path[index - 1];
+    return (
+      before === undefined || Math.abs(cell[0] - before[0]) + Math.abs(cell[1] - before[1]) === 1
+    );
+  });
+}
+
+void test("a route with corners is one walkpath of adjacent cells", async () => {
+  let here: Cell = [0, 0];
+  const pilot = indoorPilot(() => here, 6);
+  pilot.on("walkpath", (fields) => {
+    const path = fields.path as Cell[];
+    const last = path[path.length - 1];
+    assert.ok(last);
+    here = [last[0], last[1]];
+    return {
+      ok: true,
+      reason: "arrived",
+      index: path.length - 1,
+      steps: path.length - 1,
+      pos: { map: 260, cell: [here[0], here[1]] },
+      next: null,
+      turns: [],
+    };
+  });
+  const said: string[] = [];
+  assert.deepEqual(await navigate(pilot, [5, 5], false, (line) => said.push(line)), [
+    true,
+    "到达 (5, 5)",
+  ]);
+  const paths = walkpathCalls(pilot);
+  assert.equal(paths.length, 1, "one command for the whole route");
+  const path = paths[0];
+  assert.ok(path);
+  assert.deepEqual(path[0], [0, 0]);
+  assert.deepEqual(path.at(-1), [5, 5]);
+  assert.ok(isCellPath(path));
+  // One line per plan, not one per corner.
+  assert.equal(said.filter((line) => line.includes("格")).length, 1);
+});
+
+void test("walkpath carries the tool label and goal, and the reply fills the walk view", async () => {
+  let here: Cell = [0, 0];
+  const pilot = indoorPilot(() => here, 6);
+  const sent: Record<string, unknown>[] = [];
+  pilot.on("walkpath", (fields) => {
+    sent.push(fields);
+    const path = fields.path as Cell[];
+    const last = path[path.length - 1];
+    assert.ok(last);
+    here = [last[0], last[1]];
+    return {
+      ok: true,
+      reason: "arrived",
+      index: path.length - 1,
+      steps: path.length - 1,
+      pos: { map: 260, cell: [here[0], here[1]] },
+      next: null,
+      turns: [],
+    };
+  });
+  const state: MoveState = {
+    drake: null,
+    game: "ff5",
+    label: "go → 地图 260「图尔村」",
+    hop: 2,
+  };
+  assert.deepEqual(await navigate(pilot, [5, 5], false, () => undefined, 8, state), [
+    true,
+    "到达 (5, 5)",
+  ]);
+  const first = sent[0];
+  assert.ok(first);
+  assert.equal(first.label, "go → 地图 260「图尔村」 第 2 跳");
+  assert.deepEqual(first.goal, [5, 5]);
+  const view = state.walk;
+  assert.ok(view);
+  assert.equal(view.game, "ff5");
+  assert.equal(view.map, 260);
+  assert.equal(view.index, view.steps);
+  assert.equal(view.reason, "arrived");
+  assert.notEqual(view.endedAt, null);
+  assert.equal(view.segment.n, 2, "the L-shaped route turns once");
+  assert.ok(
+    view.rows.some((row) => row.includes(".")),
+    "the floor is drawn",
+  );
+});
+
+void test("a battle on the way does not use up a leg and the walk is replanned", async () => {
+  let here: Cell = [0, 0];
+  let sent = 0;
+  const pilot = indoorPilot(() => here, 10);
+  pilot.on("walkpath", (fields) => {
+    sent += 1;
+    const path = fields.path as Cell[];
+    if (sent === 1) {
+      here = [4, 0];
+      return {
+        ok: false,
+        reason: "battle",
+        index: 4,
+        steps: 4,
+        pos: { map: 260, cell: [4, 0], battle: true },
+        next: null,
+        turns: [],
+      };
+    }
+    const last = path[path.length - 1];
+    assert.ok(last);
+    here = [last[0], last[1]];
+    return {
+      ok: true,
+      reason: "arrived",
+      index: path.length - 1,
+      steps: path.length - 1,
+      pos: { map: 260, cell: [here[0], here[1]] },
+      next: null,
+      turns: [],
+    };
+  });
+  pilot.onQuery("battlemenu", { battlemenu: {} });
+  pilot.on("battle", { ok: true, seconds: 3 });
+  const said: string[] = [];
+  // One leg is enough only because the battle's replan is free.
+  assert.deepEqual(await navigate(pilot, [8, 0], false, (line) => said.push(line), 1), [
+    true,
+    "到达 (8, 0)",
+  ]);
+  assert.equal(sent, 2);
+  assert.ok(said.some((line) => line.includes("途中遇敌")));
+});
+
+void test("a blocked walkpath step is cut and the next plan goes around it", async () => {
+  let here: Cell = [0, 0];
+  let sent = 0;
+  const pilot = indoorPilot(() => here, 6);
+  pilot.on("walkpath", (fields) => {
+    sent += 1;
+    const path = fields.path as Cell[];
+    if (sent === 1) {
+      here = [1, 0];
+      return {
+        ok: false,
+        reason: "blocked",
+        index: 1,
+        steps: 1,
+        pos: { map: 260, cell: [1, 0] },
+        next: [2, 0],
+        turns: [],
+      };
+    }
+    const last = path[path.length - 1];
+    assert.ok(last);
+    here = [last[0], last[1]];
+    return {
+      ok: true,
+      reason: "arrived",
+      index: path.length - 1,
+      steps: path.length - 1,
+      pos: { map: 260, cell: [here[0], here[1]] },
+      next: null,
+      turns: [],
+    };
+  });
+  const links: unknown[] = [];
+  const state: MoveState = {
+    drake: null,
+    link: (_map, from, to, how) => {
+      links.push({ from: [...from], to: [...to], how });
+      return Promise.resolve();
+    },
+  };
+  assert.deepEqual(await navigate(pilot, [4, 0], false, () => undefined, 4, state), [
+    true,
+    "到达 (4, 0)",
+  ]);
+  assert.ok(state.cuts?.get("260")?.has("1,0>2,0"));
+  assert.deepEqual(links, [{ from: [1, 0], to: [2, 0], how: "走不过去" }]);
+  const paths = walkpathCalls(pilot);
+  assert.ok(
+    paths[0]?.some(
+      (cell, index) => cell[0] === 1 && cell[1] === 0 && paths[0]?.[index + 1]?.[0] === 2,
+    ),
+  );
+  assert.ok(
+    !paths[1]?.some(
+      (cell, index) => cell[0] === 1 && cell[1] === 0 && paths[1]?.[index + 1]?.[0] === 2,
+    ),
+    "the new route walked into the cut step",
+  );
+});
+
+void test("off path is replanned from where the party is", async () => {
+  let here: Cell = [0, 0];
+  let sent = 0;
+  const pilot = indoorPilot(() => here, 6);
+  pilot.on("walkpath", (fields) => {
+    sent += 1;
+    const path = fields.path as Cell[];
+    if (sent === 1) {
+      return {
+        ok: false,
+        reason: "off_path",
+        index: -1,
+        steps: 0,
+        pos: { map: 260, cell: [0, 0] },
+        next: null,
+        turns: [],
+      };
+    }
+    const last = path[path.length - 1];
+    assert.ok(last);
+    here = [last[0], last[1]];
+    return {
+      ok: true,
+      reason: "arrived",
+      index: path.length - 1,
+      steps: path.length - 1,
+      pos: { map: 260, cell: [here[0], here[1]] },
+      next: null,
+      turns: [],
+    };
+  });
+  assert.deepEqual(await navigate(pilot, [3, 0], false, () => undefined, 4), [true, "到达 (3, 0)"]);
+  assert.equal(sent, 2);
+});
+
+void test("a map change reported by walkpath is entering a map", async () => {
+  const pilot = indoorPilot(() => [0, 0], 6);
+  let map = 260;
+  pilot.on("pos", () => ({ pos: { map, cell: [4, 0] } }));
+  pilot.on("walkpath", () => {
+    map = 261;
+    return {
+      ok: false,
+      reason: "map_changed",
+      index: 4,
+      steps: 4,
+      pos: { map: 260, cell: [4, 0] },
+      next: null,
+      turns: [],
+    };
+  });
+  assert.deepEqual(await navigate(pilot, [4, 0], false), [true, "进入了地图 261,现在在 [4, 0]"]);
+});
+
+void test("a state event that turns into a battle is fought as one", async () => {
+  let here: Cell = [0, 0];
+  let event = false;
+  let polls = 0;
+  const pilot = indoorPilot(() => here, 10);
+  pilot.on("pos", () => {
+    if (!event) return { pos: { map: 260, cell: [here[0], here[1]], state: "Player" } };
+    polls += 1;
+    if (polls === 1) {
+      return { pos: { map: 260, cell: [here[0], here[1]], state: "Event" } };
+    }
+    if (polls === 2) {
+      return { pos: { map: 260, cell: [here[0], here[1]], state: "Battle", battle: true } };
+    }
+    return { pos: { map: 260, cell: [here[0], here[1]], state: "Player" } };
+  });
+  let sent = 0;
+  pilot.on("walkpath", (fields) => {
+    sent += 1;
+    const path = fields.path as Cell[];
+    if (sent === 1) {
+      here = [4, 0];
+      event = true;
+      return {
+        ok: false,
+        reason: "state:Event",
+        index: 4,
+        steps: 4,
+        pos: { map: 260, cell: [4, 0], state: "Event", battle: false },
+        next: null,
+        turns: [],
+      };
+    }
+    const last = path[path.length - 1];
+    assert.ok(last);
+    here = [last[0], last[1]];
+    event = false;
+    return {
+      ok: true,
+      reason: "arrived",
+      index: path.length - 1,
+      steps: path.length - 1,
+      pos: { map: 260, cell: [here[0], here[1]], state: "Player" },
+      next: null,
+      turns: [],
+    };
+  });
+  pilot.onQuery("battlemenu", { battlemenu: {} });
+  pilot.on("battle", { ok: true, seconds: 3 });
+  const said: string[] = [];
+  // One leg is enough only because the battle's replan is free.
+  assert.deepEqual(await navigate(pilot, [8, 0], false, (line) => said.push(line), 1), [
+    true,
+    "到达 (8, 0)",
+  ]);
+  assert.equal(sent, 2);
+  assert.equal(
+    pilot.calls.filter((call) => call.kind === "send" && call.op === "battle").length,
+    1,
+  );
+  assert.ok(said.some((line) => line.includes("途中遇敌")));
+});
+
+void test("a brief state event back to Player replans and keeps walking", async () => {
+  let here: Cell = [0, 0];
+  let event = false;
+  let polls = 0;
+  const pilot = indoorPilot(() => here, 10);
+  pilot.on("pos", () => {
+    if (event) {
+      polls += 1;
+      event = false;
+      return { pos: { map: 260, cell: [here[0], here[1]], state: "Event" } };
+    }
+    return { pos: { map: 260, cell: [here[0], here[1]], state: "Player" } };
+  });
+  let sent = 0;
+  pilot.on("walkpath", (fields) => {
+    sent += 1;
+    const path = fields.path as Cell[];
+    if (sent === 1) {
+      here = [3, 0];
+      event = true;
+      return {
+        ok: false,
+        reason: "state:Event",
+        index: 3,
+        steps: 3,
+        pos: { map: 260, cell: [3, 0], state: "Event" },
+        next: null,
+        turns: [],
+      };
+    }
+    const last = path[path.length - 1];
+    assert.ok(last);
+    here = [last[0], last[1]];
+    return {
+      ok: true,
+      reason: "arrived",
+      index: path.length - 1,
+      steps: path.length - 1,
+      pos: { map: 260, cell: [here[0], here[1]], state: "Player" },
+      next: null,
+      turns: [],
+    };
+  });
+  const said: string[] = [];
+  assert.deepEqual(await navigate(pilot, [6, 0], false, (line) => said.push(line)), [
+    true,
+    "到达 (6, 0)",
+  ]);
+  assert.equal(sent, 2);
+  assert.equal(polls, 1, "one Event frame, then Player");
+  assert.ok(!pilot.calls.some((call) => call.kind === "send" && call.op === "battle"));
+  assert.ok(!said.some((line) => line.includes("途中遇敌")));
+});
+
+void test("a state event that stays Event stops the walk with interrupted", async () => {
+  const pilot = indoorPilot(() => [0, 0], 6);
+  pilot.on("pos", () => ({ pos: { map: 260, cell: [2, 0], state: "Event" } }));
+  pilot.on("walkpath", () => ({
+    ok: false,
+    reason: "state:Event",
+    index: 2,
+    steps: 2,
+    pos: { map: 260, cell: [2, 0], state: "Event" },
+    next: null,
+    turns: [],
+  }));
+  const [, text] = await navigate(pilot, [4, 0], false);
+  assert.match(text, /停在 \[2, 0\].*interrupted:state:Event/);
+  // It watched the Event for the whole 2.5 s instead of returning on the first frame.
+  assert.equal(pilot.now(), 2_500);
+});
+
+void test("an old bridge falls back to the corner-by-corner walk", async () => {
+  let here: Cell = [0, 0];
+  const pilot = indoorPilot(() => here, 6);
+  pilot.on("walkpath", { ok: false, error: "walkpath_unsupported" });
+  pilot.on("walk", (fields) => {
+    const to = fields.to;
+    if (Array.isArray(to) && typeof to[0] === "number" && typeof to[1] === "number") {
+      here = [to[0], to[1]];
+    }
+    return { ok: true, pos: { map: 260, cell: [here[0], here[1]] } };
+  });
+  assert.deepEqual(await navigate(pilot, [4, 0], false), [true, "到达 (4, 0)"]);
+  const ops = pilot.calls.flatMap((call) => (call.kind === "send" ? [call.op] : []));
+  assert.equal(ops.filter((op) => op === "walkpath").length, 1);
+  assert.ok(ops.includes("walk"));
+});
+
+void test("a game route given only at its corners is filled into cells", async () => {
+  const goal: Cell = [4, 3];
+  let here: Cell = [0, 0];
+  const pilot = indoorPilot(() => here, 6);
+  pilot.on("route", {
+    route: {
+      from: [0, 0],
+      cells: [
+        [0, 0, 0],
+        [64, 0, 0],
+        [64, 48, 0],
+      ],
+    },
+  });
+  pilot.on("walkpath", (fields) => {
+    const path = fields.path as Cell[];
+    here = [goal[0], goal[1]];
+    return {
+      ok: true,
+      reason: "arrived",
+      index: path.length - 1,
+      steps: path.length - 1,
+      pos: { map: 260, cell: [goal[0], goal[1]] },
+      next: null,
+      turns: [],
+    };
+  });
+  assert.deepEqual(await navigate(pilot, goal, false), [true, "到达 (4, 3)"]);
+  const path = walkpathCalls(pilot)[0];
+  assert.deepEqual(path, [
+    [0, 0],
+    [1, 0],
+    [2, 0],
+    [3, 0],
+    [4, 0],
+    [4, 1],
+    [4, 2],
+    [4, 3],
+  ]);
+});
+
+void test("a diagonal game route is dropped for our own plan", async () => {
+  const goal: Cell = [3, 3];
+  let here: Cell = [0, 0];
+  const pilot = indoorPilot(() => here, 5);
+  pilot.on("route", {
+    route: {
+      from: [0, 0],
+      cells: [
+        [0, 0, 0],
+        [48, 48, 0],
+      ],
+    },
+  });
+  pilot.on("walkpath", (fields) => {
+    const path = fields.path as Cell[];
+    here = [goal[0], goal[1]];
+    return {
+      ok: true,
+      reason: "arrived",
+      index: path.length - 1,
+      steps: path.length - 1,
+      pos: { map: 260, cell: [goal[0], goal[1]] },
+      next: null,
+      turns: [],
+    };
+  });
+  assert.deepEqual(await navigate(pilot, goal, false), [true, "到达 (3, 3)"]);
+  const path = walkpathCalls(pilot)[0];
+  assert.ok(path);
+  assert.ok(isCellPath(path), "our own plan is given cell by cell");
+  assert.ok(path.length > 2);
+});
+
+void test("a jump in the route stops the walkpath just before it", async () => {
+  let here: Cell = [0, 0];
+  const rows = ["000111", "000111", "000111", "111111", "111110", "111110"];
+  const pilot = new FakePilot();
+  pilot.on("pos", () => ({ pos: { map: 260, cell: [here[0], here[1]] } }));
+  pilot.on("cells", () => ({
+    cells: {
+      origin: [0, 0],
+      center: [here[0], here[1]],
+      attr: Array.from({ length: 6 }, () => Array.from({ length: 6 }, () => 0)),
+    },
+  }));
+  pilot.on("collision", () => ({
+    collision: {
+      searchLayer: 1,
+      playerCell: [here[0], here[1]],
+      layers: [{ name: "GroundCollision", rows }],
+    },
+  }));
+  pilot.on("entities", { entities: { total: 0, entities: [] } });
+  pilot.on("route", { route: {} });
+  pilot.on("wait", { ok: true });
+  let sent = 0;
+  pilot.on("walkpath", (fields) => {
+    sent += 1;
+    const path = fields.path as Cell[];
+    assert.deepEqual(path.at(-1), [2, 2], "sent past the conveyor jump");
+    here = [5, 4];
+    return {
+      ok: false,
+      reason: "off_path",
+      index: -1,
+      steps: 0,
+      pos: { map: 260, cell: [5, 4] },
+      next: null,
+      turns: [],
+    };
+  });
+  const state: MoveState = {
+    drake: null,
+    moves: () => [{ from: [2, 2], to: [5, 4], how: "传送带", kind: "conveyor" }],
+  };
+  assert.deepEqual(await navigate(pilot, [5, 4], false, () => undefined, 8, state), [
+    true,
+    "到达 (5, 4)",
+  ]);
+  assert.equal(sent, 1);
+});
+
+/** A world map with grass everywhere, a mountain wall at x=30, and one gap at y=25. */
+function worldPilot(position: { cell: Cell }, withAt: boolean): FakePilot {
+  const pilot = new FakePilot();
+  pilot.on("pos", () => ({ pos: { map: 1, cell: [position.cell[0], position.cell[1]] } }));
+  pilot.on("cells", (fields) => {
+    const r = typeof fields.r === "number" ? fields.r : 24;
+    const at = fields.at;
+    const cx = Array.isArray(at) && typeof at[0] === "number" ? at[0] : position.cell[0];
+    const cy = Array.isArray(at) && typeof at[1] === "number" ? at[1] : position.cell[1];
+    const attr = Array.from({ length: 2 * r + 1 }, (_, j) =>
+      Array.from({ length: 2 * r + 1 }, (_, i) => {
+        const x = cx - r + i;
+        const y = cy - r + j;
+        return x === 30 && y >= -24 && y <= 24 ? 19 : 3;
+      }),
+    );
+    return {
+      cells: {
+        origin: [cx - r, cy - r],
+        center: [position.cell[0], position.cell[1]],
+        attr,
+        ...(withAt && at !== undefined ? { at: [cx, cy] } : {}),
+      },
+    };
+  });
+  pilot.onQuery("sample", { sample: { field: { moveState: null } } });
+  pilot.on("entities", { entities: { total: 0, entities: [] } });
+  pilot.on("wait", { ok: true });
+  pilot.on("walkpath", (fields) => {
+    const path = fields.path as Cell[];
+    const last = path[path.length - 1];
+    assert.ok(last);
+    position.cell = [last[0], last[1]];
+    return {
+      ok: true,
+      reason: "arrived",
+      index: path.length - 1,
+      steps: path.length - 1,
+      pos: { map: 1, cell: [position.cell[0], position.cell[1]] },
+      next: null,
+      turns: [],
+    };
+  });
+  return pilot;
+}
+
+void test("a world-map goal 60 cells away is reached in one plan over the merged terrain", async () => {
+  const position = { cell: [0, 0] as Cell };
+  const pilot = worldPilot(position, true);
+  assert.deepEqual(await navigate(pilot, [60, 0], false), [true, "到达 (60, 0)"]);
+  const paths = walkpathCalls(pilot);
+  assert.equal(paths.length, 1, "one walkpath for the whole route");
+  const path = paths[0];
+  assert.ok(path);
+  assert.ok(isCellPath(path));
+  assert.ok(
+    path.some(([x, y]) => x === 30 && Math.abs(y) > 24),
+    `did not go around the mountain: ${JSON.stringify(path)}`,
+  );
+  const reads = pilot.calls.filter(
+    (call) => call.kind === "send" && call.op === "cells" && call.fields.r === 24,
+  );
+  assert.ok(reads.length <= 40, `read ${reads.length} windows`);
+});
+
+void test("an old bridge without cells.at keeps the one-window world walk", async () => {
+  const position = { cell: [0, 0] as Cell };
+  const pilot = worldPilot(position, false);
+  const [reached, message] = await navigate(pilot, [60, 0], false);
+  assert.equal(reached, false);
+  assert.match(message, /走不过去/);
+  const paths = walkpathCalls(pilot);
+  assert.ok(paths.length > 1, "the goal outside the window needs several walks");
+  assert.ok((paths[0]?.at(-1)?.[0] ?? 0) < 60);
+  const atReads = pilot.calls.filter(
+    (call) => call.kind === "send" && call.op === "cells" && call.fields.at !== undefined,
+  );
+  assert.ok(atReads.length <= 1, "an old bridge is not asked for at again");
 });

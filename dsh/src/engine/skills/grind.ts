@@ -21,8 +21,26 @@ import { parsePositionReply, type Position } from "../position.ts";
 import { isRecord, list, num, record, records, text, truthy, type Json } from "../values.ts";
 import { heldItems } from "./battle.ts";
 import { useItem } from "./menu.ts";
-import { navigate, occupiedCells, openAt, type MoveState } from "./move.ts";
+import {
+  occupiedCells,
+  openAt,
+  plan,
+  settleWalkEvent,
+  walkPathCells,
+  walkpathBlockedMs,
+  walkpathTimeout,
+  walkpathTurnLead,
+  type MoveState,
+} from "./move.ts";
 import { dismissFieldHelp } from "./screens.ts";
+import {
+  currentMapAndCell,
+  mapExits,
+  mapName,
+  travelToCell,
+  travelToMap,
+  type MapExit,
+} from "./travel.ts";
 
 type Say = (line: string) => void;
 
@@ -30,6 +48,8 @@ type Say = (line: string) => void;
 const INN_WORDS: readonly string[] = ["宿屋", "旅店", "旅馆", "Inn"];
 const REVIVE_ITEMS: readonly string[] = ["不死鸟之尾", "凤凰尾"];
 const YES = /^(是|はい|yes)$/iu;
+/** The old grind walk had eight hops and no clock of its own; keep both for its callers. */
+const GRIND_TRAVEL = { maxHops: 8, maxMinutes: Number.POSITIVE_INFINITY } as const;
 
 export interface GrindOptions {
   readonly untilGold?: number;
@@ -325,6 +345,74 @@ function nextStep(
   return choices.length === 0 ? null : (choices[turn % choices.length] ?? null);
 }
 
+/**
+ * The grind loop's one step: walkpath when the bridge has it (task 56), otherwise the old
+ * `walk`. The target is usually a neighbour, so the route is just [here, target]; a diagonal
+ * or two-cell choice is filled in by the shared planner.
+ */
+async function stepTo(
+  pilot: Pilot,
+  from: Cell,
+  to: Cell,
+  state: MoveState,
+  map: unknown,
+): Promise<Reply> {
+  const adjacent = Math.abs(from[0] - to[0]) + Math.abs(from[1] - to[1]) === 1;
+  let path: Cell[] = adjacent ? [from, to] : [];
+  if (path.length === 0) {
+    const [here, planned] = await plan(
+      pilot,
+      to,
+      false,
+      new Set<string>(),
+      state,
+      map ?? undefined,
+    );
+    if (here !== null && here[0] === from[0] && here[1] === from[1]) {
+      path = walkPathCells(planned);
+    }
+  }
+  if (path.length >= 2) {
+    const timeoutMs = walkpathTimeout(path.length, state);
+    const result = await pilot.send(
+      "walkpath",
+      {
+        path: path.map(([x, y]) => [x, y]),
+        timeoutMs,
+        blockedMs: walkpathBlockedMs(state),
+        turnLead: walkpathTurnLead(state),
+      },
+      timeoutMs + 5_000,
+    );
+    if (result.error !== "walkpath_unsupported") {
+      const reason = typeof result.reason === "string" ? result.reason : "";
+      if (reason === "state:Event" || reason === "dialog") {
+        // Task 63: an encounter's opening Event frame must become a battle here too, not a
+        // story stop or a blocked step.
+        const settled = await settleWalkEvent(pilot, state);
+        if (settled.outcome === "battle") {
+          return { ...result, reason: "battle", pos: settled.pos };
+        }
+        if (settled.outcome === "clear") return { ...result, ok: true, pos: settled.pos };
+      }
+      return walkShaped(result);
+    }
+  }
+  return await pilot.send("walk", { to: [to[0], to[1]], timeout: 30_000 }, 40_000);
+}
+
+/**
+ * A walkpath reply in the pilot agent's walk shape, which the loop below reads: walkpath says
+ * why it stopped in `reason` and has no `error`, so a story stop read as "None" and counted as
+ * blocked (11-05 review). blocked stays blocked; dialog and state:* become interrupted:*.
+ */
+function walkShaped(result: Reply): Reply {
+  if (truthy(result.ok) || result.error !== undefined) return result;
+  const reason = typeof result.reason === "string" ? result.reason : "";
+  const interrupted = reason === "dialog" || reason.startsWith("state:");
+  return { ...result, error: interrupted ? `interrupted:${reason}` : reason };
+}
+
 interface StopCheck {
   readonly reached: boolean;
   readonly reason: string;
@@ -349,34 +437,17 @@ function stopReason(
     };
   }
   if (options.untilBestiary === true) {
-    if (completion === null || completion.monsters.total === 0) {
+    if (completion === null || completion.encounter === "unknown") {
       return { reached: true, reason: "读不到本图的遇敌表，没法刷图鉴，先停下" };
+    }
+    if (completion.encounter === "none" || completion.monsters.total === 0) {
+      return { reached: true, reason: "本图现在不遇敌，不用刷图鉴" };
     }
     if (completion.monsters.missing.length === 0) {
       return { reached: true, reason: "本图的怪都登记进本档图鉴了" };
     }
   }
   return { reached: false, reason: "" };
-}
-
-interface MapExit {
-  readonly cell: Cell;
-  readonly to: number;
-  readonly name: string;
-}
-
-function mapExits(atlas: Atlas, mapId: number): MapExit[] {
-  const entry = atlas.maps.get(String(mapId));
-  return records(entry?.exits).flatMap((exit): MapExit[] => {
-    const cell = cellOf(exit.cell);
-    const to = num(exit.to);
-    if (cell === null || to === undefined) return [];
-    return [{ cell, to: Math.trunc(to), name: text(exit.name) ?? "" }];
-  });
-}
-
-function mapName(atlas: Atlas, mapId: number): string {
-  return text(atlas.maps.get(String(mapId))?.name) ?? `地图 ${mapId}`;
 }
 
 function innName(name: string): boolean {
@@ -469,71 +540,6 @@ function townForInn(atlas: Atlas, inn: number): number | null {
   return null;
 }
 
-interface MapHop {
-  readonly from: number;
-  readonly to: number;
-  readonly cell: Cell;
-}
-
-/** A route over the atlas's map exits, from one map to another. */
-function mapPath(atlas: Atlas, from: number, to: number): MapHop[] | null {
-  if (from === to) return [];
-  const queue: { readonly id: number; readonly path: MapHop[] }[] = [{ id: from, path: [] }];
-  const seen = new Set<number>([from]);
-  while (queue.length > 0) {
-    const item = queue.shift();
-    if (item === undefined) break;
-    for (const exit of mapExits(atlas, item.id)) {
-      const hop: MapHop = { from: item.id, to: exit.to, cell: exit.cell };
-      if (exit.to === to) return [...item.path, hop];
-      if (seen.has(exit.to) || !atlas.maps.has(String(exit.to))) continue;
-      seen.add(exit.to);
-      queue.push({ id: exit.to, path: [...item.path, hop] });
-    }
-  }
-  return null;
-}
-
-async function currentMapAndCell(pilot: Pilot): Promise<[number | null, Cell | null]> {
-  const pos = record((await pilot.send("pos")).pos);
-  return [num(pos.map) ?? null, cellOf(pos.cell)];
-}
-
-async function travelToMap(
-  pilot: Pilot,
-  context: GrindContext,
-  target: number,
-  say: Say,
-): Promise<[boolean, string]> {
-  let current = (await currentMapAndCell(pilot))[0];
-  for (let hop = 0; hop < 8; hop++) {
-    if (current === target) return [true, `到了地图 ${target}`];
-    if (current === null) return [false, "读不到当前地图"];
-    const path = mapPath(context.atlas, current, target);
-    const first = path?.[0];
-    if (first === undefined) return [false, `地图记录里找不到从 ${current} 到 ${target} 的路`];
-    const [reached, detail] = await navigate(pilot, first.cell, false, say, 8, context.moveState);
-    if (!reached) return [false, detail];
-    const now = (await currentMapAndCell(pilot))[0];
-    if (now === null) return [false, "到了入口却没读到新地图"];
-    if (now !== current) {
-      current = now;
-      continue;
-    }
-    return [false, `走到 (${first.cell[0]}, ${first.cell[1]}) 却没有进地图 ${first.to}`];
-  }
-  return [false, "换了几次地图还没到"];
-}
-
-async function travelToCell(
-  pilot: Pilot,
-  context: GrindContext,
-  cell: Cell,
-  say: Say,
-): Promise<[boolean, string]> {
-  return navigate(pilot, cell, false, say, 30, context.moveState);
-}
-
 interface ChoiceView {
   readonly open: boolean;
   readonly options: readonly string[];
@@ -588,6 +594,17 @@ async function innKeeper(pilot: Pilot): Promise<Reply | null> {
   return found.length === 1 ? (found[0] ?? null) : null;
 }
 
+/** Grind's old `(arrived, detail)` view of the shared map walk. */
+async function grindTravel(
+  pilot: Pilot,
+  context: GrindContext,
+  target: number,
+  say: Say,
+): Promise<[boolean, string]> {
+  const result = await travelToMap(pilot, context, target, say, GRIND_TRAVEL);
+  return [result.reached, result.detail];
+}
+
 /** Sleep at an inn, then walk back to the grind spot. */
 export async function restAtInn(
   pilot: Pilot,
@@ -605,7 +622,7 @@ export async function restAtInn(
       detail: "地图记录里找不到有旅店的城镇，没法自动住店。请自己回城住一晚，回满 HP/MP 再继续刷。",
     };
   }
-  const [arrived, travel] = await travelToMap(pilot, context, inn, say);
+  const [arrived, travel] = await grindTravel(pilot, context, inn, say);
   if (!arrived) return await restFallback(pilot, context, inn, travel, say);
   const keeper = await innKeeper(pilot);
   if (keeper === null) return await restFallback(pilot, context, inn, "旅店里没找到店主", say);
@@ -630,7 +647,7 @@ export async function restAtInn(
     );
   }
   const backTarget = home ?? before.position.map ?? inn;
-  const [back, walked] = await travelToMap(pilot, context, backTarget, say);
+  const [back, walked] = await grindTravel(pilot, context, backTarget, say);
   let returned = back;
   if (back) {
     const [atSpot, detail] = await travelToCell(pilot, context, spot, say);
@@ -657,7 +674,7 @@ async function restFallback(
   const town = townForInn(context.atlas, inn);
   if (town !== null) {
     const [current] = await currentMapAndCell(pilot);
-    if (current !== town) await travelToMap(pilot, context, town, say);
+    if (current !== town) await grindTravel(pilot, context, town, say);
   }
   const [where] = await currentMapAndCell(pilot);
   const place = where === null ? "原地" : `地图 ${where}(${mapName(context.atlas, where)})`;
@@ -822,7 +839,7 @@ export async function grind(
       stop = "附近没有能走的格子，走不过去，先停下";
       break;
     }
-    const moved = await pilot.send("walk", { to: [target[0], target[1]], timeout: 30_000 }, 40_000);
+    const moved = await stepTo(pilot, here, target, context.moveState, snapshot.position.map);
     const pos = record(moved.pos);
     const inBattle = truthy(pos.battle) || pos.state === "Battle";
     if (inBattle) {

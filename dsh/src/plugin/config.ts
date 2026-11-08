@@ -9,6 +9,14 @@ import { join } from "node:path";
 import Schema from "@deepseek-ai/schemastery";
 import { byKey, type Game } from "../engine/games.ts";
 import { DEPS, LAPTOP_ENV } from "../engine/paths.ts";
+import {
+  WALKPATH_BLOCKED_MS,
+  WALKPATH_EVENT_POLL_MS,
+  WALKPATH_EVENT_WAIT_MS,
+  WALKPATH_TIMEOUT_MS,
+  WALKPATH_TURN_LEAD,
+} from "../engine/skills/move.ts";
+import { DEFAULT_TRAVEL_MAX_HOPS, DEFAULT_TRAVEL_MAX_MINUTES } from "../engine/skills/travel.ts";
 
 /**
  * All six games start from a new game and write slot 20 only (10-29: the user made FF5 use the
@@ -122,6 +130,17 @@ const RawConfig = Schema.object({
   detectCacheMs: Schema.number().default(DEFAULT_DETECT_CACHE_MS),
   /** How long a new session may wait for detection before staying with its own game. */
   autoPresetWaitMs: Schema.number().default(DEFAULT_AUTO_PRESET_WAIT_MS),
+  /** Task 48/58: at most this many map hops in one go/explore call. */
+  travelMaxHops: Schema.number().default(DEFAULT_TRAVEL_MAX_HOPS),
+  /** Task 48/58: the whole call stops after this many minutes. */
+  travelMaxMinutes: Schema.number().default(DEFAULT_TRAVEL_MAX_MINUTES),
+  /** Task 58: the bridge walkpath's base timeout, blocked wait and turn lead. */
+  walkpathTimeoutMs: Schema.number().default(WALKPATH_TIMEOUT_MS),
+  walkpathBlockedMs: Schema.number().default(WALKPATH_BLOCKED_MS),
+  walkpathTurnLead: Schema.number().default(WALKPATH_TURN_LEAD),
+  /** Task 63: how often and how long a walkpath Event/dialog stop is watched for battle. */
+  walkpathEventPollMs: Schema.number().default(WALKPATH_EVENT_POLL_MS),
+  walkpathEventWaitMs: Schema.number().default(WALKPATH_EVENT_WAIT_MS),
 });
 
 /**
@@ -152,6 +171,13 @@ export const Config = Schema.transform(RawConfig, (config) => {
     checkEveryMs: config.checkEveryMs ?? DEFAULT_CHECK_EVERY_MS,
     detectCacheMs: config.detectCacheMs ?? DEFAULT_DETECT_CACHE_MS,
     autoPresetWaitMs: config.autoPresetWaitMs ?? DEFAULT_AUTO_PRESET_WAIT_MS,
+    travelMaxHops: config.travelMaxHops ?? DEFAULT_TRAVEL_MAX_HOPS,
+    travelMaxMinutes: config.travelMaxMinutes ?? DEFAULT_TRAVEL_MAX_MINUTES,
+    walkpathTimeoutMs: config.walkpathTimeoutMs ?? WALKPATH_TIMEOUT_MS,
+    walkpathBlockedMs: config.walkpathBlockedMs ?? WALKPATH_BLOCKED_MS,
+    walkpathTurnLead: config.walkpathTurnLead ?? WALKPATH_TURN_LEAD,
+    walkpathEventPollMs: config.walkpathEventPollMs ?? WALKPATH_EVENT_POLL_MS,
+    walkpathEventWaitMs: config.walkpathEventWaitMs ?? WALKPATH_EVENT_WAIT_MS,
   };
 });
 
