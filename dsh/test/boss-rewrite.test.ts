@@ -269,6 +269,12 @@ const ATTACK: TacticianPlan = {
   askUp: "",
 };
 
+const GUARD: TacticianPlan = {
+  tables: [{ 巴兹: [{ do: "防御" }], 蕾娜: [{ do: "防御" }] }],
+  walkerNotes: "先防",
+  askUp: "",
+};
+
 const FORM_TABLE: TacticianPlan = {
   tables: [
     {
@@ -305,17 +311,21 @@ void test("a boss form change rewrites the table; waiting turns defend and the n
     assert.match(h.facts[1] ?? "", /编号 282/);
     assert.match(h.facts[1] ?? "", /敌人变了编号/);
     assert.match(h.facts[1] ?? "", /如果在合并翅膀的时候进行攻击/);
-    assert.match(result, /中途重新写表 1 次/);
+    assert.match(result, /中途重新写表 2 次/);
     assert.match(result, /成功/);
     assert.match(result, /新表:巴兹:enemy\.id\.282 >= 1 防御\/攻击、蕾娜:/);
     const plan = h.game.lastBossPlan();
     assert.ok(plan);
     const rewrites = plan.rewrites ?? [];
-    assert.equal(rewrites.length, 1);
-    const first = rewrites[0];
+    assert.equal(rewrites.length, 2);
+    const opening = rewrites[0];
+    assert.ok(opening);
+    assert.match(opening.reason, /开打时还没有首领表/);
+    assert.equal(opening.ok, true);
+    const first = rewrites[1];
     assert.ok(first);
     assert.equal(first.ok, true);
-    assert.match(plan.result, /中途重新写表 1 次/);
+    assert.match(plan.result, /中途重新写表 2 次/);
     assert.deepEqual(plan.table, FORM_TABLE.tables[0]);
     // 281 → 282 is the form change; the next three turns wait and defend.
     assert.match(h.battle.actions[0] ?? "", /攻击/);
@@ -336,12 +346,12 @@ void test("three attacks with no HP loss rewrite the table", async () => {
     const result = await h.game.settle(h.battle.pilot);
     assert.equal(h.calls(), 3);
     assert.match(h.facts[1] ?? "", /连续 3 次攻击,首领的 HP 都没有减少/);
-    assert.match(result, /中途重新写表 2 次/);
+    assert.match(result, /中途重新写表 3 次/);
     const plan = h.game.lastBossPlan();
     assert.ok(plan);
     const rewrites = plan.rewrites ?? [];
-    assert.equal(rewrites.length, 2);
-    const first = rewrites[0];
+    assert.equal(rewrites.length, 3);
+    const first = rewrites[1];
     assert.ok(first);
     assert.match(first.reason, /连续 3 次攻击/);
     assert.equal(first.ok, true);
@@ -350,18 +360,19 @@ void test("three attacks with no HP loss rewrite the table", async () => {
   }
 });
 
-void test("at most two rewrites happen in one boss battle", async () => {
+void test("the opening table does not use up the two mid-battle rewrites", async () => {
   const h = await harness({ damages: true, forms: true, maxTurns: 12 }, () => ATTACK);
   try {
     const result = await h.game.settle(h.battle.pilot);
     assert.equal(h.calls(), 3);
-    assert.match(result, /中途重新写表 2 次/);
+    assert.match(result, /中途重新写表 3 次/);
     const plan = h.game.lastBossPlan();
     assert.ok(plan);
     const rewrites = plan.rewrites ?? [];
-    assert.equal(rewrites.length, 2);
-    const first = rewrites[0];
-    const second = rewrites[1];
+    assert.equal(rewrites.length, 3);
+    assert.match(rewrites[0]?.reason ?? "", /开打时还没有首领表/);
+    const first = rewrites[1];
+    const second = rewrites[2];
     assert.ok(first);
     assert.ok(second);
     assert.match(first.reason, /编号 282/);
@@ -396,8 +407,8 @@ void test("a tactician failure returns to the old table and says why", async () 
     const plan = h.game.lastBossPlan();
     assert.ok(plan);
     const rewrites = plan.rewrites ?? [];
-    assert.equal(rewrites.length, 1);
-    const first = rewrites[0];
+    assert.equal(rewrites.length, 2);
+    const first = rewrites[1];
     assert.ok(first);
     assert.equal(first.ok, false);
     // The old table is back: the turns after the two waiting defends attack again.
@@ -457,7 +468,7 @@ void test("an enemy's first skill the table never mentions asks for a rewrite", 
     const result = await h.game.settle(h.battle.pilot);
     assert.equal(h.calls(), 2);
     assert.match(h.facts[1] ?? "", /没提到的招式「翼」/);
-    assert.match(result, /中途重新写表 1 次/);
+    assert.match(result, /中途重新写表 2 次/);
   } finally {
     await h.close();
   }
@@ -485,7 +496,159 @@ void test("losing over half the party HP in one round asks for a rewrite", async
     const result = await h.game.settle(h.battle.pilot);
     assert.equal(h.calls(), 2);
     assert.match(h.facts[1] ?? "", /掉了超过一半的 HP/);
-    assert.match(result, /中途重新写表 1 次/);
+    assert.match(result, /中途重新写表 2 次/);
+  } finally {
+    await h.close();
+  }
+});
+
+void test("a boss battle starts before the tactician answers and uses its table from the next turn", async () => {
+  const rewrite = deferred<TacticianPlan>();
+  const h = await harness(
+    {
+      damages: true,
+      forms: false,
+      maxTurns: 20,
+      onAttack: (attacks, battle) => {
+        if (attacks !== 2) return;
+        // The tactician took three seconds; the first two turns were already chosen.
+        battle.pilot.advance(3000);
+        rewrite.resolve(GUARD);
+      },
+    },
+    () => rewrite.promise,
+  );
+  await h.game.tactics.set(30, [ATTACK.tables[0] ?? {}], ["哥布林"]);
+  // Give the background tactician a real turn between battle turns; the fake clock alone
+  // would let fight() run every turn before the rewrite chain leaves the microtask queue.
+  const query = h.battle.pilot.query.bind(h.battle.pilot);
+  h.battle.pilot.query = async (q, fields) => {
+    if (q === "battlemenu") await new Promise((resolve) => setTimeout(resolve, 1));
+    return query(q, fields);
+  };
+  try {
+    const result = await h.game.settle(h.battle.pilot);
+    assert.equal(h.calls(), 1);
+    assert.match(result, /开打时用的是本图的普通战斗表/);
+    assert.match(result, /开打时还没有首领表,战术官写好后换上/);
+    const switched = /第 (\d+) 回合换上/.exec(result);
+    assert.ok(switched);
+    const turn = Number(switched[1] ?? "");
+    assert.ok(turn >= 2);
+    // Every turn before the switch used the regular table; every turn after it used the new
+    // boss table. Only the first table read happens after the tactician answered.
+    for (let index = 0; index < turn - 1; index++) {
+      assert.match(h.battle.actions[index] ?? "", /攻击/);
+    }
+    for (let index = turn - 1; index < h.battle.actions.length; index++) {
+      assert.match(h.battle.actions[index] ?? "", /防御/);
+    }
+    const plan = h.game.lastBossPlan();
+    assert.ok(plan);
+    assert.deepEqual(plan.table, GUARD.tables[0]);
+    const rewrites = plan.rewrites ?? [];
+    assert.equal(rewrites.length, 1);
+    const opening = rewrites[0];
+    assert.ok(opening);
+    assert.match(opening.reason, /开打时还没有首领表/);
+    assert.equal(opening.ok, true);
+    assert.match(opening.summary, /第 \d+ 回合换上/);
+  } finally {
+    await h.close();
+  }
+});
+
+void test("a boss battle won before the opening table arrives keeps that table for the map", async () => {
+  const rewrite = deferred<TacticianPlan>();
+  const h = await harness(
+    {
+      damages: true,
+      forms: false,
+      maxTurns: 4,
+      onAttack: (attacks) => {
+        if (attacks === 1)
+          setTimeout(() => {
+            rewrite.resolve(GUARD);
+          }, 0);
+      },
+    },
+    () => rewrite.promise,
+  );
+  const enemy = h.battle.enemies[0];
+  if (enemy === undefined) throw new Error("假首领不见了");
+  enemy.hp = 10;
+  try {
+    const result = await h.game.settle(h.battle.pilot);
+    assert.equal(h.calls(), 1);
+    assert.match(result, /开打时没有现成的表,全员普通攻击/);
+    assert.match(result, /战斗结束/);
+    assert.match(result, /战斗已经结束,存成这张图的首领表/);
+    const boss = h.game.tactics.boss(30);
+    assert.ok(boss);
+    assert.deepEqual(boss.table, GUARD.tables[0]);
+    assert.equal(boss.prepared, undefined);
+  } finally {
+    await h.close();
+  }
+});
+
+void test("a boss battle without a prepared table starts on the map's last boss table", async () => {
+  const rewrite = deferred<TacticianPlan>();
+  const h = await harness(
+    {
+      damages: true,
+      forms: false,
+      maxTurns: 4,
+      onGuard: (guards) => {
+        if (guards === 1)
+          setTimeout(() => {
+            rewrite.resolve(ATTACK);
+          }, 0);
+      },
+    },
+    () => rewrite.promise,
+  );
+  const old = GUARD.tables[0];
+  assert.ok(old);
+  await h.game.tactics.setBoss(30, {
+    table: old,
+    result: "上一次的首领战",
+    at: new Date().toISOString(),
+  });
+  try {
+    const result = await h.game.settle(h.battle.pilot);
+    assert.equal(h.calls(), 1);
+    assert.match(result, /开打时用的是这张图上次的首领表/);
+    assert.match(h.battle.actions[0] ?? "", /防御/);
+    assert.match(result, /战斗已经结束,存成这张图的首领表/);
+    const boss = h.game.tactics.boss(30);
+    assert.ok(boss);
+    assert.deepEqual(boss.table, ATTACK.tables[0]);
+  } finally {
+    await h.close();
+  }
+});
+
+void test("a prepared boss table is used without calling the tactician", async () => {
+  const h = await harness({ damages: true, forms: false, maxTurns: 3 }, () => {
+    throw new Error("有 prepared 的表时不该叫战术官");
+  });
+  const table = GUARD.tables[0];
+  assert.ok(table);
+  await h.game.tactics.setBoss(30, {
+    table,
+    result: "首领战前准备",
+    at: new Date().toISOString(),
+    prepared: true,
+  });
+  try {
+    const result = await h.game.settle(h.battle.pilot);
+    assert.equal(h.calls(), 0);
+    assert.match(result, /用首领战前写好的表/);
+    assert.match(h.battle.actions[0] ?? "", /防御/);
+    const plan = h.game.lastBossPlan();
+    assert.ok(plan);
+    assert.equal((plan.rewrites ?? []).length, 0);
   } finally {
     await h.close();
   }
