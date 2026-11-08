@@ -4,8 +4,10 @@
  * has not, instead of walking back into rooms it already searched (10-20, run 7). Ported from
  * ffpr_agent/ds/atlas.py; control plan §4.10.
  *
- * The game side records a map whenever the player is on it; the player reads it with the
- * `atlas` tool, and look_around marks each exit visited or not.
+ * The structure is the game's own map and is kept across saves; whether a map was visited is
+ * save-local (task 57): `visitedNow` holds the maps entered in this save, and AtlasSave keeps a
+ * live copy plus save-count snapshots. The player reads both with the `atlas` tool, and
+ * look_around marks each exit visited or not.
  */
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -18,6 +20,10 @@ import { isRecord, records, text, type Json } from "./values.ts";
 export class Atlas {
   readonly path: string | undefined;
   readonly maps = new Map<string, Json>();
+  /** Maps entered in the current save (task 57); the structure in `maps` outlives saves. */
+  readonly visitedNow = new Set<string>();
+  /** Called once for a map's first entry in this save; AtlasSave persists its live set. */
+  onNewVisit?: (mapId: string) => Promise<void>;
 
   constructor(path?: string) {
     this.path = path;
@@ -49,8 +55,9 @@ export class Atlas {
     return atlas;
   }
 
+  /** Whether this map was entered in the current save, not merely recorded by an older one. */
   visited(mapId: unknown): boolean {
-    return this.maps.has(String(mapId));
+    return this.visitedNow.has(String(mapId));
   }
 
   /**
@@ -64,12 +71,16 @@ export class Atlas {
     chests: readonly Json[],
   ): Promise<void> {
     const key = String(mapId);
+    const isNew = !this.visitedNow.has(key);
+    this.visitedNow.add(key);
     const old = this.maps.get(key) ?? {};
     const entry: Json = { name: name || "", exits: [...exits], chests: [...chests] };
     if (Array.isArray(old.links) && old.links.length > 0) entry.links = old.links;
-    if (sameJson(old, entry)) return;
-    this.maps.set(key, entry);
-    await this.save();
+    if (!sameJson(old, entry)) {
+      this.maps.set(key, entry);
+      await this.save();
+    }
+    if (isNew) await this.onNewVisit?.(key);
   }
 
   /**

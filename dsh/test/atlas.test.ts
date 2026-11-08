@@ -41,6 +41,9 @@ void test("atlas matches the real map record and its visit/link sequence", async
   try {
     await writeFile(path, JSON.stringify(fixture.initial), "utf8");
     const atlas = await Atlas.load(path);
+    // The fixture was recorded from a save that had already visited every map in it; the
+    // structure is reloaded across runs, the save-local set is not (task 57).
+    for (const mapId of atlas.maps.keys()) atlas.visitedNow.add(mapId);
     for (const expected of fixture.initialDescribes) {
       assert.equal(atlas.describe(expected.around, expected.limit), expected.text);
     }
@@ -64,6 +67,7 @@ void test("atlas matches the real map record and its visit/link sequence", async
     }
     assert.deepEqual(asObject(atlas.maps), fixture.final);
     const reloaded = await Atlas.load(path);
+    for (const mapId of reloaded.maps.keys()) reloaded.visitedNow.add(mapId);
     for (const expected of fixture.reloadedDescribes) {
       assert.equal(reloaded.describe(expected.around, expected.limit), expected.text);
     }
@@ -84,7 +88,9 @@ void test("atlas marks exits visited or not", async () => {
     ];
     await atlas.visit(211, "船舶墓场", exits, [{ cell: [13, 54], name: "フレイル" }]);
     await atlas.visit(212, "沈没船1", [{ cell: [3, 3], to: 213, name: "沈没船2" }], []);
-    const again = await Atlas.load(path); // kept across runs
+    const again = await Atlas.load(path); // structure is kept across runs
+    again.visitedNow.add("211"); // what AtlasSave restores for this save
+    again.visitedNow.add("212");
     const text = again.describe(212);
     assert.ok(
       text
@@ -93,6 +99,34 @@ void test("atlas marks exits visited or not", async () => {
     );
     assert.ok(text.includes("→地图 212 沈没船1(去过)"));
     assert.ok(text.includes("(世界地图)") && text.includes("フレイル"));
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("a map recorded by an older save is not visited in this one", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-atlas-"));
+  const path = join(directory, "atlas.json");
+  try {
+    await writeFile(
+      path,
+      JSON.stringify({
+        211: {
+          name: "船舶墓场",
+          exits: [{ cell: [22, 15], to: 212, name: "沈没船1" }],
+          chests: [],
+        },
+        212: { name: "沈没船1", exits: [], chests: [] },
+      }),
+      "utf8",
+    );
+    const atlas = await Atlas.load(path);
+    assert.equal(atlas.mark(211), "(没去过)");
+    assert.equal(atlas.mark(212), "(没去过)");
+    await atlas.visit(211, "船舶墓场", [{ cell: [22, 15], to: 212, name: "沈没船1" }], []);
+    assert.equal(atlas.mark(211), "(去过)");
+    assert.equal(atlas.mark(212), "(没去过)");
+    assert.ok(atlas.describe(211).includes("→地图 212 沈没船1(没去过)"));
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
