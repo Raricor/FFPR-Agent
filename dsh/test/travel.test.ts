@@ -867,17 +867,45 @@ void test("a route's last hop may enter a map the atlas never recorded", async (
   assert.match(result.text, /到了地图 40/);
 });
 
-void test("go takes a coordinate array and a coordinate string the old walk way", async () => {
+void test("go takes a coordinate array and bracketed or spaced coordinate strings", async () => {
   const directory = await mkdtemp(join(tmpdir(), "ffpr-go-cell-"));
   try {
     const game = calmGame(await gameWithMaps(directory, { 30: { name: "洞窟", exits: [] } }));
-    for (const to of [[12, 8], "12,8"] as const) {
+    for (const to of [
+      [12, 8],
+      "12,8",
+      "[12, 8]",
+      "(12, 8)",
+      "12, 8",
+      "12 8",
+      " [12, 8] ",
+    ] as const) {
       const world = worldFor(game.atlas);
       world.cell = [5, 5];
       const result = await game.run("go", { to }, playablePilot(world));
       assert.deepEqual(world.cell, [12, 8], String(to));
       assert.match(result, /到达 \(12, 8\)/);
       assert.match(result, /当前状态:\n状态好/);
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("go still treats 地图 30 and 图尔村 as map names", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-go-name-cell-"));
+  try {
+    for (const to of ["地图 30", "图尔村"] as const) {
+      const game = calmGame(
+        await gameWithMaps(directory, {
+          29: { name: "起点", exits: [{ cell: [1, 5], to: 30 }] },
+          30: { name: "图尔村", exits: [] },
+        }),
+      );
+      const world = worldFor(game.atlas);
+      const result = await game.run("go", { to }, playablePilot(world));
+      assert.equal(world.map, 30, `${to}: ${result}`);
+      assert.match(result, /停在:地图 30/, to);
     }
   } finally {
     await rm(directory, { recursive: true, force: true });
