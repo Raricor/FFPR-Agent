@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
@@ -50,6 +50,12 @@ internal static class GameInput
     private static readonly ConcurrentQueue<(string Name, bool Down)> Pending = new();
     /// <summary>Buttons held by "hold", each with the tick it is released at unless renewed.</summary>
     private static readonly ConcurrentDictionary<string, long> HeldUntil = new();
+    /// <summary>The state last sent for every known button; game thread only.</summary>
+    private static Dictionary<string, bool> _wanted = new();
+    /// <summary>Set by ReleaseAll: send a full "all up" event even if nothing seems changed.</summary>
+    private static volatile bool _forceSend;
+    /// <summary>Transitions held back because their button already changed this frame; game thread only.</summary>
+    private static readonly List<(string Name, bool Down)> Deferred = new();
     private static Gamepad _pad;
 
     /// <summary>
@@ -80,41 +86,140 @@ internal static class GameInput
         Pending.Enqueue((name, down));
     }
 
-    /// <summary>Lets go of every held button ("stop").</summary>
+    /// <summary>
+    /// Lets go of every known button ("stop" and the end of a walk). This is not limited to
+    /// HeldUntil: the 0.14.0 bug left a direction down after it was no longer tracked.
+    /// </summary>
     public static void ReleaseAll()
     {
-        foreach (var name in HeldUntil.Keys)
-        {
-            Hold(name, false, 0);
-        }
+        HeldUntil.Clear();
+        Pending.Enqueue((null, false));
+        _forceSend = true;  // after the marker: a Drain that sees the marker also sees the flag
     }
 
-    /// <summary>On the game thread: each queued transition becomes one gamepad state event.</summary>
+    /// <summary>
+    /// On the game thread: merge all expired holds and queued transitions into one complete
+    /// wanted state, then send at most one gamepad state event for the frame. The old code read
+    /// the pad's current state for each change, so two changes in one frame both started from
+    /// the pre-frame state and the first was undone by the second (0.14.0 stuck keys).
+    /// </summary>
     public static void Drain()
     {
         var now = Environment.TickCount64;
-        foreach (var held in HeldUntil)
+        var force = _forceSend;
+        _forceSend = false;
+        if (!force && Pending.IsEmpty && Deferred.Count == 0)
         {
-            if (held.Value <= now)
+            var expired = false;
+            foreach (var held in HeldUntil)
             {
-                Hold(held.Key, false, 0);
+                if (held.Value <= now)
+                {
+                    expired = true;
+                    break;
+                }
+            }
+            if (!expired)
+            {
+                return;
             }
         }
-        if (Pending.IsEmpty)
+        var target = new Dictionary<string, bool>(_wanted);
+        var touched = new HashSet<string>();
+        var next = new List<(string Name, bool Down)>();
+        var earlier = new List<(string Name, bool Down)>(Deferred);
+        Deferred.Clear();
+
+        // 1. Expired holds first: their release must not be swallowed by a new press below.
+        // Remove only the exact entry we saw: a command-thread renewal in between changes its
+        // value, and removing blindly would drop the new deadline and leave the key stuck down.
+        var holds = (ICollection<KeyValuePair<string, long>>)HeldUntil;
+        foreach (var held in HeldUntil)
         {
-            return;
+            if (held.Value > now || !holds.Remove(held))
+            {
+                continue;
+            }
+            if (target.TryGetValue(held.Key, out var down) && down)
+            {
+                target[held.Key] = false;
+                touched.Add(held.Key);
+            }
+        }
+
+        // 2. Transitions held back from the previous frame, then this frame's queue, in order.
+        foreach (var item in earlier)
+        {
+            Apply(item.Name, item.Down);
         }
         while (Pending.TryDequeue(out var item))
         {
-            if (item.Name == TextEnter)
+            Apply(item.Name, item.Down);
+        }
+
+        var changed = false;
+        foreach (var name in Buttons.Keys)
+        {
+            target.TryGetValue(name, out var want);
+            _wanted.TryGetValue(name, out var had);
+            if (want != had)
             {
-                if (item.Down)
+                changed = true;
+                break;
+            }
+        }
+        force = force || _forceSend;
+        _forceSend = false;
+        // A stale bit can only exist after an event was sent, so the forced all-up needs a pad.
+        if (changed || (force && _pad != null && _pad.added))
+        {
+            Send(Pad(), target);
+            _wanted = target;
+        }
+        Deferred.AddRange(next);
+
+        // One transition per button per frame; only the first change is visible now, the rest
+        // wait so a press followed by a release (or the reverse) is never cancelled out.
+        void Apply(string name, bool down)
+        {
+            if (name == TextEnter)
+            {
+                if (down)
                 {
                     SubmitText();
                 }
-                continue;
+                return;
             }
-            Send(Pad(), Buttons[item.Name](Pad()), item.Down);
+            if (name == null)
+            {
+                // "all up": also cancels transitions we already deferred this frame.
+                foreach (var key in Buttons.Keys)
+                {
+                    target[key] = false;
+                    touched.Add(key);
+                }
+                HeldUntil.Clear();
+                next.Clear();
+                return;
+            }
+            if (!Buttons.ContainsKey(name))
+            {
+                return;
+            }
+            target.TryGetValue(name, out var current);
+            if (touched.Contains(name))
+            {
+                // A later transition for a button that already changed this frame waits its turn,
+                // even if it would bring the state back: a press and its release must both show.
+                next.Add((name, down));
+                return;
+            }
+            if (current == down)
+            {
+                return;  // already in that state; a redundant transition needs no event
+            }
+            target[name] = down;
+            touched.Add(name);
         }
     }
 
@@ -141,19 +246,24 @@ internal static class GameInput
     }
 
     /// <summary>
-    /// The pad's current state with one button's bit changed, queued as a state event. The bit is
-    /// set by hand: interop methods returning pointers (GetStatePtrFromStateEvent) throw
-    /// BadImageFormatException (10-27), and each button the engine uses is one bit.
+    /// Queues one state event whose every known button bit comes from the wanted state. Writing
+    /// all of them (not just the changed one) also clears a button that earlier code left down.
+    /// The bit is set by hand: interop methods returning pointers (GetStatePtrFromStateEvent)
+    /// throw BadImageFormatException (10-27), and each button the engine uses is one bit.
     /// </summary>
-    private static unsafe void Send(Gamepad pad, ButtonControl button, bool down)
+    private static unsafe void Send(Gamepad pad, Dictionary<string, bool> wanted)
     {
         StateEvent.From(pad, out var eventPtr, Allocator.Temp);  // freed at the frame's end
         // InputEventPtr holds one field, the event's address.
         var state = (byte*)Unsafe.As<InputEventPtr, IntPtr>(ref eventPtr) + StateDataOffset;
-        var block = button.stateBlock;
-        var bit = (block.byteOffset - pad.stateBlock.byteOffset) * 8 + block.bitOffset;
-        var mask = (byte)(1 << (int)(bit % 8));
-        state[bit / 8] = down ? (byte)(state[bit / 8] | mask) : (byte)(state[bit / 8] & ~mask);
+        foreach (var pair in Buttons)
+        {
+            var block = pair.Value(pad).stateBlock;
+            var bit = (block.byteOffset - pad.stateBlock.byteOffset) * 8 + block.bitOffset;
+            var mask = (byte)(1 << (int)(bit % 8));
+            var down = wanted.TryGetValue(pair.Key, out var value) && value;
+            state[bit / 8] = down ? (byte)(state[bit / 8] | mask) : (byte)(state[bit / 8] & ~mask);
+        }
         InputSystem.QueueEvent(eventPtr);
     }
 

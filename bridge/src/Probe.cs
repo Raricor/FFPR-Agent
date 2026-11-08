@@ -69,6 +69,8 @@ public sealed class Probe : MonoBehaviour
             MapWatch.Update();
             PosWatch.Update();
             Requests.Drain();
+            // Before Drain: the direction key switched this frame reaches the game this frame.
+            Walker.Update();
             GameInput.Drain();
         }
         catch (Exception e)
@@ -76,7 +78,7 @@ public sealed class Probe : MonoBehaviour
             // Keep sampling even if these fail; report each distinct failure once.
             if (_reported.Add(e.Message))
             {
-                Plugin.Logger.LogWarning($"MapWatch/Requests:{e}");
+                Plugin.Logger.LogWarning($"MapWatch/Requests/Walker:{e}");
             }
         }
         if (!_helloSent)

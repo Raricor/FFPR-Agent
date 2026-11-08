@@ -1,6 +1,6 @@
 # 桥插件(FfprBridge)
 
-BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（设计方案 §5），从不改游戏数据和存档。当前版本 0.13.6。
+BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（设计方案 §5），从不改游戏数据和存档。当前版本 0.14.1。
 
 - 所有挂钩都是 postfix，只读参数和返回值，不改参数、不改返回值，也不改任何游戏对象。
 - 调用游戏的地方只有取值函数和纯查询。
@@ -14,6 +14,10 @@ BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（�
 - 把以上内容写进 `BepInEx/ffpr/probe-<启动时间>.jsonl`，同时推送给 WebSocket 客户端。
 - 在查询通道上回答查询(见「查询通道」)。
 - 0.5.0 起，在局域网连接上替开发机按键(见「局域网连接」)。0.9.0 起按键走虚拟手柄，游戏在后台、最小化时也能玩。
+- 0.14.1:修 `walkpath` 拐角。虚拟手柄改成游戏线程一帧最多发一个完整状态事件，同一帧的按/放不再互相覆盖，`stop` 和走路结束会把全部已知按钮写成松开，旧方向键不会卡住;整数格读数先在 `from` 上看到到达帧(`moving` false)、之后 `moving` 又变 true 时换出拐角方向(`mode=step`)，没看到到达帧就等读数跳到拐角格再换(`mode=flip`)，小数读数仍按 `turnLead`(`mode=lead`);`turns` 加 `mode` / `arriveFrame` / `stopFrame` / `moving` / `raw` 诊断。
+- 0.14.0:`walkpath` 命令:一次收下整条格子路线，在游戏线程上逐帧按住虚拟手柄方向键连续走完，拐角提前换键不停顿;回复带停下的原因、`index`、`steps`、`pos`、`next` 和每个拐角的 `turns`(真机标定用)。`walkpath` 可带只用于显示的 `goal`/`label`;新增 `walk` 查询和 `walk.start` / `walk.progress` / `walk.end` 推送，笔记本和网页都能显示规划和走到哪一段。`cells` 新增可选的 `at`，可以任意格子为中心读窗口，便于开发机拼整张地图寻路。
+- 0.13.8:迷宫/城镇的 `encounters.map.parties` 改成用 `FieldController.GetEncountInfo` 逐格扫整张图(多层每层扫)，按地图号缓存、换地图作废；世界地图的 `region` 改成按 `EncountGridData` 的格子号找当前区域，边界为 0 时 `start`/`end` 给 null；新增 `encountgrid` 查询(最多 64 格，返回每格的遇敌格子号)；迷宫 `map.debug` 是 `cellsScanned`/`layers`/`setIds`。
+- 0.13.7:`encounters` 多了 `enabled`(剧情脚本控制的遇敌开关，读不到为 null)、`vehicle`(`{id, encounter}`，当前交通工具，读不到为 null)和 `map`(`scope` 是 `map`/`area`、`grids` 是整张图或当前区域的遇敌格子号、`parties` 是按队伍 id 去重的全部遇敌组，带 `error`);原有字段不变。
 - 0.13.6:`entities` 的宝箱多了 `opened`(按存档旗标)、`hidden`/`treasureType`(主数据 TreasureType，2 是隐藏道具)和 `contentName`;`pos` 多了 `area`/`areaType`/`areaText`;`encounters` 多了世界地图的 `region`(当前区域)和 `regions`(每个区域的格子范围和遇敌组);`battle.hit` 的敌人目标多了 `book`(图鉴编号)。
 - 0.13.5:`entities` 支持 `kind: "All"`，列出地图模型里所有分组的所有实体（不只当前活动组），未知种类也带类名和通用字段；`TimeSwitchingGimmickArea`/`SlidingFloorGimmickArea`/`DamageFloorGimmickArea` 带区域、开关秒数、方向和落点 link；`TileAnimRegion` 带动画 tile 的 `isTrigger`。
 - 0.13.4:`entities` 补地图机关字段：`ToLayer` 的 `layer`(0 Bottom / 1 Ground / 2 Upper)和 `changeLayer`(`ToBottom` / `ToGround` / `ToUpper`);`OpenTrigger` 的 `linkObjectId`(联动 `TileAnimRegion` 的实体 id)、`script`、`isAlreadyHit`、`size`;`PointIn` 的 `linkObjectId`、`titleId`、`titleType`;`TileAnimRegion` 的 `isReverse`、`isPlaying`;`Event` 的 `script`、`linkObjectId`、`actionId`/`actionName`、`gimmick`。这些都是游戏里现成的字段，不改任何状态。
@@ -40,17 +44,18 @@ BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（�
 | `loader/Loader.cs` | 唯一的 BepInEx 插件：按进程名认出作品,加载 `games/FfprBridge.<作品>.dll`,调用它的 `Start` |
 | `Plugin.cs` | 每作的入口 `Start(host)`：读配置、逐个打挂钩(一个失败不影响其他)、启动 WebSocket、挂上每帧回调 |
 | `Version.cs` | 唯一的版本号,加载器和六份共用 |
-| `Probe.cs` | 每帧：换地图检测、处理查询;每秒：采样 |
+| `Probe.cs` | 每帧：换地图检测、走路、处理查询;每秒：采样 |
 | `Hooks.cs` | Harmony postfix 挂钩：对话、选项、系统消息、成就、Steam、图鉴、存档、战斗出招/命中 |
 | `Requests.cs` | 查询的分派;换地图事件 `MapWatch` |
 | `Outbox.cs` | 写探针文件;本机和局域网两个监听;WebSocket 广播与单播回复;记下每个客户端(远端、通道、连上的时间) |
 | `BridgeInfo.cs` | `bridge` 查询的内容:版本、挂钩、挂钩错误计数、最近 100 条按键、最近 50 条来自本插件的警告 |
 | `Link.cs` | 局域网连接的设置:监听地址、允许的客户端、令牌 |
-| `Keyboard.cs` | 按键线程:`keys`、`hold`、`status`、`stop`;默认走 SendInput(要前台),`"via": "game"` 交给 `GameInput` |
-| `GameInput.cs` | 虚拟手柄：按键对应的按钮、按住的期限、在游戏线程上发出状态事件 |
+| `Keyboard.cs` | 按键线程:`keys`、`hold`、`walkpath`、`status`、`stop`;默认走 SendInput(要前台),`"via": "game"` 交给 `GameInput` |
+| `Walker.cs` | `walkpath`:命令线程等、游戏线程逐帧走;路线校验、拐角换键、冲过头回走、各种停下条件;`walk` 查询和 `walk.start` / `progress` / `end` 推送 |
+| `GameInput.cs` | 虚拟手柄:按键对应的按钮、按住的期限、每帧一个完整状态事件(0.14.1)、全部松键 |
 | `GameState.Achievements.cs` | 成就：主数据、账号层、存档层、宝箱按地点、图鉴 |
 | `GameState.Monsters.cs` | 怪物资料：等级、HP、属性、状态免疫、掉落、偷窃 |
-| `GameState.Encounters.cs` | 当前位置的遇敌表 |
+| `GameState.Encounters.cs` | 当前位置和整张图(世界地图是当前区域)的遇敌表 |
 | `GameState.cs` | 采样的骨架、消息文本查询、公共小工具 |
 | `GameState.Field.cs` | 地图和玩家：格子、地形、实体、碰撞、寻路 |
 | `GameState.Party.cs` | 队伍和背包 |
@@ -139,7 +144,8 @@ FfprBridge/
 | op | 返回 | 起始版本 |
 | --- | --- | --- |
 | `pos` | 地图、主状态、格子、朝向、是否在走、对话 / 战斗标志、存档次数；0.13.6 起还有 `area`(GpsAreaId)、`areaType`(0 是世界地图)、`areaText` | 0.2 |
-| `cells` (`r`) | 玩家周围格子的地形码 | 0.2 |
+| `cells` (`r`, `at`) | 格子地形码;0.14.0 起可选 `at`(`[x, y]`)指定读取窗口的中心，缺省是玩家；回复里 `center` 仍是玩家的格子，`at` 是这次读的中心，`origin` 是窗口左上角 | 0.2 |
+| `walk` | 当前或最后一条 `walkpath`:seq、active、map、path、goal、label、index、steps、cell、segment、turns、startedAt、endedAt、reason;一条都没走过为 null | 0.14.0 |
 | `sample` | 立即采样一次完整状态 | 0.2 |
 | `entities` (`kind`, `max`) | 入口(含目的地)、宝箱(含内容)、NPC、事件，以及所在格子；0.13.4 起换层格带目标层、门带联动和触发状态、PointIn 带 link/title、事件带脚本和动作；0.13.5 起 `kind: "All"` 列出所有分组/未识别实体，gimmick 实体带区域和落点 link；0.13.6 起宝箱带 `opened`、`hidden`、`treasureType`、`contentName` | 0.2.1 |
 | `route` (`to`) | 游戏自己的寻路结果(实测不可靠，改用 `collision` 自己寻路) | 0.2.x |
@@ -155,7 +161,8 @@ FfprBridge/
 | `bestiary` | 图鉴主数据：每项的编号、怪物、名字 | 0.7.1 |
 | `achievements` | `defs`(成就主数据，三个平台各一套)、`account`(账号层，和 Steam 同步)、`save`(存档层计数、宝箱按地点 `treasure`、队员职业等级)、`bestiary`(每个编号登记了没有、出没地点);没读档时顶层另有 `treasure`(主数据里每个地点的宝箱总数，0.10.0 起) | 0.7.6 |
 | `monsters` | 每个图鉴编号的怪物资料：等级、HP、MP、经验、金钱、首领、属性(`type` 1 弱 / 3 无效 / 4 吸收)、状态免疫、掉落、偷窃。静态数据，取一次就够 | 0.7.9 |
-| `encounters` | 当前位置的遇敌组：每种队形的概率(千分比)、能不能逃、几只什么怪。世界地图上随区域和脚下地形变；0.13.6 起 `region` 是当前区域，`regions` 是加载地图模型里每个区域(格子范围和它自己的遇敌表) | 0.8.0 |
+| `encounters` | 当前位置的遇敌组：每种队形的概率(千分比)、能不能逃、几只什么怪。世界地图上随区域和脚下地形变；0.13.6 起 `region` 是当前区域，`regions` 是加载地图模型里每个区域(格子范围和它自己的遇敌表)；0.13.7 起 `enabled` 是剧情控制的遇敌开关，`vehicle` 是当前交通工具，`map` 是整张图(世界地图按格子号找当前区域，再并该区域所有地形)能滚出的全部队伍，按 id 去重；0.13.8 起迷宫/城镇逐格扫整张图(多层每层扫)，世界地图 `region` 也按格子号找 | 0.8.0 |
+| `encountgrid` (`cells`: [[x,y], …], 最多 64) | 每格的遇敌格子号(读不到为 null) | 0.13.8 |
 | `bridge` | 这一包和运行时:作品、版本、进程、启动时间、端口、局域网、客户端、挂钩、最近 100 条按键、最近 50 条警告;0.13.0 起有 `hookErrors` | 0.12.0 |
 | `monsterai` (`id` / `ids`) | FF5 怪物 AI 脚本:脚本名、原文(截断)、能认出的能力名;不给编号就是当前战斗的敌人 | 0.13.0 |
 
@@ -282,7 +289,7 @@ FfprBridge/
 | `GET /v1/health` | HTTP | 帧号、订阅数、丢弃数、`hello` |
 | `/v1/stream` | WebSocket | 先发 `hello`,之后是写进探针文件的每一条记录 |
 | `/v1/query` | WebSocket | 和「查询通道」一样的请求-应答 |
-| `/v1/command` | WebSocket | 按键:`{"id": 1, "op": "keys", "keys": ["Down*3", "Enter", "Up:600"], "gap": 120, "from": "FF5 玩家"}`;`status`(前台、锁屏);`stop`(取消正在按的和排队的) |
+| `/v1/command` | WebSocket | 按键:`{"id": 1, "op": "keys", "keys": ["Down*3", "Enter", "Up:600"], "gap": 120, "from": "FF5 玩家"}`;整条路线 `walkpath`(见下);`status`(前台、锁屏);`stop`(取消正在按的和排队的) |
 
 按键的写法和试玩助手一样。不带 `via` 时走 SendInput:每按一个键前都检查游戏自己的窗口(`UnityWndClass`)是否在前台，不在就停下，报 `not_focused` 或 `locked`。按住的键无论如何都会松开。
 
@@ -293,8 +300,71 @@ FfprBridge/
 - 对应:Enter → 南键(确认)、Backspace → 东键(取消)、Tab → 北键(菜单)、方向键 → 十字键。别的键报 `no_game_button`。
 - 0.10.0 加了手柄的其他按钮:`PadWest`(西键，如 FF3 起名的「随机输入」)、`PadStart`(Start,关第一次进地图时的操作提示)、`PadSelect`、`PadL1`、`PadR1`。
 - 0.10.0 加了 `TextEnter`:给正在输入的文字框(起名框)按 Enter,保留框里的名字。起名框只认真键盘，手柄键、往窗口发键盘消息都没用(10-28 实测);这是游戏里那个输入框自己的提交，等于按下 Enter 键，只用在起名框上。
-- `hold` 按住的键最多 `ms` 毫秒(上限 5 秒)就自动松开，要继续按就再发一次;`stop` 松开全部。客户端中途断掉，人物也不会一直走下去。
+- 0.14.1 起，游戏线程一帧最多发一个完整的虚拟手柄状态事件:所有已知按钮的位都按“想要的状态”写，同一帧里按/放不会互相覆盖;按住一个键时重复的按下不会变成新的事件。`stop` 和 `walkpath` 结束时把全部已知按钮写成松开，包括已经不在按住表里的旧键。
+- `hold` 按住的键最多 `ms` 毫秒(上限 5 秒)就自动松开，要继续按就再发一次;`stop` 松开全部。客户端中途断掉，人物也不会一直走下去;0.14.0 起 `walkpath` 还会在命令线程上每 20 毫秒看一次连接，断开就立刻松键并回 `closed`。
 - `status` 回复里有 `gameButtons: true`,客户端据此不再要求前台。
+
+### `walkpath`(0.14.0;0.14.1 修拐角)
+
+一次把整条格子路线交给桥插件，由游戏线程逐帧按住方向键走完，不再每段开一次 SSH、人站着等。命令线程排队、等它走完才回复，和 `keys`、`hold` 一样一次只做一条：
+
+```json
+{"id": 1, "op": "walkpath", "path": [[12, 8], [13, 8], [13, 9]],
+ "goal": [12, 15], "label": "go → 地图 30「图尔村」 第 2 跳",
+ "timeoutMs": 60000, "blockedMs": 800, "turnLead": 0.6}
+```
+
+- `path`:格子列表，坐标和 `pos` 的 `cell` 同一套(x 向右、y 向下)。相邻两格必须四方向相邻(曼哈顿距离 1)，否则回 `bad_path`，一下也不按。玩家在某格上就从那一格接着走(通常是第 0 格);不在 `path` 上回 `off_path`，不动。
+- `goal`(可选，`[x, y]`)和 `label`(可选，最多 80 字，超长截断)只用来显示，不影响怎么走。`goal` 是这次移动的目标格，可能不是 `path` 的最后一格(目标在视野外、路线在跳跃前截断等)。
+- `timeoutMs` 默认 60000、上限 300000;`blockedMs` 默认 800;`turnLead` 默认 0.6 格，只在格子读数带小数时用，见下。
+- 回复在普通命令回复上加了这些字段：
+
+```json
+{"ok": false, "reason": "battle", "index": 7, "steps": 7, "pos": {}, "next": null,
+ "turns": [{"cell": [13, 8], "at": [13, 8], "frame": 123456, "ok": true,
+            "mode": "step", "arriveFrame": 123470, "stopFrame": 123473,
+            "moving": true, "raw": [312.4, 128.6]}]}
+```
+
+  - `ok`:走到最后一格才是 `true`。
+  - `reason`:`arrived` / `battle` / `dialog` / `state:<MainState>` / `map_changed` / `blocked` / `off_path` / `timeout` / `stopped` / `closed` / `no_player` / `bad_path`。
+  - `index`:停下时玩家在 `path` 里的下标，不在 `path` 上为 -1;`steps`:这次走了几格;`pos`:停下时的 `GameState.Position()`;`next`:只有 `blocked` 时是走不过去的那一格。
+  - `turns`:每个拐角一条，最多 64 条。`at` 是换键那一帧转换后的格子坐标(和 `ConvertWorldPositionToCellPosition` 一致);`ok` 为 `false` 表示冲过了这个拐角、回走过一格;`mode` 是 `step`(在 `from` 见过到达帧后换键)、`flip`(没见到到达帧，读数跳到拐角格才换)或 `lead`(小数读数用 `turnLead`);`frame` 是换键帧;`arriveFrame` 是读数跳到拐角格的帧(没到为 null);`stopFrame` 是在拐角格上 `moving` 变 false 的帧(没停就不写);`moving` 是换键时是否在走;`raw` 是换键时 `player.transform.localPosition` 的 x/y。真机标定用，以后可以删。
+- 走路:每帧读玩家的格子坐标、`IsMoving`、`MainState`、对话 / 战斗标志和地图号，按住朝下一格的方向键(x+1 Right、x-1 Left、y+1 Down、y-1 Up)。键用 `GameInput.Hold` 每帧续按、250 毫秒自动过期，桥插件自己出问题也会松键;只按虚拟手柄方向键，不写游戏数据。
+- 拐角不停，按读数自动选三种模式:
+  - **整数读数 + 见过到达帧**(`step`):读数先跳到 `from` 时人还在上一步的尾巴上，不算出发;等到 `from` 上出现 `moving` false(到达)，之后 `moving` 又变 true，才在这一帧换成出拐角的方向键。这一步已经出发，换键不改变它;到达拐角那一帧游戏读到的就是新方向。
+  - **整数读数 + 没见到到达帧**(`flip`，比如同一帧到达又出发):退回原来的做法，读数一跳到拐角格就换成下一段的方向键。
+  - **小数读数**(`lead`，室内图或别的作品):离拐角格中心还剩 `turnLead` 格以内、并且已经离开上一格中心时换成下一段的方向键。
+- 冲过头:不在 `path` 上但和 `path` 上某格相邻，就走回那一格接着走，`turns` 里这个拐角记 `ok: false`;离 `path` 超过 1 格停下回 `off_path`。
+- 停下的条件:走到最后一格 `arrived`;战斗 / 对话打开的同一帧先松键再回 `battle` / `dialog`;`MainState` 不是 `Player`/`Transport` 回 `state:<名字>`(机关 `Gimmick` 先松键等 5 秒，回到 `Player`/`Transport` 就接着走);地图号变了 `map_changed`;按着方向键超过 `blockedMs` 位置没动 `blocked`(`moving` 为 true 时不算没动);超时 `timeout`;收到 `stop` 回 `stopped`;发命令的连接断开回 `closed`。一开始就在战斗、对话等状态里，直接按对应原因回复，不按键。
+- 命令线程等待时每 20 毫秒看一次连接状态;开发机取消工具调用会关掉连接，这时一定停。游戏线程卡住（读不到玩家）时，命令线程最多再等 500 毫秒就回一个没有 `pos` 的结果，方向键由 250 毫秒的期限松开。
+
+### `walk` 查询和 `walk.*` 推送(0.14.0)
+
+`walk` 是只读查询(`/query`、`/v1/query`)，在游戏线程上答，返回当前或最后一条 `walkpath`：
+
+```json
+{"walk": {
+  "seq": 12, "active": true, "map": 30,
+  "path": [[5, 8], [6, 8], [7, 8], [8, 8], [9, 8], [9, 9]],
+  "goal": [12, 15], "label": "go → 地图 30「图尔村」 第 2 跳",
+  "index": 3, "steps": 3, "cell": [8, 8],
+  "segment": {"n": 1, "of": 2, "from": [5, 8], "to": [9, 8]},
+  "turns": [{"cell": [9, 8], "at": [8.42, 8.01], "frame": 123456, "ok": true,
+             "mode": "lead", "arriveFrame": 123470, "stopFrame": 123473,
+             "moving": true, "raw": [312.4, 128.6]}],
+  "startedAt": "2026-11-05T05:12:03.1200000Z", "endedAt": null, "reason": null}}
+```
+
+- `seq` 是桥插件启动以来第几条 `walkpath`(从 1 起)。走完以后最后一条留着，`active` 变 false，`endedAt`、`reason` 和命令回复里的 `reason` 一样;一条都没走过时回 `{"walk": null}`。
+- `segment` 把 `path` 按拐角切成直线段，`n` 是现在这一步(`index` → `index+1`)所在的段(从 1 数)，`of` 是总段数，`from`/`to` 是这一段的两端;走完后 `n` 等于最后一段，没有可用的段时为 null。
+- `cell` 是玩家现在的格子(取整，读不到为 null);`turns` 和命令回复里的一样。
+
+推送(本机推送和 `/v1/stream` 都有;`walkSeq` 是 walkpath 的序号，和查询里的 `seq` 相同;公共头里的 `seq` 仍是推送流自己的全局序号，客户端靠它去重):
+
+- `walk.start`:`{walkSeq, map, path, goal, label}`，开始走的那一帧发。
+- `walk.progress`:`{walkSeq, index, steps, cell, segment: {n, of}}`，`index` 变了就发;同一条 `walkpath` 的两次 progress 至少隔 100 毫秒，变化先记成待发，结束时补发最后一次再发 `walk.end`。
+- `walk.end`:`{walkSeq, reason, index, steps, cell}`，停下时发，和命令回复同一帧。
 
 开发机上可以不连笔记本测试这部分:`tools/link_harness` 把 `Outbox.cs`、`Link.cs` 编进一个小程序，用替身代替游戏,`tools/tests/test_link_harness.py` 用真实的客户端连它。
 

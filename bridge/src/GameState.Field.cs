@@ -30,23 +30,38 @@ internal static partial class GameState
         return player != null;
     }
 
-    /// <summary>The player's cell (x grows to the right, y grows downwards), or null.</summary>
-    public static int[] PlayerCell()
+    /// <summary>
+    /// The player's fractional cell position (x grows to the right, y grows downwards) and its
+    /// layer in z. 0.14.0: walkpath needs the sub-cell position to time corner turns; PlayerCell
+    /// still rounds it for everything else.
+    /// </summary>
+    public static bool TryPlayerCellExact(out Vector3 cell)
     {
+        cell = default;
         if (!TryPlayer(out var controller, out var player))
         {
-            return null;
+            return false;
         }
         try
         {
-            var cell = controller.ConvertWorldPositionToCellPosition(player.transform.localPosition);
-            return new[] { (int)Math.Round(cell.x), (int)Math.Round(cell.y) };
+            cell = controller.ConvertWorldPositionToCellPosition(player.transform.localPosition);
+            return true;
         }
         catch (Exception)
         {
             // Throws while a map is being swapped in.
+            return false;
+        }
+    }
+
+    /// <summary>The player's cell (x grows to the right, y grows downwards), or null.</summary>
+    public static int[] PlayerCell()
+    {
+        if (!TryPlayerCellExact(out var cell))
+        {
             return null;
         }
+        return new[] { (int)Math.Round(cell.x), (int)Math.Round(cell.y) };
     }
 
     /// <summary>Facing as Up/Down/Left/Right, from the entity's direction vector.</summary>
@@ -82,21 +97,24 @@ internal static partial class GameState
     }
 
     /// <summary>
-    /// The map's cell attributes in a square around the player. What the bits mean is not known
-    /// yet; P0b compares them with where the player could and could not walk.
+    /// The map's cell attributes in a square of `radius` around `at` (0.14.0), or around the
+    /// player when `at` is null. What the bits mean is not known yet; P0b compares them with
+    /// where the player could and could not walk. `center` stays the player's cell so a client
+    /// can tell where the party is; `origin` is the window's top-left cell.
     /// </summary>
-    public static JsonObject Cells(int radius)
+    public static JsonObject Cells(int radius, int[] at = null)
     {
         var center = PlayerCell();
         if (center == null || !TryPlayer(out var controller, out _))
         {
             return null;
         }
+        var read = at ?? center;
         var rows = new JsonArray();
-        for (var y = center[1] - radius; y <= center[1] + radius; y++)
+        for (var y = read[1] - radius; y <= read[1] + radius; y++)
         {
             var row = new JsonArray();
-            for (var x = center[0] - radius; x <= center[0] + radius; x++)
+            for (var x = read[0] - radius; x <= read[0] + radius; x++)
             {
                 int? attr;
                 try
@@ -114,7 +132,8 @@ internal static partial class GameState
         return new JsonObject
         {
             ["center"] = new JsonArray(center[0], center[1]),
-            ["origin"] = new JsonArray(center[0] - radius, center[1] - radius),
+            ["at"] = new JsonArray(read[0], read[1]),
+            ["origin"] = new JsonArray(read[0] - radius, read[1] - radius),
             ["attr"] = rows,
         };
     }

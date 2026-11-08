@@ -12,7 +12,7 @@ namespace FfprBridge;
 /// Answers client queries on the game thread. Queries only read, like everything else in the
 /// bridge:
 ///   {"id": 1, "op": "pos"}              map, cell, facing, moving, dialog/battle flags
-///   {"id": 2, "op": "cells", "r": 8}    cell attributes in a square around the player
+///   {"id": 2, "op": "cells", "r": 8, "at": [x, y]}  cell attributes around the player or at
 ///   {"id": 3, "op": "sample"}           the full once-a-second snapshot, now
 ///   {"id": 4, "op": "entities", "kind": "GotoMap", "max": 200}   entrances, chests, NPCs ...
 ///   {"id": 5, "op": "route", "to": [x, y]}   the game's own collision-aware route to a cell
@@ -27,6 +27,8 @@ namespace FfprBridge;
 ///   {"id": 14, "op": "textinput"}       text fields on screen (naming boxes): text, focused
 ///   {"id": 15, "op": "bridge"}          this build, its clients, hooks, recent keys and warnings
 ///   {"id": 16, "op": "monsterai", "ids": [12, 13]}   FF5: AI script and named abilities
+///   {"op": "encountgrid", "cells": [[x, y], ...]}    encounter grid number per cell (0.13.8)
+///   {"op": "walk"}                     current or last walkpath route and progress (0.14.0)
 /// </summary>
 internal static class Requests
 {
@@ -58,7 +60,7 @@ internal static class Requests
                     break;
                 case "cells":
                     var radius = Math.Clamp(query["r"]?.GetValue<int>() ?? 8, 1, 24);
-                    reply["cells"] = GameState.Cells(radius);
+                    reply["cells"] = GameState.Cells(radius, Point(query["at"], "at"));
                     break;
                 case "entities":
                     var max = Math.Clamp(query["max"]?.GetValue<int>() ?? 200, 1, 1000);
@@ -108,6 +110,14 @@ internal static class Requests
                 case "encounters":
                     reply["encounters"] = GameState.Encounters();
                     break;
+                case "encountgrid":
+                    var encountCells = query["cells"]?.AsArray() ??
+                        throw new ArgumentException("encountgrid 需要 cells");
+                    reply["encountgrid"] = GameState.EncountGrids(encountCells);
+                    break;
+                case "walk":
+                    reply["walk"] = Walker.Snapshot();
+                    break;
                 case "monsterai":
 #if FF5
                     reply["monsterai"] = GameState.MonsterAi(MonsterIds(query));
@@ -134,6 +144,21 @@ internal static class Requests
             reply["error"] = $"{e.GetType().Name}: {e.Message}";
         }
         return Emit.Serialize(reply);
+    }
+
+    /// <summary>An optional [x, y] from a query (0.14.0: cells' at); null when absent.</summary>
+    private static int[] Point(JsonNode node, string name)
+    {
+        if (node == null)
+        {
+            return null;
+        }
+        var array = node as JsonArray ?? throw new ArgumentException($"{name} 需要 [x, y]");
+        if (array.Count != 2)
+        {
+            throw new ArgumentException($"{name} 需要 [x, y]");
+        }
+        return new[] { array[0].GetValue<int>(), array[1].GetValue<int>() };
     }
 
     /// <summary>
@@ -249,6 +274,7 @@ internal static class MapWatch
         }
         if (map != _map)
         {
+            GameState.InvalidateEncountCache();
             if (_map != null)
             {
                 _fromMap = _map;

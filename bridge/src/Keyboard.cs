@@ -19,8 +19,9 @@ namespace FfprBridge;
 /// on the game thread; "stop" cancels the running one and everything queued behind it.
 ///
 ///   {"id": 1, "op": "keys", "keys": ["Down*3", "Enter", "Up:600"], "gap": 120}
-///   {"id": 2, "op": "status"}
-///   {"id": 3, "op": "stop"}
+///   {"id": 2, "op": "walkpath", "path": [[12, 8], [13, 8], [13, 9]], "turnLead": 0.6}
+///   {"id": 3, "op": "status"}
+///   {"id": 4, "op": "stop"}
 /// </summary>
 internal static class Keyboard
 {
@@ -40,6 +41,9 @@ internal static class Keyboard
     // Virtual-key code and whether it is an extended key (needs the E0 prefix); the same names
     // as deploy/laptop/pilot-agent.ps1.
     private static readonly Dictionary<string, (ushort Vk, bool Extended)> Codes = BuildCodes();
+
+    /// <summary>True while a "stop" is asking the running walk to let go and end.</summary>
+    internal static bool StopRequested => _stop;
 
     public static void Start()
     {
@@ -66,7 +70,9 @@ internal static class Keyboard
             GameInput.ReleaseAll();
             while (Queue.TryTake(out var queued))
             {
-                Reply(queued.From, queued.Command, Failed("stopped"));
+                // A queued walkpath still answers in its own shape, so its client parses one reply.
+                var queuedOp = queued.Command["op"]?.GetValue<string>();
+                Reply(queued.From, queued.Command, queuedOp == "walkpath" ? Walker.StoppedReply() : Failed("stopped"));
             }
             Reply(from, command, new JsonObject { ["ok"] = true });
             return;
@@ -89,6 +95,8 @@ internal static class Keyboard
                 {
                     "keys" => Keys(command),
                     "hold" => Hold(command),
+                    // Blocks this command thread until the walk ends on the game thread.
+                    "walkpath" => Walker.Run(from, command),
                     "status" => Status(),
                     var op => Failed($"未知的 op:{op}"),
                 };
