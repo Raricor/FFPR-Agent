@@ -164,6 +164,7 @@ export class KeyEvents {
   private numbersShown = false; // this run's bridge sends the numbers the bestiary shows
   private entryListener: ((entry: KeyEntry) => void) | undefined;
   private readonly recordListeners = new Set<(record: Json) => void>();
+  private readonly walkListeners = new Set<(record: Json) => void>();
 
   /**
    * The game is one resource but JavaScript runs one statement at a time, so Python's
@@ -202,6 +203,11 @@ export class KeyEvents {
     this.seq = seq;
     if (record.type !== "sample" && record.type !== "hello") {
       for (const listener of this.recordListeners) listener(record);
+    }
+    // Task 61: the bridge's walk.start/progress/end drive the page's walking block. Seeded
+    // history is not live and must not replace the walk this run is following.
+    if (live && typeof record.type === "string" && record.type.startsWith("walk.")) {
+      for (const listener of this.walkListeners) listener(record);
     }
     if (record.type === "sample") {
       this.sample = record;
@@ -263,6 +269,14 @@ export class KeyEvents {
     this.recordListeners.add(listener);
     return () => {
       this.recordListeners.delete(listener);
+    };
+  }
+
+  /** `walk.start` / `walk.progress` / `walk.end`, for the walking view (task 61). */
+  onWalk(listener: (record: Json) => void): () => void {
+    this.walkListeners.add(listener);
+    return () => {
+      this.walkListeners.delete(listener);
     };
   }
 

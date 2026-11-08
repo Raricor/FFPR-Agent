@@ -29,6 +29,7 @@ import { loadNotes } from "../engine/notes.ts";
 import { Tactics } from "../engine/tactics.ts";
 import { tacticsView, type TacticsPanelView } from "../engine/tactics-view.ts";
 import { num, record, records, truthy } from "../engine/values.ts";
+import { walkDisplay } from "../engine/walk-view.ts";
 import { currentGame, readAchievementView, type CommandPilotFactory } from "./commands.ts";
 import { currentRoute, readCurrent, type CurrentSource } from "./current.ts";
 import { gameDefaults } from "./config.ts";
@@ -39,6 +40,7 @@ export const TACTICS_ROUTE = "/api/ffpr/tactics";
 export const BATTLES_ROUTE = "/api/ffpr/battles";
 export const PLAYER_ROUTE = "/api/ffpr/player";
 export const TACTICIAN_ROUTE = "/api/ffpr/tactician";
+export const WALK_ROUTE = "/api/ffpr/walk";
 
 /** The root panel entry's way to find the player preset that started one game's engine. */
 export type EngineLookup = (game: string) => PlayerEngine | undefined;
@@ -451,6 +453,30 @@ export function tacticianRoute(
 }
 
 /**
+ * GET /api/ffpr/walk?game=ffN: the game's current walking view, or `view: null` before this
+ * run has walked. The display lines are computed here so the browser bundle only lays them out
+ * (task 61).
+ */
+export function walkRoute(engineFor: EngineLookup, current?: CurrentSource): ConnectionFetchRoute {
+  return {
+    path: WALK_ROUTE,
+    methods: ["GET"],
+    requestBody: "buffered",
+    fetch: async (request) => {
+      const at = new Date().toISOString();
+      const choice = await requestedGame(request, current);
+      if (!choice.ok) return json({ ok: false, error: choice.error, at });
+      const view = engineFor(choice.game.key)?.game.walkView() ?? null;
+      return json({
+        ok: true,
+        at,
+        view: view === null ? null : { ...view, display: walkDisplay(view, Date.now()) },
+      });
+    },
+  };
+}
+
+/**
  * Register the routes on the plugin's ctx when this deployment has a connection service. The
  * root panel entry calls this once; the player presets no longer register routes themselves.
  */
@@ -484,6 +510,9 @@ export function installPanel(
     );
     connectionCtx.effect(() =>
       connectionCtx.connection.fetch.register(tacticianRoute(engineFor, current)),
+    );
+    connectionCtx.effect(() =>
+      connectionCtx.connection.fetch.register(walkRoute(engineFor, current)),
     );
   });
 }

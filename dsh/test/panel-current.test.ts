@@ -6,6 +6,7 @@ import { CURRENT_ROUTE, currentRoute, type CurrentSource } from "../src/plugin/c
 import {
   PLAYER_ROUTE,
   TACTICIAN_ROUTE,
+  WALK_ROUTE,
   installPanel,
   playerRoute,
   tacticianRoute,
@@ -74,7 +75,7 @@ void test("player and tactician routes answer from files when their engine is no
   assert.match(String(view.status), /没在运行/u);
 });
 
-void test("installPanel registers the five read routes", () => {
+void test("installPanel registers the six read routes", () => {
   const server = fakeContext();
   installPanel(server.ctx, () => undefined);
   assert.deepEqual(
@@ -85,6 +86,7 @@ void test("installPanel registers the five read routes", () => {
       "/api/ffpr/battles",
       PLAYER_ROUTE,
       TACTICIAN_ROUTE,
+      WALK_ROUTE,
     ],
   );
 });

@@ -23,6 +23,8 @@ const PANEL_TAB_KEY = "ffpr-dsh.achievements.tab";
 const REFRESH_MS = 30_000;
 const BATTLE_REFRESH_MS = 2000;
 const OVERVIEW_REFRESH_MS = 3000;
+const WALK_ACTIVE_REFRESH_MS = 500;
+const WALK_IDLE_REFRESH_MS = 3000;
 type PanelTab = "achievements" | "bestiary" | "treasure";
 const PANEL_TABS: readonly { readonly key: PanelTab; readonly label: string }[] = [
   { key: "achievements", label: "成就" },
@@ -285,6 +287,45 @@ interface OverviewReply {
   readonly at: string;
   readonly current: CurrentCard | null;
   readonly log: readonly ActivityEntry[];
+}
+
+interface WalkSegmentView {
+  readonly n: number;
+  readonly of: number;
+  readonly from: readonly [number, number];
+  readonly to: readonly [number, number];
+}
+
+interface WalkDisplayView {
+  readonly mapText: string;
+  readonly statusText: string;
+  readonly segmentText: string;
+  readonly progressText: string;
+  readonly elapsedText: string;
+}
+
+interface WalkView {
+  readonly game: string;
+  readonly seq: number | null;
+  readonly map: number | null;
+  readonly label: string;
+  readonly goal: readonly [number, number];
+  readonly path: readonly (readonly [number, number])[];
+  readonly origin: readonly [number, number];
+  readonly rows: readonly string[];
+  readonly index: number;
+  readonly steps: number;
+  readonly cell: readonly [number, number];
+  readonly segment: WalkSegmentView;
+  readonly startedAt: string;
+  readonly endedAt: string | null;
+  readonly reason: string | null;
+  readonly display?: WalkDisplayView;
+}
+
+interface WalkReply {
+  readonly at: string;
+  readonly view: WalkView | null;
 }
 
 type PanelReply =
@@ -751,6 +792,80 @@ function isActivityEntry(value: unknown): value is ActivityEntry {
   );
 }
 
+function isCell(value: unknown): value is readonly [number, number] {
+  return (
+    Array.isArray(value) &&
+    value.length >= 2 &&
+    typeof value[0] === "number" &&
+    typeof value[1] === "number"
+  );
+}
+
+function isWalkSegment(value: unknown): value is WalkSegmentView {
+  return (
+    isRecord(value) &&
+    typeof value.n === "number" &&
+    typeof value.of === "number" &&
+    isCell(value.from) &&
+    isCell(value.to)
+  );
+}
+
+function isWalkDisplay(value: unknown): value is WalkDisplayView {
+  return (
+    isRecord(value) &&
+    typeof value.mapText === "string" &&
+    typeof value.statusText === "string" &&
+    typeof value.segmentText === "string" &&
+    typeof value.progressText === "string" &&
+    typeof value.elapsedText === "string"
+  );
+}
+
+function isWalkView(value: unknown): value is WalkView {
+  return (
+    isRecord(value) &&
+    typeof value.game === "string" &&
+    (value.seq === null || typeof value.seq === "number") &&
+    (value.map === null || typeof value.map === "number") &&
+    typeof value.label === "string" &&
+    isCell(value.goal) &&
+    Array.isArray(value.path) &&
+    value.path.every(isCell) &&
+    isCell(value.origin) &&
+    Array.isArray(value.rows) &&
+    value.rows.every((row) => typeof row === "string") &&
+    typeof value.index === "number" &&
+    typeof value.steps === "number" &&
+    isCell(value.cell) &&
+    isWalkSegment(value.segment) &&
+    typeof value.startedAt === "string" &&
+    (value.endedAt === null || typeof value.endedAt === "string") &&
+    (value.reason === null || typeof value.reason === "string") &&
+    (value.display === undefined || isWalkDisplay(value.display))
+  );
+}
+
+async function fetchWalk(signal: AbortSignal, game: string): Promise<PollResult<WalkReply>> {
+  const response = await fetch(`api/ffpr/walk?game=${encodeURIComponent(game)}`, {
+    signal,
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(`读不了走路数据(HTTP ${response.status})`);
+  const body: unknown = await response.json();
+  if (!isRecord(body) || body.ok !== true) {
+    const error = isRecord(body) && typeof body.error === "string" ? body.error : "读不懂走路数据";
+    throw new Error(error);
+  }
+  const at = typeof body.at === "string" ? body.at : new Date().toISOString();
+  const view = body.view === null ? null : isWalkView(body.view) ? body.view : null;
+  return { value: { at, view }, error: null, at };
+}
+
+async function loadWalk(signal: AbortSignal, game: string): Promise<PollResult<WalkReply>> {
+  return await fetchWalk(signal, game);
+}
+
 async function loadCurrent(signal: AbortSignal): Promise<PollResult<CurrentReply>> {
   return await fetchCurrent(signal);
 }
@@ -773,6 +888,12 @@ async function loadOverview(signal: AbortSignal, game: string): Promise<PollResu
 /** Two seconds while a battle runs, otherwise the sidebar's usual 30 seconds. */
 function battleInterval(data: BattleReply | null): number {
   return data?.live !== null && data?.live !== undefined ? BATTLE_REFRESH_MS : REFRESH_MS;
+}
+
+/** Half a second while the party walks, three seconds after it stopped (task 61). */
+function walkInterval(data: WalkReply | null): number {
+  const view = data?.view ?? null;
+  return view !== null && view.endedAt === null ? WALK_ACTIVE_REFRESH_MS : WALK_IDLE_REFRESH_MS;
 }
 
 /** One 30-second poll, shared by both sidebar tabs; errors keep the last good content. */
@@ -1852,10 +1973,226 @@ function currentCardView(current: CurrentCard): unknown {
   return h("div", { style: { ...CARD_STYLE, opacity: current.running ? 1 : 0.72 } }, ...children);
 }
 
+function walkSegmentsClient(
+  path: readonly (readonly [number, number])[],
+): readonly { readonly from: readonly [number, number]; readonly to: readonly [number, number] }[] {
+  if (path.length === 0) return [];
+  const out: { from: readonly [number, number]; to: readonly [number, number] }[] = [];
+  let from = path[0] ?? [0, 0];
+  for (let i = 1; i < path.length; i++) {
+    const before = path[i - 1];
+    const cell = path[i];
+    if (before === undefined || cell === undefined) continue;
+    const next = path[i + 1];
+    const beforeStep = `${cell[0] - before[0]},${cell[1] - before[1]}`;
+    const nextStep = next === undefined ? "" : `${next[0] - cell[0]},${next[1] - cell[1]}`;
+    if (next === undefined || beforeStep !== nextStep) {
+      out.push({ from, to: cell });
+      from = cell;
+    }
+  }
+  return out;
+}
+
+function walkCellColor(char: string): string | null {
+  if (char === "#") return "rgba(128, 128, 128, 0.35)";
+  if (char === "~") return "rgba(64, 112, 190, 0.35)";
+  if (char === "^") return "rgba(150, 120, 90, 0.45)";
+  if (char === '"') return "rgba(80, 140, 80, 0.20)";
+  return null;
+}
+
+interface WalkBaseRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly fill: string;
+}
+
+/** The cropped base changes only with the plan, not with progress: keep a few grids. */
+const WALK_BASE_CACHE = new Map<string, readonly WalkBaseRect[]>();
+const WALK_BASE_CACHE_LIMIT = 8;
+
+function walkBaseRects(view: WalkView): readonly WalkBaseRect[] {
+  const key = `${view.map ?? "?"}|${view.origin[0]},${view.origin[1]}|${view.rows.join("\n")}`;
+  const cached = WALK_BASE_CACHE.get(key);
+  if (cached !== undefined) return cached;
+  const rects: WalkBaseRect[] = [];
+  for (let y = 0; y < view.rows.length; y++) {
+    const row = view.rows[y] ?? "";
+    let start = 0;
+    let color: string | null = null;
+    const flush = (end: number): void => {
+      if (color !== null && end > start) {
+        rects.push({ x: start, y, width: end - start, fill: color });
+      }
+    };
+    for (let x = 0; x < row.length; x++) {
+      const next = walkCellColor(row[x] ?? " ");
+      if (next === color) continue;
+      flush(x);
+      start = x;
+      color = next;
+    }
+    flush(row.length);
+  }
+  if (WALK_BASE_CACHE.size >= WALK_BASE_CACHE_LIMIT) {
+    const oldest = WALK_BASE_CACHE.keys().next();
+    if (!oldest.done) WALK_BASE_CACHE.delete(oldest.value);
+  }
+  WALK_BASE_CACHE.set(key, rects);
+  return rects;
+}
+
+function walkSvg(view: WalkView): unknown {
+  const width = Math.max(1, view.rows[0]?.length ?? 0);
+  const height = Math.max(1, view.rows.length);
+  const originX = view.origin[0];
+  const originY = view.origin[1];
+  const centerX = (x: number): number => x - originX + 0.5;
+  const centerY = (y: number): number => y - originY + 0.5;
+  const pieces: unknown[] = [
+    h("rect", {
+      key: "floor",
+      x: 0,
+      y: 0,
+      width,
+      height,
+      fill: "rgba(128, 128, 128, 0.08)",
+    }),
+  ];
+  for (const rect of walkBaseRects(view)) {
+    pieces.push(
+      h("rect", {
+        key: `base-${rect.x}-${rect.y}-${rect.width}`,
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: 1,
+        fill: rect.fill,
+      }),
+    );
+  }
+  const segments = walkSegmentsClient(view.path);
+  const current = view.segment.n;
+  for (const [index, segment] of segments.entries()) {
+    const n = index + 1;
+    const walked = n < current;
+    const walking = n === current;
+    pieces.push(
+      h("polyline", {
+        key: `route-${n}`,
+        points: `${centerX(segment.from[0])},${centerY(segment.from[1])} ${centerX(
+          segment.to[0],
+        )},${centerY(segment.to[1])}`,
+        fill: "none",
+        stroke: walked
+          ? "var(--dsw-alias-label-tertiary)"
+          : "var(--dsw-alias-state-business-primary)",
+        strokeWidth: walking ? 0.34 : 0.14,
+        strokeDasharray: walking ? undefined : walked ? "0.16 0.3" : "0.3 0.28",
+        strokeLinecap: "round",
+        opacity: walked ? 0.85 : 1,
+      }),
+    );
+  }
+  pieces.push(
+    h("circle", {
+      key: "person",
+      cx: centerX(view.cell[0]),
+      cy: centerY(view.cell[1]),
+      r: 0.36,
+      fill: "var(--dsw-alias-state-business-primary)",
+      stroke: "none",
+    }),
+    h("circle", {
+      key: "goal",
+      cx: centerX(view.goal[0]),
+      cy: centerY(view.goal[1]),
+      r: 0.38,
+      fill: "none",
+      stroke: "var(--dsw-alias-state-success-primary)",
+      strokeWidth: 0.18,
+    }),
+  );
+  return h(
+    "svg",
+    {
+      viewBox: `0 0 ${width} ${height}`,
+      preserveAspectRatio: "xMidYMid meet",
+      style: {
+        display: "block",
+        width: "100%",
+        maxWidth: 520,
+        aspectRatio: `${width} / ${height}`,
+        border: "1px solid var(--dsw-alias-border-l2)",
+        borderRadius: 6,
+        background: "rgba(128, 128, 128, 0.08)",
+      },
+      "aria-label": "走路路线",
+    },
+    ...pieces,
+  );
+}
+
+function walkTone(view: WalkView): Tone {
+  if (view.endedAt === null || view.reason === "arrived") return "win";
+  if (
+    view.reason === "blocked" ||
+    view.reason === "off_path" ||
+    view.reason === "timeout" ||
+    view.reason === "closed" ||
+    view.reason === "bad_path" ||
+    view.reason === "no_player"
+  ) {
+    return "wipe";
+  }
+  return "hard";
+}
+
+function walkCardView(view: WalkView): unknown {
+  const display = view.display;
+  const status = display?.statusText ?? (view.endedAt === null ? "正在走" : "停止");
+  const lines: unknown[] = [];
+  if (display !== undefined) {
+    lines.push(
+      h("div", { style: { opacity: 0.75 } }, display.mapText),
+      h("div", { style: { marginTop: 2 } }, display.segmentText),
+      h("div", { style: { marginTop: 2 } }, display.progressText),
+      h("div", { style: { marginTop: 2 } }, display.elapsedText),
+    );
+  }
+  return h(
+    "div",
+    { style: CARD_STYLE },
+    h(
+      "div",
+      { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } },
+      h("div", { style: { flex: 1, minWidth: 160, fontSize: 13, fontWeight: 600 } }, view.label),
+      tag(status, walkTone(view)),
+    ),
+    h(
+      "div",
+      {
+        style: {
+          display: "flex",
+          gap: 12,
+          alignItems: "flex-start",
+          flexWrap: "wrap",
+          marginTop: 6,
+        },
+      },
+      h("div", { style: { flex: "1 1 240px", minWidth: 180 } }, walkSvg(view)),
+      h("div", { style: { flex: "0 1 220px", fontSize: 12, lineHeight: 1.5 } }, ...lines),
+    ),
+  );
+}
+
 function OverviewPage(): unknown {
   const current = useCurrentGame();
   const [paused, setPaused] = React.useState(false);
   const poll = usePolling(loadOverview, OVERVIEW_REFRESH_MS, current.game, paused);
+  const walk = usePolling(loadWalk, walkInterval, current.game, paused);
   const reply = poll.data;
   const children: unknown[] = [
     h(
@@ -1888,6 +2225,13 @@ function OverviewPage(): unknown {
     children.push(currentCardView(reply.current));
   } else if (poll.error === null) {
     children.push(emptyLine("还没找到当前作品"));
+  }
+  children.push(sectionTitle("走路"));
+  const walkView = walk.data?.view ?? null;
+  if (walkView !== null) {
+    children.push(walkCardView(walkView));
+  } else {
+    children.push(emptyLine(walk.error ?? "还没有走路记录"));
   }
   children.push(sectionTitle("这一作的日志"));
   const log = reply?.log ?? [];
