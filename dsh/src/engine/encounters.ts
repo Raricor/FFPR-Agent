@@ -27,6 +27,23 @@ export interface EncounterRegion {
   readonly parties: readonly EncounterParty[];
 }
 
+/** The current vehicle and whether it can roll encounters (bridge 0.13.7, information only). */
+export interface EncounterVehicle {
+  readonly id: number | null;
+  readonly encounter: boolean | null;
+}
+
+/**
+ * The whole current map's encounter table (bridge 0.13.7): dungeons and towns union every grid,
+ * the world map unions the terrains of the region the player is in. `scope` says which.
+ */
+export interface EncounterMap {
+  readonly scope: "map" | "area" | null;
+  readonly grids: readonly number[];
+  readonly parties: readonly EncounterParty[];
+  readonly error: string | null;
+}
+
 export interface EncounterTable {
   readonly monsterSet: number | null;
   readonly parties: readonly EncounterParty[];
@@ -34,6 +51,11 @@ export interface EncounterTable {
   readonly region?: EncounterRegion | null;
   /** Every encounter area the loaded map model carries (world map: one per region). */
   readonly regions: readonly EncounterRegion[];
+  /** False when a story script turned this map's encounters off (bridge 0.13.7). */
+  readonly enabled: boolean | null;
+  readonly vehicle: EncounterVehicle | null;
+  /** The whole map's union; null for an old bridge or a reply without it. */
+  readonly map: EncounterMap | null;
 }
 
 function parseParty(value: unknown): EncounterParty | null {
@@ -69,6 +91,19 @@ function parseRegion(value: unknown): EncounterRegion | null {
   };
 }
 
+function parseMap(value: unknown): EncounterMap | null {
+  if (!isRecord(value)) return null;
+  const scope = value.scope === "map" || value.scope === "area" ? value.scope : null;
+  return {
+    scope,
+    grids: list(value.grids).filter((grid): grid is number => typeof grid === "number"),
+    parties: list(value.parties)
+      .map(parseParty)
+      .filter((party): party is EncounterParty => party !== null && party.monsters.length > 0),
+    error: text(value.error) ?? null,
+  };
+}
+
 /** Narrow the reply; null off a map (the bridge answers null) or for a malformed one. */
 export function parseEncounters(reply: unknown): EncounterTable | null {
   const body = isRecord(reply) && "encounters" in reply ? reply.encounters : reply;
@@ -84,6 +119,14 @@ export function parseEncounters(reply: unknown): EncounterTable | null {
       .filter((party): party is EncounterParty => party !== null && party.monsters.length > 0),
     region,
     regions,
+    enabled: typeof body.enabled === "boolean" ? body.enabled : null,
+    vehicle: isRecord(body.vehicle)
+      ? {
+          id: num(body.vehicle.id) ?? null,
+          encounter: typeof body.vehicle.encounter === "boolean" ? body.vehicle.encounter : null,
+        }
+      : null,
+    map: parseMap(body.map),
   };
 }
 
@@ -95,9 +138,21 @@ export function encounterParties(table: EncounterTable | null): readonly Encount
     : (table?.parties ?? []);
 }
 
+/** Formations that can roll at all; a rate of 0 never appears in battle. */
+export function activeParties(parties: readonly EncounterParty[]): readonly EncounterParty[] {
+  return parties.filter((party) => party.rate > 0);
+}
+
 /** Each monster in a region once, by bestiary number/name. */
 export function regionMonsters(region: EncounterRegion): EncounterMonster[] {
-  return encounterMonsters({ monsterSet: null, parties: region.parties, regions: [] });
+  return encounterMonsters({
+    monsterSet: null,
+    parties: region.parties,
+    regions: [],
+    enabled: null,
+    vehicle: null,
+    map: null,
+  });
 }
 
 /** A readable fallback name; a profile may supply real place names by grid number. */

@@ -311,6 +311,11 @@ function answerCompletion(
   complete = false,
   area = 71,
   mapName = "沃尔斯塔",
+  bestiary: readonly {
+    readonly number: number;
+    readonly name: string;
+    readonly areas: readonly number[];
+  }[] = [],
 ): void {
   pilot.on("pos", {
     pos: {
@@ -338,7 +343,13 @@ function answerCompletion(
         members: [],
         flags: {},
       },
-      bestiary: null,
+      bestiary:
+        bestiary.length === 0
+          ? null
+          : {
+              entries: bestiary.map((entry) => ({ ...entry, registered: false })),
+              areas: {},
+            },
     },
   });
   pilot.on("entities", {
@@ -459,5 +470,177 @@ void test("a timed escape is not blocked but lists the remaining chests", () => 
     known: new Set(),
   });
   assert.match(timedLine(state), /限时地点\(火力船首领后的 10 分钟逃脱里\)/);
-  assert.match(timedLine(state), /还剩 12 个宝箱/);
+  assert.match(timedLine(state), /还剩 1 个宝箱：\(4,7\) 以太/);
+});
+
+void test("each map counts only its own chest entities; other maps of the area are a note", () => {
+  const state = completionState({
+    mapId: 72,
+    areaId: 72,
+    mapName: "风之神殿 1 层",
+    world: false,
+    treasure: [{ area: 72, name: "风之神殿", type: 1, total: 4, open: 1 }],
+    entities: [{ kind: "TresureBox", cell: [1, 1], contentName: "宝箱", opened: true }],
+    monsters: [],
+    encounter: "none",
+    known: new Set(),
+  });
+  assert.equal(state.chests.total, 1);
+  assert.equal(state.chests.open, 1);
+  assert.equal(state.chests.missing.length, 0);
+  assert.equal(state.chests.elsewhere, 3);
+  assert.equal(isComplete(state), true);
+  assert.match(completionLine(state), /宝箱 1\/1 ✓\(风之神殿别的图里还有 3 个没开\)/);
+});
+
+function guardOf(
+  game: Game,
+): (
+  args: Json,
+  pilot: Pilot,
+  goal: readonly [number, number],
+) => Promise<{ text: string; early?: boolean } | null> {
+  return (
+    game as unknown as {
+      guardLeave(
+        args: Json,
+        pilot: Pilot,
+        goal: readonly [number, number],
+      ): Promise<{ text: string; early?: boolean } | null>;
+    }
+  ).guardLeave.bind(game);
+}
+
+void test("disabled encounters require no grinding even when habitats list monsters", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-disabled-"));
+  const pilot = new FakePilot();
+  try {
+    const game = await completionGame(directory);
+    answerCompletion(pilot, true, 71, "沃尔斯塔", [{ number: 90, name: "破影", areas: [71] }]);
+    pilot.onQuery("encounters", {
+      encounters: {
+        enabled: false,
+        parties: [{ rate: 1000, monsters: [{ name: "破影", book: 90 }] }],
+      },
+    });
+    const state = await (
+      game as unknown as {
+        refreshCompletion(pilot: Pilot): Promise<ReturnType<typeof completionState> | null>;
+      }
+    ).refreshCompletion(pilot);
+    assert.ok(state !== null);
+    assert.equal(state.encounter, "none");
+    assert.equal(state.monsters.total, 0);
+    assert.equal(
+      completionLine(state),
+      "本图完成度(沃尔斯塔)：宝箱 2/2 ✓ · 隐藏道具 1/1 ✓ · 本图现在不遇敌",
+    );
+    assert.equal(await guardOf(game)({}, pilot, [9, 9]), null);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("the whole map's parties are the union, and rate-0 formations do not count", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-map-union-"));
+  const pilot = new FakePilot();
+  try {
+    const game = await completionGame(directory);
+    answerCompletion(pilot, true);
+    pilot.onQuery("encounters", {
+      encounters: {
+        enabled: true,
+        // The cell underfoot has none; the region's list must not replace the map union.
+        parties: [],
+        region: {
+          grid: 3,
+          start: [1, 1],
+          end: [9, 9],
+          current: true,
+          parties: [{ rate: 1000, monsters: [{ name: "区域怪", book: 99 }] }],
+        },
+        map: {
+          scope: "map",
+          grids: [1, 2],
+          parties: [
+            { rate: 1000, monsters: [{ name: "甲怪", book: 41 }] },
+            { rate: 500, monsters: [{ name: "乙怪", book: 42 }] },
+            { rate: 0, monsters: [{ name: "不出的怪", book: 43 }] },
+          ],
+        },
+      },
+    });
+    const state = await (
+      game as unknown as {
+        refreshCompletion(pilot: Pilot): Promise<ReturnType<typeof completionState> | null>;
+      }
+    ).refreshCompletion(pilot);
+    assert.ok(state !== null);
+    assert.equal(state.monsters.total, 2);
+    assert.deepEqual(
+      state.monsters.missing.map((monster) => monster.name),
+      ["甲怪", "乙怪"],
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("an old bridge reply without map still uses the parties underfoot", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-old-bridge-"));
+  const pilot = new FakePilot();
+  try {
+    const game = await completionGame(directory);
+    answerCompletion(pilot, true);
+    pilot.onQuery("encounters", {
+      encounters: {
+        parties: [{ rate: 1000, monsters: [{ name: "脚下怪", book: 41 }] }],
+        region: {
+          grid: 3,
+          start: [1, 1],
+          end: [9, 9],
+          current: true,
+          parties: [{ rate: 1000, monsters: [{ name: "区域怪", book: 99 }] }],
+        },
+      },
+    });
+    const state = await (
+      game as unknown as {
+        refreshCompletion(pilot: Pilot): Promise<ReturnType<typeof completionState> | null>;
+      }
+    ).refreshCompletion(pilot);
+    assert.ok(state !== null);
+    assert.equal(state.encounter, "ok");
+    assert.deepEqual(
+      state.monsters.missing.map((monster) => monster.name),
+      ["脚下怪"],
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("an unreadable encounter table never falls back to the bestiary's habitats", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-no-encounters-"));
+  const pilot = new FakePilot();
+  try {
+    const game = await completionGame(directory);
+    answerCompletion(pilot, true, 71, "风之神殿 1 层", [
+      { number: 90, name: "巨翼猛禽", areas: [71] },
+    ]);
+    pilot.onQuery("encounters", { encounters: null });
+    const state = await (
+      game as unknown as {
+        refreshCompletion(pilot: Pilot): Promise<ReturnType<typeof completionState> | null>;
+      }
+    ).refreshCompletion(pilot);
+    assert.ok(state !== null);
+    assert.equal(state.encounter, "unknown");
+    assert.equal(state.monsters.total, 0);
+    assert.match(completionLine(state), /读不到遇敌表/);
+    assert.doesNotMatch(completionLine(state), /巨翼猛禽/);
+    assert.equal(await guardOf(game)({}, pilot, [9, 9]), null);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

@@ -395,6 +395,9 @@ void test("a game without an AI player shows only the encounter table and the fa
         monsterSet: 3,
         regions: [],
         parties: [{ id: 67, rate: 1000, notEscape: false, monsters: [{ name: "甲怪", book: 38 }] }],
+        enabled: null,
+        vehicle: null,
+        map: null,
       },
     }),
   );
@@ -428,6 +431,9 @@ void test("the game's encounter table leads the enemy list, on the world map too
       encounters: {
         monsterSet: 3,
         regions: [],
+        enabled: null,
+        vehicle: null,
+        map: null,
         parties: [
           { id: 67, rate: 350, notEscape: false, monsters: [{ name: "乙怪", book: 39 }] },
           {

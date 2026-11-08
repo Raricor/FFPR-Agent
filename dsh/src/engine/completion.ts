@@ -3,10 +3,11 @@
  * map: current encounter region) before the player leaves, plus the backlog of deliberate
  * incomplete departures and the incidents of one-time places that were truly missed.
  *
- * The data comes from the bridge: `achievements.save.treasure` gives each area's totals and open
- * counts, `entities` gives the chests' names/cells/opened flags (bridge 0.13.6), and `encounters`
- * gives this map's or region's monster table. This module is pure formatting and file storage;
- * Game decides when to ask.
+ * The data comes from the bridge: `entities` gives this map's chests' names/cells/opened flags
+ * (bridge 0.13.6), and `encounters` gives this map's or region's monster table. The save's area
+ * totals (`achievements.save.treasure`) are only used for the "other maps in this area" note:
+ * 11-05, Wind Shrine floors 1–4 share one area, so each floor must be judged by its own entities.
+ * This module is pure formatting and file storage; Game decides when to ask.
  */
 
 import { appendFile, mkdir, readFile } from "node:fs/promises";
@@ -23,8 +24,6 @@ export interface TreasureSpot {
   readonly label: string;
   readonly kind: TreasureKind;
   readonly opened: boolean;
-  /** entity: a real map entity; unknown: counted by the save but no entity was listed. */
-  readonly source: "entity" | "unknown";
 }
 
 export interface CompletionMonster {
@@ -36,7 +35,12 @@ export interface CompletionSection {
   readonly total: number;
   readonly open: number;
   readonly missing: readonly TreasureSpot[];
+  /** Unopened items in the same area but on other maps; information only, never a debt. */
+  readonly elsewhere: number;
 }
+
+/** Why this map has no monster list: fine, encounters disabled, or unreadable. */
+export type EncounterStatus = "ok" | "none" | "unknown";
 
 export interface CompletionState {
   readonly mapId: number | null;
@@ -55,6 +59,9 @@ export interface CompletionState {
     readonly total: number;
     readonly missing: readonly CompletionMonster[];
   };
+  readonly encounter: EncounterStatus;
+  /** The area's name from the save rows, for the "other maps" note. */
+  readonly areaName: string | null;
   readonly timedUntil: string | null;
   /** A one-time place: story/boss event cells are guarded too. */
   readonly oneTime: boolean;
@@ -77,11 +84,12 @@ export interface CompletionInput {
   readonly treasure: readonly AchievementTreasure[];
   readonly entities: readonly Json[];
   readonly monsters: readonly EncounterMonster[];
+  /** Defaults to ok when there are monsters, unknown when the list is empty. */
+  readonly encounter?: EncounterStatus;
   /** Bestiary numbers this save has registered. */
   readonly known: ReadonlySet<number>;
   readonly timedUntil?: string | null;
   readonly oneTime?: boolean;
-  readonly guideHidden?: string | null;
 }
 
 function cellOf(value: unknown): readonly [number, number] | null {
@@ -105,7 +113,6 @@ export function parseTreasureEntities(entities: readonly Json[]): TreasureSpot[]
       label: label === "" ? "宝箱" : label,
       kind: hidden ? "hidden" : "chest",
       opened: entity.opened === true,
-      source: "entity",
     });
   }
   return out;
@@ -121,38 +128,24 @@ function areaRows(
   return treasure.filter((row) => row.area === target);
 }
 
+/**
+ * This map's own entities are the requirement; the area's remaining count is only a note about
+ * other maps (11-05: Wind Shrine 1–4 share one area and each floor showed 0/4).
+ */
 function section(
   rows: readonly AchievementTreasure[],
   spots: readonly TreasureSpot[],
   kind: TreasureKind,
-  guideHidden: string | null,
 ): CompletionSection {
   const chosen = spots.filter((spot) => spot.kind === kind);
-  const total = rows
-    .filter((row) => row.type === (kind === "chest" ? 1 : 2))
-    .reduce((sum, row) => sum + (row.total ?? 0), 0);
-  const openRows = rows
-    .filter((row) => row.type === (kind === "chest" ? 1 : 2))
-    .reduce((sum, row) => sum + (row.open ?? 0), 0);
-  const missing: TreasureSpot[] = chosen
+  const missing = chosen
     .filter((spot) => !spot.opened)
     .sort((left, right) => order(left) - order(right));
-  const allTotal = Math.max(total, chosen.length);
-  const allOpen = Math.max(openRows, chosen.filter((spot) => spot.opened).length);
-  const unlisted = allTotal - allOpen - missing.length;
-  if (unlisted > 0) {
-    missing.push({
-      cell: null,
-      label:
-        kind === "hidden" && guideHidden !== null && guideHidden !== ""
-          ? `${unlisted} 个没有地图实体(位置来自攻略：${guideHidden})`
-          : `${unlisted} 个没有地图实体`,
-      kind,
-      opened: false,
-      source: "unknown",
-    });
-  }
-  return { total: allTotal, open: allOpen, missing };
+  const own = rows.filter((row) => row.type === (kind === "chest" ? 1 : 2));
+  const areaTotal = own.reduce((sum, row) => sum + (row.total ?? 0), 0);
+  const areaOpen = own.reduce((sum, row) => sum + (row.open ?? 0), 0);
+  const elsewhere = Math.max(0, areaTotal - areaOpen - missing.length);
+  return { total: chosen.length, open: chosen.length - missing.length, missing, elsewhere };
 }
 
 function order(spot: TreasureSpot): number {
@@ -241,9 +234,11 @@ export function completionState(input: CompletionInput): CompletionState {
     mapName: input.mapName,
     world: input.world,
     region,
-    chests: section(rows, spots, "chest", null),
-    hidden: section(rows, spots, "hidden", input.guideHidden ?? null),
+    chests: section(rows, spots, "chest"),
+    hidden: section(rows, spots, "hidden"),
     monsters: { total: monsters.length, missing: missingMonsters },
+    encounter: input.encounter ?? (monsters.length > 0 ? "ok" : "unknown"),
+    areaName: rows[0]?.name ?? null,
     timedUntil: input.timedUntil ?? null,
     oneTime: input.oneTime === true,
     exits: exitCells(input.entities),
@@ -269,6 +264,13 @@ export function isComplete(state: CompletionState): boolean {
   );
 }
 
+/** The area's unopened items on other maps, as a note that never blocks leaving. */
+function elsewhereNote(part: CompletionSection, areaName: string | null): string {
+  if (part.elsewhere <= 0) return "";
+  const place = areaName === null || areaName === "" ? "这个地点" : areaName;
+  return `(${place}别的图里还有 ${part.elsewhere} 个没开)`;
+}
+
 /** One line for every map tool result: what is left here, with cells and monster names. */
 export function completionLine(state: CompletionState): string {
   const where = state.world
@@ -278,25 +280,29 @@ export function completionLine(state: CompletionState): string {
       : state.mapName;
   const chests =
     state.chests.total === 0
-      ? "宝箱 0"
+      ? "宝箱 0" + elsewhereNote(state.chests, state.areaName)
       : `宝箱 ${state.chests.open}/${state.chests.total}` +
-        (state.chests.missing.length > 0 ? `(没拿：${missingText(state.chests)})` : " ✓");
+        (state.chests.missing.length > 0 ? `(没拿：${missingText(state.chests)})` : " ✓") +
+        elsewhereNote(state.chests, state.areaName);
   const hidden =
-    state.hidden.total === 0
+    state.hidden.total === 0 && state.hidden.elsewhere === 0
       ? ""
       : ` · 隐藏道具 ${state.hidden.open}/${state.hidden.total}` +
-        (state.hidden.missing.length > 0 ? `(没拿：${missingText(state.hidden)})` : " ✓");
+        (state.hidden.missing.length > 0 ? `(没拿：${missingText(state.hidden)})` : " ✓") +
+        elsewhereNote(state.hidden, state.areaName);
   const monster =
-    state.monsters.total === 0
-      ? " · 本图的怪：读不到遇敌表"
-      : state.monsters.missing.length === 0
-        ? ` · 本图的怪 ${state.monsters.total} 种，本档图鉴已齐`
-        : ` · 本图的怪 ${state.monsters.total} 种，本档图鉴还缺 ${state.monsters.missing.length} 种：` +
-          state.monsters.missing
-            .slice(0, 12)
-            .map((item) => item.name)
-            .join("、") +
-          (state.monsters.missing.length > 12 ? ` 等 ${state.monsters.missing.length} 种` : "");
+    state.encounter === "none"
+      ? " · 本图现在不遇敌"
+      : state.encounter === "unknown" || state.monsters.total === 0
+        ? " · 本图的怪：读不到遇敌表"
+        : state.monsters.missing.length === 0
+          ? ` · 本图的怪 ${state.monsters.total} 种，本档图鉴已齐`
+          : ` · 本图的怪 ${state.monsters.total} 种，本档图鉴还缺 ${state.monsters.missing.length} 种：` +
+            state.monsters.missing
+              .slice(0, 12)
+              .map((item) => item.name)
+              .join("、") +
+            (state.monsters.missing.length > 12 ? ` 等 ${state.monsters.missing.length} 种` : "");
   return `本图完成度(${where})：${chests}${hidden}${monster}`;
 }
 
