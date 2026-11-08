@@ -252,6 +252,8 @@ void test("the model-facing prompt and tools use go, not the three old movement 
   const files = await readdir(join(import.meta.dirname, "..", "src"), { recursive: true });
   for (const file of files) {
     if (!file.endsWith(".ts")) continue;
+    // Task 64: metrics.ts reads old session logs, so it must still recognize the old names.
+    if (file === join("engine", "metrics.ts")) continue;
     const text = await readFile(join(import.meta.dirname, "..", "src", file), "utf8");
     assert.doesNotMatch(text, old, file);
   }
