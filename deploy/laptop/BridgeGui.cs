@@ -1,17 +1,19 @@
-// The tray app for the six bridges (0.12.0), compiled by bridge-gui.ps1 with Add-Type.
+// The tray app for the six bridges (0.14.0), compiled by bridge-gui.ps1 with Add-Type.
 //
 // Windows PowerShell 5.1's Add-Type uses the .NET Framework compiler, which only knows C# 5:
 // no string interpolation, no ?., no nameof, no expression-bodied members, no auto-property
 // initializers, no out var, no tuples, no pattern matching, no using static. The check project in
 // gui-check/ builds this same file with LangVersion 5 on the dev box.
 //
-// It only ever reads: every refresh asks the bridge's local /query for {"op": "bridge"} and
-// screenshots with {"op": "shot"}; it never sends key commands.
+// It only ever reads: every refresh asks the bridge's local /query for {"op": "bridge"},
+// {"op": "shot"}, {"op": "walk"}, {"op": "collision"} and {"op": "cells"}; it never sends key
+// commands.
 
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.IO;
 using System.Net.WebSockets;
@@ -90,11 +92,610 @@ namespace FfprBridgeGui
         }
     }
 
+    /// <summary>Every colour and font the window uses; nothing chooses its own.</summary>
+    internal static class Theme
+    {
+        public static readonly Color Background = ColorTranslator.FromHtml("#1E1F22");
+        public static readonly Color Panel = ColorTranslator.FromHtml("#2B2D30");
+        public static readonly Color PanelAlt = ColorTranslator.FromHtml("#303236");
+        public static readonly Color Header = ColorTranslator.FromHtml("#26282B");
+        public static readonly Color Hover = ColorTranslator.FromHtml("#34373B");
+        public static readonly Color BorderHover = ColorTranslator.FromHtml("#4A4E52");
+        public static readonly Color DangerHover = ColorTranslator.FromHtml("#3A292C");
+        public static readonly Color Pressed = ColorTranslator.FromHtml("#26282B");
+        public static readonly Color Selection = ColorTranslator.FromHtml("#31445F");
+        public static readonly Color Border = ColorTranslator.FromHtml("#3C3F41");
+        public static readonly Color Text = ColorTranslator.FromHtml("#DFE1E5");
+        public static readonly Color Muted = ColorTranslator.FromHtml("#9DA0A8");
+        public static readonly Color MutedFaint = Color.FromArgb(70, 157, 160, 168);
+        public static readonly Color Accent = ColorTranslator.FromHtml("#5B9BFF");
+        public static readonly Color AccentSoft = Color.FromArgb(150, 91, 155, 255);
+        public static readonly Color Running = ColorTranslator.FromHtml("#4CC38A");
+        public static readonly Color Warning = ColorTranslator.FromHtml("#F2B84B");
+        public static readonly Color Error = ColorTranslator.FromHtml("#F2555A");
+        public static readonly Color Idle = ColorTranslator.FromHtml("#6F737A");
+
+        public static readonly Color MapFloor = ColorTranslator.FromHtml("#2B2D30");
+        public static readonly Color MapWalk = ColorTranslator.FromHtml("#24262A");
+        public static readonly Color MapWall = ColorTranslator.FromHtml("#17181A");
+        public static readonly Color MapSea = ColorTranslator.FromHtml("#16324F");
+        public static readonly Color MapMountain = ColorTranslator.FromHtml("#4A423A");
+        public static readonly Color MapGrass = ColorTranslator.FromHtml("#2E4030");
+        public static readonly Color MapLand = ColorTranslator.FromHtml("#2B2D30");
+        public static readonly Color MapGrid = Color.FromArgb(36, 255, 255, 255);
+
+        public static readonly Font Body = new Font("Microsoft YaHei UI", 10F);
+        public static readonly Font BodyBold = new Font("Microsoft YaHei UI", 10F, FontStyle.Bold);
+        public static readonly Font Title = new Font("Microsoft YaHei UI", 12F, FontStyle.Bold);
+        public static readonly Font Small = new Font("Microsoft YaHei UI", 9F);
+        public static readonly Font Caption = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
+        public static readonly Font Mono = new Font("Consolas", 9.5F);
+        public static readonly Font MonoSmall = new Font("Consolas", 9F);
+    }
+
+    /// <summary>A flat dark button with hover, pressed, disabled and danger states.</summary>
+    internal sealed class FlatButton : Control
+    {
+        private bool _hover;
+        private bool _down;
+        private bool _danger;
+
+        public FlatButton()
+        {
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint
+                | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw
+                | ControlStyles.Selectable, true);
+            SetStyle(ControlStyles.StandardClick, false);
+            BackColor = Theme.Panel;
+            ForeColor = Theme.Text;
+            Font = Theme.Body;
+            Cursor = Cursors.Hand;
+            TabStop = true;
+            AutoSize = true;
+        }
+
+        public bool Danger
+        {
+            get { return _danger; }
+            set
+            {
+                if (_danger != value)
+                {
+                    _danger = value;
+                    Invalidate();
+                }
+            }
+        }
+
+        public override Size GetPreferredSize(Size proposedSize)
+        {
+            Size text = TextRenderer.MeasureText(Text ?? "", Font);
+            int width = text.Width + 34;
+            if (width < 76)
+            {
+                width = 76;
+            }
+            int height = text.Height + 14;
+            if (height < 34)
+            {
+                height = 34;
+            }
+            return new Size(width, height);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            Color fill;
+            Color border;
+            Color text;
+            if (!Enabled)
+            {
+                fill = Theme.Pressed;
+                border = Theme.Border;
+                text = Theme.Idle;
+            }
+            else if (_down)
+            {
+                fill = Theme.Pressed;
+                border = _danger ? Theme.Error : Theme.Border;
+                text = _danger ? Theme.Error : Theme.Text;
+            }
+            else if (_hover)
+            {
+                fill = _danger ? Theme.DangerHover : Theme.Hover;
+                border = _danger ? Theme.Error : Theme.BorderHover;
+                text = _danger ? Theme.Error : Theme.Text;
+            }
+            else
+            {
+                fill = Theme.Panel;
+                border = _danger ? Theme.Error : Theme.Border;
+                text = _danger ? Theme.Error : Theme.Text;
+            }
+
+            var rect = new Rectangle(0, 0, Width - 1, Height - 1);
+            using (var path = RoundRect(rect, 6))
+            using (var brush = new SolidBrush(fill))
+            using (var pen = new Pen(border, 1F))
+            {
+                e.Graphics.FillPath(brush, path);
+                e.Graphics.DrawPath(pen, path);
+            }
+            TextRenderer.DrawText(
+                e.Graphics,
+                Text ?? "",
+                Font,
+                rect,
+                text,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
+                    | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
+        }
+
+        protected override void OnMouseEnter(EventArgs e)
+        {
+            _hover = true;
+            Invalidate();
+            base.OnMouseEnter(e);
+        }
+
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            _hover = false;
+            _down = false;
+            Invalidate();
+            base.OnMouseLeave(e);
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left && Enabled)
+            {
+                _down = true;
+                Capture = true;
+                Invalidate();
+            }
+            base.OnMouseDown(e);
+        }
+
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                bool click = _down && ClientRectangle.Contains(e.Location);
+                _down = false;
+                Capture = false;
+                Invalidate();
+                if (click && Enabled)
+                {
+                    OnClick(EventArgs.Empty);
+                }
+            }
+            base.OnMouseUp(e);
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            if (Enabled && (e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter))
+            {
+                OnClick(EventArgs.Empty);
+                e.Handled = true;
+            }
+            base.OnKeyDown(e);
+        }
+
+        protected override void OnEnabledChanged(EventArgs e)
+        {
+            _hover = false;
+            _down = false;
+            Invalidate();
+            base.OnEnabledChanged(e);
+        }
+
+        internal static GraphicsPath RoundRect(Rectangle rect, int radius)
+        {
+            var path = new GraphicsPath();
+            int d = radius * 2;
+            if (d > rect.Width)
+            {
+                d = rect.Width;
+            }
+            if (d > rect.Height)
+            {
+                d = rect.Height;
+            }
+            if (d < 2)
+            {
+                path.AddRectangle(rect);
+                return path;
+            }
+            path.AddArc(rect.X, rect.Y, d, d, 180F, 90F);
+            path.AddArc(rect.Right - d, rect.Y, d, d, 270F, 90F);
+            path.AddArc(rect.Right - d, rect.Bottom - d, d, d, 0F, 90F);
+            path.AddArc(rect.X, rect.Bottom - d, d, d, 90F, 90F);
+            path.CloseFigure();
+            return path;
+        }
+    }
+
+    /// <summary>The left navigation column; drawn by hand so no system tab header appears.</summary>
+    internal sealed class NavBar : Control
+    {
+        private const int TopPad = 14;
+        private const int ItemHeight = 46;
+
+        private readonly string[] _items;
+        private int _selected;
+        private int _hover = -1;
+
+        public NavBar()
+        {
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint
+                | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw
+                | ControlStyles.Selectable, true);
+            _items = new string[] { "走路", "截图", "按键", "日志", "状态" };
+            BackColor = Theme.Background;
+            ForeColor = Theme.Muted;
+            Font = Theme.Body;
+            Cursor = Cursors.Hand;
+            TabStop = true;
+        }
+
+        public event EventHandler SelectedIndexChanged;
+
+        public int SelectedIndex
+        {
+            get { return _selected; }
+            set
+            {
+                int index = value;
+                if (index < 0)
+                {
+                    index = 0;
+                }
+                if (index >= _items.Length)
+                {
+                    index = _items.Length - 1;
+                }
+                if (index != _selected)
+                {
+                    _selected = index;
+                    Invalidate();
+                    var handler = SelectedIndexChanged;
+                    if (handler != null)
+                    {
+                        handler(this, EventArgs.Empty);
+                    }
+                }
+            }
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            e.Graphics.Clear(Theme.Background);
+            using (var pen = new Pen(Theme.Border, 1F))
+            {
+                e.Graphics.DrawLine(pen, Width - 1, 0, Width - 1, Height);
+            }
+            for (int i = 0; i < _items.Length; i++)
+            {
+                var row = new Rectangle(0, TopPad + i * ItemHeight, Width - 1, ItemHeight - 1);
+                if (i == _selected)
+                {
+                    using (var brush = new SolidBrush(Theme.Panel))
+                    {
+                        e.Graphics.FillRectangle(brush, row);
+                    }
+                    using (var brush = new SolidBrush(Theme.Accent))
+                    {
+                        e.Graphics.FillRectangle(brush, 0, row.Y + 9, 3, row.Height - 18);
+                    }
+                }
+                else if (i == _hover)
+                {
+                    using (var brush = new SolidBrush(Theme.Header))
+                    {
+                        e.Graphics.FillRectangle(brush, row);
+                    }
+                }
+                Color color = i == _selected ? Theme.Text : Theme.Muted;
+                string text = i == _selected ? "▸ " + _items[i] : "   " + _items[i];
+                TextRenderer.DrawText(
+                    e.Graphics,
+                    text,
+                    Font,
+                    new Rectangle(18, row.Y, row.Width - 24, row.Height),
+                    color,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter
+                        | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
+            }
+        }
+
+        private int HitTest(Point point)
+        {
+            int y = point.Y - TopPad;
+            if (y < 0)
+            {
+                return -1;
+            }
+            int index = y / ItemHeight;
+            if (index < 0 || index >= _items.Length || point.X >= Width - 3)
+            {
+                return -1;
+            }
+            return index;
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            int index = HitTest(e.Location);
+            if (index != _hover)
+            {
+                _hover = index;
+                Invalidate();
+            }
+            base.OnMouseMove(e);
+        }
+
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            if (_hover != -1)
+            {
+                _hover = -1;
+                Invalidate();
+            }
+            base.OnMouseLeave(e);
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                int index = HitTest(e.Location);
+                if (index >= 0)
+                {
+                    SelectedIndex = index;
+                }
+            }
+            base.OnMouseDown(e);
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Down)
+            {
+                SelectedIndex = _selected + 1;
+                e.Handled = true;
+            }
+            else if (e.KeyCode == Keys.Up)
+            {
+                SelectedIndex = _selected - 1;
+                e.Handled = true;
+            }
+            base.OnKeyDown(e);
+        }
+    }
+
+    /// <summary>The dark strip at the top: dot, work, bridge version, connections, run time.</summary>
+    internal sealed class HeaderBar : Control
+    {
+        public string GameTitle = "FFPR 桥插件";
+        public string StateText = "未运行";
+        public Color StateColor = Theme.Idle;
+        public string VersionText = "";
+        public string ClientsText = "";
+        public string UptimeText = "";
+
+        public HeaderBar()
+        {
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint
+                | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            BackColor = Theme.Background;
+            ForeColor = Theme.Text;
+            Font = Theme.Body;
+            Height = 64;
+            TabStop = false;
+        }
+
+        public void SetValues(string game, string state, Color stateColor, string version, string clients, string uptime)
+        {
+            GameTitle = game == null ? "" : game;
+            StateText = state == null ? "" : state;
+            StateColor = stateColor;
+            VersionText = version == null ? "" : version;
+            ClientsText = clients == null ? "" : clients;
+            UptimeText = uptime == null ? "" : uptime;
+            Invalidate();
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            e.Graphics.Clear(Theme.Background);
+            using (var pen = new Pen(Theme.Border, 1F))
+            {
+                e.Graphics.DrawLine(pen, 0, Height - 1, Width, Height - 1);
+            }
+
+            int center = Height / 2;
+            using (var brush = new SolidBrush(StateColor))
+            {
+                e.Graphics.FillEllipse(brush, 20, center - 5, 10, 10);
+            }
+
+            int right = Width - 20;
+            int gap = 18;
+            int rightStart = right;
+            if (UptimeText.Length > 0)
+            {
+                Size size = TextRenderer.MeasureText(UptimeText, Theme.Body);
+                rightStart -= size.Width;
+                TextRenderer.DrawText(e.Graphics, UptimeText, Theme.Body,
+                    new Rectangle(rightStart, 0, size.Width, Height), Theme.Muted,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+                rightStart -= gap;
+            }
+            if (ClientsText.Length > 0)
+            {
+                Size size = TextRenderer.MeasureText(ClientsText, Theme.Body);
+                rightStart -= size.Width;
+                TextRenderer.DrawText(e.Graphics, ClientsText, Theme.Body,
+                    new Rectangle(rightStart, 0, size.Width, Height), Theme.Muted,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+                rightStart -= gap;
+            }
+            if (VersionText.Length > 0)
+            {
+                Size size = TextRenderer.MeasureText(VersionText, Theme.Body);
+                rightStart -= size.Width;
+                TextRenderer.DrawText(e.Graphics, VersionText, Theme.Body,
+                    new Rectangle(rightStart, 0, size.Width, Height), Theme.Muted,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+                rightStart -= gap;
+            }
+
+            int left = 42;
+            int available = rightStart - left - 12;
+            if (available < 80)
+            {
+                available = 80;
+            }
+            int titleWidth = (int)(available * 0.55F);
+            if (titleWidth < 80)
+            {
+                titleWidth = 80;
+            }
+            if (titleWidth > available)
+            {
+                titleWidth = available;
+            }
+            TextRenderer.DrawText(e.Graphics, GameTitle, Theme.Title,
+                new Rectangle(left, 0, titleWidth, Height), Theme.Text,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter
+                    | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
+
+            int stateX = left + titleWidth + 14;
+            int stateWidth = rightStart - stateX;
+            if (stateWidth > 20)
+            {
+                TextRenderer.DrawText(e.Graphics, StateText, Theme.BodyBold,
+                    new Rectangle(stateX, 0, stateWidth, Height), StateColor,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter
+                        | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
+            }
+        }
+    }
+
+    /// <summary>A dark card: panel colour plus a one-pixel border.</summary>
+    internal sealed class CardPanel : Panel
+    {
+        public CardPanel()
+        {
+            DoubleBuffered = true;
+            BackColor = Theme.Panel;
+            ForeColor = Theme.Text;
+            Padding = new Padding(12);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            using (var pen = new Pen(Theme.Border, 1F))
+            {
+                e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
+            }
+        }
+    }
+
+    /// <summary>ListView with a hand-drawn dark header, alternating rows and no system colours.</summary>
+    internal sealed class DarkListView : ListView
+    {
+        public DarkListView()
+        {
+            View = View.Details;
+            FullRowSelect = true;
+            HideSelection = false;
+            MultiSelect = false;
+            OwnerDraw = true;
+            BorderStyle = BorderStyle.None;
+            BackColor = Theme.Panel;
+            ForeColor = Theme.Text;
+            Font = Theme.Body;
+            DoubleBuffered = true;
+            SmallImageList = new ImageList();
+            SmallImageList.ImageSize = new Size(1, 27);
+            DrawColumnHeader += OnDrawColumnHeader;
+            DrawItem += OnDrawItem;
+            DrawSubItem += OnDrawSubItem;
+        }
+
+        private void OnDrawColumnHeader(object sender, DrawListViewColumnHeaderEventArgs e)
+        {
+            e.DrawDefault = false;
+            using (var brush = new SolidBrush(Theme.Header))
+            {
+                e.Graphics.FillRectangle(brush, e.Bounds);
+            }
+            using (var pen = new Pen(Theme.Border, 1F))
+            {
+                e.Graphics.DrawLine(pen, e.Bounds.Left, e.Bounds.Bottom - 1,
+                    e.Bounds.Right, e.Bounds.Bottom - 1);
+                e.Graphics.DrawLine(pen, e.Bounds.Right - 1, e.Bounds.Top + 5,
+                    e.Bounds.Right - 1, e.Bounds.Bottom - 6);
+            }
+            TextRenderer.DrawText(
+                e.Graphics,
+                e.Header.Text,
+                Theme.Caption,
+                new Rectangle(e.Bounds.X + 8, e.Bounds.Y, e.Bounds.Width - 14, e.Bounds.Height),
+                Theme.Muted,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter
+                    | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
+        }
+
+        private void OnDrawItem(object sender, DrawListViewItemEventArgs e)
+        {
+            e.DrawDefault = false;
+            Color back = e.ItemIndex % 2 == 0 ? Theme.Panel : Theme.PanelAlt;
+            if (e.Item.Selected)
+            {
+                back = Theme.Selection;
+            }
+            using (var brush = new SolidBrush(back))
+            {
+                e.Graphics.FillRectangle(brush, e.Bounds);
+            }
+        }
+
+        private void OnDrawSubItem(object sender, DrawListViewSubItemEventArgs e)
+        {
+            e.DrawDefault = false;
+            Color color = e.Item.Selected ? Theme.Text : e.Item.ForeColor;
+            if (color.IsEmpty)
+            {
+                color = Theme.Text;
+            }
+            if (color == Color.Black || color == SystemColors.WindowText)
+            {
+                color = Theme.Text;
+            }
+            var rect = new Rectangle(e.Bounds.X + 6, e.Bounds.Y, e.Bounds.Width - 8, e.Bounds.Height);
+            TextRenderer.DrawText(
+                e.Graphics,
+                e.SubItem.Text,
+                Font,
+                rect,
+                color,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter
+                    | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
+        }
+    }
+
     /// <summary>The window, the tray icon and the two-second refresh.</summary>
     internal sealed class MainForm : Form
     {
         private const int QueryTimeoutMs = 1500;
         private const int RefreshMs = 2000;
+        private const int WalkMs = 250;
 
         private enum ViewMode
         {
@@ -108,36 +709,43 @@ namespace FfprBridgeGui
         private readonly string _root;
         private readonly EventWaitHandle _showEvent;
         private readonly ManualResetEvent _stop = new ManualResetEvent(false);
+        private readonly AutoResetEvent _walkWake = new AutoResetEvent(false);
 
-        private readonly ListView _list = new ListView();
-        private readonly TabControl _tabs = new TabControl();
+        private readonly HeaderBar _topBar = new HeaderBar();
+        private readonly TableLayoutPanel _middle = new TableLayoutPanel();
+        private readonly Panel _content = new Panel();
+        private readonly NavBar _nav = new NavBar();
+        private readonly Panel _nonePanel = new Panel();
+        private readonly CardPanel _noneCard = new CardPanel();
+        private readonly DarkListView _list = new DarkListView();
+        private readonly Label _emptyLabel = new Label();
+        private readonly CardPanel _multiPanel = new CardPanel();
+        private readonly Label _multiWarning = new Label();
+        private readonly TableLayoutPanel _multiGrid = new TableLayoutPanel();
+        private readonly List<Label> _multiInfos = new List<Label>();
+        private readonly List<int> _multiIndices = new List<int>();
+        private readonly Panel _pageHost = new Panel();
+        private Panel[] _pages;
+        private readonly WalkView _walkView = new WalkView();
         private readonly RichTextBox _logBox = new RichTextBox();
-        private readonly ListView _keyList = new ListView();
+        private readonly DarkListView _keyList = new DarkListView();
         private readonly PictureBox _shotBox = new PictureBox();
         private readonly RichTextBox _stateBox = new RichTextBox();
-        private readonly ToolStripStatusLabel _statusLabel = new ToolStripStatusLabel("就绪");
+        private readonly Panel _bottomBar = new Panel();
+        private readonly Label _statusLabel = new Label();
         private readonly NotifyIcon _tray = new NotifyIcon();
-        private readonly Button _launchButton = new Button();
-        private readonly Button _closeButton = new Button();
-        private readonly Button _shotButton = new Button();
-        private readonly Button _installButton = new Button();
-        private readonly TableLayoutPanel _layout;
-        private readonly Panel _detailPanel = new Panel();
-        private readonly Label _detailTitle = new Label();
-        private readonly Label _detailState = new Label();
+        private readonly FlatButton _launchButton = new FlatButton();
+        private readonly FlatButton _closeButton = new FlatButton();
+        private readonly FlatButton _shotButton = new FlatButton();
+        private readonly FlatButton _installButton = new FlatButton();
+
         private readonly Label _detailVersion = new Label();
         private readonly Label _detailPort = new Label();
         private readonly Label _detailClients = new Label();
         private readonly Label _detailHooks = new Label();
         private readonly Label _detailUptime = new Label();
         private readonly Label _detailLastKey = new Label();
-        private readonly Panel _multiPanel = new Panel();
-        private readonly Label _multiWarning = new Label();
-        private readonly TableLayoutPanel _multiGrid = new TableLayoutPanel();
-        private readonly List<Label> _multiInfos = new List<Label>();
-        private readonly List<int> _multiIndices = new List<int>();
-        private readonly Label _emptyLabel = new Label();
-        private TabPage _shotPage;
+
         private readonly GameStatus[] _status;
         private readonly string[][] _logs;
         private readonly long[] _logStamps;
@@ -145,9 +753,15 @@ namespace FfprBridgeGui
         private readonly string[] _keySignatures;
         private readonly string[] _stateSignatures;
 
+        private readonly Dictionary<string, BaseMap> _mapCache = new Dictionary<string, BaseMap>();
+        private readonly Dictionary<int, bool> _mapIsWorld = new Dictionary<int, bool>();
+
         private Thread _worker;
+        private Thread _walkWorker;
         private RegisteredWaitHandle _showWait;
         private volatile bool _closing;
+        private volatile bool _walkWanted;
+        private volatile int _walkIndex = -1;
         private bool _exiting;
         private bool _balloonShown;
         private int _logOwner = -1;
@@ -158,6 +772,9 @@ namespace FfprBridgeGui
         private string _shotCurrent;
         private ViewMode _view = ViewMode.None;
         private int _runningIndex = -1;
+        private int _mapGame = -1;
+        private int _lastWalkSeq = -1;
+        private int _shownWalkIndex = -1;
         private string _multiSignature = "";
 
         public MainForm(
@@ -193,48 +810,47 @@ namespace FfprBridgeGui
             for (int i = 0; i < _logStamps.Length; i++)
             {
                 _logStamps[i] = -2;
+                _keySignatures[i] = "";
+                _stateSignatures[i] = "";
             }
 
             Text = "FFPR 桥插件";
-            ClientSize = new Size(960, 640);
+            AutoScaleDimensions = new SizeF(96F, 96F);
+            AutoScaleMode = AutoScaleMode.Dpi;
+            ClientSize = new Size(1080, 700);
             MinimumSize = new Size(820, 520);
             StartPosition = FormStartPosition.CenterScreen;
-            Font = new Font("Microsoft YaHei UI", 9F);
+            Font = Theme.Body;
+            ForeColor = Theme.Text;
+            BackColor = Theme.Background;
             Icon = SystemIcons.Application;
+            DoubleBuffered = true;
+
+            BuildShell();
+            BuildNonePanel();
+            BuildMulti();
+            BuildPages();
+            BuildBottomBar();
 
             var root = new TableLayoutPanel();
-            _layout = root;
             root.Dock = DockStyle.Fill;
+            root.Margin = new Padding(0);
+            root.BackColor = Theme.Background;
             root.ColumnCount = 1;
-            root.RowCount = 4;
+            root.RowCount = 3;
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 186F));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48F));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 64F));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-
-            BuildList();
-            for (int i = 0; i < _games.Length; i++)
-            {
-                UpdateRow(i);
-            }
-            BuildDetail();
-            BuildMulti();
-            root.Controls.Add(_list, 0, 0);
-            root.Controls.Add(_detailPanel, 0, 0);
-            root.Controls.Add(_multiPanel, 0, 0);
-            root.Controls.Add(BuildButtons(), 0, 1);
-            BuildTabs();
-            root.Controls.Add(_tabs, 0, 2);
-            BuildEmpty();
-            root.Controls.Add(_emptyLabel, 0, 2);
-
-            var strip = new StatusStrip();
-            strip.SizingGrip = false;
-            strip.Dock = DockStyle.Fill;
-            strip.Items.Add(_statusLabel);
-            root.Controls.Add(strip, 0, 3);
-
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58F));
+            _topBar.Dock = DockStyle.Fill;
+            _topBar.Margin = new Padding(0);
+            _middle.Dock = DockStyle.Fill;
+            _middle.Margin = new Padding(0);
+            _bottomBar.Dock = DockStyle.Fill;
+            _bottomBar.Margin = new Padding(0);
+            root.Controls.Add(_topBar, 0, 0);
+            root.Controls.Add(_middle, 0, 1);
+            root.Controls.Add(_bottomBar, 0, 2);
             Controls.Add(root);
 
             BuildTray();
@@ -259,175 +875,439 @@ namespace FfprBridgeGui
                 false);
         }
 
-        private void BuildList()
+        private void BuildShell()
         {
-            _list.View = View.Details;
-            _list.FullRowSelect = true;
-            _list.HideSelection = false;
-            _list.MultiSelect = false;
+            _middle.Dock = DockStyle.Fill;
+            _middle.Margin = new Padding(0);
+            _middle.BackColor = Theme.Background;
+            _middle.ColumnCount = 2;
+            _middle.RowCount = 1;
+            _middle.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140F));
+            _middle.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            _middle.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
+            _nav.Dock = DockStyle.Fill;
+            _nav.Margin = new Padding(0);
+            _nav.SelectedIndexChanged += delegate(object sender, EventArgs args) { ShowPage(_nav.SelectedIndex); };
+
+            _content.Dock = DockStyle.Fill;
+            _content.Margin = new Padding(0);
+            _content.BackColor = Theme.Background;
+
+            _middle.Controls.Add(_nav, 0, 0);
+            _middle.Controls.Add(_content, 1, 0);
+        }
+
+        private void BuildNonePanel()
+        {
+            _nonePanel.Dock = DockStyle.Fill;
+            _nonePanel.Margin = new Padding(0);
+            _nonePanel.Padding = new Padding(16);
+            _nonePanel.BackColor = Theme.Background;
+
+            _noneCard.Dock = DockStyle.Fill;
+            _noneCard.Margin = new Padding(0);
+            _noneCard.Padding = new Padding(14);
+            _nonePanel.Controls.Add(_noneCard);
+
+            var layout = new TableLayoutPanel();
+            layout.Dock = DockStyle.Fill;
+            layout.Margin = new Padding(0);
+            layout.BackColor = Theme.Panel;
+            layout.ColumnCount = 1;
+            layout.RowCount = 3;
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38F));
+
+            var title = new Label();
+            title.Text = "作品";
+            title.Dock = DockStyle.Fill;
+            title.AutoSize = false;
+            title.TextAlign = ContentAlignment.MiddleLeft;
+            title.Font = Theme.Title;
+            title.ForeColor = Theme.Text;
+            title.BackColor = Color.Transparent;
+            layout.Controls.Add(title, 0, 0);
+
             _list.Dock = DockStyle.Fill;
             _list.Margin = new Padding(0);
-            _list.Columns.Add("作品", 560);
-            _list.Columns.Add("装没装", 90);
+            _list.Columns.Add("作品", 480);
+            _list.Columns.Add("装没装", 100);
             _list.Columns.Add("桥插件", 160);
+            _list.SizeChanged += delegate(object sender, EventArgs args) { LayoutGameListColumns(); };
             for (int i = 0; i < _games.Length; i++)
             {
                 var item = new ListViewItem(new string[] { _games[i].Title, "—", "—" });
                 item.Tag = i;
                 _list.Items.Add(item);
+                UpdateRow(i);
             }
+            layout.Controls.Add(_list, 0, 1);
+
+            _emptyLabel.Dock = DockStyle.Fill;
+            _emptyLabel.Margin = new Padding(0);
+            _emptyLabel.AutoSize = false;
+            _emptyLabel.TextAlign = ContentAlignment.MiddleCenter;
+            _emptyLabel.ForeColor = Theme.Muted;
+            _emptyLabel.Font = Theme.Body;
+            _emptyLabel.BackColor = Color.Transparent;
+            _emptyLabel.Text = "没有游戏在运行";
+            layout.Controls.Add(_emptyLabel, 0, 2);
+
+            _noneCard.Controls.Add(layout);
+            _content.Controls.Add(_nonePanel);
         }
 
-        private Control BuildButtons()
+        private void LayoutGameListColumns()
         {
-            var panel = new FlowLayoutPanel();
-            panel.Dock = DockStyle.Fill;
-            panel.FlowDirection = FlowDirection.LeftToRight;
-            panel.WrapContents = false;
-            panel.Margin = new Padding(0);
-            panel.Padding = new Padding(0, 6, 0, 6);
-
-            _launchButton.Text = "启动";
-            _launchButton.AutoSize = true;
-            _launchButton.Margin = new Padding(0, 0, 8, 0);
-            _launchButton.Click += new EventHandler(OnLaunch);
-
-            _closeButton.Text = "关闭游戏";
-            _closeButton.AutoSize = true;
-            _closeButton.Margin = new Padding(0, 0, 8, 0);
-            _closeButton.Click += new EventHandler(OnCloseGame);
-
-            _shotButton.Text = "截图";
-            _shotButton.AutoSize = true;
-            _shotButton.Margin = new Padding(0, 0, 8, 0);
-            _shotButton.Click += new EventHandler(OnShot);
-
-            _installButton.Text = "安装桥插件";
-            _installButton.AutoSize = true;
-            _installButton.Click += new EventHandler(OnInstall);
-
-            panel.Controls.Add(_launchButton);
-            panel.Controls.Add(_closeButton);
-            panel.Controls.Add(_shotButton);
-            panel.Controls.Add(_installButton);
-            return panel;
-        }
-
-        private void BuildDetail()
-        {
-            _detailPanel.Dock = DockStyle.Fill;
-            _detailPanel.Margin = new Padding(0);
-            _detailPanel.Padding = new Padding(10, 8, 10, 8);
-            _detailPanel.BorderStyle = BorderStyle.FixedSingle;
-            _detailPanel.BackColor = Color.White;
-            _detailPanel.Visible = false;
-
-            var grid = new TableLayoutPanel();
-            grid.Dock = DockStyle.Fill;
-            grid.Margin = new Padding(0);
-            grid.ColumnCount = 6;
-            grid.RowCount = 3;
-            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 64F));
-            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33F));
-            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 58F));
-            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33F));
-            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70F));
-            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34F));
-            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
-            grid.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
-            grid.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
-
-            _detailTitle.Dock = DockStyle.Fill;
-            _detailTitle.AutoSize = false;
-            _detailTitle.AutoEllipsis = true;
-            _detailTitle.TextAlign = ContentAlignment.MiddleLeft;
-            _detailTitle.Font = new Font(this.Font.FontFamily, 12F, FontStyle.Bold);
-            grid.Controls.Add(_detailTitle, 0, 0);
-            grid.SetColumnSpan(_detailTitle, 4);
-
-            _detailState.Dock = DockStyle.Fill;
-            _detailState.AutoSize = false;
-            _detailState.TextAlign = ContentAlignment.MiddleRight;
-            _detailState.Font = new Font(this.Font.FontFamily, 10F, FontStyle.Bold);
-            grid.Controls.Add(_detailState, 4, 0);
-            grid.SetColumnSpan(_detailState, 2);
-
-            AddDetailField(grid, "桥插件", _detailVersion, 0, 1);
-            AddDetailField(grid, "端口", _detailPort, 2, 1);
-            AddDetailField(grid, "连接", _detailClients, 4, 1);
-            AddDetailField(grid, "挂钩", _detailHooks, 0, 2);
-            AddDetailField(grid, "运行", _detailUptime, 2, 2);
-            AddDetailField(grid, "最近按键", _detailLastKey, 4, 2);
-
-            _detailPanel.Controls.Add(grid);
-        }
-
-        private static void AddDetailField(TableLayoutPanel grid, string name, Label value, int column, int row)
-        {
-            var label = new Label();
-            label.Text = name;
-            label.Dock = DockStyle.Fill;
-            label.AutoSize = false;
-            label.TextAlign = ContentAlignment.MiddleLeft;
-            label.ForeColor = Color.DimGray;
-            label.AutoEllipsis = true;
-            grid.Controls.Add(label, column, row);
-
-            value.Dock = DockStyle.Fill;
-            value.AutoSize = false;
-            value.TextAlign = ContentAlignment.MiddleLeft;
-            value.AutoEllipsis = true;
-            value.ForeColor = SystemColors.WindowText;
-            grid.Controls.Add(value, column + 1, row);
+            if (_list.Columns.Count < 3)
+            {
+                return;
+            }
+            int width = _list.ClientSize.Width;
+            if (width < 120)
+            {
+                width = 120;
+            }
+            int first = width * 56 / 100;
+            int second = width * 16 / 100;
+            int third = width - first - second - 24;
+            if (third < 80)
+            {
+                third = 80;
+            }
+            _list.Columns[0].Width = first;
+            _list.Columns[1].Width = second;
+            _list.Columns[2].Width = third;
         }
 
         private void BuildMulti()
         {
             _multiPanel.Dock = DockStyle.Fill;
             _multiPanel.Margin = new Padding(0);
-            _multiPanel.Padding = new Padding(10, 6, 10, 6);
-            _multiPanel.BorderStyle = BorderStyle.FixedSingle;
-            _multiPanel.BackColor = Color.White;
+            _multiPanel.Padding = new Padding(14);
             _multiPanel.Visible = false;
+            _content.Controls.Add(_multiPanel);
 
             var layout = new TableLayoutPanel();
             layout.Dock = DockStyle.Fill;
             layout.Margin = new Padding(0);
+            layout.BackColor = Theme.Panel;
             layout.ColumnCount = 1;
             layout.RowCount = 2;
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36F));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
             _multiWarning.Dock = DockStyle.Fill;
             _multiWarning.AutoSize = false;
             _multiWarning.TextAlign = ContentAlignment.MiddleLeft;
-            _multiWarning.ForeColor = Color.Red;
-            _multiWarning.Font = new Font(this.Font.FontFamily, 11F, FontStyle.Bold);
+            _multiWarning.ForeColor = Theme.Error;
+            _multiWarning.Font = Theme.Title;
+            _multiWarning.BackColor = Color.Transparent;
             layout.Controls.Add(_multiWarning, 0, 0);
 
             _multiGrid.Dock = DockStyle.Fill;
             _multiGrid.Margin = new Padding(0);
+            _multiGrid.BackColor = Theme.Panel;
             _multiGrid.AutoScroll = true;
             _multiGrid.ColumnCount = 3;
             _multiGrid.RowCount = 0;
             _multiGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34F));
             _multiGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 56F));
-            _multiGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96F));
+            _multiGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110F));
             layout.Controls.Add(_multiGrid, 0, 1);
 
             _multiPanel.Controls.Add(layout);
         }
 
-        private void BuildEmpty()
+        private void BuildPages()
         {
-            _emptyLabel.Dock = DockStyle.Fill;
-            _emptyLabel.Margin = new Padding(0);
-            _emptyLabel.AutoSize = false;
-            _emptyLabel.TextAlign = ContentAlignment.MiddleCenter;
-            _emptyLabel.ForeColor = Color.Gray;
-            _emptyLabel.Font = new Font(this.Font.FontFamily, 11F, FontStyle.Regular);
-            _emptyLabel.Text = "没有游戏在运行";
+            _pageHost.Dock = DockStyle.Fill;
+            _pageHost.Margin = new Padding(0);
+            _pageHost.Padding = new Padding(16);
+            _pageHost.BackColor = Theme.Background;
+            _pageHost.Visible = false;
+            _content.Controls.Add(_pageHost);
+
+            _pages = new Panel[5];
+            _pages[0] = BuildWalkPage();
+            _pages[1] = BuildShotPage();
+            _pages[2] = BuildKeyPage();
+            _pages[3] = BuildLogPage();
+            _pages[4] = BuildStatePage();
+            for (int i = 0; i < _pages.Length; i++)
+            {
+                _pages[i].Dock = DockStyle.Fill;
+                _pages[i].Margin = new Padding(0);
+                _pages[i].Visible = false;
+                _pageHost.Controls.Add(_pages[i]);
+            }
+            ShowPage(0);
+        }
+
+        private Panel BuildWalkPage()
+        {
+            var page = new Panel();
+            page.BackColor = Theme.Background;
+            var card = new CardPanel();
+            card.Dock = DockStyle.Fill;
+            card.Margin = new Padding(0);
+            card.Padding = new Padding(1);
+            _walkView.Dock = DockStyle.Fill;
+            _walkView.Margin = new Padding(0);
+            card.Controls.Add(_walkView);
+            page.Controls.Add(card);
+            return page;
+        }
+
+        private Panel BuildShotPage()
+        {
+            var page = new Panel();
+            page.BackColor = Theme.Background;
+            var card = new CardPanel();
+            card.Dock = DockStyle.Fill;
+            card.Margin = new Padding(0);
+            card.Padding = new Padding(10);
+            _shotBox.Dock = DockStyle.Fill;
+            _shotBox.Margin = new Padding(0);
+            _shotBox.SizeMode = PictureBoxSizeMode.Zoom;
+            _shotBox.BackColor = Theme.Background;
+            card.Controls.Add(_shotBox);
+            page.Controls.Add(card);
+            return page;
+        }
+
+        private Panel BuildKeyPage()
+        {
+            var page = new Panel();
+            page.BackColor = Theme.Background;
+            var card = new CardPanel();
+            card.Dock = DockStyle.Fill;
+            card.Margin = new Padding(0);
+            card.Padding = new Padding(10);
+            _keyList.Dock = DockStyle.Fill;
+            _keyList.Margin = new Padding(0);
+            _keyList.Columns.Add("时间", 90);
+            _keyList.Columns.Add("谁", 150);
+            _keyList.Columns.Add("方式", 90);
+            _keyList.Columns.Add("按键", 300);
+            _keyList.Columns.Add("结果", 220);
+            _keyList.SizeChanged += delegate(object sender, EventArgs args) { LayoutKeyColumns(); };
+            card.Controls.Add(_keyList);
+            page.Controls.Add(card);
+            return page;
+        }
+
+        private void LayoutKeyColumns()
+        {
+            if (_keyList.Columns.Count < 5)
+            {
+                return;
+            }
+            int width = _keyList.ClientSize.Width;
+            if (width < 260)
+            {
+                return;
+            }
+            int time = 80;
+            int who = width * 21 / 100;
+            if (who < 100)
+            {
+                who = 100;
+            }
+            int via = 80;
+            int keys = width * 33 / 100;
+            if (keys < 120)
+            {
+                keys = 120;
+            }
+            int result = width - time - who - via - keys - 24;
+            if (result < 80)
+            {
+                result = 80;
+            }
+            _keyList.Columns[0].Width = time;
+            _keyList.Columns[1].Width = who;
+            _keyList.Columns[2].Width = via;
+            _keyList.Columns[3].Width = keys;
+            _keyList.Columns[4].Width = result;
+        }
+
+        private Panel BuildLogPage()
+        {
+            var page = new Panel();
+            page.BackColor = Theme.Background;
+            var card = new CardPanel();
+            card.Dock = DockStyle.Fill;
+            card.Margin = new Padding(0);
+            card.Padding = new Padding(10);
+            _logBox.Dock = DockStyle.Fill;
+            _logBox.Margin = new Padding(0);
+            _logBox.ReadOnly = true;
+            _logBox.WordWrap = false;
+            _logBox.ScrollBars = RichTextBoxScrollBars.Both;
+            _logBox.Font = Theme.Mono;
+            _logBox.BackColor = Theme.Panel;
+            _logBox.ForeColor = Theme.Text;
+            _logBox.BorderStyle = BorderStyle.None;
+            _logBox.HideSelection = false;
+            card.Controls.Add(_logBox);
+            page.Controls.Add(card);
+            return page;
+        }
+
+        private Panel BuildStatePage()
+        {
+            var page = new Panel();
+            page.BackColor = Theme.Background;
+            var layout = new TableLayoutPanel();
+            layout.Dock = DockStyle.Fill;
+            layout.Margin = new Padding(0);
+            layout.BackColor = Theme.Background;
+            layout.ColumnCount = 1;
+            layout.RowCount = 2;
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 158F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
+            var stats = new TableLayoutPanel();
+            stats.Dock = DockStyle.Fill;
+            stats.Margin = new Padding(0);
+            stats.BackColor = Theme.Background;
+            stats.ColumnCount = 3;
+            stats.RowCount = 2;
+            stats.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34F));
+            stats.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33F));
+            stats.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33F));
+            stats.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
+            stats.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
+            AddStatCard(stats, "桥插件", _detailVersion, 0, 0);
+            AddStatCard(stats, "端口", _detailPort, 1, 0);
+            AddStatCard(stats, "连接", _detailClients, 2, 0);
+            AddStatCard(stats, "挂钩", _detailHooks, 0, 1);
+            AddStatCard(stats, "运行", _detailUptime, 1, 1);
+            AddStatCard(stats, "最近按键", _detailLastKey, 2, 1);
+            layout.Controls.Add(stats, 0, 0);
+
+            var card = new CardPanel();
+            card.Dock = DockStyle.Fill;
+            card.Margin = new Padding(0);
+            card.Padding = new Padding(10);
+            _stateBox.Dock = DockStyle.Fill;
+            _stateBox.Margin = new Padding(0);
+            _stateBox.ReadOnly = true;
+            _stateBox.WordWrap = false;
+            _stateBox.ScrollBars = RichTextBoxScrollBars.Both;
+            _stateBox.Font = Theme.Mono;
+            _stateBox.BackColor = Theme.Panel;
+            _stateBox.ForeColor = Theme.Text;
+            _stateBox.BorderStyle = BorderStyle.None;
+            _stateBox.HideSelection = false;
+            card.Controls.Add(_stateBox);
+            layout.Controls.Add(card, 0, 1);
+
+            page.Controls.Add(layout);
+            return page;
+        }
+
+        private static void AddStatCard(TableLayoutPanel grid, string title, Label value, int column, int row)
+        {
+            var card = new CardPanel();
+            card.Dock = DockStyle.Fill;
+            card.Margin = new Padding(0, 0, 8, 8);
+            card.Padding = new Padding(10, 5, 10, 5);
+
+            var caption = new Label();
+            caption.Text = title;
+            caption.Dock = DockStyle.Top;
+            caption.Height = 20;
+            caption.AutoSize = false;
+            caption.TextAlign = ContentAlignment.MiddleLeft;
+            caption.ForeColor = Theme.Muted;
+            caption.Font = Theme.Small;
+            caption.BackColor = Color.Transparent;
+
+            value.Dock = DockStyle.Fill;
+            value.AutoSize = false;
+            value.TextAlign = ContentAlignment.MiddleLeft;
+            value.AutoEllipsis = true;
+            value.ForeColor = Theme.Text;
+            value.Font = Theme.BodyBold;
+            value.BackColor = Color.Transparent;
+            value.Text = "—";
+
+            card.Controls.Add(value);
+            card.Controls.Add(caption);
+            grid.Controls.Add(card, column, row);
+        }
+
+        private void BuildBottomBar()
+        {
+            _bottomBar.BackColor = Theme.Background;
+            _bottomBar.Paint += delegate(object sender, PaintEventArgs e)
+            {
+                using (var pen = new Pen(Theme.Border, 1F))
+                {
+                    e.Graphics.DrawLine(pen, 0, 0, _bottomBar.Width, 0);
+                }
+            };
+
+            _launchButton.Text = "启动";
+            _launchButton.Margin = new Padding(0, 0, 8, 0);
+            _launchButton.Click += new EventHandler(OnLaunch);
+
+            _closeButton.Text = "关闭游戏";
+            _closeButton.Danger = true;
+            _closeButton.Margin = new Padding(0, 0, 8, 0);
+            _closeButton.Click += new EventHandler(OnCloseGame);
+
+            _shotButton.Text = "截图";
+            _shotButton.Margin = new Padding(0, 0, 8, 0);
+            _shotButton.Click += new EventHandler(OnShot);
+
+            _installButton.Text = "安装桥插件";
+            _installButton.Click += new EventHandler(OnInstall);
+
+            var buttons = new FlowLayoutPanel();
+            buttons.Dock = DockStyle.Fill;
+            buttons.Margin = new Padding(0);
+            buttons.AutoSize = true;
+            buttons.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            buttons.FlowDirection = FlowDirection.LeftToRight;
+            buttons.WrapContents = false;
+            buttons.BackColor = Theme.Background;
+            buttons.Padding = new Padding(16, 11, 0, 0);
+            buttons.Controls.Add(_launchButton);
+            buttons.Controls.Add(_closeButton);
+            buttons.Controls.Add(_shotButton);
+            buttons.Controls.Add(_installButton);
+
+            _statusLabel.Dock = DockStyle.Fill;
+            _statusLabel.Margin = new Padding(0);
+            _statusLabel.AutoSize = false;
+            _statusLabel.AutoEllipsis = true;
+            _statusLabel.TextAlign = ContentAlignment.MiddleRight;
+            _statusLabel.ForeColor = Theme.Muted;
+            _statusLabel.Font = Theme.Small;
+            _statusLabel.BackColor = Color.Transparent;
+            _statusLabel.Padding = new Padding(0, 0, 18, 0);
+            _statusLabel.Text = "就绪";
+
+            var bar = new TableLayoutPanel();
+            bar.Dock = DockStyle.Fill;
+            bar.Margin = new Padding(0);
+            bar.BackColor = Theme.Background;
+            bar.ColumnCount = 2;
+            bar.RowCount = 1;
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            bar.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            bar.Controls.Add(buttons, 0, 0);
+            bar.Controls.Add(_statusLabel, 1, 0);
+            _bottomBar.Controls.Add(bar);
         }
 
         private void SetView(ViewMode mode)
@@ -435,82 +1315,72 @@ namespace FfprBridgeGui
             _view = mode;
             bool one = mode == ViewMode.One;
             bool multi = mode == ViewMode.Multi;
-            _list.Visible = mode == ViewMode.None;
-            _detailPanel.Visible = one;
+            _middle.ColumnStyles[0].Width = one ? 140F : 0F;
+            _nav.Visible = one;
+            _pageHost.Visible = one;
+            _nonePanel.Visible = mode == ViewMode.None;
             _multiPanel.Visible = multi;
-            _tabs.Visible = one;
-            _emptyLabel.Visible = !one;
             _launchButton.Visible = mode == ViewMode.None;
             _closeButton.Visible = one;
             _shotButton.Visible = one;
             _installButton.Visible = !multi;
             if (mode == ViewMode.None)
             {
-                _layout.RowStyles[0].Height = 186F;
-                _layout.RowStyles[1].Height = 48F;
                 _emptyLabel.Text = "没有游戏在运行";
             }
-            else if (one)
+            else if (multi)
             {
-                _layout.RowStyles[0].Height = 150F;
-                _layout.RowStyles[1].Height = 48F;
+                _emptyLabel.Text = "同时开着多作，先关到只剩一作";
+            }
+            if (one)
+            {
+                ShowPage(_nav.SelectedIndex);
+            }
+            UpdateWalkWanted();
+            UpdateHeader();
+            PerformLayout();
+        }
+
+        private void ShowPage(int index)
+        {
+            if (_pages == null || _pages.Length == 0)
+            {
+                return;
+            }
+            if (index < 0 || index >= _pages.Length)
+            {
+                index = 0;
+            }
+            for (int i = 0; i < _pages.Length; i++)
+            {
+                _pages[i].Visible = i == index;
+            }
+            UpdateWalkWanted();
+        }
+
+        /// <summary>Ask the walk query only while its page is visible and the window is not minimised.</summary>
+        private void UpdateWalkWanted()
+        {
+            bool wanted = _view == ViewMode.One
+                && _runningIndex >= 0
+                && _pageHost.Visible
+                && _nav.SelectedIndex == 0
+                && Visible
+                && WindowState != FormWindowState.Minimized;
+            _walkIndex = _runningIndex;
+            _walkWanted = wanted;
+            if (_closing)
+            {
+                return;
+            }
+            if (wanted)
+            {
+                _walkWake.Set();
             }
             else
             {
-                float height = 62F + 36F * _multiIndices.Count;
-                _layout.RowStyles[0].Height = height > 300F ? 300F : height;
-                _layout.RowStyles[1].Height = 0F;
-                _emptyLabel.Text = "同时开着多作，先关到只剩一作";
+                _walkWake.Reset();
             }
-        }
-
-        private void BuildTabs()
-        {
-            _tabs.Dock = DockStyle.Fill;
-            _tabs.Margin = new Padding(0);
-
-            var logPage = new TabPage("日志");
-            _logBox.Dock = DockStyle.Fill;
-            _logBox.ReadOnly = true;
-            _logBox.WordWrap = false;
-            _logBox.ScrollBars = RichTextBoxScrollBars.Both;
-            _logBox.Font = new Font("Consolas", 9F);
-            _logBox.BackColor = Color.White;
-            _logBox.HideSelection = false;
-            logPage.Controls.Add(_logBox);
-
-            var keyPage = new TabPage("按键");
-            _keyList.View = View.Details;
-            _keyList.FullRowSelect = true;
-            _keyList.MultiSelect = false;
-            _keyList.Dock = DockStyle.Fill;
-            _keyList.Columns.Add("时间", 90);
-            _keyList.Columns.Add("谁", 160);
-            _keyList.Columns.Add("方式", 90);
-            _keyList.Columns.Add("按键", 300);
-            _keyList.Columns.Add("结果", 240);
-            keyPage.Controls.Add(_keyList);
-
-            _shotPage = new TabPage("截图");
-            _shotBox.Dock = DockStyle.Fill;
-            _shotBox.SizeMode = PictureBoxSizeMode.Zoom;
-            _shotBox.BackColor = Color.FromArgb(40, 40, 40);
-            _shotPage.Controls.Add(_shotBox);
-
-            var statePage = new TabPage("状态");
-            _stateBox.Dock = DockStyle.Fill;
-            _stateBox.ReadOnly = true;
-            _stateBox.WordWrap = false;
-            _stateBox.ScrollBars = RichTextBoxScrollBars.Both;
-            _stateBox.Font = new Font("Consolas", 9F);
-            _stateBox.BackColor = Color.White;
-            _stateBox.HideSelection = false;
-            statePage.Controls.Add(_stateBox);
-
-            _tabs.TabPages.Add(logPage);
-            _tabs.TabPages.Add(keyPage);
-            _tabs.TabPages.Add(_shotPage);
-            _tabs.TabPages.Add(statePage);
         }
 
         private void BuildTray()
@@ -539,6 +1409,26 @@ namespace FfprBridgeGui
                 _worker.Name = "FfprBridgeGui.Refresh";
                 _worker.Start();
             }
+            if (_walkWorker == null)
+            {
+                _walkWorker = new Thread(WalkLoop);
+                _walkWorker.IsBackground = true;
+                _walkWorker.Name = "FfprBridgeGui.Walk";
+                _walkWorker.Start();
+            }
+            UpdateWalkWanted();
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            UpdateWalkWanted();
+        }
+
+        protected override void OnVisibleChanged(EventArgs e)
+        {
+            base.OnVisibleChanged(e);
+            UpdateWalkWanted();
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
@@ -556,6 +1446,8 @@ namespace FfprBridgeGui
         {
             _closing = true;
             _stop.Set();
+            _walkWanted = false;
+            _walkWake.Set();
             if (_showWait != null)
             {
                 _showWait.Unregister(null);
@@ -563,6 +1455,10 @@ namespace FfprBridgeGui
             if (_worker != null)
             {
                 _worker.Join(3000);
+            }
+            if (_walkWorker != null)
+            {
+                _walkWorker.Join(3000);
             }
             _tray.Visible = false;
             _tray.Dispose();
@@ -573,6 +1469,7 @@ namespace FfprBridgeGui
         private void HideToTray()
         {
             Hide();
+            UpdateWalkWanted();
             if (!_balloonShown)
             {
                 _balloonShown = true;
@@ -603,6 +1500,7 @@ namespace FfprBridgeGui
             }
             Activate();
             BringToFront();
+            UpdateWalkWanted();
         }
 
         private void OnTrayExit(object sender, EventArgs e)
@@ -649,6 +1547,66 @@ namespace FfprBridgeGui
         private void SetStatus(string text)
         {
             _statusLabel.Text = DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture) + "  " + text;
+        }
+
+        private void UpdateHeader()
+        {
+            if (_view == ViewMode.None)
+            {
+                _topBar.SetValues("FFPR 桥插件", "没有游戏在运行", Theme.Idle, "", "", "");
+                return;
+            }
+            if (_view == ViewMode.Multi)
+            {
+                int count = _multiIndices.Count;
+                _topBar.SetValues("FFPR 桥插件", "同时开着 " + count.ToString(CultureInfo.InvariantCulture) + " 作",
+                    Theme.Warning, "", "", "");
+                return;
+            }
+            int index = _runningIndex;
+            if (index < 0 || index >= _games.Length)
+            {
+                _topBar.SetValues("FFPR 桥插件", "没有游戏在运行", Theme.Idle, "", "", "");
+                return;
+            }
+            var status = _status[index];
+            var game = _games[index];
+            string state = "运行中";
+            Color color = Theme.Running;
+            string version = "";
+            string clients = "";
+            string uptime = "";
+            if (status == null || !status.Running)
+            {
+                state = "未运行";
+                color = Theme.Idle;
+            }
+            else if (!status.Reachable)
+            {
+                state = "连不上";
+                color = Theme.Warning;
+                version = "桥插件 连不上";
+            }
+            else if (!status.HasBridge)
+            {
+                state = "旧版桥插件";
+                color = Theme.Warning;
+                version = "桥插件 旧版";
+            }
+            else
+            {
+                if (status.HookFailed.Count > 0 || HasRecentWarning(status))
+                {
+                    color = Theme.Error;
+                }
+                version = "桥插件 " + (string.IsNullOrEmpty(status.Version) ? "—" : status.Version);
+                clients = "连接 " + status.ClientCount.ToString(CultureInfo.InvariantCulture);
+                if (status.StartedAt != DateTime.MinValue)
+                {
+                    uptime = "运行 " + Clock(DateTime.UtcNow - status.StartedAt);
+                }
+            }
+            _topBar.SetValues(game.Title, state, color, version, clients, uptime);
         }
 
         // ---- refresh ---------------------------------------------------------------------
@@ -837,8 +1795,6 @@ namespace FfprBridgeGui
             }
         }
 
-        // ---- list and tabs ---------------------------------------------------------------
-
         private void Apply(GameStatus[] statuses, string[][] lines, long[] stamps)
         {
             var running = new List<int>();
@@ -857,6 +1813,11 @@ namespace FfprBridgeGui
             if (running.Count == 0)
             {
                 _runningIndex = -1;
+                if (_shownWalkIndex != -1)
+                {
+                    _shownWalkIndex = -1;
+                    _walkView.Reset();
+                }
                 SetView(ViewMode.None);
                 if (_list.Items.Count > 0 && _list.SelectedIndices.Count == 0)
                 {
@@ -867,6 +1828,11 @@ namespace FfprBridgeGui
             else if (running.Count == 1)
             {
                 int index = running[0];
+                if (index != _shownWalkIndex)
+                {
+                    _shownWalkIndex = index;
+                    _walkView.Reset();
+                }
                 _runningIndex = index;
                 SetView(ViewMode.One);
                 UpdateDetail(index);
@@ -876,11 +1842,18 @@ namespace FfprBridgeGui
             else
             {
                 _runningIndex = -1;
+                if (_shownWalkIndex != -1)
+                {
+                    _shownWalkIndex = -1;
+                    _walkView.Reset();
+                }
                 UpdateMulti(running);
                 SetView(ViewMode.Multi);
                 _tray.Text = "FFPR 桥插件 · 同时开着 "
                     + running.Count.ToString(CultureInfo.InvariantCulture) + " 作";
             }
+            UpdateHeader();
+            UpdateWalkWanted();
         }
 
         private void UpdateRow(int index)
@@ -892,14 +1865,14 @@ namespace FfprBridgeGui
             {
                 item.SubItems[1].Text = "没装";
                 item.SubItems[2].Text = "—";
-                item.ForeColor = Color.Gray;
+                item.ForeColor = Theme.Muted;
                 return;
             }
 
             item.SubItems[1].Text = "已装";
             var version = InstalledBridgeVersion(game);
             item.SubItems[2].Text = version == null ? "没装" : version;
-            item.ForeColor = SystemColors.WindowText;
+            item.ForeColor = Theme.Text;
         }
 
         /// <summary>The version copied into BepInEx/plugins/FfprBridge, or null when it is absent.</summary>
@@ -952,14 +1925,8 @@ namespace FfprBridgeGui
 
         private void UpdateDetail(int index)
         {
-            var game = _games[index];
             var status = _status[index];
-            _detailTitle.Text = game.Title;
-            _detailState.Text = "运行中";
-
             bool hot = status != null && (status.HookFailed.Count > 0 || HasRecentWarning(status));
-            _detailTitle.ForeColor = hot ? Color.Red : SystemColors.WindowText;
-            _detailState.ForeColor = hot ? Color.Red : Color.ForestGreen;
             if (status == null)
             {
                 _detailVersion.Text = "—";
@@ -968,23 +1935,25 @@ namespace FfprBridgeGui
                 _detailHooks.Text = "—";
                 _detailUptime.Text = "—";
                 _detailLastKey.Text = "—";
+                _detailVersion.ForeColor = Theme.Text;
+                _detailHooks.ForeColor = Theme.Text;
                 return;
             }
 
             if (!status.Reachable)
             {
                 _detailVersion.Text = "连不上";
-                _detailVersion.ForeColor = Color.DarkOrange;
+                _detailVersion.ForeColor = Theme.Warning;
             }
             else if (status.HasBridge)
             {
                 _detailVersion.Text = string.IsNullOrEmpty(status.Version) ? "—" : status.Version;
-                _detailVersion.ForeColor = SystemColors.WindowText;
+                _detailVersion.ForeColor = hot ? Theme.Error : Theme.Text;
             }
             else
             {
                 _detailVersion.Text = "旧版";
-                _detailVersion.ForeColor = Color.DarkOrange;
+                _detailVersion.ForeColor = Theme.Warning;
             }
             _detailPort.Text = status.Port.ToString(CultureInfo.InvariantCulture);
             if (status.ClientCount == 0)
@@ -1001,13 +1970,13 @@ namespace FfprBridgeGui
             {
                 _detailHooks.Text = status.HookOk.Count.ToString(CultureInfo.InvariantCulture)
                     + "/" + total.ToString(CultureInfo.InvariantCulture) + " 有失败";
-                _detailHooks.ForeColor = Color.Red;
+                _detailHooks.ForeColor = Theme.Error;
             }
             else
             {
                 _detailHooks.Text = status.HookOk.Count.ToString(CultureInfo.InvariantCulture)
                     + "/" + total.ToString(CultureInfo.InvariantCulture);
-                _detailHooks.ForeColor = SystemColors.WindowText;
+                _detailHooks.ForeColor = hot ? Theme.Warning : Theme.Text;
             }
             _detailUptime.Text = status.HasBridge && status.StartedAt != DateTime.MinValue
                 ? Duration(DateTime.UtcNow - status.StartedAt)
@@ -1077,7 +2046,7 @@ namespace FfprBridgeGui
             for (int i = 0; i < running.Count; i++)
             {
                 int index = running[i];
-                _multiGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 36F));
+                _multiGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
 
                 var title = new Label();
                 title.Text = _games[index].Title;
@@ -1085,7 +2054,9 @@ namespace FfprBridgeGui
                 title.AutoSize = false;
                 title.TextAlign = ContentAlignment.MiddleLeft;
                 title.AutoEllipsis = true;
-                title.Font = new Font(this.Font.FontFamily, 9F, FontStyle.Bold);
+                title.ForeColor = Theme.Text;
+                title.Font = Theme.BodyBold;
+                title.BackColor = Color.Transparent;
                 title.Margin = new Padding(0, 2, 4, 2);
 
                 var info = new Label();
@@ -1093,12 +2064,17 @@ namespace FfprBridgeGui
                 info.AutoSize = false;
                 info.TextAlign = ContentAlignment.MiddleLeft;
                 info.AutoEllipsis = true;
+                info.ForeColor = Theme.Muted;
+                info.Font = Theme.Small;
+                info.BackColor = Color.Transparent;
                 info.Margin = new Padding(0, 2, 4, 2);
 
-                var close = new Button();
+                var close = new FlatButton();
                 close.Text = "关闭游戏";
+                close.Danger = true;
                 close.AutoSize = false;
                 close.Dock = DockStyle.Fill;
+                close.Font = Theme.Small;
                 close.Margin = new Padding(4, 4, 0, 4);
                 close.Tag = index;
                 close.Click += new EventHandler(OnCloseRunning);
@@ -1172,15 +2148,15 @@ namespace FfprBridgeGui
             {
                 foreach (var line in lines)
                 {
-                    Color color = Color.Black;
+                    Color color = Theme.Text;
                     if (line.IndexOf("[Warning", StringComparison.Ordinal) >= 0)
                     {
-                        color = Color.DarkOrange;
+                        color = Theme.Warning;
                     }
                     else if (line.IndexOf("[Error", StringComparison.Ordinal) >= 0
                         || line.IndexOf("[Fatal", StringComparison.Ordinal) >= 0)
                     {
-                        color = Color.Red;
+                        color = Theme.Error;
                     }
                     AppendLine(_logBox, line, color);
                 }
@@ -1219,10 +2195,7 @@ namespace FfprBridgeGui
                         key.Keys,
                         result,
                     });
-                    if (!key.Ok)
-                    {
-                        item.ForeColor = Color.Red;
-                    }
+                    item.ForeColor = key.Ok ? Theme.Text : Theme.Error;
                     _keyList.Items.Add(item);
                 }
             }
@@ -1249,78 +2222,78 @@ namespace FfprBridgeGui
         {
             if (status == null || !status.Running)
             {
-                AppendLine(_stateBox, "这一作没开。", Color.Gray);
+                AppendLine(_stateBox, "这一作没开。", Theme.Muted);
                 return;
             }
             if (!status.Reachable)
             {
-                AppendLine(_stateBox, "连不上桥插件（端口 " + status.Port.ToString(CultureInfo.InvariantCulture) + "）。", Color.Gray);
+                AppendLine(_stateBox, "连不上桥插件（端口 " + status.Port.ToString(CultureInfo.InvariantCulture) + "）。", Theme.Muted);
                 return;
             }
             if (!status.HasBridge)
             {
-                AppendLine(_stateBox, "这一作装的是旧版桥插件，没有 bridge 查询。", Color.DarkOrange);
-                AppendLine(_stateBox, "装 0.12.0 以后这里会显示详情。", Color.DarkOrange);
+                AppendLine(_stateBox, "这一作装的是旧版桥插件，没有 bridge 查询。", Theme.Warning);
+                AppendLine(_stateBox, "装 0.14.0 以后这里会显示详情。", Theme.Warning);
                 return;
             }
 
-            AppendLine(_stateBox, "桥插件", Color.Black);
-            AppendLine(_stateBox, "  版本：" + status.Version, Color.Black);
-            AppendLine(_stateBox, "  作品：" + status.BridgeGame, Color.Black);
-            AppendLine(_stateBox, "  进程：" + status.Process, Color.Black);
+            AppendLine(_stateBox, "桥插件", Theme.Text);
+            AppendLine(_stateBox, "  版本：" + status.Version, Theme.Text);
+            AppendLine(_stateBox, "  作品：" + status.BridgeGame, Theme.Text);
+            AppendLine(_stateBox, "  进程：" + status.Process, Theme.Text);
             var started = status.StartedAt == DateTime.MinValue
                 ? "—"
                 : status.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
-            AppendLine(_stateBox, "  启动：" + started, Color.Black);
-            AppendLine(_stateBox, "  端口：" + status.Port.ToString(CultureInfo.InvariantCulture), Color.Black);
+            AppendLine(_stateBox, "  启动：" + started, Theme.Text);
+            AppendLine(_stateBox, "  端口：" + status.Port.ToString(CultureInfo.InvariantCulture), Theme.Text);
             AppendLine(_stateBox, "  运行："
-                + (status.StartedAt == DateTime.MinValue ? "—" : Duration(DateTime.UtcNow - status.StartedAt)), Color.Black);
-            AppendLine(_stateBox, "", Color.Black);
+                + (status.StartedAt == DateTime.MinValue ? "—" : Duration(DateTime.UtcNow - status.StartedAt)), Theme.Text);
+            AppendLine(_stateBox, "", Theme.Text);
 
             AppendLine(_stateBox, "挂钩（" + status.HookOk.Count.ToString(CultureInfo.InvariantCulture)
-                + " 成功，" + status.HookFailed.Count.ToString(CultureInfo.InvariantCulture) + " 失败）", Color.Black);
+                + " 成功，" + status.HookFailed.Count.ToString(CultureInfo.InvariantCulture) + " 失败）", Theme.Text);
             if (status.HookOk.Count > 0)
             {
-                AppendLine(_stateBox, "  成功：" + string.Join("、", status.HookOk.ToArray()), Color.Black);
+                AppendLine(_stateBox, "  成功：" + string.Join("、", status.HookOk.ToArray()), Theme.Text);
             }
             if (status.HookFailed.Count == 0)
             {
-                AppendLine(_stateBox, "  失败：无", Color.Black);
+                AppendLine(_stateBox, "  失败：无", Theme.Text);
             }
             else
             {
                 foreach (var failure in status.HookFailed)
                 {
-                    AppendLine(_stateBox, "  失败：" + failure.Name + "  " + failure.Error, Color.Red);
+                    AppendLine(_stateBox, "  失败：" + failure.Name + "  " + failure.Error, Theme.Error);
                 }
             }
-            AppendLine(_stateBox, "", Color.Black);
+            AppendLine(_stateBox, "", Theme.Text);
 
-            AppendLine(_stateBox, "客户端（" + status.ClientCount.ToString(CultureInfo.InvariantCulture) + "）", Color.Black);
+            AppendLine(_stateBox, "客户端（" + status.ClientCount.ToString(CultureInfo.InvariantCulture) + "）", Theme.Text);
             if (status.ClientCount == 0)
             {
-                AppendLine(_stateBox, "  没有连接", Color.Black);
+                AppendLine(_stateBox, "  没有连接", Theme.Text);
             }
             else
             {
                 foreach (var client in status.Clients)
                 {
                     AppendLine(_stateBox, "  " + client.Remote + "  " + ChannelName(client.Channel)
-                        + "  " + client.Since.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture), Color.Black);
+                        + "  " + client.Since.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture), Theme.Text);
                 }
             }
-            AppendLine(_stateBox, "", Color.Black);
+            AppendLine(_stateBox, "", Theme.Text);
 
-            AppendLine(_stateBox, "警告（最近 " + status.Warnings.Count.ToString(CultureInfo.InvariantCulture) + " 条）", Color.Black);
+            AppendLine(_stateBox, "警告（最近 " + status.Warnings.Count.ToString(CultureInfo.InvariantCulture) + " 条）", Theme.Text);
             if (status.Warnings.Count == 0)
             {
-                AppendLine(_stateBox, "  没有", Color.Black);
+                AppendLine(_stateBox, "  没有", Theme.Text);
             }
             else
             {
                 foreach (var warning in status.Warnings)
                 {
-                    Color color = warning.Level == "Warning" ? Color.DarkOrange : Color.Red;
+                    Color color = warning.Level == "Warning" ? Theme.Warning : Theme.Error;
                     AppendLine(_stateBox, "  "
                         + warning.At.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture)
                         + "  " + warning.Level + "  " + warning.Text, color);
@@ -1420,7 +2393,7 @@ namespace FfprBridgeGui
 
         private void OnCloseRunning(object sender, EventArgs e)
         {
-            var button = sender as Button;
+            var button = sender as Control;
             if (button == null)
             {
                 return;
@@ -1523,7 +2496,8 @@ namespace FfprBridgeGui
                     {
                         _shotFiles[index] = path;
                         UpdateShot(index);
-                        _tabs.SelectedTab = _shotPage;
+                        _nav.SelectedIndex = 1;
+                        ShowPage(1);
                         SetStatus("截图已更新");
                     });
                 }
@@ -1769,26 +2743,53 @@ namespace FfprBridgeGui
             {
                 dialog.Text = title;
                 dialog.StartPosition = FormStartPosition.CenterParent;
-                dialog.ClientSize = new Size(640, 420);
+                dialog.ClientSize = new Size(720, 460);
                 dialog.MinimizeBox = false;
                 dialog.MaximizeBox = false;
                 dialog.ShowInTaskbar = false;
+                dialog.BackColor = Theme.Background;
+                dialog.ForeColor = Theme.Text;
+                dialog.Font = Theme.Body;
+
+                var body = new Panel();
+                body.Dock = DockStyle.Fill;
+                body.Padding = new Padding(14);
+                body.BackColor = Theme.Background;
+
                 var box = new TextBox();
                 box.Multiline = true;
                 box.ReadOnly = true;
                 box.ScrollBars = ScrollBars.Both;
                 box.WordWrap = false;
                 box.Dock = DockStyle.Fill;
-                box.Font = new Font("Consolas", 9F);
+                box.Font = Theme.Mono;
+                box.BackColor = Theme.Panel;
+                box.ForeColor = Theme.Text;
+                box.BorderStyle = BorderStyle.None;
                 box.Text = text;
-                var close = new Button();
+                body.Controls.Add(box);
+
+                var footer = new FlowLayoutPanel();
+                footer.Dock = DockStyle.Bottom;
+                footer.Height = 56;
+                footer.FlowDirection = FlowDirection.RightToLeft;
+                footer.WrapContents = false;
+                footer.BackColor = Theme.Background;
+                footer.Padding = new Padding(14, 10, 14, 10);
+
+                var close = new FlatButton();
                 close.Text = "关闭";
-                close.DialogResult = DialogResult.OK;
-                close.Dock = DockStyle.Bottom;
-                close.Height = 34;
-                dialog.Controls.Add(box);
-                dialog.Controls.Add(close);
-                dialog.AcceptButton = close;
+                close.AutoSize = false;
+                close.Size = new Size(96, 34);
+                close.Click += delegate(object sender, EventArgs args)
+                {
+                    dialog.DialogResult = DialogResult.OK;
+                    dialog.Close();
+                };
+                footer.Controls.Add(close);
+
+                dialog.Controls.Add(body);
+                dialog.Controls.Add(footer);
                 dialog.ShowDialog(this);
             }
         }
@@ -1963,6 +2964,23 @@ namespace FfprBridgeGui
             return ((int)span.TotalMinutes).ToString(CultureInfo.InvariantCulture) + " 分";
         }
 
+        private static string Clock(TimeSpan span)
+        {
+            if (span < TimeSpan.Zero)
+            {
+                span = TimeSpan.Zero;
+            }
+            int hours = (int)span.TotalHours;
+            if (hours > 0)
+            {
+                return hours.ToString(CultureInfo.InvariantCulture)
+                    + ":" + span.Minutes.ToString("00", CultureInfo.InvariantCulture)
+                    + ":" + span.Seconds.ToString("00", CultureInfo.InvariantCulture);
+            }
+            return span.Minutes.ToString("00", CultureInfo.InvariantCulture)
+                + ":" + span.Seconds.ToString("00", CultureInfo.InvariantCulture);
+        }
+
         private static string Ago(DateTime time)
         {
             if (time == DateTime.MinValue)
@@ -1990,6 +3008,1478 @@ namespace FfprBridgeGui
             return ((int)span.TotalDays).ToString(CultureInfo.InvariantCulture) + " 天前";
         }
 
+        // ---- walk page -------------------------------------------------------------------
+
+        private void WalkLoop()
+        {
+            var client = new BridgeClient();
+            var mapClient = new BridgeClient();
+            try
+            {
+                while (!_closing)
+                {
+                    if (!_walkWanted)
+                    {
+                        _walkWake.WaitOne(500);
+                        continue;
+                    }
+                    int index = _walkIndex;
+                    if (index < 0 || index >= _games.Length)
+                    {
+                        _walkWake.WaitOne(WalkMs);
+                        continue;
+                    }
+                    if (index != _mapGame)
+                    {
+                        _mapGame = index;
+                        _mapCache.Clear();
+                        _mapIsWorld.Clear();
+                    }
+                    var game = _games[index];
+                    var reply = client.Query(game.Port, "walk", QueryTimeoutMs);
+                    string message;
+                    WalkData data = WalkParse.FromReply(reply, out message);
+                    if (data != null)
+                    {
+                        if (data.Seq < _lastWalkSeq)
+                        {
+                            _mapCache.Clear();
+                            _mapIsWorld.Clear();
+                        }
+                        _lastWalkSeq = data.Seq;
+                    }
+                    BaseMap map = null;
+                    if (data != null && _walkWanted)
+                    {
+                        map = EnsureMap(mapClient, index, game.Port, data);
+                    }
+                    if (_closing)
+                    {
+                        break;
+                    }
+                    WalkData postedData = data;
+                    string postedMessage = message;
+                    BaseMap postedMap = map;
+                    int postedIndex = index;
+                    Post(delegate() { ApplyWalk(postedIndex, postedData, postedMessage, postedMap); });
+                    _walkWake.WaitOne(WalkMs);
+                }
+            }
+            finally
+            {
+                client.Dispose();
+                mapClient.Dispose();
+            }
+        }
+
+        private void ApplyWalk(int index, WalkData data, string message, BaseMap map)
+        {
+            if (index != _runningIndex || !_walkWanted)
+            {
+                return;
+            }
+            _walkView.SetWalk(data, message, map);
+        }
+
+        private BaseMap EnsureMap(BridgeClient client, int gameIndex, int port, WalkData data)
+        {
+            if (!_walkWanted || _closing)
+            {
+                return null;
+            }
+            string baseKey = gameIndex.ToString(CultureInfo.InvariantCulture)
+                + ":" + data.Map.ToString(CultureInfo.InvariantCulture);
+            bool world;
+            if (_mapIsWorld.TryGetValue(data.Map, out world))
+            {
+                if (world)
+                {
+                    return LoadWorldMap(client, gameIndex, port, data);
+                }
+                BaseMap cached;
+                if (_mapCache.TryGetValue(baseKey, out cached))
+                {
+                    return cached;
+                }
+            }
+
+            var reply = client.Query(port, "collision", QueryTimeoutMs);
+            BaseMap interior = BaseMap.ParseCollision(reply);
+            if (interior != null)
+            {
+                _mapIsWorld[data.Map] = false;
+                CacheMap(baseKey, interior);
+                return interior;
+            }
+            _mapIsWorld[data.Map] = true;
+            return LoadWorldMap(client, gameIndex, port, data);
+        }
+
+        private BaseMap LoadWorldMap(BridgeClient client, int gameIndex, int port, WalkData data)
+        {
+            int minX;
+            int minY;
+            int maxX;
+            int maxY;
+            if (!WalkGeometry.CellBounds(data, 3, out minX, out minY, out maxX, out maxY))
+            {
+                return null;
+            }
+            string key = gameIndex.ToString(CultureInfo.InvariantCulture)
+                + ":w:" + data.Map.ToString(CultureInfo.InvariantCulture)
+                + ":" + minX.ToString(CultureInfo.InvariantCulture)
+                + "," + minY.ToString(CultureInfo.InvariantCulture)
+                + "," + maxX.ToString(CultureInfo.InvariantCulture)
+                + "," + maxY.ToString(CultureInfo.InvariantCulture);
+            BaseMap cached;
+            if (_mapCache.TryGetValue(key, out cached))
+            {
+                return cached;
+            }
+
+            int width = maxX - minX + 1;
+            int height = maxY - minY + 1;
+            int columns = width <= 49 ? 1 : 2;
+            int rows = height <= 49 ? 1 : 2;
+            BaseMap composite = null;
+            bool complete = true;
+            for (int row = 0; row < rows; row++)
+            {
+                int wy0 = minY + height * row / rows;
+                int wy1 = minY + height * (row + 1) / rows - 1;
+                for (int column = 0; column < columns; column++)
+                {
+                    if (!_walkWanted || _closing)
+                    {
+                        complete = false;
+                        break;
+                    }
+                    int wx0 = minX + width * column / columns;
+                    int wx1 = minX + width * (column + 1) / columns - 1;
+                    int cx = (wx0 + wx1) / 2;
+                    int cy = (wy0 + wy1) / 2;
+                    int radius = Math.Max(6, Math.Max((wx1 - wx0 + 1) / 2 + 2, (wy1 - wy0 + 1) / 2 + 2));
+                    if (radius > 24)
+                    {
+                        radius = 24;
+                    }
+                    var fields = "\"at\":[" + cx.ToString(CultureInfo.InvariantCulture)
+                        + "," + cy.ToString(CultureInfo.InvariantCulture)
+                        + "],\"r\":" + radius.ToString(CultureInfo.InvariantCulture);
+                    var reply = client.Query(port, "cells", fields, QueryTimeoutMs);
+                    BaseMap part = BaseMap.ParseCells(reply, cx - radius, cy - radius);
+                    if (part == null)
+                    {
+                        continue;
+                    }
+                    if (composite == null)
+                    {
+                        composite = part;
+                    }
+                    else
+                    {
+                        composite.Merge(part);
+                    }
+                }
+            }
+            if (composite != null && complete)
+            {
+                CacheMap(key, composite);
+            }
+            return composite;
+        }
+
+        private void CacheMap(string key, BaseMap map)
+        {
+            if (_mapCache.Count > 32)
+            {
+                _mapCache.Clear();
+            }
+            _mapCache[key] = map;
+        }
+    }
+
+    internal sealed class WalkData
+    {
+        public int Seq;
+        public bool Active;
+        public int Map;
+        public readonly List<Point> Path = new List<Point>();
+        public bool HasGoal;
+        public Point Goal;
+        public string Label;
+        public int Index;
+        public int Steps;
+        public bool HasCell;
+        public Point Cell;
+        public WalkSegment Segment;
+        public readonly List<WalkTurn> Turns = new List<WalkTurn>();
+        public DateTime StartedAt;
+        public DateTime EndedAt;
+        public string Reason;
+    }
+
+    internal sealed class WalkSegment
+    {
+        public int N;
+        public int Of;
+        public bool HasFrom;
+        public Point From;
+        public bool HasTo;
+        public Point To;
+    }
+
+    internal sealed class WalkTurn
+    {
+        public bool HasCell;
+        public Point Cell;
+        public double AtX;
+        public double AtY;
+        public long Frame;
+        public bool Ok;
+    }
+
+    internal static class WalkParse
+    {
+        public static WalkData FromReply(Dictionary<string, object> reply, out string message)
+        {
+            message = null;
+            if (reply == null)
+            {
+                message = "连不上桥插件";
+                return null;
+            }
+            if (!Json.Bool(Json.Field(reply, "ok"), true))
+            {
+                message = "桥插件不支持 walk 查询（需要 0.14.0）";
+                return null;
+            }
+            object raw;
+            if (!reply.TryGetValue("walk", out raw))
+            {
+                message = "桥插件没有返回走路数据";
+                return null;
+            }
+            if (raw == null)
+            {
+                message = "现在没有在走路";
+                return null;
+            }
+            var walk = Json.Map(raw);
+            if (walk == null)
+            {
+                message = "walk 回复的格式不对";
+                return null;
+            }
+
+            var data = new WalkData();
+            data.Seq = Json.Int(Json.Field(walk, "seq"), 0);
+            data.Active = Json.Bool(Json.Field(walk, "active"), false);
+            data.Map = Json.Int(Json.Field(walk, "map"), 0);
+            data.Label = Json.Text(walk, "label");
+            data.Index = Json.Int(Json.Field(walk, "index"), 0);
+            data.Steps = Json.Int(Json.Field(walk, "steps"), 0);
+            data.StartedAt = Json.Time(Json.Text(walk, "startedAt"));
+            data.EndedAt = Json.Time(Json.Text(walk, "endedAt"));
+            data.Reason = Json.Text(walk, "reason");
+
+            var path = Json.Array(Json.Field(walk, "path"));
+            if (path != null)
+            {
+                foreach (var item in path)
+                {
+                    Point point;
+                    if (Json.TryPoint(item, out point))
+                    {
+                        data.Path.Add(point);
+                    }
+                }
+            }
+
+            Point goal;
+            if (Json.TryPoint(Json.Field(walk, "goal"), out goal))
+            {
+                data.HasGoal = true;
+                data.Goal = goal;
+            }
+            Point cell;
+            if (Json.TryPoint(Json.Field(walk, "cell"), out cell))
+            {
+                data.HasCell = true;
+                data.Cell = cell;
+            }
+
+            var segment = Json.Map(Json.Field(walk, "segment"));
+            if (segment != null)
+            {
+                var parsed = new WalkSegment();
+                parsed.N = Json.Int(Json.Field(segment, "n"), 0);
+                parsed.Of = Json.Int(Json.Field(segment, "of"), 0);
+                Point from;
+                if (Json.TryPoint(Json.Field(segment, "from"), out from))
+                {
+                    parsed.HasFrom = true;
+                    parsed.From = from;
+                }
+                Point to;
+                if (Json.TryPoint(Json.Field(segment, "to"), out to))
+                {
+                    parsed.HasTo = true;
+                    parsed.To = to;
+                }
+                data.Segment = parsed;
+            }
+
+            var turns = Json.Array(Json.Field(walk, "turns"));
+            if (turns != null)
+            {
+                foreach (var item in turns)
+                {
+                    var map = Json.Map(item);
+                    if (map == null)
+                    {
+                        continue;
+                    }
+                    var turn = new WalkTurn();
+                    Point turnCell;
+                    if (Json.TryPoint(Json.Field(map, "cell"), out turnCell))
+                    {
+                        turn.HasCell = true;
+                        turn.Cell = turnCell;
+                    }
+                    var atArray = Json.Array(Json.Field(map, "at"));
+                    if (atArray != null && atArray.Length >= 2)
+                    {
+                        turn.AtX = Json.Double(atArray[0], 0D);
+                        turn.AtY = Json.Double(atArray[1], 0D);
+                    }
+                    else
+                    {
+                        Point at;
+                        if (Json.TryPoint(Json.Field(map, "at"), out at))
+                        {
+                            turn.AtX = at.X;
+                            turn.AtY = at.Y;
+                        }
+                    }
+                    turn.Frame = Json.Long(Json.Field(map, "frame"), 0);
+                    turn.Ok = Json.Bool(Json.Field(map, "ok"), false);
+                    data.Turns.Add(turn);
+                }
+            }
+            return data;
+        }
+    }
+
+    /// <summary>Pure geometry used by the walk view; no control is needed to test it.</summary>
+    internal static class WalkGeometry
+    {
+        public static bool CellBounds(WalkData data, int pad, out int minX, out int minY, out int maxX, out int maxY)
+        {
+            bool any = false;
+            minX = 0;
+            minY = 0;
+            maxX = 0;
+            maxY = 0;
+            if (data == null)
+            {
+                return false;
+            }
+            foreach (var point in data.Path)
+            {
+                Add(point.X, point.Y, ref any, ref minX, ref minY, ref maxX, ref maxY);
+            }
+            if (data.HasGoal)
+            {
+                Add(data.Goal.X, data.Goal.Y, ref any, ref minX, ref minY, ref maxX, ref maxY);
+            }
+            if (data.HasCell)
+            {
+                Add(data.Cell.X, data.Cell.Y, ref any, ref minX, ref minY, ref maxX, ref maxY);
+            }
+            if (data.Segment != null)
+            {
+                if (data.Segment.HasFrom)
+                {
+                    Add(data.Segment.From.X, data.Segment.From.Y, ref any, ref minX, ref minY, ref maxX, ref maxY);
+                }
+                if (data.Segment.HasTo)
+                {
+                    Add(data.Segment.To.X, data.Segment.To.Y, ref any, ref minX, ref minY, ref maxX, ref maxY);
+                }
+            }
+            if (!any)
+            {
+                return false;
+            }
+            minX -= pad;
+            minY -= pad;
+            maxX += pad;
+            maxY += pad;
+            return true;
+        }
+
+        private static void Add(int x, int y, ref bool any, ref int minX, ref int minY, ref int maxX, ref int maxY)
+        {
+            if (!any)
+            {
+                any = true;
+                minX = x;
+                minY = y;
+                maxX = x;
+                maxY = y;
+                return;
+            }
+            if (x < minX)
+            {
+                minX = x;
+            }
+            if (x > maxX)
+            {
+                maxX = x;
+            }
+            if (y < minY)
+            {
+                minY = y;
+            }
+            if (y > maxY)
+            {
+                maxY = y;
+            }
+        }
+
+        public static void Fit(
+            RectangleF area,
+            int minX,
+            int minY,
+            int maxX,
+            int maxY,
+            out float cell,
+            out float offsetX,
+            out float offsetY)
+        {
+            float width = maxX - minX + 1;
+            float height = maxY - minY + 1;
+            if (width < 1F)
+            {
+                width = 1F;
+            }
+            if (height < 1F)
+            {
+                height = 1F;
+            }
+            cell = Math.Min(area.Width / width, area.Height / height);
+            if (cell <= 0F)
+            {
+                cell = 1F;
+            }
+            offsetX = area.X + (area.Width - width * cell) / 2F - minX * cell;
+            offsetY = area.Y + (area.Height - height * cell) / 2F - minY * cell;
+        }
+    }
+
+    internal static class WalkText
+    {
+        public static string ReasonText(string reason)
+        {
+            if (string.IsNullOrEmpty(reason))
+            {
+                return "停着";
+            }
+            string lower = reason.ToLowerInvariant();
+            switch (lower)
+            {
+                case "arrived":
+                    return "到达";
+                case "battle":
+                    return "遇敌";
+                case "dialog":
+                    return "对话";
+                case "map_changed":
+                    return "换图";
+                case "blocked":
+                    return "被挡住";
+                case "off_path":
+                    return "偏离路线";
+                case "timeout":
+                    return "超时";
+                case "stopped":
+                    return "停止";
+                case "closed":
+                    return "连接断开";
+                case "bad_path":
+                    return "路线无效";
+                case "no_player":
+                    return "读不到人物";
+            }
+            if (lower.StartsWith("state:", StringComparison.Ordinal))
+            {
+                string state = reason.Substring(6);
+                if (string.Equals(state, "Event", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "剧情";
+                }
+                return "其他状态：" + state;
+            }
+            return reason;
+        }
+
+        public static string Clock(TimeSpan span)
+        {
+            if (span < TimeSpan.Zero)
+            {
+                span = TimeSpan.Zero;
+            }
+            int hours = (int)span.TotalHours;
+            if (hours > 0)
+            {
+                return hours.ToString(CultureInfo.InvariantCulture)
+                    + ":" + span.Minutes.ToString("00", CultureInfo.InvariantCulture)
+                    + ":" + span.Seconds.ToString("00", CultureInfo.InvariantCulture);
+            }
+            return span.Minutes.ToString("00", CultureInfo.InvariantCulture)
+                + ":" + span.Seconds.ToString("00", CultureInfo.InvariantCulture);
+        }
+
+        public static Color ReasonColor(string reason, bool active)
+        {
+            if (active)
+            {
+                return Theme.Running;
+            }
+            if (string.IsNullOrEmpty(reason))
+            {
+                return Theme.Muted;
+            }
+            string lower = reason.ToLowerInvariant();
+            if (lower == "arrived")
+            {
+                return Theme.Running;
+            }
+            if (lower == "battle" || lower == "dialog" || lower == "map_changed"
+                || lower == "stopped" || lower.StartsWith("state:", StringComparison.Ordinal))
+            {
+                return Theme.Warning;
+            }
+            return Theme.Error;
+        }
+    }
+
+    /// <summary>The hand-drawn walk page: base map, three route styles, markers and an info column.</summary>
+    internal sealed class WalkView : Control
+    {
+        private WalkData _data;
+        private string _message;
+        private BaseMap _map;
+
+        public WalkView()
+        {
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint
+                | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            BackColor = Theme.Panel;
+            ForeColor = Theme.Text;
+            Font = Theme.Body;
+        }
+
+        public void SetWalk(WalkData data, string message, BaseMap map)
+        {
+            _data = data;
+            _message = message;
+            _map = map;
+            Invalidate();
+        }
+
+        public void Reset()
+        {
+            _data = null;
+            _message = null;
+            _map = null;
+            Invalidate();
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            e.Graphics.Clear(Theme.Panel);
+            if (_data == null)
+            {
+                DrawEmpty(e.Graphics);
+                return;
+            }
+            int infoWidth = Width / 5;
+            if (infoWidth < 200)
+            {
+                infoWidth = 200;
+            }
+            if (infoWidth > 300)
+            {
+                infoWidth = 300;
+            }
+            if (infoWidth > Width - 100)
+            {
+                infoWidth = Math.Max(100, Width - 100);
+            }
+            int legendHeight = Height >= 160 ? 28 : 0;
+            var mapRect = new Rectangle(0, 0, Width - infoWidth, Height - legendHeight);
+            var legendRect = new Rectangle(0, mapRect.Bottom, Width - infoWidth, legendHeight);
+            var infoRect = new Rectangle(Width - infoWidth, 0, infoWidth, Height);
+            DrawMap(e.Graphics, mapRect);
+            if (legendHeight > 0)
+            {
+                DrawLegend(e.Graphics, legendRect);
+            }
+            using (var pen = new Pen(Theme.Border, 1F))
+            {
+                e.Graphics.DrawLine(pen, infoRect.X, 0, infoRect.X, Height);
+            }
+            DrawInfo(e.Graphics, infoRect);
+        }
+
+        private void DrawLegend(Graphics graphics, Rectangle rect)
+        {
+            using (var brush = new SolidBrush(Theme.Panel))
+            {
+                graphics.FillRectangle(brush, rect);
+            }
+            using (var pen = new Pen(Theme.Border, 1F))
+            {
+                graphics.DrawLine(pen, rect.Left, rect.Top, rect.Right, rect.Top);
+            }
+            int y = rect.Top + rect.Height / 2;
+            int x = rect.Left + 12;
+            using (var pen = new Pen(Theme.Muted, 1.6F))
+            {
+                pen.DashStyle = DashStyle.Dot;
+                pen.DashCap = DashCap.Round;
+                graphics.DrawLine(pen, x, y, x + 18, y);
+            }
+            x += 24;
+            x = DrawLegendText(graphics, "走过", x, y);
+            x += 10;
+            using (var pen = new Pen(Theme.Accent, 3F))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                graphics.DrawLine(pen, x, y, x + 18, y);
+            }
+            x += 24;
+            x = DrawLegendText(graphics, "正在走的段", x, y);
+            x += 10;
+            using (var pen = new Pen(Theme.AccentSoft, 2F))
+            {
+                pen.DashStyle = DashStyle.Dash;
+                graphics.DrawLine(pen, x, y, x + 18, y);
+            }
+            x += 24;
+            x = DrawLegendText(graphics, "还没走", x, y);
+            x += 10;
+            using (var brush = new SolidBrush(Theme.Text))
+            {
+                graphics.FillEllipse(brush, x + 6, y - 4, 8, 8);
+            }
+            x = DrawLegendText(graphics, "人", x + 18, y);
+            x += 10;
+            using (var pen = new Pen(Theme.Warning, 2F))
+            {
+                graphics.DrawEllipse(pen, x + 6, y - 4, 8, 8);
+            }
+            DrawLegendText(graphics, "目标", x + 18, y);
+        }
+
+        private static int DrawLegendText(Graphics graphics, string text, int x, int y)
+        {
+            Size size = TextRenderer.MeasureText(text, Theme.Small);
+            TextRenderer.DrawText(graphics, text, Theme.Small,
+                new Rectangle(x, y - size.Height / 2, size.Width, size.Height), Theme.Muted,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine
+                    | TextFormatFlags.NoPrefix);
+            return x + size.Width;
+        }
+
+        private void DrawEmpty(Graphics graphics)
+        {
+            string text = _message;
+            if (string.IsNullOrEmpty(text))
+            {
+                text = "还没有走路数据";
+            }
+            var rect = new Rectangle(24, 24, Math.Max(20, Width - 48), Math.Max(20, Height - 48));
+            TextRenderer.DrawText(
+                graphics,
+                text,
+                Theme.Body,
+                rect,
+                Theme.Muted,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
+                    | TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+        }
+
+        private void DrawMap(Graphics graphics, Rectangle rect)
+        {
+            graphics.SetClip(rect);
+            using (var brush = new SolidBrush(Theme.Background))
+            {
+                graphics.FillRectangle(brush, rect);
+            }
+            int minX;
+            int minY;
+            int maxX;
+            int maxY;
+            if (!WalkGeometry.CellBounds(_data, 3, out minX, out minY, out maxX, out maxY))
+            {
+                graphics.ResetClip();
+                return;
+            }
+            var area = new RectangleF(rect.X + 16, rect.Y + 16, rect.Width - 32, rect.Height - 32);
+            if (area.Width < 4F || area.Height < 4F)
+            {
+                area = new RectangleF(rect.X + 2, rect.Y + 2, Math.Max(1, rect.Width - 4), Math.Max(1, rect.Height - 4));
+            }
+            float cell;
+            float offsetX;
+            float offsetY;
+            WalkGeometry.Fit(area, minX, minY, maxX, maxY, out cell, out offsetX, out offsetY);
+
+            int vx0 = (int)Math.Floor((rect.Left - offsetX) / cell);
+            int vx1 = (int)Math.Ceiling((rect.Right - offsetX) / cell);
+            int vy0 = (int)Math.Floor((rect.Top - offsetY) / cell);
+            int vy1 = (int)Math.Ceiling((rect.Bottom - offsetY) / cell);
+
+            if (_map != null)
+            {
+                DrawBaseMap(graphics, cell, offsetX, offsetY, vx0, vx1, vy0, vy1);
+            }
+            if (cell >= 8F && _map != null)
+            {
+                using (var pen = new Pen(Theme.MapGrid, 1F))
+                {
+                    for (int x = vx0; x <= vx1; x++)
+                    {
+                        float px = offsetX + x * cell;
+                        graphics.DrawLine(pen, px, rect.Top, px, rect.Bottom);
+                    }
+                    for (int y = vy0; y <= vy1; y++)
+                    {
+                        float py = offsetY + y * cell;
+                        graphics.DrawLine(pen, rect.Left, py, rect.Right, py);
+                    }
+                }
+            }
+            DrawRoute(graphics, cell, offsetX, offsetY);
+            graphics.ResetClip();
+        }
+
+        private void DrawBaseMap(
+            Graphics graphics,
+            float cell,
+            float offsetX,
+            float offsetY,
+            int vx0,
+            int vx1,
+            int vy0,
+            int vy1)
+        {
+            if (_map.Kind == MapKind.Interior)
+            {
+                using (var floor = new SolidBrush(Theme.MapFloor))
+                using (var walk = new SolidBrush(Theme.MapWalk))
+                using (var wall = new SolidBrush(Theme.MapWall))
+                {
+                    for (int y = Math.Max(0, vy0); y <= Math.Min(_map.Rows.Count - 1, vy1); y++)
+                    {
+                        string row = _map.Rows[y];
+                        if (row == null)
+                        {
+                            continue;
+                        }
+                        for (int x = Math.Max(0, vx0); x <= Math.Min(row.Length - 1, vx1); x++)
+                        {
+                            char ch = row[x];
+                            Brush brush = wall;
+                            if (ch == '0')
+                            {
+                                brush = floor;
+                            }
+                            else if (ch == '2' || ch == '3' || ch == '4' || ch == '5')
+                            {
+                                brush = walk;
+                            }
+                            graphics.FillRectangle(brush, offsetX + x * cell, offsetY + y * cell,
+                                cell + 0.5F, cell + 0.5F);
+                        }
+                    }
+                }
+                return;
+            }
+            if (_map.Kind == MapKind.World)
+            {
+                int mapMinX = _map.OriginX;
+                int mapMinY = _map.OriginY;
+                int mapMaxX = mapMinX + _map.WorldWidth - 1;
+                int mapMaxY = mapMinY + _map.WorldHeight - 1;
+                using (var sea = new SolidBrush(Theme.MapSea))
+                using (var mountain = new SolidBrush(Theme.MapMountain))
+                using (var grass = new SolidBrush(Theme.MapGrass))
+                using (var land = new SolidBrush(Theme.MapLand))
+                {
+                    for (int y = Math.Max(mapMinY, vy0); y <= Math.Min(mapMaxY, vy1); y++)
+                    {
+                        for (int x = Math.Max(mapMinX, vx0); x <= Math.Min(mapMaxX, vx1); x++)
+                        {
+                            int attr = _map.WorldAttr(x, y);
+                            if (attr < 0)
+                            {
+                                continue;
+                            }
+                            Brush brush = land;
+                            if (attr == 16)
+                            {
+                                brush = sea;
+                            }
+                            else if (attr == 19 || attr == 27)
+                            {
+                                brush = mountain;
+                            }
+                            else if (attr == 3 || attr == 4)
+                            {
+                                brush = grass;
+                            }
+                            graphics.FillRectangle(brush, offsetX + x * cell, offsetY + y * cell,
+                                cell + 0.5F, cell + 0.5F);
+                        }
+                    }
+                }
+            }
+        }
+
+        private void DrawRoute(Graphics graphics, float cell, float offsetX, float offsetY)
+        {
+            var data = _data;
+            if (data.Path.Count == 0 && !data.HasGoal)
+            {
+                return;
+            }
+
+            int walked = data.Steps;
+            if (walked <= 0)
+            {
+                walked = data.Index;
+            }
+            if (walked < 0)
+            {
+                walked = 0;
+            }
+            if (walked >= data.Path.Count)
+            {
+                walked = Math.Max(0, data.Path.Count - 1);
+            }
+            int toIndex = -1;
+            bool hasSegment = data.Segment != null && data.Segment.HasFrom && data.Segment.HasTo;
+            if (hasSegment)
+            {
+                toIndex = IndexOf(data.Path, data.Segment.To);
+            }
+
+            if (data.Path.Count > 1)
+            {
+                int from = hasSegment && toIndex >= 0 ? toIndex : walked;
+                if (from < data.Path.Count - 1)
+                {
+                    using (var pen = new Pen(Theme.AccentSoft, 2F))
+                    {
+                        pen.DashStyle = DashStyle.Dash;
+                        pen.StartCap = LineCap.Round;
+                        pen.EndCap = LineCap.Round;
+                        DrawPath(graphics, pen, data.Path, from, data.Path.Count - 1, cell, offsetX, offsetY);
+                    }
+                }
+            }
+            if (walked > 0)
+            {
+                using (var pen = new Pen(Theme.Muted, 1.6F))
+                {
+                    pen.DashStyle = DashStyle.Dot;
+                    pen.DashCap = DashCap.Round;
+                    pen.StartCap = LineCap.Round;
+                    pen.EndCap = LineCap.Round;
+                    DrawPath(graphics, pen, data.Path, 0, walked, cell, offsetX, offsetY);
+                }
+            }
+            if (hasSegment)
+            {
+                using (var pen = new Pen(Theme.Accent, Math.Min(8F, Math.Max(3F, cell * 0.2F))))
+                {
+                    pen.StartCap = LineCap.Round;
+                    pen.EndCap = LineCap.Round;
+                    pen.LineJoin = LineJoin.Round;
+                    graphics.DrawLine(pen,
+                        Center(data.Segment.From, cell, offsetX, offsetY),
+                        Center(data.Segment.To, cell, offsetX, offsetY));
+                }
+            }
+
+            if (data.HasGoal && data.Path.Count > 0)
+            {
+                var last = data.Path[data.Path.Count - 1];
+                if (last.X != data.Goal.X || last.Y != data.Goal.Y)
+                {
+                    using (var pen = new Pen(Theme.MutedFaint, 1.4F))
+                    {
+                        pen.DashStyle = DashStyle.Dash;
+                        graphics.DrawLine(pen,
+                            Center(last, cell, offsetX, offsetY),
+                            Center(data.Goal, cell, offsetX, offsetY));
+                    }
+                }
+            }
+
+            foreach (var turn in data.Turns)
+            {
+                Point point;
+                if (turn.HasCell)
+                {
+                    point = turn.Cell;
+                }
+                else
+                {
+                    point = new Point((int)Math.Round(turn.AtX), (int)Math.Round(turn.AtY));
+                }
+                float cx = offsetX + (point.X + 0.5F) * cell;
+                float cy = offsetY + (point.Y + 0.5F) * cell;
+                float radius = Math.Min(6F, Math.Max(2F, cell * 0.1F));
+                if (turn.Ok)
+                {
+                    using (var brush = new SolidBrush(Theme.Muted))
+                    {
+                        graphics.FillEllipse(brush, cx - radius, cy - radius, radius * 2F, radius * 2F);
+                    }
+                }
+                else
+                {
+                    using (var pen = new Pen(Theme.Warning, 2F))
+                    {
+                        graphics.DrawLine(pen, cx - radius, cy - radius, cx + radius, cy + radius);
+                        graphics.DrawLine(pen, cx + radius, cy - radius, cx - radius, cy + radius);
+                    }
+                }
+            }
+
+            if (data.HasGoal)
+            {
+                float cx = offsetX + (data.Goal.X + 0.5F) * cell;
+                float cy = offsetY + (data.Goal.Y + 0.5F) * cell;
+                float radius = Math.Min(14F, Math.Max(4F, cell * 0.33F));
+                using (var pen = new Pen(Theme.Warning, 2.4F))
+                {
+                    graphics.DrawEllipse(pen, cx - radius, cy - radius, radius * 2F, radius * 2F);
+                }
+            }
+
+            if (data.HasCell || data.Path.Count > 0)
+            {
+                Point person = data.HasCell ? data.Cell : data.Path[walked];
+                float cx = offsetX + (person.X + 0.5F) * cell;
+                float cy = offsetY + (person.Y + 0.5F) * cell;
+                float radius = Math.Min(12F, Math.Max(3F, cell * 0.3F));
+                using (var brush = new SolidBrush(Theme.Text))
+                {
+                    graphics.FillEllipse(brush, cx - radius, cy - radius, radius * 2F, radius * 2F);
+                }
+                using (var pen = new Pen(Theme.Background, 1.4F))
+                {
+                    graphics.DrawEllipse(pen, cx - radius, cy - radius, radius * 2F, radius * 2F);
+                }
+            }
+        }
+
+        private static void DrawPath(
+            Graphics graphics,
+            Pen pen,
+            List<Point> path,
+            int start,
+            int end,
+            float cell,
+            float offsetX,
+            float offsetY)
+        {
+            for (int i = start; i < end; i++)
+            {
+                if (i < 0 || i + 1 >= path.Count)
+                {
+                    break;
+                }
+                graphics.DrawLine(pen,
+                    Center(path[i], cell, offsetX, offsetY),
+                    Center(path[i + 1], cell, offsetX, offsetY));
+            }
+        }
+
+        private static PointF Center(Point point, float cell, float offsetX, float offsetY)
+        {
+            return new PointF(offsetX + (point.X + 0.5F) * cell, offsetY + (point.Y + 0.5F) * cell);
+        }
+
+        private static int IndexOf(List<Point> path, Point point)
+        {
+            for (int i = 0; i < path.Count; i++)
+            {
+                if (path[i].X == point.X && path[i].Y == point.Y)
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        private void DrawInfo(Graphics graphics, Rectangle rect)
+        {
+            int x = rect.X + 16;
+            int y = rect.Y + 14;
+            int width = rect.Width - 30;
+            if (width < 40)
+            {
+                return;
+            }
+            graphics.SetClip(rect);
+            y += DrawText(graphics, "走路", Theme.Small, Theme.Muted, x, y, width) + 3;
+            string label = _data.Label;
+            if (string.IsNullOrEmpty(label))
+            {
+                label = "没有说明";
+            }
+            y += DrawText(graphics, label, Theme.Title, Theme.Text, x, y, width) + 4;
+            y += DrawText(graphics, "地图 " + _data.Map.ToString(CultureInfo.InvariantCulture),
+                Theme.Body, Theme.Muted, x, y, width) + 2;
+            if (_data.HasGoal)
+            {
+                y += DrawText(graphics, "目标 (" + _data.Goal.X.ToString(CultureInfo.InvariantCulture)
+                    + "," + _data.Goal.Y.ToString(CultureInfo.InvariantCulture) + ")",
+                    Theme.MonoSmall, Theme.Muted, x, y, width) + 2;
+            }
+            y += 6;
+
+            using (var pen = new Pen(Theme.Border, 1F))
+            {
+                graphics.DrawLine(pen, x, y, x + width, y);
+            }
+            y += 10;
+
+            var segment = _data.Segment;
+            if (segment != null && segment.Of > 0)
+            {
+                y += DrawText(graphics, "第 " + segment.N.ToString(CultureInfo.InvariantCulture)
+                    + "/" + segment.Of.ToString(CultureInfo.InvariantCulture) + " 段",
+                    Theme.BodyBold, Theme.Text, x, y, width) + 2;
+                if (segment.HasFrom && segment.HasTo)
+                {
+                    y += DrawText(graphics, "(" + segment.From.X.ToString(CultureInfo.InvariantCulture)
+                        + "," + segment.From.Y.ToString(CultureInfo.InvariantCulture) + ") → ("
+                        + segment.To.X.ToString(CultureInfo.InvariantCulture) + ","
+                        + segment.To.Y.ToString(CultureInfo.InvariantCulture) + ")",
+                        Theme.Mono, Theme.Text, x, y, width) + 4;
+                }
+            }
+            else
+            {
+                y += DrawText(graphics, "当前没有分段", Theme.Body, Theme.Muted, x, y, width) + 4;
+            }
+
+            int walked = _data.Steps;
+            if (walked <= 0)
+            {
+                walked = _data.Index;
+            }
+            if (walked < 0)
+            {
+                walked = 0;
+            }
+            int total = _data.Path.Count > 0 ? _data.Path.Count - 1 : walked;
+            if (total < walked)
+            {
+                total = walked;
+            }
+            y += DrawText(graphics, "已走 " + walked.ToString(CultureInfo.InvariantCulture)
+                + "/" + total.ToString(CultureInfo.InvariantCulture) + " 格",
+                Theme.Body, Theme.Text, x, y, width) + 2;
+
+            int turnsOk = 0;
+            foreach (var turn in _data.Turns)
+            {
+                if (turn.Ok)
+                {
+                    turnsOk++;
+                }
+            }
+            y += DrawText(graphics, "拐角 " + _data.Turns.Count.ToString(CultureInfo.InvariantCulture)
+                + " 个 · 不停 " + turnsOk.ToString(CultureInfo.InvariantCulture),
+                Theme.Body, Theme.Text, x, y, width) + 2;
+
+            TimeSpan elapsed = TimeSpan.Zero;
+            if (_data.StartedAt != DateTime.MinValue)
+            {
+                DateTime end = _data.EndedAt != DateTime.MinValue ? _data.EndedAt : DateTime.UtcNow;
+                elapsed = end - _data.StartedAt;
+                if (elapsed < TimeSpan.Zero)
+                {
+                    elapsed = TimeSpan.Zero;
+                }
+            }
+            double perCell = walked > 0 ? elapsed.TotalSeconds / walked : 0D;
+            y += DrawText(graphics, "用时 " + WalkText.Clock(elapsed) + " · "
+                + perCell.ToString("0.00", CultureInfo.InvariantCulture) + " 秒/格",
+                Theme.MonoSmall, Theme.Muted, x, y, width) + 8;
+
+            string status = _data.Active ? "正在走" : WalkText.ReasonText(_data.Reason);
+            y += DrawText(graphics, "状态", Theme.Small, Theme.Muted, x, y, width) + 2;
+            y += DrawText(graphics, status, Theme.BodyBold,
+                WalkText.ReasonColor(_data.Reason, _data.Active), x, y, width);
+            graphics.ResetClip();
+        }
+
+        private static int DrawText(Graphics graphics, string text, Font font, Color color, int x, int y, int width)
+        {
+            if (text == null)
+            {
+                text = "";
+            }
+            var flags = TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix;
+            Size size = TextRenderer.MeasureText(graphics, text, font, new Size(width, int.MaxValue), flags);
+            if (size.Height < 1)
+            {
+                size.Height = font.Height;
+            }
+            TextRenderer.DrawText(graphics, text, font, new Rectangle(x, y, width, size.Height), color, flags);
+            return size.Height;
+        }
+    }
+
+    internal enum MapKind
+    {
+        None,
+        Interior,
+        World,
+    }
+
+    /// <summary>A cached collision layer or a stitched world-cell window.</summary>
+    internal sealed class BaseMap
+    {
+        public MapKind Kind;
+        public int Layer;
+        public readonly List<string> Rows = new List<string>();
+        public int OriginX;
+        public int OriginY;
+        public int WorldWidth;
+        public int WorldHeight;
+        public int[] World;
+
+        public int WorldAttr(int x, int y)
+        {
+            if (World == null || x < OriginX || y < OriginY)
+            {
+                return -1;
+            }
+            int column = x - OriginX;
+            int row = y - OriginY;
+            if (column < 0 || row < 0 || column >= WorldWidth || row >= WorldHeight)
+            {
+                return -1;
+            }
+            return World[row * WorldWidth + column];
+        }
+
+        public static BaseMap ParseCollision(Dictionary<string, object> reply)
+        {
+            if (reply == null || !Json.Bool(Json.Field(reply, "ok"), true))
+            {
+                return null;
+            }
+            object collisionObject = Json.Field(reply, "collision");
+            if (collisionObject == null)
+            {
+                collisionObject = reply;
+            }
+            var collision = Json.Map(collisionObject);
+            object layersObject = collision != null ? Json.Field(collision, "layers") : collisionObject;
+            var layers = Json.Array(layersObject);
+            if (layers == null || layers.Length == 0)
+            {
+                return null;
+            }
+            int search = 0;
+            if (collision != null)
+            {
+                search = Json.Int(Json.Field(collision, "searchLayer"), 0);
+            }
+            if (search < 0 || search >= layers.Length)
+            {
+                search = 0;
+            }
+            object layerObject = layers[search];
+            var layer = Json.Map(layerObject);
+            object rowsObject = layer != null ? Json.Field(layer, "rows") : layerObject;
+            var rows = Json.Array(rowsObject);
+            if (rows == null || rows.Length == 0)
+            {
+                return null;
+            }
+            var map = new BaseMap();
+            map.Kind = MapKind.Interior;
+            map.Layer = search;
+            foreach (var item in rows)
+            {
+                string row = Json.Str(item);
+                map.Rows.Add(row == null ? "" : row);
+            }
+            return map;
+        }
+
+        public static BaseMap ParseCells(Dictionary<string, object> reply, int fallbackX, int fallbackY)
+        {
+            if (reply == null || !Json.Bool(Json.Field(reply, "ok"), true))
+            {
+                return null;
+            }
+            object cellsObject = Json.Field(reply, "cells");
+            var cells = Json.Map(cellsObject);
+            if (cells == null)
+            {
+                var direct = Json.Array(cellsObject);
+                if (direct == null)
+                {
+                    return null;
+                }
+                cells = new Dictionary<string, object>();
+                cells["attr"] = direct;
+                cells["origin"] = Json.Field(reply, "origin");
+            }
+            int originX = fallbackX;
+            int originY = fallbackY;
+            Point origin;
+            if (Json.TryPoint(Json.Field(cells, "origin"), out origin)
+                || Json.TryPoint(Json.Field(reply, "origin"), out origin))
+            {
+                originX = origin.X;
+                originY = origin.Y;
+            }
+            else
+            {
+                originX = Json.Int(Json.Field(cells, "originX"), Json.Int(Json.Field(cells, "x"), originX));
+                originY = Json.Int(Json.Field(cells, "originY"), Json.Int(Json.Field(cells, "y"), originY));
+            }
+
+            object attrObject = Json.Field(cells, "attr");
+            if (attrObject == null)
+            {
+                attrObject = Json.Field(cells, "attrs");
+            }
+            if (attrObject == null)
+            {
+                attrObject = Json.Field(cells, "data");
+            }
+            if (attrObject == null)
+            {
+                attrObject = Json.Field(cells, "terrain");
+            }
+            if (attrObject == null)
+            {
+                attrObject = Json.Field(cells, "rows");
+            }
+            var attr = Json.Array(attrObject);
+            if (attr == null || attr.Length == 0)
+            {
+                return null;
+            }
+
+            int declaredWidth = Json.Int(Json.Field(cells, "w"), 0);
+            if (declaredWidth <= 0)
+            {
+                declaredWidth = Json.Int(Json.Field(cells, "width"), 0);
+            }
+            if (declaredWidth <= 0)
+            {
+                declaredWidth = Json.Int(Json.Field(cells, "cols"), 0);
+            }
+            int declaredHeight = Json.Int(Json.Field(cells, "h"), 0);
+            if (declaredHeight <= 0)
+            {
+                declaredHeight = Json.Int(Json.Field(cells, "height"), 0);
+            }
+            if (declaredHeight <= 0)
+            {
+                declaredHeight = Json.Int(Json.Field(cells, "rows"), 0);
+            }
+
+            var values = new List<int[]>();
+            var firstRow = Json.Array(attr[0]);
+            if (firstRow != null)
+            {
+                foreach (var item in attr)
+                {
+                    var rowArray = Json.Array(item);
+                    if (rowArray == null)
+                    {
+                        values.Add(new int[] { Json.Int(item, -1) });
+                        continue;
+                    }
+                    var row = new int[rowArray.Length];
+                    for (int i = 0; i < rowArray.Length; i++)
+                    {
+                        row[i] = Json.Int(rowArray[i], -1);
+                    }
+                    values.Add(row);
+                }
+            }
+            else
+            {
+                int width = declaredWidth;
+                if (width <= 0)
+                {
+                    int radius = Json.Int(Json.Field(cells, "r"), 0);
+                    if (radius > 0)
+                    {
+                        width = radius * 2 + 1;
+                    }
+                    else
+                    {
+                        int side = (int)Math.Sqrt(attr.Length);
+                        width = side > 0 && side * side == attr.Length ? side : attr.Length;
+                    }
+                }
+                if (width <= 0)
+                {
+                    width = 1;
+                }
+                int height = declaredHeight;
+                if (height <= 0)
+                {
+                    height = (attr.Length + width - 1) / width;
+                }
+                for (int y = 0; y < height; y++)
+                {
+                    var row = new int[width];
+                    for (int x = 0; x < width; x++)
+                    {
+                        int index = y * width + x;
+                        row[x] = index < attr.Length ? Json.Int(attr[index], -1) : -1;
+                    }
+                    values.Add(row);
+                }
+            }
+
+            int mapWidth = 0;
+            foreach (var row in values)
+            {
+                if (row.Length > mapWidth)
+                {
+                    mapWidth = row.Length;
+                }
+            }
+            if (declaredWidth > mapWidth)
+            {
+                mapWidth = declaredWidth;
+            }
+            if (mapWidth <= 0)
+            {
+                return null;
+            }
+            if (declaredHeight > 0 && values.Count > declaredHeight)
+            {
+                values.RemoveRange(declaredHeight, values.Count - declaredHeight);
+            }
+            int mapHeight = declaredHeight > values.Count ? declaredHeight : values.Count;
+
+            var map = new BaseMap();
+            map.Kind = MapKind.World;
+            map.OriginX = originX;
+            map.OriginY = originY;
+            map.WorldWidth = mapWidth;
+            map.WorldHeight = mapHeight;
+            map.World = new int[mapWidth * mapHeight];
+            for (int i = 0; i < map.World.Length; i++)
+            {
+                map.World[i] = -1;
+            }
+            for (int y = 0; y < values.Count; y++)
+            {
+                for (int x = 0; x < mapWidth; x++)
+                {
+                    map.World[y * mapWidth + x] = x < values[y].Length ? values[y][x] : -1;
+                }
+            }
+            return map;
+        }
+
+        public void Merge(BaseMap other)
+        {
+            if (other == null || other.Kind != MapKind.World || other.World == null
+                || other.WorldWidth <= 0 || other.WorldHeight <= 0)
+            {
+                return;
+            }
+            if (Kind != MapKind.World || World == null)
+            {
+                Kind = MapKind.World;
+                OriginX = other.OriginX;
+                OriginY = other.OriginY;
+                WorldWidth = other.WorldWidth;
+                WorldHeight = other.WorldHeight;
+                World = new int[WorldWidth * WorldHeight];
+                for (int i = 0; i < World.Length; i++)
+                {
+                    World[i] = -1;
+                }
+                CopyFrom(other);
+                return;
+            }
+
+            int minX = Math.Min(OriginX, other.OriginX);
+            int minY = Math.Min(OriginY, other.OriginY);
+            int maxX = Math.Max(OriginX + WorldWidth, other.OriginX + other.WorldWidth);
+            int maxY = Math.Max(OriginY + WorldHeight, other.OriginY + other.WorldHeight);
+            int width = maxX - minX;
+            int height = maxY - minY;
+            var merged = new int[width * height];
+            for (int i = 0; i < merged.Length; i++)
+            {
+                merged[i] = -1;
+            }
+            var old = new BaseMap();
+            old.Kind = MapKind.World;
+            old.OriginX = OriginX;
+            old.OriginY = OriginY;
+            old.WorldWidth = WorldWidth;
+            old.WorldHeight = WorldHeight;
+            old.World = World;
+            OriginX = minX;
+            OriginY = minY;
+            WorldWidth = width;
+            WorldHeight = height;
+            World = merged;
+            CopyFrom(old);
+            CopyFrom(other);
+        }
+
+        private void CopyFrom(BaseMap source)
+        {
+            for (int y = 0; y < source.WorldHeight; y++)
+            {
+                for (int x = 0; x < source.WorldWidth; x++)
+                {
+                    int value = source.World[y * source.WorldWidth + x];
+                    if (value < 0)
+                    {
+                        continue;
+                    }
+                    int targetX = source.OriginX + x - OriginX;
+                    int targetY = source.OriginY + y - OriginY;
+                    if (targetX < 0 || targetY < 0 || targetX >= WorldWidth || targetY >= WorldHeight)
+                    {
+                        continue;
+                    }
+                    World[targetY * WorldWidth + targetX] = value;
+                }
+            }
+        }
     }
 
     /// <summary>The last /query connection to one bridge; reconnects after a timeout.</summary>
@@ -2002,6 +4492,11 @@ namespace FfprBridgeGui
         private int _id;
 
         public Dictionary<string, object> Query(int port, string op, int timeoutMs)
+        {
+            return Query(port, op, null, timeoutMs);
+        }
+
+        public Dictionary<string, object> Query(int port, string op, string fields, int timeoutMs)
         {
             lock (_gate)
             {
@@ -2028,7 +4523,9 @@ namespace FfprBridgeGui
                         }
                         var id = ++_id;
                         var body = "{\"id\":" + id.ToString(CultureInfo.InvariantCulture)
-                            + ",\"op\":\"" + op + "\"}";
+                            + ",\"op\":\"" + op + "\""
+                            + (fields == null || fields.Length == 0 ? "" : "," + fields)
+                            + "}";
                         var bytes = Encoding.UTF8.GetBytes(body);
                         _socket.SendAsync(
                             new ArraySegment<byte>(bytes),
@@ -2281,6 +4778,38 @@ namespace FfprBridgeGui
             }
         }
 
+        public static long Long(object value, long fallback)
+        {
+            if (value == null)
+            {
+                return fallback;
+            }
+            try
+            {
+                return Convert.ToInt64(value, CultureInfo.InvariantCulture);
+            }
+            catch (Exception)
+            {
+                return fallback;
+            }
+        }
+
+        public static double Double(object value, double fallback)
+        {
+            if (value == null)
+            {
+                return fallback;
+            }
+            try
+            {
+                return Convert.ToDouble(value, CultureInfo.InvariantCulture);
+            }
+            catch (Exception)
+            {
+                return fallback;
+            }
+        }
+
         public static bool Bool(object value, bool fallback)
         {
             if (value is bool)
@@ -2288,6 +4817,29 @@ namespace FfprBridgeGui
                 return (bool)value;
             }
             return fallback;
+        }
+
+        public static bool TryPoint(object value, out Point point)
+        {
+            point = Point.Empty;
+            var array = value as object[];
+            if (array != null && array.Length >= 2)
+            {
+                point = new Point(Int(array[0], 0), Int(array[1], 0));
+                return true;
+            }
+            var map = value as Dictionary<string, object>;
+            if (map != null)
+            {
+                object x = Field(map, "x");
+                object y = Field(map, "y");
+                if (x != null && y != null)
+                {
+                    point = new Point(Int(x, 0), Int(y, 0));
+                    return true;
+                }
+            }
+            return false;
         }
 
         public static DateTime Time(string text)
