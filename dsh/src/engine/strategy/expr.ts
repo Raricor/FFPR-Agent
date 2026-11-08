@@ -19,7 +19,8 @@ import { ELEMENTS, toElement } from "../elements.ts";
 import type { BattleEvent, BattleSnapshot, Side, SnapshotUnit } from "./types.ts";
 import { StrategyError as StrategyFailure } from "./types.ts";
 
-export class ExpressionError extends Error {
+/** A parse error is a kind of StrategyFailure, so a hand-built table cannot break a battle. */
+export class ExpressionError extends StrategyFailure {
   /** 1-based character position in the expression. */
   readonly position: number;
 
@@ -336,14 +337,36 @@ class Parser {
   }
 
   private parseCompare(inPredicate: boolean): Expression {
+    const leftStart = this.peek().offset;
     const left = this.parseValue(inPredicate);
     const token = this.peek();
     if (token.kind === "op") {
       this.index++;
+      const rightStart = this.peek().offset;
       const right = this.parseValue(inPredicate);
+      if (token.value !== "==" && token.value !== "!=") {
+        this.ensureOrderedNumeric(left, token.value, leftStart, token.offset);
+        this.ensureOrderedNumeric(right, token.value, rightStart, this.peek().offset);
+      }
       return { kind: "compare", op: token.value, left, right };
     }
     return left;
+  }
+
+  /**
+   * Task 53: `ally.lowest(hp_pct) < 30` compares a unit with a number. The parser knows the
+   * type, so reject it here with the expression to write instead; the executor never sees it.
+   */
+  private ensureOrderedNumeric(
+    expression: Expression,
+    op: CompareOp,
+    start: number,
+    end: number,
+  ): void {
+    const type = expressionType(expression);
+    if (type !== "unit" && type !== "set" && type !== "all" && type !== "battle") return;
+    const text = this.source.slice(start, Math.max(start, end)).trim();
+    throw this.error(start, orderedComparisonMessage(type, text, op));
   }
 
   private parseValue(inPredicate: boolean): Expression {
@@ -703,6 +726,24 @@ function typeLabel(type: ValueKind): string {
       return "全体";
     case "battle":
       return "战斗";
+  }
+}
+
+function orderedComparisonMessage(type: ValueKind, text: string, op: CompareOp): string {
+  switch (type) {
+    case "unit": {
+      const side = text.startsWith("enemy") ? "enemy" : "ally";
+      const who = side === "enemy" ? "一个敌人" : "一个人";
+      return `「${text}」是${who},不是数;要比它的 HP 比例写「${text}.hp_pct < 30」,或者写「${side}.any(hp_pct < 30)」`;
+    }
+    case "set":
+      return `「${text}」是一个集合,不是数;要数人数写「${text}.alive」,比如「${text}.alive ${op} 3」`;
+    case "all":
+      return `「${text}」是「全体」,不是数;要数人数写「ally.alive」,比如「ally.alive ${op} 3」`;
+    case "battle":
+      return `「${text}」是战斗,不是数;要读秒数写「battle.seconds」,比如「battle.seconds ${op} 30」`;
+    default:
+      return `「${text}」不是数,不能写在 ${op} 两边`;
   }
 }
 

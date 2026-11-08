@@ -8,7 +8,8 @@ import { Game } from "../src/engine/game.ts";
 import type { Laptop } from "../src/engine/laptop.ts";
 import { fight, heldItems } from "../src/engine/skills/battle.ts";
 import { parseStrategy } from "../src/engine/strategy/index.ts";
-import type { Strategy } from "../src/engine/strategy/types.ts";
+import { StrategyRuntime } from "../src/engine/strategy/execute.ts";
+import type { BattleSnapshot, Strategy } from "../src/engine/strategy/types.ts";
 import type { FightTurn } from "../src/engine/skills/battle.ts";
 import { FakePilot } from "./fake-pilot.ts";
 import { FakeBattle, startRows } from "./fake-battle.ts";
@@ -288,4 +289,87 @@ void test("held items are read from the bag for the snapshot", async () => {
     maxTurns: 0,
   });
   assert.deepEqual(await heldItems(sim.pilot), { 恢复药: 4 });
+});
+const RUNTIME_SNAPSHOT: BattleSnapshot = {
+  allies: [{ name: "蕾娜", hp: 40, maxHp: 100, mp: 10 }],
+  enemies: [{ name: "哥布林", id: 1, hp: 50, maxHp: 100 }],
+  actor: "蕾娜",
+  turn: 1,
+};
+
+void test("a rule whose if cannot be evaluated is skipped and recorded once", () => {
+  const runtime = new StrategyRuntime();
+  const strategy: Strategy = {
+    version: 2,
+    roles: {},
+    reactions: [],
+    phases: [],
+    rules: [
+      { who: "all", if: "ally.lowest(hp_pct) < 30", do: "防御" },
+      { who: "all", do: "攻击" },
+    ],
+  };
+  const first = runtime.choices(strategy, RUNTIME_SNAPSHOT);
+  assert.equal(first.steps[0]?.action.command, "攻击");
+  const gaps = runtime.gaps();
+  assert.equal(gaps.length, 1);
+  assert.match(gaps[0]?.item ?? "", /规则 1出错:.*不是数/u);
+  const second = runtime.choices(strategy, RUNTIME_SNAPSHOT);
+  assert.equal(second.steps[0]?.action.command, "攻击");
+  assert.equal(runtime.gaps().length, 1, "the error is recorded only once");
+});
+
+void test("a phase whose when cannot be evaluated is passed over", () => {
+  const runtime = new StrategyRuntime();
+  const strategy: Strategy = {
+    version: 2,
+    roles: {},
+    reactions: [],
+    phases: [
+      {
+        name: "坏阶段",
+        when: "ally.lowest(hp_pct) < 30",
+        rules: [{ who: "all", do: "防御" }],
+      },
+      { name: "好阶段", when: "true", rules: [{ who: "all", do: "攻击" }] },
+    ],
+    rules: [],
+  };
+  const choice = runtime.choices(strategy, RUNTIME_SNAPSHOT);
+  assert.equal(choice.steps[0]?.basis, "阶段「好阶段」第 1 条");
+  assert.match(runtime.gaps()[0]?.item ?? "", /阶段「坏阶段」的 when出错:.*不是数/u);
+});
+
+void test("a reaction whose on cannot be evaluated does not block the next rule", () => {
+  const runtime = new StrategyRuntime();
+  const strategy: Strategy = {
+    version: 2,
+    roles: {},
+    reactions: [{ who: "all", on: "enemy.lowest(hp) < 30", do: "防御" }],
+    phases: [],
+    rules: [{ who: "all", do: "攻击" }],
+  };
+  const choice = runtime.choices(strategy, RUNTIME_SNAPSHOT);
+  assert.equal(choice.steps[0]?.action.command, "攻击");
+  assert.match(runtime.gaps()[0]?.item ?? "", /对策 1出错:.*不是数/u);
+});
+
+void test("a table that fails the static check falls back to attacking and says why", async () => {
+  const sim = new FakeBattle({
+    party: [{ name: "蕾娜", hp: 100, maxHp: 100, mp: 10, status: [] }],
+    enemies: [{ name: "哥布林", id: 1, hp: 100, maxHp: 100 }],
+    maxTurns: 1,
+  });
+  const bad: Strategy = {
+    version: 2,
+    roles: {},
+    reactions: [],
+    phases: [],
+    rules: [{ who: "all", if: "enemy.lowest(hp) < 30", do: "防御" }],
+  };
+  const result = await fight(sim.pilot, bad, 30);
+  assert.equal(result.ok, true);
+  assert.equal(sim.actions[0]?.command, "攻击");
+  assert.equal(result.gaps.length, 1);
+  assert.match(result.gaps[0]?.item ?? "", /策略表出错:.*不是数/u);
 });

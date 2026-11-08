@@ -20,11 +20,13 @@ import { evaluate, resolveTarget, type Target } from "./expr.ts";
 import { fromLegacy } from "./legacy.ts";
 import { parseAction, parseStrategy, type ParsedAction } from "./strategy.ts";
 import type { BattleEvent as RecordedEvent } from "../battle-record.ts";
+import { StrategyError as StrategyFailure } from "./types.ts";
 import type {
   BattleEvent,
   BattleSnapshot,
   SnapshotUnit,
   Strategy,
+  StrategyPhase,
   StrategyReaction,
   StrategyRule,
 } from "./types.ts";
@@ -65,13 +67,15 @@ export interface StrategyChoice {
   readonly skipped: readonly StrategySkip[];
 }
 
-/** A rule skipped twice because its item is gone (task 41). */
+/** A rule skipped twice because its item is gone (task 41), or a condition that could not run. */
 export interface StrategyGap {
   readonly item: string;
   /** How many the bag held when the gap was recorded (normally 0). */
   readonly held: number;
   readonly basis: string;
   readonly skips: number;
+  /** The StrategyFailure message when this entry records a broken condition (task 53). */
+  readonly error?: string;
 }
 
 interface PendingOrder {
@@ -234,6 +238,8 @@ export class StrategyRuntime {
   private readonly anyRound = new Map<string, number>();
   private readonly pending: PendingOrder[] = [];
   private readonly gapCounts = new Map<string, { gap: StrategyGap; seen: boolean }>();
+  /** Broken conditions, keyed by where they are; each is recorded once per battle (task 53). */
+  private readonly problems = new Map<string, StrategyGap>();
   private actions = 0;
 
   /** Forget queued effects whose result is now visible, or that waited too long. */
@@ -282,9 +288,45 @@ export class StrategyRuntime {
     if (entry.gap.skips >= 2) entry.seen = true;
   }
 
-  /** The rules whose item ran out at least twice this battle. */
+  /** The rules whose item ran out at least twice, plus conditions that failed to evaluate. */
   gaps(): StrategyGap[] {
-    return [...this.gapCounts.values()].filter((entry) => entry.seen).map((entry) => entry.gap);
+    const itemGaps = [...this.gapCounts.values()]
+      .filter((entry) => entry.seen)
+      .map((entry) => entry.gap);
+    return [...itemGaps, ...this.problems.values()];
+  }
+
+  /** Remember a StrategyFailure by where it happened; later repeats add nothing (task 53). */
+  noteProblem(basis: string, message: string): void {
+    if (this.problems.has(basis)) return;
+    this.problems.set(basis, {
+      item: `${basis}出错:${message}`,
+      held: 0,
+      basis,
+      skips: 1,
+      error: message,
+    });
+  }
+
+  /** A table that failed the static check is not used; say why once (task 53). */
+  noteTableProblem(errors: readonly string[]): void {
+    const message = errors.join(";");
+    if (message !== "") this.noteProblem("策略表", message);
+  }
+
+  /** Evaluate a condition, treating a StrategyFailure as false and recording it once. */
+  private holdsOrFalse(
+    expression: string | undefined,
+    snapshot: BattleSnapshot,
+    basis: string,
+  ): boolean {
+    try {
+      return holds(expression, snapshot);
+    } catch (error) {
+      if (!(error instanceof StrategyFailure)) throw error;
+      this.noteProblem(basis, error.message);
+      return false;
+    }
   }
 
   /** The round the party is in, from the actions done and the party size; not the ATB tick. */
@@ -346,55 +388,74 @@ export class StrategyRuntime {
       condition: string,
       expression: string | undefined,
     ): void => {
-      if (!actorMatches(rule.who, strategy, snapshot)) return;
-      const key = `${source}:${index}`;
-      const action = actionOf(rule.do);
-      const effect = action === null ? null : effectOf(action);
-      const target = action === null ? null : resolveStepTarget(rule.to, action, effect, snapshot);
-      const skip = (why: string): void => {
-        skipped.push({ rule: index, key, basis, text, why });
-      };
-      if (!holds(expression, snapshot)) return;
-      if (this.doneRules.has(key)) {
-        skip("这一战已经做过");
-        return;
+      try {
+        if (!actorMatches(rule.who, strategy, snapshot)) return;
+        const key = `${source}:${index}`;
+        const action = actionOf(rule.do);
+        const effect = action === null ? null : effectOf(action);
+        const target =
+          action === null ? null : resolveStepTarget(rule.to, action, effect, snapshot);
+        const skip = (why: string): void => {
+          skipped.push({ rule: index, key, basis, text, why });
+        };
+        if (!this.holdsOrFalse(expression, snapshot, basis)) return;
+        if (this.doneRules.has(key)) {
+          skip("这一战已经做过");
+          return;
+        }
+        if (action === null) {
+          skip("看不懂这个动作");
+          return;
+        }
+        // 11-05: bosses and notEscape encounters cannot be fled; leave this rule out so the
+        // next one fights instead, and record why.
+        if (action.command === "逃跑" && (snapshot.boss === true || snapshot.notEscape === true)) {
+          skip("这场逃不了");
+          return;
+        }
+        if (target === null && effect !== null) {
+          skip(effect === "revive" ? "没有倒下的人" : "没有可下手的目标");
+          return;
+        }
+        const step: StrategyStep = {
+          action,
+          target,
+          rule,
+          ruleIndex: index,
+          key,
+          basis,
+          text,
+          condition,
+          source,
+          once: rule.once === true,
+          effect,
+        };
+        const blocked = this.blockedReason(step, snapshot);
+        if (blocked !== null) {
+          skip(blocked);
+          return;
+        }
+        steps.push(step);
+      } catch (error) {
+        // Task 53: one broken rule is skipped; any other error still reaches the caller.
+        if (!(error instanceof StrategyFailure)) throw error;
+        this.noteProblem(basis, error.message);
       }
-      if (action === null) {
-        skip("看不懂这个动作");
-        return;
-      }
-      if (target === null && effect !== null) {
-        skip(effect === "revive" ? "没有倒下的人" : "没有可下手的目标");
-        return;
-      }
-      const step: StrategyStep = {
-        action,
-        target,
-        rule,
-        ruleIndex: index,
-        key,
-        basis,
-        text,
-        condition,
-        source,
-        once: rule.once === true,
-        effect,
-      };
-      const blocked = this.blockedReason(step, snapshot);
-      if (blocked !== null) {
-        skip(blocked);
-        return;
-      }
-      steps.push(step);
     };
 
     strategy.reactions.forEach((reaction: StrategyReaction, offset) => {
       const index = offset + 1;
-      if (!holds(reaction.on, snapshot)) return;
+      if (!this.holdsOrFalse(reaction.on, snapshot, `对策 ${index}`)) return;
       this.addReaction(add, reaction, index);
     });
 
-    const phase = strategy.phases.find((item) => holds(item.when, snapshot));
+    let phase: StrategyPhase | undefined;
+    for (const item of strategy.phases) {
+      if (this.holdsOrFalse(item.when, snapshot, `阶段「${item.name}」的 when`)) {
+        phase = item;
+        break;
+      }
+    }
     if (phase !== undefined) {
       phase.rules.forEach((rule, offset) => {
         add(
@@ -402,7 +463,7 @@ export class StrategyRuntime {
           offset + 1,
           "phase",
           `阶段「${phase.name}」第 ${offset + 1} 条`,
-          describeRule(rule),
+          describeSafe(rule),
           rule.if === undefined ? "" : conditionText(rule.if),
           rule.if,
         );
@@ -414,7 +475,7 @@ export class StrategyRuntime {
           offset + 1,
           "rules",
           `规则 ${offset + 1}`,
-          describeRule(rule),
+          describeSafe(rule),
           rule.if === undefined ? "" : conditionText(rule.if),
           rule.if,
         );
@@ -443,14 +504,14 @@ export class StrategyRuntime {
       index,
       "reaction",
       `对策 ${index}`,
-      describeReaction(reaction),
+      describeSafe(reaction),
       conditionText(reaction.on),
       reaction.if === undefined ? reaction.on : `(${reaction.on}) and (${reaction.if})`,
     );
   }
 }
 
-function fallbackSteps(strategy: Strategy, snapshot: BattleSnapshot): StrategyStep[] {
+export function fallbackSteps(strategy: Strategy, snapshot: BattleSnapshot): StrategyStep[] {
   const actor = snapshot.actor ?? "";
   const role = strategy.roles[actor] ?? "";
   const weakest = lowestAlly(snapshot);
@@ -489,6 +550,16 @@ function itemCount(snapshot: BattleSnapshot, wanted: string): number {
     if (name === wanted || name.includes(wanted) || wanted.includes(name)) total += count;
   }
   return total;
+}
+
+/** A broken expression still has to be described for the record; fall back to who/do. */
+function describeSafe(rule: StrategyRule | StrategyReaction): string {
+  try {
+    return "on" in rule ? describeReaction(rule) : describeRule(rule);
+  } catch (error) {
+    if (!(error instanceof StrategyFailure)) throw error;
+    return `${rule.who}:${rule.do}`;
+  }
 }
 
 function conditionText(expression: string | undefined): string {

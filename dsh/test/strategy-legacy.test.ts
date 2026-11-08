@@ -86,7 +86,7 @@ void test("a malformed old table fails with a Chinese message", () => {
   assert.throws(() => fromLegacy({ 蕾娜: [{ if: "self.hp", target: "不存在" }] }), StrategyError);
 });
 
-void test("every real tactics table converts and parses again", async (t) => {
+void test("every real tactics table converts; pre-existing type errors are reported", async (t) => {
   const candidates = [
     join(import.meta.dirname, "..", ".deps", "ds", "tactics-ff5.json"),
     join(import.meta.dirname, "..", "..", ".deps", "ds", "tactics-ff5.json"),
@@ -108,19 +108,27 @@ void test("every real tactics table converts and parses again", async (t) => {
   const raw = JSON.parse(body) as unknown;
   assert.ok(isRecord(raw));
   let tables = 0;
+  const failed: string[] = [];
   for (const [mapId, entry] of Object.entries(raw)) {
     assert.ok(isRecord(entry));
     const list = Array.isArray(entry.tables) ? entry.tables : undefined;
     assert.ok(Array.isArray(list), `地图 ${mapId} 没有 tables`);
     for (const table of list) {
       tables++;
-      const strategy = fromLegacy(table);
+      // 11-05: the live file now also holds 2.0 tables the tactician wrote (task 42).
+      const strategy = isRecord(table) && table.version === 2 ? table : fromLegacy(table);
       const result = parseStrategy(strategy);
       if (Array.isArray(result)) {
-        assert.fail(`地图 ${mapId} 第 ${tables} 套转换后解析失败:${result.join(";")}`);
+        // Task 53: the live file still has tables from before the unit/number check. They
+        // must be reported, not rewritten; any other parse failure is still a real failure.
+        assert.ok(
+          result.every((problem) => problem.includes("不是数")),
+          `地图 ${mapId} 第 ${tables} 套转换后解析失败:${result.join(";")}`,
+        );
+        failed.push(`地图 ${mapId} 第 ${tables} 套`);
       }
     }
   }
   assert.ok(tables > 0, "战术文件里一套表都没有");
-  t.diagnostic(`真实旧表转换:${tables} 套,全部解析通过`);
+  t.diagnostic(`真实旧表转换:${tables} 套,${failed.length} 套不过类型检查:${failed.join("、")}`);
 });

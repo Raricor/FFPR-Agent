@@ -131,6 +131,29 @@ void test("lowest and highest only consider living units and keep the first tie"
   assert.equal(unitName("enemy.boss"), "玛基莎");
 });
 
+void test("comparing a unit, set, all or battle with a number is a parse error", () => {
+  assert.throws(
+    () => parseExpression("ally.lowest(hp_pct) < 30"),
+    (error: unknown) => {
+      assert.ok(error instanceof ExpressionError);
+      assert.match(error.message, /不是数/u);
+      assert.match(error.message, /ally\.lowest\(hp_pct\)\.hp_pct < 30/u);
+      assert.match(error.message, /ally\.any\(hp_pct < 30\)/u);
+      return true;
+    },
+  );
+  assert.throws(() => parseExpression("30 > enemy.highest(hp)"), /不是数/u);
+  assert.throws(() => parseExpression("ally < 2"), /不是数/u);
+  assert.throws(() => parseExpression("ally.all < 2"), /不是数/u);
+  assert.throws(() => parseExpression("battle < 2"), /不是数/u);
+});
+
+void test("a ranked unit's numeric property reads and compares", () => {
+  assert.doesNotThrow(() => parseExpression("ally.lowest(hp_pct).hp_pct < 30"));
+  assert.equal(evaluate("ally.lowest(hp_pct).hp_pct < 30", SNAPSHOT), false);
+  assert.equal(evaluate("ally.lowest(hp_pct).hp_pct < 50", SNAPSHOT), true);
+});
+
 void test("set methods count the units that match a predicate", () => {
   assert.equal(evaluate("enemy.count(weak(冰))", SNAPSHOT), 1);
   assert.equal(evaluate('enemy.count(name == "弗扎")', SNAPSHOT), 1);
