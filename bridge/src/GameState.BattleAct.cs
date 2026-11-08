@@ -157,13 +157,17 @@ internal static partial class GameState
 #if FF5
         o["counter"] = act.isCounter;
         o["counterCount"] = act.counterCount;
+        // 0.14.2: whether the game chose this action for the player (auto battle).
+        o["auto"] = act.isAuto;
 #elif FF6
         o["counter"] = act.isCounter;
         o["counterCount"] = null;
+        o["auto"] = act.IsAutoBattleAct;
 #else
-        // FF1-FF4 have neither isCounter nor counterCount on BattleActData.
+        // FF1-FF4 have neither isCounter nor counterCount on BattleActData, and no auto flag.
         o["counter"] = null;
         o["counterCount"] = null;
+        o["auto"] = null;
 #endif
     }
 

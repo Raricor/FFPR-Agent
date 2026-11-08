@@ -1,6 +1,6 @@
 # 桥插件(FfprBridge)
 
-BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（设计方案 §5），从不改游戏数据和存档。当前版本 0.14.1。
+BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（设计方案 §5），从不改游戏数据和存档。当前版本 0.14.2。
 
 - 所有挂钩都是 postfix，只读参数和返回值，不改参数、不改返回值，也不改任何游戏对象。
 - 调用游戏的地方只有取值函数和纯查询。
@@ -14,6 +14,7 @@ BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（�
 - 把以上内容写进 `BepInEx/ffpr/probe-<启动时间>.jsonl`，同时推送给 WebSocket 客户端。
 - 在查询通道上回答查询(见「查询通道」)。
 - 0.5.0 起，在局域网连接上替开发机按键(见「局域网连接」)。0.9.0 起按键走虚拟手柄，游戏在后台、最小化时也能玩。
+- 0.14.2:新增 `config` 查询(只读，游戏线程上答):从 `ConfigSaveData` 读自动战斗保持、ATB 模式、战斗/消息速度、自动冲刺、重装备、光标记忆等设置，能对上枚举文字的给 `battleMode`；`battleAuto` 是当前战斗的自动战斗开关(`BattleStatusControl.isAutoMode`，不在战斗时为 null)。`battle.act` 新增 `auto`：这一招是不是游戏自动选的(FF5 `BattleActData.isAuto`，FF6 `IsAutoBattleAct`，FF1-FF4 没有该字段，写 null)。
 - 0.14.1:修 `walkpath` 拐角。虚拟手柄改成游戏线程一帧最多发一个完整状态事件，同一帧的按/放不再互相覆盖，`stop` 和走路结束会把全部已知按钮写成松开，旧方向键不会卡住;整数格读数先在 `from` 上看到到达帧(`moving` false)、之后 `moving` 又变 true 时换出拐角方向(`mode=step`)，没看到到达帧就等读数跳到拐角格再换(`mode=flip`)，小数读数仍按 `turnLead`(`mode=lead`);`turns` 加 `mode` / `arriveFrame` / `stopFrame` / `moving` / `raw` 诊断。
 - 0.14.0:`walkpath` 命令:一次收下整条格子路线，在游戏线程上逐帧按住虚拟手柄方向键连续走完，拐角提前换键不停顿;回复带停下的原因、`index`、`steps`、`pos`、`next` 和每个拐角的 `turns`(真机标定用)。`walkpath` 可带只用于显示的 `goal`/`label`;新增 `walk` 查询和 `walk.start` / `walk.progress` / `walk.end` 推送，笔记本和网页都能显示规划和走到哪一段。`cells` 新增可选的 `at`，可以任意格子为中心读窗口，便于开发机拼整张地图寻路。
 - 0.13.8:迷宫/城镇的 `encounters.map.parties` 改成用 `FieldController.GetEncountInfo` 逐格扫整张图(多层每层扫)，按地图号缓存、换地图作废；世界地图的 `region` 改成按 `EncountGridData` 的格子号找当前区域，边界为 0 时 `start`/`end` 给 null；新增 `encountgrid` 查询(最多 64 格，返回每格的遇敌格子号)；迷宫 `map.debug` 是 `cellsScanned`/`layers`/`setIds`。
@@ -61,7 +62,8 @@ BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（�
 | `GameState.Party.cs` | 队伍和背包 |
 | `GameState.Dialog.cs` | 对话框和选项 |
 | `GameState.Battle.cs` | 战斗：敌我单位、战斗菜单、ATB 设置 |
-| `GameState.BattleAct.cs` | 战斗出招：出招方、指令、能力、目标、每个目标的结算 |
+| `GameState.Config.cs` | 游戏设置：`ConfigSaveData` 各字段、ATB 模式文字、当前战斗的自动战斗开关(0.14.2) |
+| `GameState.BattleAct.cs` | 战斗出招：出招方、指令、能力、目标、是否自动、每个目标的结算 |
 | `GameState.MonsterAi.cs` | FF5 怪物 AI 脚本查询(按需读，不每帧读) |
 | `GameState.Menus.cs` | 带光标的界面：商店、地图菜单(魔法、道具、装备)、存档列表 |
 
@@ -120,7 +122,7 @@ FfprBridge/
 | `map.change` | 换地图时(0.3.0 起) | 离开的地图和格子、到达的地图和格子 |
 | `pos.change` | 位置记录一变就写,每 4 帧检查一次(0.5.0 起) | 和查询 `pos` 相同:地图、格子、朝向、是否在走、主状态、对话 / 战斗标志、存档次数 |
 | `save.write` | 存档写完时(0.4.0 起) | 存档位、结果 |
-| `battle.act` | 一招开始执行时(0.13.0 起) | 出招方 `actor`、`command`、`abilities`、`items`、`targets`、`act`、`use`、`counter`;见下 |
+| `battle.act` | 一招开始执行时(0.13.0 起) | 出招方 `actor`、`command`、`abilities`、`items`、`targets`、`act`、`use`、`counter`、`auto`(0.14.2);见下 |
 | `battle.hit` | 一招里每个目标的结算完成时(0.13.0 起) | `act`(同一招的简短摘要)、`target`、`value`、`hit`、`hitCount`、`miss`、`heal`、`conditions` |
 | `battle.ai` | 游戏第一次取到怪物 AI 脚本时(0.13.1 起) | `monster`(怪物编号，未知时 null)、`scriptId`、`scriptName`、`length` |
 
@@ -146,6 +148,7 @@ FfprBridge/
 | `pos` | 地图、主状态、格子、朝向、是否在走、对话 / 战斗标志、存档次数；0.13.6 起还有 `area`(GpsAreaId)、`areaType`(0 是世界地图)、`areaText` | 0.2 |
 | `cells` (`r`, `at`) | 格子地形码;0.14.0 起可选 `at`(`[x, y]`)指定读取窗口的中心，缺省是玩家；回复里 `center` 仍是玩家的格子，`at` 是这次读的中心，`origin` 是窗口左上角 | 0.2 |
 | `walk` | 当前或最后一条 `walkpath`:seq、active、map、path、goal、label、index、steps、cell、segment、turns、startedAt、endedAt、reason;一条都没走过为 null | 0.14.0 |
+| `config` | 游戏当前设置：`isKeepAutoBattle`、`battleModeIndex` 和 `battleMode`(wait / active)、`battleSpeedIndex`、`battleMessageSpeedIndex`、`messageSpeed`、`isAutoDash`、`reequipIndex`、`isCursorMemory`、`battleModeButton`(原始值)和 `battleModeButtonName`；`battleAuto` 是当前战斗的自动战斗开关，不在战斗时为 null。读不到时 `config` 为 null，顶层带 `error` | 0.14.2 |
 | `sample` | 立即采样一次完整状态 | 0.2 |
 | `entities` (`kind`, `max`) | 入口(含目的地)、宝箱(含内容)、NPC、事件，以及所在格子；0.13.4 起换层格带目标层、门带联动和触发状态、PointIn 带 link/title、事件带脚本和动作；0.13.5 起 `kind: "All"` 列出所有分组/未识别实体，gimmick 实体带区域和落点 link；0.13.6 起宝箱带 `opened`、`hidden`、`treasureType`、`contentName` | 0.2.1 |
 | `route` (`to`) | 游戏自己的寻路结果(实测不可靠，改用 `collision` 自己寻路) | 0.2.x |
@@ -201,6 +204,22 @@ FfprBridge/
 
 `shop` 的商品列表在选指令时也显示在屏幕上,`listCursor` 一直读得到，所以要看 `state`:`SelectCommand` 时按键作用在指令上,`SelectProduct` 时作用在列表上。`cursor` 是光标在过滤后的 `rows` 里的序号;卖出列表的 `focus` 可能全是 false，dsh 的 `sell` 应改用 `cursor`。
 
+### `config` 查询(0.14.2)
+
+请求是 `{"id": 1, "op": "config"}`，本机 `/query` 和局域网 `/v1/query` 都能用。它只读 `UserDataManager.instance.configSaveData`，在游戏线程上回答：
+
+```json
+{"ok": true, "config": {
+  "isKeepAutoBattle": false, "battleModeIndex": 0, "battleMode": "wait",
+  "battleSpeedIndex": 2, "battleMessageSpeedIndex": 3, "messageSpeed": 3,
+  "isAutoDash": 1, "reequipIndex": 0, "isCursorMemory": true,
+  "battleModeButton": 2, "battleModeButtonName": "right",
+  "battleAuto": null
+}}
+```
+
+`battleMode` 用游戏自己的 `BattleUtility.GetBattleModeByConfigValue` 映射，绝不按数字猜；映射不了就不写这个键。`battleAuto` 是**当前这场战斗**的自动战斗开关，取自 `BattlePlugManager.BattleStatusControl.isAutoMode`；不在战斗时为 null，`isKeepAutoBattle` 只是“跨战斗保持”的设置。读不到设置时回复里 `config` 为 null，顶层 `error` 说明原因。
+
 ### 战斗事件(0.13.0)
 
 `battle.act` 挂在 `Last.Battle.BattleActExection.InitPrepareState` 的 postfix 上。它是状态机进入“准备一招”的第一步，此时 `InStagingBattleActData` 里还留着完整的指令、能力表和目标。字段：
@@ -213,10 +232,10 @@ FfprBridge/
  "items": null,
  "targets": [{"side": "player", "name": "巴兹", "id": 1, "hp": 320, "maxHp": 400}],
  "act": "Normal", "use": "Ability", "targetType": "SingleEnemy",
- "counter": false, "counterCount": 0}
+ "auto": false, "counter": false, "counterCount": 0}
 ```
 
-`side` 是 `enemy`(敌)或 `player`(我)。敌人的 `id` 和战斗数据里 `enemies[].id` 是同一个怪物编号;我方的 `id` 是角色编号。`counter` 为真表示这一招是反击。各作 `BattleActData` 的字段不同：FF5 有 `isCounter` 和 `counterCount`;FF6 只有 `isCounter`，所以 `counterCount` 写 null;FF1-FF4 两者都没有，`counter` 和 `counterCount` 都写 null。`act` 是 `Normal` / `Interrupt` / `Event` 等 `BattleActData.ActType`，`use` 是 `Ability` / `Item` / `Non`。
+`side` 是 `enemy`(敌)或 `player`(我)。敌人的 `id` 和战斗数据里 `enemies[].id` 是同一个怪物编号;我方的 `id` 是角色编号。`counter` 为真表示这一招是反击。`auto` 是 0.14.2 加的：这一招是不是游戏替玩家自动选的；FF5 读 `BattleActData.isAuto`，FF6 读 `IsAutoBattleAct`，FF1-FF4 的 `BattleActData` 没有这个字段，写 null。各作 `BattleActData` 的字段不同：FF5 有 `isCounter` 和 `counterCount`;FF6 只有 `isCounter`，所以 `counterCount` 写 null;FF1-FF4 两者都没有，`counter` 和 `counterCount` 都写 null。`act` 是 `Normal` / `Interrupt` / `Event` 等 `BattleActData.ActType`，`use` 是 `Ability` / `Item` / `Non`。
 
 `battle.hit` 挂在 `Last.Battle.BattleActLog.AddLog`。游戏在“一招对每个目标都算完”以后调用它，参数里正好有 `Dictionary<BattleUnitData, ICalcResult>`;每个目标推一条：
 
@@ -386,6 +405,8 @@ FfprBridge/
 | 命中结算 | `Last.Battle.BattleActLog.AddLog`、`Last.Systems.ICalcResult` |
 | 怪物 AI | `Last.Data.Master.Monster.ScriptId`、`Last.Data.Master.MonsterAiScript`、`Last.Battle.InstantiateManager.GetEnemyAIScript`(FF5) |
 | 战斗设置 | `Last.Management.SystemConfig.ATBBattleType`、`Last.Data.User.Config.BattleSpeed`(FF4-FF6) |
+| 游戏设置(0.14.2) | `Last.Management.UserDataManager.configSaveData`(`ConfigSaveData`)、`Last.Battle.BattleUtility.GetBattleModeByConfigValue` |
+| 自动战斗状态(0.14.2) | `Last.Battle.BattlePlugManager.BattleStatusControl.isAutoMode`；界面上的 Auto 按钮在 `Last.UI.KeyInput.BattleMenuView.AutoButtonParent`(触屏是 `Last.UI.Touch.BattleMenuView.AutoButton` / `InactiveAutoButton`) |
 | 战斗菜单 | `Last.UI.KeyInput.BattleCommandSelectController`、`Serial.FF5.UI.KeyInput.BattleQuantityAbilityInfomationController` |
 | 商店 | `Last.UI.KeyInput.ShopController`、`ShopCommandMenuController`、`ShopTradeWindowController` |
 | 存读档列表 | `Last.UI.KeyInput.SaveListController`(显示顺序 `[21, 22, 1..20]`) |

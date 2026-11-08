@@ -29,6 +29,7 @@ namespace FfprBridge;
 ///   {"id": 16, "op": "monsterai", "ids": [12, 13]}   FF5: AI script and named abilities
 ///   {"op": "encountgrid", "cells": [[x, y], ...]}    encounter grid number per cell (0.13.8)
 ///   {"op": "walk"}                     current or last walkpath route and progress (0.14.0)
+///   {"op": "config"}                   saved game settings and the current auto-battle switch (0.14.2)
 /// </summary>
 internal static class Requests
 {
@@ -117,6 +118,11 @@ internal static class Requests
                     break;
                 case "walk":
                     reply["walk"] = Walker.Snapshot();
+                    break;
+                case "config":
+                    // Set null first: a failed read must still answer {"config": null, "error": ...}.
+                    reply["config"] = null;
+                    reply["config"] = GameState.Config();
                     break;
                 case "monsterai":
 #if FF5
