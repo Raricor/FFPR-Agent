@@ -57,17 +57,21 @@ const TACTICIAN_PROMPT_FF5 = `你是《最终幻想5 像素重制版》的战术
 - item(不死鸟之尾) > 0、turn > 3、battle.boss、enemy.any(absorbs(火))
 - used(魔法名) 或 used(魔法名, 30):敌人最近(或 30 秒内)用过这招;used(any_magic)
 - not、and、or;条件写成「名字 比较符 数字」或上面这些函数。
+- lowest / highest / first 选出来的是一个人，不是数，不能直接比大小;要比数值接属性，
+  如 ally.lowest(hp_pct).hp_pct < 30,或写 ally.any(hp_pct < 30)。
 - 目标 to:ally.lowest(hp_pct)、ally.first(not alive)、ally.first(has(毒))、
   enemy.boss、enemy.lowest(hp)、enemy(巨翼猛禽)、enemy.first(weak(冰))。
 
 动作 do:
-- 「攻击」「防御」「换列」,「道具:道具名」,或「指令:能力」,如「白魔法:治疗」
+- 「攻击」「防御」「换列」「逃跑」,「道具:道具名」,或「指令:能力」,如「白魔法:治疗」
   「黑魔法:闪雷」「时魔法:重力」。
 - 魔法名后加 + 表示这一系里学会的、MP 够的最高级,如「白魔法:治疗+」;
   「黑魔法:最强」用最高级的攻击魔法。
 - 只能用行动的人现在职业真的有的指令:白魔法师用白魔法、黑魔法师用黑魔法;
   其他职业用攻击、防御、道具。事实单的「指令」一栏就是现在能用的。
 - 事实单里列了会的法术时,直接写具体法术(如「白魔法:救疗」)。
+- 「逃跑」同时按住 L1+R1;首领战和 notEscape 的遇敌组逃不了,这条规则会被跳过。
+  例:{"who":"all","if":"turn > 3 and enemy.any(hp_pct > 80)","do":"逃跑"}。
 - 「最强」「X+」会避开吸收、无效,优先打弱点;写死的属性魔法碰上吸收会跳过、交给下一条。
 
 写表前先看事实单的敌人档案,必须做到:
@@ -124,11 +128,18 @@ const SYSTEM_PROMPT_FF5 = `你在玩《最终幻想5 像素重制版》(中文�
 规则:
 - 每次只调用一个工具。行动前先用一两句话说明你的打算。
 - 坐标是格子坐标:x 向右增大,y 向下增大。
-- 移动用 walk_to(步行)或 go_to(可选坐船):都会自动寻路,绕开墙壁和障碍。
+- 移动只说去哪:去别的地图写地图名或地图号,如 go(to="图尔村")、go(to="地图 62");
+  代码会自己排路线,经过世界地图也行。
+- 在迷宫里找没去过的地方用 explore:它按图内能走到的路程挑最近的、去向是本档没去过的地图的出口走过去。
+- 宝箱、NPC、调查用 interact,它会自己走过去。
+- 坐标只用在没有名字的地方,比如隐藏道具格、剧情触发格:go(to=[12, 8]) 或 go(to="12,8")。
+  不要用坐标一段一段地挪;走不到时先看 look_around / terrain,不要换个相邻坐标再试。
+- 要穿过打不过的区域时,给 go/explore 带 flee: true:路上遇敌先逃跑,
+  逃不了(首领战、不能逃的遇敌组)才按策略表打。
 - 世界地图上用 terrain 看周围地形,用 entrances 找入口。
 - 走进入口所在的格子就会进入对应的地图。
 - 船在海上能走;船开到岸边再往陆地走就会下船;回到停船的格子就会上船。
-- 骑飞龙时状态行会写「骑着飞龙」:walk_to/go_to 飞过海和森林,飞不过山。目标是城镇、城堡、
+- 骑飞龙时状态行会写「骑着飞龙」:go 飞过海和森林,飞不过山。目标是城镇、城堡、
   迷宫入口时会自动在附近平原降落再走进去;要自己下来就用 land(它会找附近能降落的平原)。
   下来以后飞龙停在降落点(画面上看不到);要再骑就用 board,它会走回降落点骑上。
 - 剧情对话用 advance_story 翻页,遇到选项会停下来告诉你。
@@ -151,7 +162,7 @@ const SYSTEM_PROMPT_FF5 = `你在玩《最终幻想5 像素重制版》(中文�
 - 首领战由战术官写表、代码照表打完(配置关掉 tacticianBoss 时才会停下来让你用 fight 交表)。
 - set_tactics 和 fight 只在你要手动改策略时用;普通战斗和首领战默认都交给战术官。
 - 迷宫、城镇和运河里,terrain 画出能走的格子(.)和墙(#),以及入口、宝箱和事件触发点(!);
-  用 look_around 看它们的名字和坐标,再用 walk_to 走过去。目标坐标要选在能走的格子上。
+  用 look_around 看它们的名字。宝箱用 interact;没有名字的机关、触发格才用 go 的坐标。
 - 宝箱在 look_around 里写作 TresureBox。用 interact 给出宝箱的坐标就会自动打开。
 - 每张地图(世界地图按区域)要拿全宝箱和隐藏道具,并把本图会出的怪刷进本档图鉴再离开;
   工具结果里的「本图完成度」就是进度,没完成就离开会被拒绝。
@@ -159,7 +170,7 @@ const SYSTEM_PROMPT_FF5 = `你在玩《最终幻想5 像素重制版》(中文�
   状态不好就回城住店,再接着刷。不要为了凑钱卖掉还有用的装备,只卖确实用不上的。
 - 刷怪用 grind,不要一步步走:它会在附近来回走、按本图的策略打、回店休息,然后报告
   打了多少场、赚了多少钱、升了几级、图鉴新登记了什么。
-- 实在拿不到就用 walk_to/go_to/interact 的 leave_incomplete 写具体理由(如「需要钥匙」
+- 实在拿不到就用 go/explore/interact 的 leave_incomplete 写具体理由(如「需要钥匙」
   「打不过，等升级」「剧情强制离开」),离开会记一条欠账,以后回来补齐;一次性地点的宝箱
   错过是严重事故、无法挽回,进这类地点前先存档。
 - 门、闸门、机关这类物体在 look_around 里写作 DefaultEntity,带日文名(如「トルナ運河の開錠_右扉」
@@ -178,7 +189,8 @@ const SYSTEM_PROMPT_FF5 = `你在玩《最终幻想5 像素重制版》(中文�
   比如有人离队,想想剧情是不是要你去找人。
 - 得到新的武器、防具时,代码会自动用「最强装备」给合适的人换上,结果里会写谁换了什么;
   觉得不合适再自己处理。
-- 迷宫里用 atlas 看去过的地图和出口:look_around 也会给出口标「去过/没去过」,优先走没去过的。
+- 迷宫里用 atlas 看地图记录和本档去过哪些:look_around 也会给出口标「去过/没去过」(按本档算),
+  优先走没去过的。
 - 发现重要的东西(入口位置、走不通的路、地标)用 remember 记下来。
 - 完成目标或者确定做不到时调用 done。
 {hint}`;
@@ -351,41 +363,62 @@ const TOOLS_BASE = [
   {
     type: "function",
     function: {
-      name: "walk_to",
-      description: "步行到指定格子,自动寻路绕开墙壁;途中遇敌自动战斗,遇到剧情会停下。",
+      name: "go",
+      description:
+        '去一个地方。to 给地图号(62、"地图 62")、地图名的一部分("图尔村"),' +
+        '或坐标([12, 8]、"12,8")。' +
+        "给地图时按地图记录自己排路线,每离开一张图都检查完成度,可以经过世界地图(步行或骑飞龙);" +
+        "名字对上多张会列出来让你挑,不走、不猜。" +
+        "给坐标时在当前地图走过去;世界地图上坐船会自动走海路,骑飞龙去入口会自动降落。" +
+        "坐标只用在没有名字的地方,不要用坐标一段一段地挪。" +
+        "穿过打不过的区域时带 flee: true,路上遇敌先逃跑,逃不了才按策略表打。" +
+        "结果列出走过的每一跳、停在哪、为什么停和没走通的出口。",
       parameters: {
         type: "object",
         properties: {
-          x: { type: "integer", description: "目标格子 x" },
-          y: { type: "integer", description: "目标格子 y" },
+          to: {
+            type: ["integer", "string", "array"],
+            items: { type: "integer" },
+            description: '地图号、地图名的一部分,或坐标 [x, y] / "x,y"',
+          },
+          by_ship: {
+            type: "boolean",
+            description: "只在判断不出是否坐船时用:true 走海路,false 步行",
+          },
           leave_incomplete: {
             type: "string",
             description: "本图没完成却确实要离开时的具体理由;不带就拒绝",
           },
+          flee: {
+            type: "boolean",
+            description: "路上遇敌先逃跑,逃不了才按策略表打;穿过打不过的区域时用",
+          },
         },
-        required: ["x", "y"],
+        required: ["to"],
       },
     },
   },
   {
     type: "function",
     function: {
-      name: "go_to",
+      name: "explore",
       description:
-        "在世界地图上自动寻路前往某个格子,途中遇敌自动战斗。目标太远时会分几段走。" +
-        "坐船时 by_ship 填 true(只走海),步行填 false(不走海和山)。",
+        "在当前地图上找本档没去过的地方:按图内能走到的路程挑最近的、去向是本档没去过的地图的出口," +
+        "走过去并进去;当前图没有这种出口,就先 go 到最近的、有这种出口的地图再找。" +
+        "到了新地图会附上 look_around 摘要。迷宫里探路用它,不要自己一张图一张图地试。" +
+        "穿过打不过的区域时带 flee: true,路上遇敌先逃跑,逃不了才按策略表打。",
       parameters: {
         type: "object",
         properties: {
-          x: { type: "integer" },
-          y: { type: "integer" },
-          by_ship: { type: "boolean" },
+          flee: {
+            type: "boolean",
+            description: "路上遇敌先逃跑,逃不了才按策略表打;穿过打不过的区域时用",
+          },
           leave_incomplete: {
             type: "string",
-            description: "本区域没完成却确实要离开时的具体理由;不带就拒绝",
+            description: "本图没完成却确实要离开时的具体理由;不带就拒绝",
           },
         },
-        required: ["x", "y", "by_ship"],
       },
     },
   },
@@ -478,7 +511,7 @@ const TOOLS_BASE = [
       name: "land",
       description:
         "骑着飞龙时,在当前位置降落并下来步行。只能落在平地上;" +
-        "要进城镇、城堡,先飞到入口旁边的平地降落,再 walk_to 走进去。",
+        "要进城镇、城堡,先飞到入口旁边的平地降落,再 go 走进去。",
       parameters: { type: "object", properties: {} },
     },
   },
@@ -497,7 +530,7 @@ const TOOLS_BASE = [
     function: {
       name: "atlas",
       description:
-        "列出去过的地图、每张图的出口通往哪张地图、那张地图去过没有,以及看到过的宝箱。" +
+        "列出地图记录里的地图、每张图的出口通往哪张地图、那张地图本档去过没有,以及看到过的宝箱。" +
         "迷宫里找路时先看它:优先走「没去过」的出口,不要回到已经搜过的房间。",
       parameters: { type: "object", properties: {} },
     },
@@ -621,7 +654,7 @@ const TOOLS_BASE = [
         "until_gold、until_level、until_bestiary 至少要给一个,否则拒绝执行。" +
         "默认最多刷 20 分钟;结果报告刷了多久、打了几场、赚了多少钱、升了几级、" +
         "本档图鉴新登记了哪些怪、用掉的道具、住了几次店和为什么停。" +
-        "钱不够或本图鉴没齐时优先用它,不要一步步 walk_to。",
+        "钱不够或本图鉴没齐时优先用它,不要用 go 一格一格地走。",
       parameters: {
         type: "object",
         properties: {
@@ -826,7 +859,7 @@ export function toolSchemas(saveSlot: number): readonly GameToolSchema[] {
   );
 }
 
-/** FF5's 27 tools with the shared default slot, for callers that already know the game. */
+/** FF5's tools with the shared default slot, for callers that already know the game. */
 export const TOOLS: readonly GameToolSchema[] = toolSchemas(20);
 
 /**

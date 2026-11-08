@@ -426,7 +426,7 @@ export function parseTail(text: string): unknown[] {
 
 // The field's moveState (bridge sample): how the party moves now. Walking needs no note.
 export const RIDES: ReadonlyMap<string, string> = new Map([
-  ["LowFlying", "骑着飞龙(飞不过山;进城镇和迷宫要先降落,walk_to 入口会自动降落再走进去)"],
+  ["LowFlying", "骑着飞龙(飞不过山;进城镇和迷宫要先降落,go 入口会自动降落再走进去)"],
   ["HighFlying", "乘飞空艇"],
   ["Ship", "坐船"],
   ["Chocobo", "骑陆行鸟"],

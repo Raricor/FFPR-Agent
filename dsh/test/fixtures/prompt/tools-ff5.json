@@ -2,43 +2,52 @@
   {
     "type": "function",
     "function": {
-      "name": "walk_to",
-      "description": "步行到指定格子,自动寻路绕开墙壁;途中遇敌自动战斗,遇到剧情会停下。",
+      "name": "go",
+      "description": "去一个地方。to 给地图号(62、\"地图 62\")、地图名的一部分(\"图尔村\"),或坐标([12, 8]、\"12,8\")。给地图时按地图记录自己排路线,每离开一张图都检查完成度,可以经过世界地图(步行或骑飞龙);名字对上多张会列出来让你挑,不走、不猜。给坐标时在当前地图走过去;世界地图上坐船会自动走海路,骑飞龙去入口会自动降落。坐标只用在没有名字的地方,不要用坐标一段一段地挪。穿过打不过的区域时带 flee: true,路上遇敌先逃跑,逃不了才按策略表打。结果列出走过的每一跳、停在哪、为什么停和没走通的出口。",
       "parameters": {
         "type": "object",
         "properties": {
-          "x": {
-            "type": "integer",
-            "description": "目标格子 x"
+          "to": {
+            "type": ["integer", "string", "array"],
+            "items": {
+              "type": "integer"
+            },
+            "description": "地图号、地图名的一部分,或坐标 [x, y] / \"x,y\""
           },
-          "y": {
-            "type": "integer",
-            "description": "目标格子 y"
+          "by_ship": {
+            "type": "boolean",
+            "description": "只在判断不出是否坐船时用:true 走海路,false 步行"
+          },
+          "leave_incomplete": {
+            "type": "string",
+            "description": "本图没完成却确实要离开时的具体理由;不带就拒绝"
+          },
+          "flee": {
+            "type": "boolean",
+            "description": "路上遇敌先逃跑,逃不了才按策略表打;穿过打不过的区域时用"
           }
         },
-        "required": ["x", "y"]
+        "required": ["to"]
       }
     }
   },
   {
     "type": "function",
     "function": {
-      "name": "go_to",
-      "description": "在世界地图上自动寻路前往某个格子,途中遇敌自动战斗。目标太远时会分几段走。坐船时 by_ship 填 true(只走海),步行填 false(不走海和山)。",
+      "name": "explore",
+      "description": "在当前地图上找本档没去过的地方:按图内能走到的路程挑最近的、去向是本档没去过的地图的出口,走过去并进去;当前图没有这种出口,就先 go 到最近的、有这种出口的地图再找。到了新地图会附上 look_around 摘要。迷宫里探路用它,不要自己一张图一张图地试。穿过打不过的区域时带 flee: true,路上遇敌先逃跑,逃不了才按策略表打。",
       "parameters": {
         "type": "object",
         "properties": {
-          "x": {
-            "type": "integer"
+          "flee": {
+            "type": "boolean",
+            "description": "路上遇敌先逃跑,逃不了才按策略表打;穿过打不过的区域时用"
           },
-          "y": {
-            "type": "integer"
-          },
-          "by_ship": {
-            "type": "boolean"
+          "leave_incomplete": {
+            "type": "string",
+            "description": "本图没完成却确实要离开时的具体理由;不带就拒绝"
           }
-        },
-        "required": ["x", "y", "by_ship"]
+        }
       }
     }
   },
@@ -134,7 +143,7 @@
     "type": "function",
     "function": {
       "name": "land",
-      "description": "骑着飞龙时,在当前位置降落并下来步行。只能落在平地上;要进城镇、城堡,先飞到入口旁边的平地降落,再 walk_to 走进去。",
+      "description": "骑着飞龙时,在当前位置降落并下来步行。只能落在平地上;要进城镇、城堡,先飞到入口旁边的平地降落,再 go 走进去。",
       "parameters": {
         "type": "object",
         "properties": {}
@@ -156,7 +165,7 @@
     "type": "function",
     "function": {
       "name": "atlas",
-      "description": "列出去过的地图、每张图的出口通往哪张地图、那张地图去过没有,以及看到过的宝箱。迷宫里找路时先看它:优先走「没去过」的出口,不要回到已经搜过的房间。",
+      "description": "列出地图记录里的地图、每张图的出口通往哪张地图、那张地图本档去过没有,以及看到过的宝箱。迷宫里找路时先看它:优先走「没去过」的出口,不要回到已经搜过的房间。",
       "parameters": {
         "type": "object",
         "properties": {}
@@ -187,6 +196,10 @@
           },
           "y": {
             "type": "integer"
+          },
+          "leave_incomplete": {
+            "type": "string",
+            "description": "一次性地点没完成却要踩剧情/首领事件格时的具体理由;不带就拒绝"
           }
         },
         "required": ["x", "y"]
@@ -252,6 +265,46 @@
           }
         },
         "required": ["plan"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "grind",
+      "description": "在附近刷怪,代码自动来回走、遇敌按本图策略打、状态差回旅店住店,中间不问模型。until_gold、until_level、until_bestiary 至少要给一个,否则拒绝执行。默认最多刷 20 分钟;结果报告刷了多久、打了几场、赚了多少钱、升了几级、本档图鉴新登记了哪些怪、用掉的道具、住了几次店和为什么停。钱不够或本图鉴没齐时优先用它,不要用 go 一格一格地走。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "until_gold": {
+            "type": "integer",
+            "description": "钱攒到多少就停"
+          },
+          "until_level": {
+            "type": "integer",
+            "description": "全队最低等级到几级就停"
+          },
+          "until_bestiary": {
+            "type": "boolean",
+            "description": "true:刷到本图(世界地图是当前区域)的怪都进本档图鉴"
+          },
+          "max_minutes": {
+            "type": "number",
+            "description": "最多刷多少分钟,默认 20"
+          },
+          "rest_hp_pct": {
+            "type": "number",
+            "description": "全队最低 HP 百分比低于多少就回店,默认 40"
+          },
+          "rest_mp_pct": {
+            "type": "number",
+            "description": "全队最低 MP 百分比低于多少就回店,默认 25"
+          },
+          "inn": {
+            "type": ["integer", "string"],
+            "description": "去哪住店(地图号或地图名);不填就用地图记录里最近、有旅店的城镇"
+          }
+        }
       }
     }
   },

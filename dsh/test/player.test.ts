@@ -67,8 +67,11 @@ void test("the five new games do not get FF5's game operations", () => {
 void test("the waiting tools get their longer budgets", () => {
   assert.equal(timeoutFor("advance_story"), 850_000);
   assert.equal(timeoutFor("fight"), 1_100_000);
-  for (const name of ["walk_to", "go_to", "interact", "land", "board"]) {
+  for (const name of ["interact", "land", "board"]) {
     assert.equal(timeoutFor(name), 800_000);
+  }
+  for (const name of ["go", "explore"]) {
+    assert.equal(timeoutFor(name), 1_100_000);
   }
   assert.equal(timeoutFor("remember"), DEFAULT_TIMEOUT_MS);
   assert.equal(timeoutFor("guide"), DEFAULT_TIMEOUT_MS);
@@ -156,14 +159,14 @@ void test("a tool call logs one activity line with its first result line", async
     3,
     log,
   );
-  const walk = definitions.find((tool) => tool.name === "walk_to");
+  const walk = definitions.find((tool) => tool.name === "go");
   assert.ok(walk);
-  await walk.execute({ x: 13, y: 11 }, exec(new AbortController().signal));
+  await walk.execute({ to: [13, 11] }, exec(new AbortController().signal));
   assert.equal(log.entries.length, 1);
   const entry = log.entries[0];
   assert.ok(entry);
   assert.equal(entry.kind, "tool");
-  assert.match(entry.text, /^walk_to \{"x":13,"y":11\} → 到了 \(13,11\)\(\d+\.\d 秒\)$/);
+  assert.match(entry.text, /^go \{"to":\[13,11\]\} → 到了 \(13,11\)\(\d+\.\d 秒\)$/);
   assert.equal(log.busy, null);
 });
 

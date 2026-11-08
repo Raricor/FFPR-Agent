@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import type { EnemyResistances } from "../src/engine/elements.ts";
@@ -231,4 +231,28 @@ void test("describeBattle names both sides with jobs and MP", () => {
     [{ name: "蕾娜", jobName: "白魔法师" }],
   );
   assert.equal(text, "敌人:哥布林 HP 16/16\n我方:蕾娜(白魔法师) HP 60/142 MP 16 [毒]");
+});
+
+void test("the model-facing prompt and tools use go, not the three old movement tools", async () => {
+  const old = /walk_to|go_to|travel_to/u;
+  assert.doesNotMatch(systemPrompt("ff5"), old);
+  assert.doesNotMatch(tacticianPrompt("ff5"), old);
+  const go = TOOLS.find((tool) => tool.function.name === "go");
+  assert.ok(go);
+  assert.deepEqual(go.function.parameters.required, ["to"]);
+  assert.ok(go.function.description.includes("地图"));
+  for (const name of ["walk_to", "go_to", "travel_to"]) {
+    assert.equal(
+      TOOLS.some((tool) => tool.function.name === name),
+      false,
+      `${name} 不该还在工具列表里`,
+    );
+  }
+  // Every model-facing string and comment in src/ has moved to the one tool (task 58).
+  const files = await readdir(join(import.meta.dirname, "..", "src"), { recursive: true });
+  for (const file of files) {
+    if (!file.endsWith(".ts")) continue;
+    const text = await readFile(join(import.meta.dirname, "..", "src", file), "utf8");
+    assert.doesNotMatch(text, old, file);
+  }
 });

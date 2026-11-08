@@ -69,6 +69,8 @@ function pilotFor(live: Json, options: { conveyor?: boolean; blocked?: boolean }
     },
   });
   pilot.on("route", { route: { from: [1, 2], cells: [] } });
+  // Task 56: these tests exercise the old closed-loop walk; no walkpath in this bridge.
+  pilot.on("walkpath", { ok: false, error: "walkpath_unsupported" });
   pilot.on(
     "walk",
     options.blocked === true
@@ -210,7 +212,7 @@ void test("three blocked steps call the tactician once", async () => {
     { tables: [TABLE], monsters: ["哥布林"], blocked: true },
   );
   try {
-    const result = await h.game.run("walk_to", { x: 5, y: 2 }, h.pilot);
+    const result = await h.game.run("go", { to: [5, 2] }, h.pilot);
     assert.match(result, /战术官\(地图 30\):绕开挡住的地方/);
     assert.equal(h.calls(), 1);
     assert.match(h.facts[0] ?? "", /被挡住/);
@@ -226,7 +228,7 @@ void test("a conveyor ride calls the tactician once", async () => {
     { tables: [TABLE], monsters: ["哥布林"], conveyor: true },
   );
   try {
-    const result = await h.game.run("walk_to", { x: 5, y: 2 }, h.pilot);
+    const result = await h.game.run("go", { to: [5, 2] }, h.pilot);
     assert.match(result, /战术官\(地图 30\):传送带往东/);
     assert.equal(h.calls(), 1);
     assert.match(h.facts[0] ?? "", /踩到传送带/);

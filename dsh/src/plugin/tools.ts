@@ -40,8 +40,8 @@ export const TOOL_TIMEOUTS: Readonly<Record<string, number>> = {
   advance_story: 650_000,
   fight: 900_000,
   grind: 3_600_000,
-  walk_to: 600_000,
-  go_to: 600_000,
+  go: 900_000,
+  explore: 900_000,
   interact: 600_000,
   land: 600_000,
   board: 600_000,
@@ -89,6 +89,7 @@ export const STRATEGY_2_HELP =
   "每套表可以写成两种格式:" +
   "旧格式 {角色名: [规则...]};" +
   "或策略 2.0 {version: 2, roles, reactions, phases, rules},who 写角色名、定位名、all 或 any。" +
+  "do 可写攻击、防御、换列、逃跑、道具:名字或指令:能力;" +
   '2.0 例子:{version:2, roles:{蕾娜:"治疗"}, reactions:[{who:"any", ' +
   'on:"ally.count(not alive) > 0 and item(不死鸟之尾) > 0", do:"道具:不死鸟之尾", ' +
   'to:"ally.first(not alive)"}], rules:[{who:"all", do:"攻击"}]}';
@@ -105,7 +106,7 @@ function withStrategyDocs(tool: GameToolSchema): GameToolSchema {
   };
 }
 
-/** FF5's 27 tools, kept for tests and callers that already know the game. */
+/** FF5's tools, kept for tests and callers that already know the game. */
 export const GAME_TOOL_SCHEMAS: readonly GameToolSchema[] = gameToolSchemas("ff5", 20);
 
 function rendered(value: unknown): string {

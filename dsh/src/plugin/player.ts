@@ -244,6 +244,13 @@ export async function startEngine(
       incidentsStateFile: config.incidentsStateFile,
       bestiarySaveFile: config.bestiarySaveFile,
       tacticianBoss: config.tacticianBoss,
+      travelMaxHops: config.travelMaxHops,
+      travelMaxMinutes: config.travelMaxMinutes,
+      walkpathTimeoutMs: config.walkpathTimeoutMs,
+      walkpathBlockedMs: config.walkpathBlockedMs,
+      walkpathTurnLead: config.walkpathTurnLead,
+      walkpathEventPollMs: config.walkpathEventPollMs,
+      walkpathEventWaitMs: config.walkpathEventWaitMs,
       signal,
     });
     game.onIncident = (message) => {
@@ -746,7 +753,7 @@ export function installPlayer(
     await engine.waiter.wait(signal);
     signal.throwIfAborted();
     // The pilot agent quits after 30 idle minutes and dsh turns can be hours apart, so each
-    // turn checks it; ffpr-ds checked once at start (10-27: every walk_to failed over SSH).
+    // turn checks it; ffpr-ds checked once at start (10-27: every walk failed over SSH).
     if (await ensureAgent(engine.laptop, engine.game.game, signal))
       log.info("试玩助手没在运行,已启动");
     // Strategy's window (control plan §4.8), as Python's play(): read it before the state.
@@ -754,7 +761,8 @@ export function installPlayer(
     const pilot = host.pilot(signal);
     const openingNotes = (engine.game as { openingNotes?: (pilot: Pilot) => Promise<string> })
       .openingNotes;
-    const notes = (await openingNotes?.(pilot)) ?? "";
+    // 11-04: called detached, `this` was undefined and every turn ended at "reading 'incidents'".
+    const notes = (await openingNotes?.call(engine.game, pilot)) ?? "";
     signal.throwIfAborted();
     return withOpening(
       decision,
