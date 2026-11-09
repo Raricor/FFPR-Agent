@@ -17,6 +17,7 @@ import {
   backlogLines,
   completionLine,
   completionState,
+  completionWhere as whereOf,
   incidentLines,
   isComplete,
   missingLines,
@@ -336,6 +337,8 @@ export class Game {
   savePoint: Cell | null = null; // on the current map, if it has one
   gear: Record<string, number> | null = null; // weapons and armour in the bag, last look
   mapId: number | null = null;
+  /** 11-09 (task 78): the bridge's title screen; it reports map 0, which is not a map. */
+  private titleScene = false;
   town: number | null = null; // the town map last hinted about
   ailmentCombo: string | null = null; // the uncured-ailment group last hinted about
   ailmentMap: number | null = null; // the map it was hinted on
@@ -436,6 +439,7 @@ export class Game {
         this.lastBattle = { mapId, verdict, detail };
         return await this.tactics.record(mapId, verdict, detail);
       },
+      onIncident: (message) => this.onIncident?.(message),
       elements: this.elements,
     };
     this.moveState.game = this.game;
@@ -898,7 +902,12 @@ export class Game {
       if (gaps !== "") fought += "\n" + gaps;
       if (result.learned.length > 0) fought += "\n" + result.learned.join(";");
       if (truthy(result.ok)) {
-        const healed = await battle.patchUp(pilot, () => undefined);
+        const healed = await battle.patchUp(
+          pilot,
+          () => undefined,
+          4,
+          (message) => this.onIncident?.(message),
+        );
         if (healed.length > 0) fought += "\n战后回复:" + healed.join(";");
       }
       if (wiped) {
@@ -970,6 +979,8 @@ export class Game {
     install: boolean,
     givenFacts?: string,
   ): Promise<{ text: string; tables: Json[]; facts: string }> {
+    // 11-09 (task 78): no map (title screen, map 0, or still changing) means no tactician.
+    if (!this.onMap(trigger.mapId)) return { text: "", tables: [], facts: givenFacts ?? "" };
     this.tacticianCalled = true;
     if (this.tactician === undefined) return { text: "", tables: [], facts: givenFacts ?? "" };
     let facts: string;
@@ -1165,8 +1176,16 @@ export class Game {
     return this.mapNameOf(this.mapId);
   }
 
+  /**
+   * 11-09 (task 78): the title screen reports map 0 (and a null map means no map yet), so a
+   * tactician has nothing to write about. This one gate covers every trigger below.
+   */
+  private onMap(mapId: number | null = this.mapId): boolean {
+    return mapId !== null && mapId > 0 && !this.titleScene;
+  }
+
   private async afterTool(pilot: Pilot): Promise<string> {
-    if (this.tactician === undefined || this.tacticianCalled) return "";
+    if (this.tactician === undefined || this.tacticianCalled || !this.onMap()) return "";
     const mapId = this.mapId;
     if (mapId !== null) {
       // Task 42: before the map's next battle, check the table against the party as it is now.
@@ -1308,6 +1327,9 @@ export class Game {
   /** Record the current map's exits and chests in the atlas; returns the map id. */
   async chart(pilot: Pilot): Promise<number | null> {
     const pos = record((await pilot.send("pos")).pos);
+    // 11-09 (task 78): Title has map 0 and no real scene; keep that out of tactician calls.
+    this.titleScene =
+      pos.state === "GotoTitle" || pos.state === "Init" || text(record(pos.scene).name) === "Title";
     const mapId = num(pos.map) ?? null;
     if (mapId === null || pos.state === "ChangeMap" || pos.state === "FieldReady") return mapId;
     // Task 75: keep the collision data of every indoor map as it is entered, not on every
@@ -2167,11 +2189,7 @@ export class Game {
   }
 
   private completionWhere(state: import("./completion.ts").CompletionState): string {
-    return state.world
-      ? (state.region?.label ?? "世界地图")
-      : state.mapName === ""
-        ? `地图 ${state.mapId ?? "?"}`
-        : state.mapName;
+    return whereOf(state);
   }
 
   /**
@@ -2547,7 +2565,12 @@ export class Game {
     let text = `${done};出招:${list(result.turns).map(show).join("、")}`;
     if (result.learned.length > 0) text += "\n" + result.learned.join(";");
     if (truthy(result.ok)) {
-      const healed = await battle.patchUp(pilot, () => undefined);
+      const healed = await battle.patchUp(
+        pilot,
+        () => undefined,
+        4,
+        (message) => this.onIncident?.(message),
+      );
       if (healed.length > 0) text += "\n战后回复:" + healed.join(";");
     }
     return { text };

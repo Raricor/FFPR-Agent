@@ -170,6 +170,40 @@ void test("a map with no tactics calls the tactician once and installs its table
   }
 });
 
+void test("the title screen or map 0 never calls the tactician", async () => {
+  // 11-09 (task 78): look_around on the title screen opened three "战术官 地图 0" sessions and
+  // the player took their made-up advice seriously.
+  const positions = [
+    { state: "GotoTitle", map: 0, cell: [0, 0], battle: false, scene: "Title" },
+    { state: "Player", map: 0, cell: [0, 0], battle: false, scene: "MainGame" },
+  ];
+  for (const position of positions) {
+    const live = sample();
+    live.user = { mapId: 0, areaText: "" };
+    live.scene = { name: position.scene, state: position.state === "Player" ? "Player" : null };
+    const h = await harness(live, () => ({
+      tables: [TABLE],
+      walkerNotes: "不该叫",
+      askUp: "不该叫",
+    }));
+    h.pilot.on("pos", {
+      pos: {
+        state: position.state,
+        map: position.map,
+        cell: position.cell,
+        battle: position.battle,
+      },
+    });
+    try {
+      const result = await h.game.run("look_around", {}, h.pilot);
+      assert.equal(h.calls(), 0, `state ${position.state} map ${String(position.map)}`);
+      assert.doesNotMatch(result, /战术官/);
+    } finally {
+      await h.close();
+    }
+  }
+});
+
 void test("a monster unseen when the tables were written calls the tactician again", async () => {
   const h = await harness(
     sample(),

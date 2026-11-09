@@ -331,13 +331,24 @@ function elsewhereNote(part: CompletionSection, areaName: string | null): string
   return `(${place}别的图里还有 ${part.elsewhere} 个没开)`;
 }
 
-/** One line for every map tool result: what is left here, with cells and monster names. */
-export function completionLine(state: CompletionState): string {
-  const where = state.world
+/**
+ * 11-09 (task 78): the title screen reports map 0, and a null map means none is known yet.
+ * Neither is the world map (map 1), so say plainly that the party is not on a map.
+ */
+export function completionWhere(state: CompletionState): string {
+  if (state.mapId === null || state.mapId <= 0) {
+    return "不在地图上(可能在标题画面或切图中)";
+  }
+  return state.world
     ? (state.region?.label ?? "世界地图")
     : state.mapName === ""
-      ? `地图 ${state.mapId ?? "?"}`
+      ? `地图 ${state.mapId}`
       : state.mapName;
+}
+
+/** One line for every map tool result: what is left here, with cells and monster names. */
+export function completionLine(state: CompletionState): string {
+  const where = completionWhere(state);
   const chests =
     state.chests.total === 0
       ? "宝箱 0" + elsewhereNote(state.chests, state.areaName)

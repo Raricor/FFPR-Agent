@@ -81,6 +81,24 @@ void test("the completion line names missing chests, hidden items and monsters",
   );
 });
 
+void test("the completion line says the party is not on a map at map 0 or title", () => {
+  // 11-09 (task 78): the title screen reports map 0 with areaType 0, which must not read as
+  // the world map (map 1).
+  const state = completionState({
+    mapId: 0,
+    areaId: 0,
+    mapName: "世界地图",
+    world: true,
+    treasure: [],
+    entities: [],
+    monsters: [],
+    known: new Set(),
+  });
+  const line = completionLine(state);
+  assert.match(line, /^本图完成度\(不在地图上\(可能在标题画面或切图中\)\)/);
+  assert.doesNotMatch(line, /世界地图/);
+});
+
 void test("the wind shrine table gives a 7% monster its chance and later-appearance category", () => {
   const parties = [
     { id: 14, rate: 350, monsters: [{ name: "黑哥布林", book: 90 }] },
