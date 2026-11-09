@@ -96,6 +96,14 @@ const RESTARTS = new Map<string, Promise<void>>();
 
 /** sendSsh throws exactly this when agent.json is missing (the guard is in its script). */
 const AGENT_GONE = "试玩助手没有运行";
+/**
+ * Task 78: the wait loop looks at agent.json's process this often. 11-09: a reboot during a
+ * turn left an old agent.json behind and advance_story waited out its five-minute timeout.
+ */
+export const DEFAULT_AGENT_CHECK_MS = 5_000;
+/** A different failure from AGENT_GONE, so sendSshOrRestart reports it instead of resending. */
+const AGENT_EXITED =
+  "试玩助手进程已经退出,命令没有完成:先等它重开或重新运行 ffpr-pilot start,不要直接重发";
 
 export interface PilotLink {
   command(op: string, fields: Fields, signal: AbortSignal, timeoutMs?: number): Promise<unknown>;
@@ -110,6 +118,8 @@ export interface PilotOptions {
   env?: NodeJS.ProcessEnv;
   /** One line when the pilot agent had to be restarted; omitted means it is not recorded. */
   log?: (message: string) => void;
+  /** Task 78: how often a waiting send checks the agent process; the plugin passes Config. */
+  agentCheckMs?: number;
 }
 
 /** FF5's pilot agent keeps the Python path; the five new games each get their own directory. */
@@ -184,7 +194,16 @@ export function createPilot(
         LINK_REST_UNTIL.set(laptop, performance.now() + LINK_REST_SECONDS * 1000);
       }
     }
-    result ??= await sendSshOrRestart(laptop, op, game, waitMs, fields, signal, options.log);
+    result ??= await sendSshOrRestart(
+      laptop,
+      op,
+      game,
+      waitMs,
+      fields,
+      signal,
+      options.log,
+      options.agentCheckMs,
+    );
     await recordTime(timingFile, op, via, started);
     return result;
   };
@@ -301,12 +320,24 @@ export async function sendSsh(
   fields: Fields = {},
   signal?: AbortSignal,
   log?: (message: string) => void,
+  agentCheckMs = DEFAULT_AGENT_CHECK_MS,
 ): Promise<Reply> {
   const cid = process.hrtime.bigint().toString();
   const body = JSON.stringify({ op, ...fields });
+  const checkSeconds = Math.max(1, agentCheckMs / 1000);
   const script =
     `$dir = ${psQuote(agentDir(laptop, game))}\n` +
-    "if (-not (Test-Path (Join-Path $dir 'agent.json'))) {" +
+    "$agent = Join-Path $dir 'agent.json'\n" +
+    "if (-not (Test-Path $agent)) {" +
+    " throw '试玩助手没有运行:先运行 ffpr-pilot start' }\n" +
+    // 11-09: agent.json from the day before kept a dead pid, and the command waited out its
+    // timeout. The same SSH session reads the pid; a broken file counts as not running.
+    "try {\n" +
+    "  $agentPid = [int](Get-Content $agent -Raw -Encoding UTF8 | ConvertFrom-Json).pid\n" +
+    "} catch {\n" +
+    "  throw '试玩助手没有运行:先运行 ffpr-pilot start'\n" +
+    "}\n" +
+    "if (-not (Get-Process -Id $agentPid -ErrorAction SilentlyContinue)) {" +
     " throw '试玩助手没有运行:先运行 ffpr-pilot start' }\n" +
     `$tmp = Join-Path $dir '${cid}.tmp'\n` +
     "$utf8 = New-Object Text.UTF8Encoding $false\n" +
@@ -314,8 +345,15 @@ export async function sendSsh(
     `Move-Item $tmp (Join-Path $dir '${cid}.cmd.json')\n` +
     `$res = Join-Path $dir '${cid}.result.json'\n` +
     `$deadline = (Get-Date).AddSeconds(${waitMs / 1000})\n` +
+    `$nextCheck = (Get-Date).AddSeconds(${checkSeconds})\n` +
     "while (-not (Test-Path $res)) {\n" +
     "  if ((Get-Date) -gt $deadline) { throw '等待试玩助手超时' }\n" +
+    "  if ((Get-Date) -gt $nextCheck) {\n" +
+    "    if (-not (Get-Process -Id $agentPid -ErrorAction SilentlyContinue)) {\n" +
+    `      throw '${AGENT_EXITED}'\n` +
+    "    }\n" +
+    `    $nextCheck = (Get-Date).AddSeconds(${checkSeconds})\n` +
+    "  }\n" +
     "  Start-Sleep -Milliseconds 25\n" +
     "}\n" +
     "Get-Content $res -Raw -Encoding UTF8\n" +
@@ -396,14 +434,15 @@ async function sendSshOrRestart(
   fields: Fields,
   signal: AbortSignal,
   log: ((message: string) => void) | undefined,
+  agentCheckMs: number | undefined,
 ): Promise<Reply> {
   try {
-    return await sendSsh(laptop, op, game, waitMs, fields, signal, log);
+    return await sendSsh(laptop, op, game, waitMs, fields, signal, log, agentCheckMs);
   } catch (error) {
     if (!agentGone(error)) throw error;
     await restartAgent(laptop, game, log, signal);
     // Once only: a second not-running means the restart did not take, so the caller sees it.
-    return await sendSsh(laptop, op, game, waitMs, fields, signal, log);
+    return await sendSsh(laptop, op, game, waitMs, fields, signal, log, agentCheckMs);
   }
 }
 

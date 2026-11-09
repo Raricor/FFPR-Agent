@@ -8,6 +8,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import Schema from "@deepseek-ai/schemastery";
 import { byKey, type Game } from "../engine/games.ts";
+import { DEFAULT_AGENT_CHECK_MS } from "../engine/link-pilot.ts";
 import { DEPS, LAPTOP_ENV } from "../engine/paths.ts";
 import {
   DEFAULT_BESTIARY_DEFER_BATTLES,
@@ -133,6 +134,8 @@ const RawConfig = Schema.object({
   bestiarySaveFile: Schema.string(),
   /** How often to retry the bridge while it is down. */
   checkEveryMs: Schema.number().default(DEFAULT_CHECK_EVERY_MS),
+  /** Task 78: while a command waits, how often to check the pilot agent's pid is still alive. */
+  agentCheckMs: Schema.number().default(DEFAULT_AGENT_CHECK_MS),
   /** How long one "which game is open" answer is shared before another SSH call. */
   detectCacheMs: Schema.number().default(DEFAULT_DETECT_CACHE_MS),
   /** How long a new session may wait for detection before staying with its own game. */
@@ -184,6 +187,7 @@ export const Config = Schema.transform(RawConfig, (config) => {
     incidentsStateFile: config.incidentsStateFile ?? defaults.incidentsStateFile,
     bestiarySaveFile: config.bestiarySaveFile ?? defaults.bestiarySaveFile,
     checkEveryMs: config.checkEveryMs ?? DEFAULT_CHECK_EVERY_MS,
+    agentCheckMs: config.agentCheckMs ?? DEFAULT_AGENT_CHECK_MS,
     detectCacheMs: config.detectCacheMs ?? DEFAULT_DETECT_CACHE_MS,
     autoPresetWaitMs: config.autoPresetWaitMs ?? DEFAULT_AUTO_PRESET_WAIT_MS,
     travelMaxHops: config.travelMaxHops ?? DEFAULT_TRAVEL_MAX_HOPS,

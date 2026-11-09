@@ -69,6 +69,8 @@ export interface PlayerEngine {
   readonly journal: PlayerJournal;
   /** The most recent achievement read, for the total-control card's save count. */
   achievement: AchievementView | null;
+  /** Task 78: how often a waiting send checks the pilot agent's pid, from Config. */
+  readonly agentCheckMs: number;
 }
 
 export interface PlayerLog {
@@ -262,7 +264,12 @@ export async function startEngine(
     };
     // Bridge 0.13's battle.act / battle.hit are not key events; fold them into the live battle.
     const savePilot =
-      bridge === undefined ? null : createPilot(laptop, bridge, stop.signal, { game: config.game });
+      bridge === undefined
+        ? null
+        : createPilot(laptop, bridge, stop.signal, {
+            game: config.game,
+            agentCheckMs: config.agentCheckMs,
+          });
     events?.onRecord((record) => {
       if (record.type === "battle.act" || record.type === "battle.hit") {
         game.battles.noteEvent(record);
@@ -305,6 +312,7 @@ export async function startEngine(
       startedAt: new Date().toISOString(),
       journal,
       achievement: null,
+      agentCheckMs: config.agentCheckMs,
     };
   } catch (error) {
     stop.abort();
@@ -478,6 +486,7 @@ export function gameToolHost(
       const engine = engineOf();
       return createPilot(engine.laptop, engine.bridge, signal, {
         game: engine.game.game,
+        agentCheckMs: engine.agentCheckMs,
         // The pilot agent's auto-restart (task 28) must be visible in the overview's log.
         log: (message) => {
           engine.activity.record("event", message);

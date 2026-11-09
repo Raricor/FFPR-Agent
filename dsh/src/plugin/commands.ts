@@ -30,7 +30,10 @@ const BRIDGE_DOWN = "连不上桥插件，游戏可能没开";
 export type CommandPilotFactory = (engine: PlayerEngine, signal: AbortSignal) => Pilot;
 
 function defaultPilot(engine: PlayerEngine, signal: AbortSignal): Pilot {
-  return createPilot(engine.laptop, engine.bridge, signal, { game: engine.game.game });
+  return createPilot(engine.laptop, engine.bridge, signal, {
+    game: engine.game.game,
+    agentCheckMs: engine.agentCheckMs,
+  });
 }
 
 /**

@@ -20,6 +20,7 @@ void test("Config defaults point at FF5's deployment paths and slot", () => {
   assert.equal(config.elementsFile, join(DEPS, "ds", "elements-ff5.json"));
   assert.equal(config.battlesFile, join(DEPS, "ds", "battles-ff5.jsonl"));
   assert.equal(config.checkEveryMs, 60000);
+  assert.equal(config.agentCheckMs, 5000);
   assert.equal(config.detectCacheMs, 10000);
   assert.equal(config.autoPresetWaitMs, 3000);
   assert.equal(config.travelMaxHops, 12);
@@ -96,6 +97,7 @@ void test("Config keeps explicit values", () => {
     elementsFile: "/tmp/elements.json",
     battlesFile: "/tmp/battles.jsonl",
     checkEveryMs: 250,
+    agentCheckMs: 1500,
     detectCacheMs: 1234,
     autoPresetWaitMs: 25,
     travelMaxHops: 20,
@@ -127,6 +129,7 @@ void test("Config keeps explicit values", () => {
   assert.equal(config.bestiaryDeferBattles, 8);
   assert.equal(config.bestiaryMissableMinutes, 25);
   assert.equal(config.checkEveryMs, 250);
+  assert.equal(config.agentCheckMs, 1500);
   assert.equal(config.detectCacheMs, 1234);
   assert.equal(config.autoPresetWaitMs, 25);
   assert.equal(config.walkpathTimeoutMs, 15000);

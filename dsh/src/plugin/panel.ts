@@ -131,7 +131,10 @@ export function achievementRoute(
 }
 
 function defaultTacticsPilot(engine: PlayerEngine, signal: AbortSignal) {
-  return createPilot(engine.laptop, engine.bridge, signal, { game: engine.game.game });
+  return createPilot(engine.laptop, engine.bridge, signal, {
+    game: engine.game.game,
+    agentCheckMs: engine.agentCheckMs,
+  });
 }
 
 /** The configured game's profile: what a down bridge or an unknown product falls back to. */

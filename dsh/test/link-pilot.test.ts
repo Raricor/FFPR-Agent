@@ -446,7 +446,50 @@ void test("a send that finds the agent gone restarts it once and retries", async
     });
     assert.deepEqual(await pilot.send("pos"), { ok: true, pos: { map: 2 } });
     assert.deepEqual(messages, ["试玩助手不在，已重新启动"]);
-    assert.equal(countStarts(await readSshLog(log)), 1);
+    const calls = await readSshLog(log);
+    assert.equal(countStarts(calls), 1);
+    // 11-09 (task 78): agent.json may exist with a dead pid; the same SSH session must see it
+    // and throw the same not-running error, so this restart path catches it.
+    const send = calls[0];
+    assert.ok(send);
+    assert.match(scriptOf(send), /\$agentPid = \[int\]\(Get-Content \$agent/);
+    assert.match(scriptOf(send), /Get-Process -Id \$agentPid/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("a send waits no longer when the pilot agent process exits mid-command", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-pilot-"));
+  try {
+    // The fake replays what the script would raise after its periodic pid check; it cannot
+    // run PowerShell, so the script itself is checked for that check below.
+    const exited = {
+      stderr:
+        "试玩助手进程已经退出,命令没有完成:先等它重开或重新运行 ffpr-pilot start,不要直接重发",
+      code: 1,
+    };
+    const log = await useFakeSsh(directory, [exited]);
+    const messages: string[] = [];
+    const pilot = createPilot(laptop(), undefined, SIGNAL, {
+      timingFile: "/dev/null",
+      game: "ff2",
+      log: (message) => messages.push(message),
+    });
+    await assert.rejects(pilot.send("story", { timeout: 600000 }, 620_000), /试玩助手进程已经退出/);
+    // A command that may have pressed half its keys must never be sent twice by itself.
+    const calls = await readSshLog(log);
+    assert.equal(calls.length, 1);
+    assert.equal(countStarts(calls), 0);
+    assert.deepEqual(messages, []);
+    const send = calls[0];
+    assert.ok(send);
+    assert.match(scriptOf(send), /\$nextCheck = \(Get-Date\)\.AddSeconds\(5\)/);
+    assert.equal(
+      scriptOf(send).match(/Get-Process -Id \$agentPid/gu)?.length,
+      2,
+      "once before the command file is dropped, once every five seconds while waiting",
+    );
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
