@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import type { TranscriptEntry } from "./fake-pilot.ts";
 import { FakePilot, recordedCalls, scriptReplies } from "./fake-pilot.ts";
 import type { Cell, CellGrid } from "../src/engine/nav.ts";
+import { Atlas } from "../src/engine/atlas.ts";
 import {
   landHere,
   landingSpots,
@@ -706,6 +708,205 @@ void test("a blocked walkpath step is cut and the next plan goes around it", asy
     ),
     "the new route walked into the cut step",
   );
+});
+
+interface EventPilot {
+  readonly pilot: FakePilot;
+  here: () => Cell;
+  map: () => number;
+  setHere: (cell: Cell) => void;
+  setMap: (map: number) => void;
+}
+
+/** An indoor map (map 265) with one named Event cell and its collision rows. */
+function eventGoalPilot(rows: readonly string[], event: Cell, name: string): EventPilot {
+  let here: Cell = [0, 0];
+  let map = 265;
+  const width = rows[0]?.length ?? 0;
+  const pilot = new FakePilot();
+  pilot.on("pos", () => ({ pos: { map, cell: [here[0], here[1]] } }));
+  pilot.on("cells", () => ({
+    cells: {
+      origin: [0, 0],
+      center: [here[0], here[1]],
+      attr: Array.from({ length: rows.length }, () => Array.from({ length: width }, () => 0)),
+    },
+  }));
+  pilot.on("collision", () => ({
+    collision: {
+      searchLayer: 1,
+      playerCell: [here[0], here[1]],
+      layers: [{ name: "GroundCollision", rows: [...rows] }],
+    },
+  }));
+  pilot.on("entities", (fields) =>
+    fields.kind === "Event"
+      ? {
+          entities: {
+            total: 1,
+            entities: [{ kind: "Event", cell: [event[0], event[1]], name, active: true }],
+          },
+        }
+      : { entities: { total: 0, entities: [] } },
+  );
+  pilot.on("route", { route: {} });
+  pilot.on("wait", { ok: true });
+  return {
+    pilot,
+    here: () => here,
+    map: () => map,
+    setHere: (cell) => {
+      here = [cell[0], cell[1]];
+    },
+    setMap: (value) => {
+      map = value;
+    },
+  };
+}
+
+void test("go tries an event goal again and does not record the refused steps", async () => {
+  // 11-10, Fire-Powered Ship 265: (12,16)→(13,16) was refused by go, but grind walked it
+  // later. The same step is tried again instead of becoming a permanent wall.
+  const env = eventGoalPilot(["000000", "000000", "000000"], [2, 0], "通路に流される3");
+  let attempts = 0;
+  env.pilot.on("walkpath", (fields) => {
+    const path = fields.path as Cell[];
+    if (fields.goal === undefined) {
+      attempts += 1;
+      if (attempts < 3) {
+        return {
+          ok: false,
+          reason: "blocked",
+          index: 0,
+          steps: 0,
+          pos: { map: 265, cell: [1, 0] },
+          next: [2, 0],
+          turns: [],
+        };
+      }
+      env.setMap(261);
+      env.setHere([2, 0]);
+      return {
+        ok: false,
+        reason: "state:Event",
+        index: 1,
+        steps: 1,
+        pos: { map: 265, cell: [2, 0], state: "Event" },
+        next: null,
+        turns: [],
+      };
+    }
+    const last = path[path.length - 1];
+    assert.ok(last);
+    env.setHere(last);
+    return {
+      ok: true,
+      reason: "arrived",
+      index: path.length - 1,
+      steps: path.length - 1,
+      pos: { map: env.map(), cell: [last[0], last[1]] },
+      next: null,
+      turns: [],
+    };
+  });
+  const links: unknown[] = [];
+  const state: MoveState = {
+    drake: null,
+    link: (_map, from, to, how) => {
+      links.push({ from: [...from], to: [...to], how });
+      return Promise.resolve();
+    },
+  };
+  assert.deepEqual(await navigate(env.pilot, [2, 0], false, () => undefined, 8, state), [
+    true,
+    "进入了地图 261,现在在 [2, 0]",
+  ]);
+  assert.equal(attempts, 3, "the step was tried three times from the same side");
+  assert.deepEqual(links, [], "a refused event step is not written as 走不过去");
+  assert.deepEqual([...(state.cuts?.get("265") ?? [])], []);
+});
+
+void test("go names every side it tried when an event goal stays blocked", async () => {
+  // The cell above (2,0) is a wall and the one below is off the map, so only (1,0) and
+  // (3,0) can be stood on; the report must name exactly those and the tries per side.
+  const env = eventGoalPilot(["000000", "001000", "000000", "000000"], [2, 0], "通路に流される3");
+  let attempts = 0;
+  env.pilot.on("walkpath", (fields) => {
+    const path = fields.path as Cell[];
+    if (fields.goal === undefined) {
+      attempts += 1;
+      const from = path[0];
+      assert.ok(from);
+      return {
+        ok: false,
+        reason: "blocked",
+        index: 0,
+        steps: 0,
+        pos: { map: 265, cell: [from[0], from[1]] },
+        next: [2, 0],
+        turns: [],
+      };
+    }
+    const last = path[path.length - 1];
+    assert.ok(last);
+    env.setHere(last);
+    return {
+      ok: true,
+      reason: "arrived",
+      index: path.length - 1,
+      steps: path.length - 1,
+      pos: { map: env.map(), cell: [last[0], last[1]] },
+      next: null,
+      turns: [],
+    };
+  });
+  const links: unknown[] = [];
+  const state: MoveState = {
+    drake: null,
+    link: (_map, from, to, how) => {
+      links.push({ from: [...from], to: [...to], how });
+      return Promise.resolve();
+    },
+  };
+  assert.deepEqual(await navigate(env.pilot, [2, 0], false, () => undefined, 8, state), [
+    false,
+    "(2, 0) 是事件格「通路に流される3」,从 (1, 0)、(3, 0) 各试了 3 次都被游戏挡住，没记成走不过去",
+  ]);
+  assert.equal(attempts, 6, "three tries from each of the two standable sides");
+  assert.deepEqual(links, []);
+  assert.deepEqual([...(state.cuts?.get("265") ?? [])], []);
+});
+
+void test("an old blocked record onto an event cell no longer closes the step", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-event-"));
+  const file = join(directory, "atlas.json");
+  try {
+    await writeFile(
+      file,
+      JSON.stringify({
+        260: {
+          name: "火力船",
+          exits: [],
+          chests: [],
+          links: [{ from: [1, 0], to: [2, 0], how: "走不过去", count: 1 }],
+        },
+      }),
+      "utf8",
+    );
+    const atlas = await Atlas.load(file);
+    const env = eventGoalPilot(["000000", "111111"], [2, 0], "通路に流される3");
+    const state: MoveState = { drake: null, moves: () => atlas.moves(260) };
+    const [here, path] = await plan(env.pilot, [3, 0], false, new Set<string>(), state, 260);
+    assert.deepEqual(here, [0, 0]);
+    assert.deepEqual(path.at(-1), [3, 0], "the recorded step is not a wall for an event cell");
+    assert.equal(atlas.moves(260).length, 1, "the record is kept, only not used");
+    // Without entity information (an old bridge, a failed query) the record still counts.
+    env.pilot.on("entities", { entities: { total: 0, entities: [] } });
+    const [, withoutEvents] = await plan(env.pilot, [3, 0], false, new Set<string>(), state, 260);
+    assert.deepEqual(withoutEvents.at(-1), [1, 0]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 void test("off path is replanned from where the party is", async () => {
