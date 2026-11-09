@@ -1,0 +1,844 @@
+{
+  "pos": {
+    "map": 255,
+    "area": 26,
+    "areaType": 1,
+    "areaText": "火力船",
+    "state": "Player",
+    "cell": [6, 7],
+    "dir": "Down",
+    "moving": false,
+    "dialog": false,
+    "battle": false,
+    "saves": 11
+  },
+  "cells": {
+    "center": [6, 7],
+    "at": [6, 7],
+    "origin": [-2, -1],
+    "attr": [
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    ]
+  },
+  "entities": {
+    "total": 19,
+    "entities": [
+      {
+        "kind": "GotoMap",
+        "class": "PropertyGotoMap",
+        "group": "default",
+        "id": 4,
+        "objectId": 0,
+        "objectType": 3,
+        "direction": 0,
+        "myLayer": 11,
+        "name": "GotoMap",
+        "tile": [304, 336],
+        "size": [16, 16],
+        "affected": false,
+        "visibleMinimap": false,
+        "confirmLanding": false,
+        "pos": [112, -72, 149],
+        "cell": [19, 20],
+        "active": true,
+        "toMap": 258,
+        "point": 1,
+        "script": 0,
+        "linkObjectId": 0,
+        "actionId": 3,
+        "actionName": "GoToMap",
+        "ignoreRouteLinkObjectId": -1
+      },
+      {
+        "kind": "PointIn",
+        "class": "PropertyPointIn",
+        "group": "default",
+        "id": 5,
+        "objectId": 2,
+        "objectType": 0,
+        "direction": 4,
+        "myLayer": 11,
+        "name": "PointIn",
+        "tile": [304, 352],
+        "size": [16, 16],
+        "affected": false,
+        "visibleMinimap": false,
+        "confirmLanding": false,
+        "pos": [112, -88, 149],
+        "cell": [19, 21],
+        "active": true,
+        "linkObjectId": 0,
+        "titleId": "",
+        "titleType": 0
+      },
+      {
+        "kind": "GotoMap",
+        "class": "PropertyGotoMap",
+        "group": "default",
+        "id": 6,
+        "objectId": 0,
+        "objectType": 3,
+        "direction": 0,
+        "myLayer": 11,
+        "name": "GotoMap",
+        "tile": [160, 272],
+        "size": [16, 16],
+        "affected": false,
+        "visibleMinimap": false,
+        "confirmLanding": false,
+        "pos": [-32, -8, 149],
+        "cell": [10, 16],
+        "active": true,
+        "toMap": 634,
+        "point": 1,
+        "script": 0,
+        "linkObjectId": 0,
+        "actionId": 3,
+        "actionName": "GoToMap",
+        "ignoreRouteLinkObjectId": -1
+      },
+      {
+        "kind": "PointIn",
+        "class": "PropertyPointIn",
+        "group": "default",
+        "id": 7,
+        "objectId": 3,
+        "objectType": 0,
+        "direction": 4,
+        "myLayer": 11,
+        "name": "PointIn",
+        "tile": [160, 288],
+        "size": [16, 16],
+        "affected": false,
+        "visibleMinimap": false,
+        "confirmLanding": false,
+        "pos": [-32, -24, 149],
+        "cell": [10, 17],
+        "active": true,
+        "linkObjectId": 0,
+        "titleId": "",
+        "titleType": 0
+      },
+      {
+        "kind": "GotoMap",
+        "class": "PropertyGotoMap",
+        "group": "default",
+        "id": 8,
+        "objectId": 0,
+        "objectType": 3,
+        "direction": 0,
+        "myLayer": 11,
+        "name": "GotoMap",
+        "tile": [96, 112],
+        "size": [16, 16],
+        "affected": false,
+        "visibleMinimap": false,
+        "confirmLanding": false,
+        "pos": [-96, 152, 149],
+        "cell": [6, 6],
+        "active": true,
+        "toMap": 635,
+        "point": 1,
+        "script": 0,
+        "linkObjectId": 0,
+        "actionId": 3,
+        "actionName": "GoToMap",
+        "ignoreRouteLinkObjectId": -1
+      },
+      {
+        "kind": "PointIn",
+        "class": "PropertyPointIn",
+        "group": "default",
+        "id": 9,
+        "objectId": 4,
+        "objectType": 0,
+        "direction": 4,
+        "myLayer": 11,
+        "name": "PointIn",
+        "tile": [96, 128],
+        "size": [16, 16],
+        "affected": false,
+        "visibleMinimap": false,
+        "confirmLanding": false,
+        "pos": [-96, 136, 149],
+        "cell": [6, 7],
+        "active": true,
+        "linkObjectId": 0,
+        "titleId": "",
+        "titleType": 0
+      },
+      {
+        "kind": "TresureBox",
+        "class": "PropertyTresureBox",
+        "group": "default",
+        "id": 11,
+        "objectId": 0,
+        "objectType": 7,
+        "direction": 15,
+        "myLayer": 11,
+        "name": "フェニックスのお",
+        "tile": [240, 272],
+        "size": [16, 16],
+        "affected": false,
+        "visibleMinimap": false,
+        "confirmLanding": false,
+        "pos": [48, -8, 149],
+        "cell": [15, 16],
+        "active": true,
+        "content": 4,
+        "num": 1,
+        "flag": 79,
+        "treasureType": 1,
+        "hidden": false,
+        "opened": true,
+        "contentName": "不死鸟之尾",
+        "script": 0,
+        "linkObjectId": 100,
+        "actionId": 6,
+        "actionName": "OpenTresureBox",
+        "ignoreRouteLinkObjectId": -1
+      },
+      {
+        "kind": "TileAnimRegion",
+        "class": "PropertyTileAnimRegion",
+        "group": "default",
+        "id": 12,
+        "objectId": 100,
+        "objectType": 1,
+        "direction": 0,
+        "myLayer": 0,
+        "name": "TileAnimRegion",
+        "tile": [240, 256],
+        "size": [16, 16],
+        "affected": false,
+        "visibleMinimap": false,
+        "confirmLanding": false,
+        "pos": [48, 8, 149],
+        "cell": [15, 15],
+        "active": true,
+        "isReverse": false,
+        "isPlaying": false,
+        "animationTiles": [{ "tileId": 979, "isTrigger": true, "isLoop": false }]
+      },
+      {
+        "kind": "OpenTrigger",
+        "class": "PropertyOpenTrigger",
+        "group": "default",
+        "id": 24,
+        "objectId": 0,
+        "objectType": 8,
+        "direction": 15,
+        "myLayer": 11,
+        "name": "OpenTrigger",
+        "tile": [304, 336],
+        "size": [16, 16],
+        "affected": false,
+        "visibleMinimap": false,
+        "confirmLanding": false,
+        "pos": [112, -72, 149],
+        "cell": [19, 20],
+        "active": true,
+        "script": 0,
+        "linkObjectId": 11,
+        "actionId": 5,
+        "actionName": "OpenTrigger",
+        "ignoreRouteLinkObjectId": -1,
+        "isAlreadyHit": false,
+        "triggerSize": [16, 16]
+      },
+      {
+        "kind": "TileAnimRegion",
+        "class": "PropertyTileAnimRegion",
+        "group": "default",
+        "id": 25,
+        "objectId": 11,
+        "objectType": 1,
+        "direction": 0,
+        "myLayer": 0,
+        "name": "TileAnimRegion",
+        "tile": [304, 304],
+        "size": [16, 32],
+        "affected": false,
+        "visibleMinimap": false,
+        "confirmLanding": false,
+        "pos": [112, -32, 149],
+        "cell": [19, 18],
+        "active": true,
+        "isReverse": false,
+        "isPlaying": false,
+        "animationTiles": [
+          { "tileId": 329, "isTrigger": true, "isLoop": false },
+          { "tileId": 393, "isTrigger": true, "isLoop": false },
+          { "tileId": 361, "isTrigger": true, "isLoop": false }
+        ]
+      },
+      {
+        "kind": "TileAnimRegion",
+        "class": "PropertyTileAnimRegion",
+        "group": "default",
+        "id": 26,
+        "objectId": 12,
+        "objectType": 1,
+        "direction": 0,
+        "myLayer": 0,
+        "name": "TileAnimRegion",
+        "tile": [160, 240],
+        "size": [16, 32],
+        "affected": false,
+        "visibleMinimap": false,
+        "confirmLanding": false,
+        "pos": [-32, 32, 149],
+        "cell": [10, 14],
+        "active": true,
+        "isReverse": false,
+        "isPlaying": false,
+        "animationTiles": [
+          { "tileId": 329, "isTrigger": true, "isLoop": false },
+          { "tileId": 393, "isTrigger": true, "isLoop": false },
+          { "tileId": 361, "isTrigger": true, "isLoop": false }
+        ]
+      },
+      {
+        "kind": "OpenTrigger",
+        "class": "PropertyOpenTrigger",
+        "group": "default",
+        "id": 27,
+        "objectId": 0,
+        "objectType": 8,
+        "direction": 15,
+        "myLayer": 11,
+        "name": "OpenTrigger",
+        "tile": [160, 272],
+        "size": [16, 16],
+        "affected": false,
+        "visibleMinimap": false,
+        "confirmLanding": false,
+        "pos": [-32, -8, 149],
+        "cell": [10, 16],
+        "active": true,
+        "script": 0,
+        "linkObjectId": 12,
+        "actionId": 5,
+        "actionName": "OpenTrigger",
+        "ignoreRouteLinkObjectId": -1,
+        "isAlreadyHit": false,
+        "triggerSize": [16, 16]
+      },
+      {
+        "kind": "OpenTrigger",
+        "class": "PropertyOpenTrigger",
+        "group": "default",
+        "id": 28,
+        "objectId": 0,
+        "objectType": 8,
+        "direction": 15,
+        "myLayer": 11,
+        "name": "OpenTrigger",
+        "tile": [96, 112],
+        "size": [16, 16],
+        "affected": false,
+        "visibleMinimap": false,
+        "confirmLanding": false,
+        "pos": [-96, 152, 149],
+        "cell": [6, 6],
+        "active": true,
+        "script": 0,
+        "linkObjectId": 13,
+        "actionId": 5,
+        "actionName": "OpenTrigger",
+        "ignoreRouteLinkObjectId": -1,
+        "isAlreadyHit": false,
+        "triggerSize": [16, 16]
+      },
+      {
+        "kind": "TileAnimRegion",
+        "class": "PropertyTileAnimRegion",
+        "group": "default",
+        "id": 29,
+        "objectId": 13,
+        "objectType": 1,
+        "direction": 0,
+        "myLayer": 0,
+        "name": "TileAnimRegion",
+        "tile": [96, 80],
+        "size": [16, 32],
+        "affected": false,
+        "visibleMinimap": false,
+        "confirmLanding": false,
+        "pos": [-96, 192, 149],
+        "cell": [6, 4],
+        "active": true,
+        "isReverse": false,
+        "isPlaying": false,
+        "animationTiles": [
+          { "tileId": 329, "isTrigger": true, "isLoop": false },
+          { "tileId": 393, "isTrigger": true, "isLoop": false },
+          { "tileId": 361, "isTrigger": true, "isLoop": false }
+        ]
+      },
+      {
+        "kind": "TileAnimRegion",
+        "class": "PropertyTileAnimRegion",
+        "group": "default",
+        "id": 0,
+        "objectId": 0,
+        "objectType": 1,
+        "direction": 0,
+        "myLayer": 0,
+        "name": "TileAnimRegion",
+        "tile": [240, 144],
+        "size": [16, 32],
+        "affected": false,
+        "visibleMinimap": false,
+        "confirmLanding": false,
+        "pos": [48, 128, 149],
+        "cell": [15, 8],
+        "active": true,
+        "isReverse": false,
+        "isPlaying": false
+      },
+      {
+        "kind": "TileAnimRegion",
+        "class": "PropertyTileAnimRegion",
+        "group": "default",
+        "id": 0,
+        "objectId": 0,
+        "objectType": 1,
+        "direction": 0,
+        "myLayer": 0,
+        "name": "TileAnimRegion",
+        "tile": [224, 256],
+        "size": [16, 32],
+        "affected": false,
+        "visibleMinimap": false,
+        "confirmLanding": false,
+        "pos": [32, 16, 149],
+        "cell": [14, 15],
+        "active": true,
+        "isReverse": false,
+        "isPlaying": false
+      },
+      {
+        "kind": "GotoMap",
+        "class": "PropertyGotoMap",
+        "group": "default",
+        "id": 1,
+        "objectId": 0,
+        "objectType": 3,
+        "direction": 0,
+        "myLayer": 11,
+        "name": "GotoMap",
+        "tile": [96, 432],
+        "size": [16, 16],
+        "affected": false,
+        "visibleMinimap": false,
+        "confirmLanding": false,
+        "pos": [-96, -168, 149],
+        "cell": [6, 26],
+        "active": true,
+        "toMap": 253,
+        "point": 3,
+        "script": 0,
+        "linkObjectId": 0,
+        "actionId": 3,
+        "actionName": "GoToMap",
+        "ignoreRouteLinkObjectId": -1
+      },
+      {
+        "kind": "PointIn",
+        "class": "PropertyPointIn",
+        "group": "default",
+        "id": 2,
+        "objectId": 1,
+        "objectType": 0,
+        "direction": 1,
+        "myLayer": 11,
+        "name": "PointIn",
+        "tile": [96, 416],
+        "size": [16, 16],
+        "affected": false,
+        "visibleMinimap": false,
+        "confirmLanding": false,
+        "pos": [-96, -152, 149],
+        "cell": [6, 25],
+        "active": true,
+        "linkObjectId": 0,
+        "titleId": "",
+        "titleType": 0
+      },
+      {
+        "kind": "DefaultEntity",
+        "class": "PropertyDefaultEntity",
+        "group": "ev_e_0215",
+        "id": 500,
+        "objectId": 0,
+        "objectType": 5,
+        "direction": 0,
+        "myLayer": 11,
+        "name": "世界地図",
+        "tile": [224, 256],
+        "size": [16, 16],
+        "affected": true,
+        "visibleMinimap": false,
+        "confirmLanding": false,
+        "pos": [32, 8, 149],
+        "cell": [14, 15],
+        "active": false,
+        "script": 2013,
+        "linkObjectId": 0,
+        "actionId": 2,
+        "actionName": "RunScript",
+        "ignoreRouteLinkObjectId": -1
+      }
+    ]
+  },
+  "cells24": {
+    "center": [6, 7],
+    "at": [6, 7],
+    "origin": [-18, -17],
+    "attr": [
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ],
+      [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ]
+    ]
+  },
+  "collision": {
+    "name": "CollisionGroup",
+    "width": 0,
+    "height": 0,
+    "playerCell": [6, 7],
+    "searchLayer": 2,
+    "layers": [
+      {
+        "index": 0,
+        "id": 16,
+        "name": "UpperCollision",
+        "width": 25,
+        "height": 32,
+        "values": [0, 1],
+        "rows": [
+          "1111111111111111111111111",
+          "1111111111111111111111111",
+          "1111111111111111111111111",
+          "1111111111111111111111111",
+          "1111111111111111111111111",
+          "1111111111111111111111111",
+          "1111110111111111111111111",
+          "1111100011111111111111111",
+          "1111100011111111111111111",
+          "1111110111111111111111111",
+          "1111110111111111111111111",
+          "1111100111111111111111111",
+          "1111100111111111111111111",
+          "1111100111111111111111111",
+          "1111100111111111111111111",
+          "1111100001111100111111111",
+          "1111100001010000111111111",
+          "1111100000000000111111111",
+          "1111111000000000111111111",
+          "1111111111111111111111111",
+          "1111111111111111111011111",
+          "1111111111111111111011111",
+          "1111111111111111111011111",
+          "1111111111111111110011111",
+          "1111100000011111110011111",
+          "1111100000011111110011111",
+          "1111110110000000000011111",
+          "1111111110000000000011111",
+          "1111111111111111111111111",
+          "1111111111111111111111111",
+          "1111111111111111111111111",
+          "1111111111111111111111111"
+        ]
+      }
+    ]
+  },
+  "routes": {
+    "[6, 26]": {
+      "type": "reply",
+      "frame": 1131566,
+      "re": 6,
+      "op": "route",
+      "route": {
+        "from": [6, 7],
+        "theirs": [6, 7, 2],
+        "ours": [6, 7, 0],
+        "cells": [
+          [-96, 120, 0],
+          [-96, 104, 0],
+          [-96, 88, 0],
+          [-96, 72, 0],
+          [-96, 56, 0],
+          [-96, 40, 0],
+          [-96, 24, 0],
+          [-96, 8, 0],
+          [-96, -8, 0],
+          [-96, -24, 0],
+          [-96, -40, 0],
+          [-96, -56, 0],
+          [-96, -72, 0],
+          [-96, -88, 0],
+          [-96, -104, 0],
+          [-96, -120, 0],
+          [-96, -136, 0],
+          [-96, -152, 0],
+          [-96, -168, 0]
+        ],
+        "tries": { "theirs": 0, "simple": 19, "used": "simple", "ours": 0, "entity": 20 },
+        "limit": [64, 64]
+      },
+      "ok": true
+    },
+    "[19, 20]": {
+      "type": "reply",
+      "frame": 1131574,
+      "re": 7,
+      "op": "route",
+      "route": {
+        "from": [6, 7],
+        "theirs": [6, 7, 2],
+        "ours": [6, 7, 0],
+        "cells": [
+          [-80, 136, 0],
+          [-64, 136, 0],
+          [-48, 136, 0],
+          [-32, 136, 0],
+          [-16, 136, 0],
+          [0, 136, 0],
+          [16, 136, 0],
+          [32, 136, 0],
+          [48, 136, 0],
+          [64, 136, 0],
+          [80, 136, 0],
+          [96, 136, 0],
+          [112, 136, 0],
+          [112, 120, 0],
+          [112, 104, 0],
+          [112, 88, 0],
+          [112, 72, 0],
+          [112, 56, 0],
+          [112, 40, 0],
+          [112, 24, 0],
+          [112, 8, 0],
+          [112, -8, 0],
+          [112, -24, 0],
+          [112, -40, 0],
+          [112, -56, 0],
+          [112, -72, 0]
+        ],
+        "tries": { "theirs": 0, "simple": 26, "used": "simple", "ours": 0, "entity": 14 },
+        "limit": [64, 64]
+      },
+      "ok": true
+    }
+  }
+}

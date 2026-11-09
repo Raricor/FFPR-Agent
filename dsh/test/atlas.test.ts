@@ -151,6 +151,32 @@ void test("atlas keeps jump links across visits", async () => {
   }
 });
 
+void test("a lift ride is a cross-map edge that is updated, not duplicated", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-atlas-"));
+  const path = join(directory, "atlas.json");
+  try {
+    const atlas = await Atlas.load(path);
+    await atlas.visit(257, "火力船 升降机", [], []);
+    await atlas.ride(257, [4, 6], [3, 6], "Left", 634, [4, 6]);
+    await atlas.ride(257, [4, 6], [3, 6], "Left", 634, [4, 5]); // landing updated
+    await atlas.ride(257, [4, 6], [3, 6], "Left", 634, [4, 5]); // unchanged
+    assert.deepEqual(atlas.rides(257), [
+      { cell: [4, 6], press: [3, 6], dir: "Left", to: 634, land: [4, 5], how: "坐一趟" },
+    ]);
+    // A ride is not a same-map conveyor/fall: the indoor planner must not see it as a move.
+    assert.deepEqual(atlas.moves(257), []);
+    assert.match(atlas.links(257), /在 \(4, 6\) 坐一趟 面朝Left 到 地图 634 \(4, 5\)/);
+    assert.match(atlas.describe(257), /走法 在 \(4, 6\) 坐一趟 面朝Left 到 地图 634/);
+
+    await atlas.visit(257, "火力船 升降机", [{ cell: [5, 9], to: 253 }], []);
+    assert.equal(atlas.rides(257).length, 1);
+    const reloaded = await Atlas.load(path);
+    assert.deepEqual(reloaded.rides(257), atlas.rides(257));
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 void test("atlas keeps walked gimmicks as directed moves", async () => {
   const directory = await mkdtemp(join(tmpdir(), "ffpr-atlas-"));
   const path = join(directory, "atlas.json");
@@ -168,6 +194,22 @@ void test("atlas keeps walked gimmicks as directed moves", async () => {
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+void test("blocked steps keep the first time, count repeats and can be forgotten", async () => {
+  const atlas = new Atlas();
+  await atlas.link(252, [9, 13], [9, 14], "走不过去");
+  const first = atlas.moves(252)[0];
+  assert.ok(first);
+  assert.equal(first.count, 1);
+  assert.equal(typeof first.at, "string");
+  await atlas.link(252, [9, 13], [9, 14], "走不过去");
+  const again = atlas.moves(252)[0];
+  assert.ok(again);
+  assert.equal(again.count, 2);
+  assert.equal(again.at, first.at, "the first record time is kept");
+  await atlas.forgetBlocked(252, [again]);
+  assert.deepEqual(atlas.moves(252), []);
 });
 
 void test("atlas ignores a missing file and rejects a non-object one", async () => {

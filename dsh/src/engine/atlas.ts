@@ -14,7 +14,27 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { describeError, isMissingFile } from "./errors.ts";
 import type { Cell, ObservedMove } from "./nav.ts";
-import { isRecord, records, text, type Json } from "./values.ts";
+import { isRecord, num, records, text, type Json } from "./values.ts";
+
+/** The "how" of a step the game refused; it is a hint, not a permanent wall (task 73). */
+const BLOCKED_HOW = "走不过去";
+
+/** A ride that changes the map without walking onto an exit: a lift, an elevator. */
+export interface Ride {
+  /** Where the party stood when it pressed. */
+  readonly cell: Cell;
+  /** The cell pressed (the interact target), kept so the edge can be read back. */
+  readonly press: Cell;
+  /** Up, Down, Left or Right. */
+  readonly dir: string;
+  /** The map the recorded ride led to. */
+  readonly to: number;
+  /** Where the party landed on that map. */
+  readonly land: Cell;
+  /** The floor it landed on, when the collision reply named one (task 75). */
+  readonly landLayer?: number;
+  readonly how: string;
+}
 
 /** Map ids are strings at the file boundary; a Map keeps Python's insertion order. */
 export class Atlas {
@@ -74,7 +94,23 @@ export class Atlas {
     const isNew = !this.visitedNow.has(key);
     this.visitedNow.add(key);
     const old = this.maps.get(key) ?? {};
-    const entry: Json = { name: name || "", exits: [...exits], chests: [...chests] };
+    // Task 75: a landing learned by walking the exit survives the next look_around, which
+    // rewrites the exit list from the entities each time.
+    const previous = records(old.exits);
+    const merged = exits.map((exit) => {
+      if (!isRecord(exit)) return exit;
+      const before = previous.find((candidate) => {
+        if (!isRecord(candidate)) return false;
+        return sameJson(candidate.cell, exit.cell) && num(candidate.to) === num(exit.to);
+      });
+      if (before?.land === undefined) return exit;
+      return {
+        ...exit,
+        land: before.land,
+        ...(before.landLayer !== undefined ? { landLayer: before.landLayer } : {}),
+      };
+    });
+    const entry: Json = { name: name || "", exits: merged, chests: [...chests] };
     if (Array.isArray(old.links) && old.links.length > 0) entry.links = old.links;
     if (!sameJson(old, entry)) {
       this.maps.set(key, entry);
@@ -92,7 +128,7 @@ export class Atlas {
     start: readonly number[],
     end: readonly number[],
     how: string,
-    detail: { readonly kind?: string; readonly toLayer?: number } = {},
+    detail: { readonly kind?: string; readonly toLayer?: number; readonly layer?: number } = {},
   ): Promise<void> {
     const key = String(mapId);
     let entry = this.maps.get(key);
@@ -100,11 +136,25 @@ export class Atlas {
       entry = { name: "", exits: [], chests: [] };
       this.maps.set(key, entry);
     }
-    const links = Array.isArray(entry.links) ? entry.links : [];
-    if (!Array.isArray(entry.links)) entry.links = links;
+    const links = records(entry.links);
+    entry.links = links;
     const link: Json = { from: [...start], to: [...end], how };
     if (detail.kind !== undefined) link.kind = detail.kind;
     if (detail.toLayer !== undefined) link.toLayer = detail.toLayer;
+    if (detail.layer !== undefined) link.layer = detail.layer;
+    if (how === BLOCKED_HOW) {
+      // 11-09: a step blocked once may have been a temporary NPC, dialog or story block; keep
+      // how often it was hit so the planner can tell a repeatable wall from a stale record.
+      const existing = links.find((candidate) => sameStep(candidate, link));
+      if (existing !== undefined) {
+        existing.count = Math.trunc(num(existing.count) ?? 1) + 1;
+        if (text(existing.at) === undefined) existing.at = new Date().toISOString();
+        await this.save();
+        return;
+      }
+      link.at = new Date().toISOString();
+      link.count = 1;
+    }
     if (!links.some((existing) => sameJson(existing, link))) {
       links.push(link);
       await this.save();
@@ -112,12 +162,129 @@ export class Atlas {
   }
 
   /**
+   * Forgets "走不过去" records a walk has proven wrong (task 73). A record without `at` or
+   * `count` was written before task 73 and is matched by its step alone.
+   */
+  async forgetBlocked(mapId: unknown, steps: readonly ObservedMove[]): Promise<void> {
+    if (steps.length === 0) return;
+    const entry = this.maps.get(String(mapId));
+    const links = records(entry?.links);
+    if (entry === undefined || links.length === 0) return;
+    const kept = links.filter((link) => !steps.some((step) => sameBlockedStep(link, step)));
+    if (kept.length === links.length) return;
+    entry.links = kept;
+    await this.save();
+  }
+
+  /**
+   * Task 75: where an exit dropped the party, so the next plan can tell which block of the
+   * destination it can walk in. Keeps the exit's other fields; false when the exit is not in
+   * the record yet (the next look_around adds it).
+   */
+  async landExit(
+    mapId: unknown,
+    exitCell: readonly number[],
+    toMap: number,
+    landing: readonly number[],
+    layer?: number | null,
+  ): Promise<boolean> {
+    const entry = this.maps.get(String(mapId));
+    if (entry === undefined) return false;
+    const exit = records(entry.exits).find(
+      (candidate) => sameJson(candidate.cell, exitCell) && num(candidate.to) === toMap,
+    );
+    if (exit === undefined) return false;
+    const land = [...landing];
+    const landLayer = layer === undefined || layer === null ? undefined : Math.trunc(layer);
+    if (sameJson(exit.land, land) && (exit.landLayer ?? undefined) === landLayer) return false;
+    exit.land = land;
+    if (landLayer === undefined) delete exit.landLayer;
+    else exit.landLayer = landLayer;
+    await this.save();
+    return true;
+  }
+
+  /**
+   * A map change made by pressing something, not by stepping onto an exit: a lift. The edge
+   * is kept in `links` (so a later `visit` keeps it and the Python atlas sees it too) but it
+   * is not a same-map move; `moves` leaves it out.
+   *
+   * Identity is from + press + dir + destination, the landing cell may change when the game
+   * puts the party down elsewhere; repeat rides update that one edge instead of adding more
+   * (task 71).
+   */
+  async ride(
+    mapId: unknown,
+    from: readonly number[],
+    press: readonly number[],
+    dir: string,
+    toMap: number,
+    landing: readonly number[],
+    how = "坐一趟",
+    landLayer?: number | null,
+  ): Promise<boolean> {
+    const key = String(mapId);
+    let entry = this.maps.get(key);
+    if (!entry) {
+      entry = { name: "", exits: [], chests: [] };
+      this.maps.set(key, entry);
+    }
+    const links = records(entry.links);
+    entry.links = links;
+    const ride: Json = {
+      from: [...from],
+      to: [...landing],
+      how,
+      kind: "ride",
+      press: [...press],
+      dir,
+      toMap,
+    };
+    if (landLayer !== undefined && landLayer !== null) ride.landLayer = Math.trunc(landLayer);
+    const index = links.findIndex((existing) => sameRide(existing, ride));
+    if (index >= 0 && sameJson(links[index], ride)) return false;
+    if (index >= 0) links[index] = ride;
+    else links.push(ride);
+    await this.save();
+    return true;
+  }
+
+  /** The ride edges recorded on a map, in the order they were found. */
+  rides(mapId: unknown): Ride[] {
+    const entry = this.maps.get(String(mapId));
+    return records(entry?.links).flatMap((link): Ride[] => {
+      if (text(link.kind) !== "ride") return [];
+      const cell = cellTuple(link.from);
+      const press = cellTuple(link.press);
+      const land = cellTuple(link.to);
+      const to = num(link.toMap);
+      const dir = text(link.dir) ?? "";
+      if (cell === null || press === null || land === null || to === undefined) return [];
+      if (!["Up", "Down", "Left", "Right"].includes(dir)) return [];
+      const landLayer = num(link.landLayer);
+      return [
+        {
+          cell,
+          press,
+          dir,
+          to: Math.trunc(to),
+          land,
+          ...(landLayer === undefined ? {} : { landLayer: Math.trunc(landLayer) }),
+          how: text(link.how) ?? "坐一趟",
+        },
+      ];
+    });
+  }
+
+  /**
    * Ways walked on a map: conveyors, falls and layer changes, as directed edges for the next
-   * plan. Links from before task 44 only carry `how`; callers read it as the kind.
+   * plan. Links from before task 44 only carry `how`; callers read it as the kind. Rides are
+   * cross-map edges and must not become same-map moves (task 71).
    */
   moves(mapId: unknown): ObservedMove[] {
     const entry = this.maps.get(String(mapId));
     return records(entry?.links).flatMap((link): ObservedMove[] => {
+      if (text(link.kind) === "ride") return [];
       const from = cellTuple(link.from);
       const to = cellTuple(link.to);
       if (from === null || to === null) return [];
@@ -128,6 +295,9 @@ export class Atlas {
         how,
         ...(typeof link.kind === "string" ? { kind: link.kind } : {}),
         ...(typeof link.toLayer === "number" ? { toLayer: Math.trunc(link.toLayer) } : {}),
+        ...(typeof link.layer === "number" ? { layer: Math.trunc(link.layer) } : {}),
+        ...(how === BLOCKED_HOW ? { count: Math.max(1, Math.trunc(num(link.count) ?? 1)) } : {}),
+        ...(how === BLOCKED_HOW && typeof link.at === "string" ? { at: link.at } : {}),
       };
       return [move];
     });
@@ -150,15 +320,22 @@ export class Atlas {
     return this.visited(to) ? "(去过)" : "(没去过)";
   }
 
-  /** The walkable links found on a map (jumps, conveyor rides), one phrase each. */
+  /** The walkable links found on a map (jumps, conveyor rides, lifts), one phrase each. */
   links(mapId: unknown): string {
     const entry = this.maps.get(String(mapId));
     return records(entry?.links)
-      .map((link) =>
-        sameJson(link.from, link.to)
+      .map((link) => {
+        if (text(link.kind) === "ride") {
+          const dir = text(link.dir) ?? "?";
+          return (
+            `在 ${tupleText(link.from)} ${String(link.how)} 面朝${dir}` +
+            ` 到 地图 ${String(link.toMap)} ${tupleText(link.to)}`
+          );
+        }
+        return sameJson(link.from, link.to)
           ? `在 ${tupleText(link.from)} ${String(link.how)}`
-          : `在 ${tupleText(link.from)} ${String(link.how)} 到 ${tupleText(link.to)}`,
-      )
+          : `在 ${tupleText(link.from)} ${String(link.how)} 到 ${tupleText(link.to)}`;
+      })
       .join("、");
   }
 
@@ -209,6 +386,43 @@ function tupleText(value: unknown): string {
 
 function sameJson(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+/** Whether two links are the same step, ignoring the task 73 `at` and `count`. */
+function sameStep(left: Json, right: Json): boolean {
+  return (
+    text(left.how) === BLOCKED_HOW &&
+    text(right.how) === BLOCKED_HOW &&
+    sameJson(left.from, right.from) &&
+    sameJson(left.to, right.to) &&
+    num(left.layer) === num(right.layer) &&
+    text(left.kind) === text(right.kind) &&
+    num(left.toLayer) === num(right.toLayer)
+  );
+}
+
+/** Whether a stored link is the blocked step `step` the walk proved wrong. */
+function sameBlockedStep(link: Json, step: ObservedMove): boolean {
+  return (
+    text(link.how) === BLOCKED_HOW &&
+    sameJson(link.from, step.from) &&
+    sameJson(link.to, step.to) &&
+    num(link.layer) === step.layer &&
+    text(link.kind) === step.kind &&
+    num(link.toLayer) === step.toLayer
+  );
+}
+
+/** Whether two links are the same ride (the landing cell is not part of the identity). */
+function sameRide(left: Json, right: Json): boolean {
+  return (
+    text(left.kind) === "ride" &&
+    text(right.kind) === "ride" &&
+    sameJson(left.from, right.from) &&
+    sameJson(left.press, right.press) &&
+    text(left.dir) === text(right.dir) &&
+    num(left.toMap) === num(right.toMap)
+  );
 }
 
 function scalarText(value: unknown): string {

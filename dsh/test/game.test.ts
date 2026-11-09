@@ -87,6 +87,23 @@ void test("a conveyor ride is kept in the atlas as a way", async () => {
   assert.match(game.atlas.describe(260), /走法 在 \(13, 23\) 传送带 到 \(9, 30\)/);
 });
 
+void test("an interact that changes the map records the lift ride, not a same-map jump", async () => {
+  const game = await temporaryGame();
+  await game.atlas.visit(257, "火力船 升降机", [], []);
+  const pilot = new FakePilot();
+  pilot.on("pos", [
+    { pos: { state: "Player", map: 634, cell: [4, 6] } },
+    { pos: { state: "Player", map: 634, cell: [4, 5] } },
+  ]);
+  const message = "站在 (4, 6) 面朝Left按了确认,之后翻了 0 页对话";
+  await game.noteJump(pilot, message, 257, [3, 6]);
+  await game.noteJump(pilot, message, 257, [3, 6]);
+  assert.deepEqual(game.atlas.rides(257), [
+    { cell: [4, 6], press: [3, 6], dir: "Left", to: 634, land: [4, 5], how: "坐一趟" },
+  ]);
+  assert.deepEqual(game.atlas.moves(257), []);
+});
+
 void test("the floor map marks doors, conveyors and landing spots", async () => {
   const game = await temporaryGame();
   const entities: Json[] = [
