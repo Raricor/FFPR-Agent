@@ -254,6 +254,7 @@ export async function startEngine(
       walkpathTurnLead: config.walkpathTurnLead,
       walkpathEventPollMs: config.walkpathEventPollMs,
       walkpathEventWaitMs: config.walkpathEventWaitMs,
+      blockedTrustCount: config.blockedTrustCount,
       signal,
     });
     game.onIncident = (message) => {
@@ -567,13 +568,15 @@ export function installPlayer(
   journal: PlayerJournal = new PlayerJournal(),
 ): void {
   // Task 67: archive finished tactician child sessions after keeping the newest few visible.
-  // `ctx.get` is the documented optional service read (@deepseek-ai/cordis reflect.get); an
-  // instance without the Host Workspace controller still plays, it just cannot archive.
-  const workspaceController: WorkspaceController | undefined =
+  // Read the Host service at archive time, not at plugin load (11-09: it may register later);
+  // `ctx.get` is the documented optional read (@deepseek-ai/cordis reflect.get), so a host
+  // without the Workspace controller still plays and just cannot archive.
+  const workspaceController = (): WorkspaceController | undefined =>
     typeof ctx.get === "function" ? ctx.get("workspaceController") : undefined;
   const tacticianSessions = new TacticianArchiveQueue({
     keepVisible: config.tacticianKeepVisible,
     archive: workspaceController,
+    activity: () => slot.current()?.activity,
     warn: (message) => {
       log.warn(message);
     },

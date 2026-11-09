@@ -12,6 +12,7 @@ import type { SessionId } from "@deepseek-ai/dsh-session";
 import type { SubagentActivationSpec, SubagentResult } from "@deepseek-ai/dsh-subagent";
 import { PERSONA_PREFIX_SECTION } from "@deepseek-ai/dsh-system-prompt";
 import type { ObjectJsonSchema, ToolDefinition } from "@deepseek-ai/dsh-tools";
+import type { ActivityLog } from "../engine/activity.ts";
 import { Atlas } from "../engine/atlas.ts";
 import { describeError } from "../engine/errors.ts";
 import { readTacticianPlan, type TacticianPlan } from "../engine/facts.ts";
@@ -80,26 +81,30 @@ export interface TacticianSessionRecorder {
 /**
  * Keep only the newest `keepVisible` finished tactician sessions per game and archive older
  * ones through dsh's Host `ctx.workspaceController` (dsh-api-workspace-controller
- * `WorkspaceController.archiveSession`, fetched with the documented `ctx.get()` optional
- * service read). The list lives in memory: after a web restart it is empty, so sessions opened
+ * `WorkspaceController.archiveSession`). The service is fetched at archive time: the plugin may
+ * load before the Host registers it (11-09: an eager lookup stayed undefined and nothing was
+ * archived). The list lives in memory: after a web restart it is empty, so sessions opened
  * before the restart stay visible (accepted, task 67). Archiving never deletes files and can be
  * undone from the workspace UI. A missing service or a failed archive only warns once; the
  * tactician still works.
  */
 export class TacticianArchiveQueue implements TacticianSessionRecorder {
   private readonly keepVisible: number;
-  private readonly archive: Pick<WorkspaceController, "archiveSession"> | undefined;
+  private readonly archive: () => Pick<WorkspaceController, "archiveSession"> | undefined;
+  private readonly activity: () => Pick<ActivityLog, "record"> | undefined;
   private readonly warn: (message: string) => void;
   private readonly visible = new Map<string, SessionId[]>();
   private warned = false;
 
   constructor(options: {
     readonly keepVisible: number;
-    readonly archive: Pick<WorkspaceController, "archiveSession"> | undefined;
+    readonly archive: () => Pick<WorkspaceController, "archiveSession"> | undefined;
+    readonly activity: () => Pick<ActivityLog, "record"> | undefined;
     readonly warn: (message: string) => void;
   }) {
     this.keepVisible = options.keepVisible;
     this.archive = options.archive;
+    this.activity = options.activity;
     this.warn = options.warn;
   }
 
@@ -116,15 +121,19 @@ export class TacticianArchiveQueue implements TacticianSessionRecorder {
   }
 
   private archiveOne(sessionId: SessionId): void {
-    if (this.archive === undefined) {
+    const archive = this.archive();
+    if (archive === undefined) {
       this.warnOnce(
         "dsh 没有提供 workspaceController 服务,战术官子会话不会自动归档;战术官照常工作",
       );
       return;
     }
     try {
-      void this.archive
+      void archive
         .archiveSession({ sessionId, stopActivity: true })
+        .then(() => {
+          this.activity()?.record("link", `归档了战术官子会话 ${sessionId.slice(0, 8)}`);
+        })
         .catch((error: unknown) => {
           this.warnOnce(`自动归档战术官子会话失败:${describeError(error)};战术官照常工作`);
         });
@@ -137,6 +146,9 @@ export class TacticianArchiveQueue implements TacticianSessionRecorder {
   private warnOnce(message: string): void {
     if (this.warned) return;
     this.warned = true;
+    // The web-ffpr.log misses ctx.logger warnings (known issue), so also put this on the
+    // player's activity page; only the first archive problem is reported.
+    this.activity()?.record("error", message);
     this.warn(message);
   }
 }

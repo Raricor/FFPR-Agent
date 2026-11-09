@@ -8,6 +8,7 @@ import type { SessionId } from "@deepseek-ai/dsh-session";
 import type { SubagentActivationSpec } from "@deepseek-ai/dsh-subagent";
 import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
 import { apply } from "../src/index.ts";
+import { ActivityLog } from "../src/engine/activity.ts";
 import { Atlas } from "../src/engine/atlas.ts";
 import { tacticianPrompt } from "../src/engine/prompt.ts";
 import * as gambit from "../src/engine/skills/gambit.ts";
@@ -100,12 +101,13 @@ void test("tactician sessions past the visible limit are archived oldest first",
   const archived: { readonly sessionId: SessionId; readonly stopActivity?: boolean }[] = [];
   const sessions = new TacticianArchiveQueue({
     keepVisible: 2,
-    archive: {
+    archive: () => ({
       archiveSession(request) {
         archived.push(request);
         return Promise.resolve({ archivedSessionIds: [request.sessionId] });
       },
-    },
+    }),
+    activity: () => undefined,
     warn: () => undefined,
   });
   let next = 0;
@@ -135,15 +137,17 @@ void test("tactician sessions past the visible limit are archived oldest first",
   assert.equal(archived[0]?.stopActivity, true);
 });
 
-void test("an archive failure leaves the tactician's plan alone and warns once", async () => {
+void test("an archive failure leaves the tactician's plan alone and logs once", async () => {
   const warnings: string[] = [];
+  const activity = new ActivityLog({ game: "ff5" });
   const sessions = new TacticianArchiveQueue({
     keepVisible: 0,
-    archive: {
+    archive: () => ({
       archiveSession() {
         return Promise.reject(new Error("Host 坏了"));
       },
-    },
+    }),
+    activity: () => activity,
     warn: (message) => warnings.push(message),
   });
   let next = 0;
@@ -170,18 +174,24 @@ void test("an archive failure leaves the tactician's plan alone and warns once",
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(warnings.length, 1);
   assert.match(warnings[0] ?? "", /自动归档战术官子会话失败/);
+  assert.equal(activity.entries.length, 1);
+  const failure = activity.entries[0];
+  assert.ok(failure);
+  assert.equal(failure.kind, "error");
+  assert.match(failure.text, /自动归档战术官子会话失败/);
 });
 
 void test("a tactician that failed is still recorded and archived later", async () => {
   const archived: SessionId[] = [];
   const sessions = new TacticianArchiveQueue({
     keepVisible: 1,
-    archive: {
+    archive: () => ({
       archiveSession(request) {
         archived.push(request.sessionId);
         return Promise.resolve({ archivedSessionIds: [request.sessionId] });
       },
-    },
+    }),
+    activity: () => undefined,
     warn: () => undefined,
   });
   let next = 0;
@@ -216,11 +226,13 @@ void test("a tactician that failed is still recorded and archived later", async 
   assert.deepEqual(archived, ["child-failed"]);
 });
 
-void test("without the workspace controller the tactician works and warns once", async () => {
+void test("without the workspace controller the tactician works and logs once", async () => {
   const warnings: string[] = [];
+  const activity = new ActivityLog({ game: "ff5" });
   const sessions = new TacticianArchiveQueue({
     keepVisible: 0,
-    archive: undefined,
+    archive: () => undefined,
+    activity: () => activity,
     warn: (message) => warnings.push(message),
   });
   let next = 0;
@@ -246,6 +258,48 @@ void test("without the workspace controller the tactician works and warns once",
   }
   assert.equal(warnings.length, 1);
   assert.match(warnings[0] ?? "", /workspaceController/);
+  assert.equal(activity.entries.length, 1);
+  const missing = activity.entries[0];
+  assert.ok(missing);
+  assert.equal(missing.kind, "error");
+  assert.match(missing.text, /workspaceController/);
+});
+
+void test("a service registered after the first archive is used for the next one", async () => {
+  const warnings: string[] = [];
+  const activity = new ActivityLog({ game: "ff5" });
+  const archived: SessionId[] = [];
+  const registered: {
+    service?: {
+      archiveSession(request: {
+        readonly sessionId: SessionId;
+      }): Promise<{ readonly archivedSessionIds: readonly SessionId[] }>;
+    };
+  } = {};
+  const sessions = new TacticianArchiveQueue({
+    keepVisible: 0,
+    archive: () => registered.service,
+    activity: () => activity,
+    warn: (message) => warnings.push(message),
+  });
+  sessions.finished("ff5", "child-1" as SessionId);
+  registered.service = {
+    archiveSession(request) {
+      archived.push(request.sessionId);
+      return Promise.resolve({ archivedSessionIds: [request.sessionId] });
+    },
+  };
+  sessions.finished("ff5", "child-2" as SessionId);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(archived, ["child-2"]);
+  assert.equal(warnings.length, 1);
+  assert.deepEqual(
+    activity.entries.map((entry) => entry.kind),
+    ["error", "link"],
+  );
+  const archivedEntry = activity.entries[1];
+  assert.ok(archivedEntry);
+  assert.match(archivedEntry.text, /归档了战术官子会话 child-2/);
 });
 
 void test("the tactician role registers only guide and atlas, with a complete persona", async () => {
