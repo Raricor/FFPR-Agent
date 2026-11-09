@@ -89,6 +89,8 @@ export interface CompletionInput {
   readonly mapName: string;
   readonly world: boolean;
   readonly region?: EncounterRegion | null;
+  /** Task 69: the world-map encounter grid at the player; wins over the region's rectangle. */
+  readonly grid?: number | null;
   readonly regionLabel?: string | null;
   readonly treasure: readonly AchievementTreasure[];
   readonly entities: readonly Json[];
@@ -257,13 +259,23 @@ export function completionState(input: CompletionInput): CompletionState {
         monster.number !== null && !input.known.has(monster.number),
     )
     .map((monster) => missingMonster(monster, input));
+  // Task 69: the encounter grid number is the world-map "region"; the old rectangle is only a
+  // secondary hint (the live world map reports every bound as 0, so it has none). The bridge's
+  // own region grid is the fallback for an old reply without map.grids or encountgrid.
+  const grid = input.world ? (input.grid ?? input.region?.grid ?? null) : null;
   const region =
-    input.world && input.region !== null && input.region !== undefined
+    input.world && ((input.region !== null && input.region !== undefined) || grid !== null)
       ? {
-          grid: input.region.grid,
-          label: input.regionLabel ?? regionLabel(input.region),
-          start: input.region.start,
-          end: input.region.end,
+          grid,
+          label:
+            input.regionLabel ??
+            (grid !== null
+              ? gridLabel(grid)
+              : input.region !== null && input.region !== undefined
+                ? regionLabel(input.region)
+                : "世界地图"),
+          start: input.region?.start ?? null,
+          end: input.region?.end ?? null,
         }
       : null;
   return {
@@ -400,6 +412,11 @@ export function regionLines(
     const shown = names.slice(0, 10);
     return `${region.current ? "当前" : ""}${name}：${shown.join("、")}${names.length > shown.length ? ` 等 ${names.length} 种` : ""}`;
   });
+}
+
+/** Task 69: the world-map name for an encounter grid number; no rectangle is implied. */
+export function gridLabel(grid: number | null): string {
+  return grid === null ? "世界地图" : `世界地图 · 遇敌区 ${grid}`;
 }
 
 /** Fallback name; callers can pass the map's area text so "世界地图" is not repeated. */

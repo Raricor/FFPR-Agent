@@ -5,6 +5,8 @@
  * desert a few steps east set 21 (five wolves), and the random battle there was a lone Zu.
  */
 
+import { cellKey } from "./nav.ts";
+import type { Pilot } from "./pilot.ts";
 import { isRecord, list, num, text } from "./values.ts";
 
 export interface EncounterMonster {
@@ -106,6 +108,63 @@ function parseMap(value: unknown): EncounterMap | null {
     setIds: list(debug?.setIds).filter((id): id is number => typeof id === "number"),
     error: text(value.error) ?? null,
   };
+}
+
+/** The cache key for one cell on one map; the encounter grid never changes while it is loaded. */
+function encounterGridKey(mapId: number | null, cell: readonly [number, number]): string {
+  return `${mapId ?? "?"}:${cellKey(cell[0], cell[1])}`;
+}
+
+function chunks<T>(items: readonly T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    out.push(items.slice(index, index + size));
+  }
+  return out;
+}
+
+/**
+ * Task 69: the encounter grid number under cells on the loaded map (bridge 0.13.8
+ * `encountgrid`, at most 64 cells per query). A cell's grid never changes on one map, so the
+ * results are cached by map id + cell; the same cell is not asked twice during a grind.
+ */
+export class EncounterGridCache {
+  private readonly cells = new Map<string, number | null>();
+
+  /** Grids for `cells`, keyed with `cellKey`; throws when the bridge cannot answer. */
+  async read(
+    pilot: Pilot,
+    mapId: number | null,
+    cells: readonly (readonly [number, number])[],
+  ): Promise<ReadonlyMap<string, number | null>> {
+    const found = new Map<string, number | null>();
+    const missing: (readonly [number, number])[] = [];
+    for (const cell of cells) {
+      const key = encounterGridKey(mapId, cell);
+      if (this.cells.has(key)) {
+        found.set(cellKey(cell[0], cell[1]), this.cells.get(key) ?? null);
+      } else {
+        missing.push(cell);
+      }
+    }
+    for (const chunk of chunks(missing, 64)) {
+      const reply = await pilot.query("encountgrid", {
+        cells: chunk.map((cell) => [cell[0], cell[1]]),
+      });
+      const raw: unknown = reply.encountgrid;
+      if (!Array.isArray(raw) || raw.length !== chunk.length) {
+        throw new Error("读不到世界地图的遇敌格子号(桥插件可能不支持 encountgrid)");
+      }
+      const values = raw as unknown[];
+      for (const [index, cell] of chunk.entries()) {
+        const value = values[index];
+        const grid = typeof value === "number" && Number.isFinite(value) ? value : null;
+        this.cells.set(encounterGridKey(mapId, cell), grid);
+        found.set(cellKey(cell[0], cell[1]), grid);
+      }
+    }
+    return found;
+  }
 }
 
 /** Narrow the reply; null off a map (the bridge answers null) or for a malformed one. */

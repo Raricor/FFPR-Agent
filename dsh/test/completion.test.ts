@@ -445,6 +445,114 @@ function answerCompletion(
   });
 }
 
+/** Task 69: the 11-09 live world map: cell (208,45), encounter grid 169, one missing monster. */
+function answerWorld(pilot: FakePilot): void {
+  const parties = [{ id: 1, rate: 1000, monsters: [{ name: "豪猪", book: 350 }] }];
+  pilot.on("pos", {
+    pos: {
+      map: 1,
+      area: 0,
+      areaType: 0,
+      areaText: "世界地图",
+      state: "Player",
+      cell: [208, 45],
+      saves: 1,
+    },
+  });
+  pilot.onQuery("achievements", {
+    achievements: {
+      defs: [],
+      save: {
+        playTime: 1,
+        saveCount: 1,
+        chests: 0,
+        hiddenItems: 0,
+        treasure: [],
+        members: [],
+        flags: {},
+      },
+      bestiary: null,
+    },
+  });
+  pilot.on("entities", { entities: { total: 0, entities: [] } });
+  pilot.onQuery("encounters", {
+    encounters: {
+      enabled: true,
+      monsterSet: 169,
+      parties,
+      map: { scope: "area", grids: [169], parties, debug: { setIds: [169] } },
+    },
+  });
+  // (208..213,45) is grid 169; the row at y=50 is the neighbouring grid 114.
+  pilot.onQuery("encountgrid", (fields) => ({
+    encountgrid: (Array.isArray(fields.cells) ? fields.cells : []).map((raw) => {
+      if (!Array.isArray(raw) || typeof raw[0] !== "number" || typeof raw[1] !== "number") {
+        return null;
+      }
+      return raw[1] === 50 ? 114 : 169;
+    }),
+  }));
+}
+
+void test("a world-map grid without a rectangle names its encounter area by number", () => {
+  const state = completionState({
+    mapId: 1,
+    areaId: 0,
+    mapName: "世界地图",
+    world: true,
+    grid: 169,
+    treasure: [],
+    entities: [],
+    monsters: [],
+    known: new Set(),
+  });
+  const region = state.region;
+  assert.ok(region !== null);
+  assert.equal(region.grid, 169);
+  assert.equal(region.start, null);
+  assert.equal(region.end, null);
+  assert.equal(region.label, "世界地图 · 遇敌区 169");
+  assert.match(completionLine(state), /本图完成度\(世界地图 · 遇敌区 169\)/);
+});
+
+void test("leaving a world-map grid is refused until that grid's bestiary is complete", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-world-grid-"));
+  const pilot = new FakePilot();
+  try {
+    const game = await completionGame(directory);
+    answerWorld(pilot);
+    const guard = guardOf(game);
+    // The same grid: not a leave, so the incomplete bestiary is not blocking.
+    assert.equal(await guard({}, pilot, [213, 45]), null);
+    // `go` to the neighbouring grid is stopped by the same leave check.
+    const refused = await game.run("go", { to: [208, 50] }, pilot);
+    assert.match(refused, /要离开「世界地图 · 遇敌区 169」/);
+    assert.match(refused, /本图鉴还缺 1 种：豪猪/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("a world-map debt is keyed by its grid and clears when that grid is complete", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-world-debt-"));
+  const pilot = new FakePilot();
+  try {
+    const game = await completionGame(directory);
+    answerWorld(pilot);
+    const guard = guardOf(game);
+    assert.equal(await guard({ leave_incomplete: "先去别处" }, pilot, [208, 50]), null);
+    const entry = game.backlog.pending()[0];
+    assert.ok(entry !== undefined);
+    assert.equal(entry.region, 169);
+    assert.equal(entry.mapId, 1);
+    game.bestiary.numbers.add(350);
+    assert.equal(await guard({}, pilot, [213, 45]), null);
+    assert.equal(game.backlog.pending().length, 0);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 void test("leaving an incomplete map is refused, allowed with a reason, and the backlog clears", async () => {
   const directory = await mkdtemp(join(tmpdir(), "ffpr-leave-"));
   const pilot = new FakePilot();

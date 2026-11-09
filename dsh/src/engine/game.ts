@@ -20,17 +20,22 @@ import {
   incidentLines,
   isComplete,
   missingLines,
-  regionLabel,
   regionLines,
   timedLine,
   type EncounterStatus,
 } from "./completion.ts";
-import { activeParties, encounterMonsters, parseEncounters } from "./encounters.ts";
+import {
+  EncounterGridCache,
+  activeParties,
+  encounterMonsters,
+  parseEncounters,
+} from "./encounters.ts";
 import type { EncounterTable } from "./encounters.ts";
 import { parsePositionReply } from "./position.ts";
 import { profileFor } from "./profiles/index.ts";
 import { Atlas } from "./atlas.ts";
 import { AtlasSave } from "./atlas-save.ts";
+import { CollisionStore } from "./regions.ts";
 import { BattleLog, battleUnits, gapText, type BattleGap } from "./battle-record.ts";
 import { Elements } from "./elements.ts";
 import { byKey } from "./games.ts";
@@ -131,6 +136,8 @@ export interface GameOptions {
   readonly notesFile?: string;
   readonly events?: KeyEvents;
   readonly atlasFile?: string;
+  /** Task 75: collision cache directory; defaults beside atlasFile as collision-<game>. */
+  readonly collisionDir?: string;
   /** Task 57: save-local visited maps; defaults next to atlasFile. Unset stays in memory. */
   readonly atlasSaveFile?: string;
   readonly tacticsFile?: string;
@@ -164,6 +171,8 @@ export interface GameOptions {
   /** Task 63: how often and how long a walkpath Event/dialog stop is watched for battle. */
   readonly walkpathEventPollMs?: number;
   readonly walkpathEventWaitMs?: number;
+  /** Task 73: a "走不过去" record hit this many times is a wall and is not re-walked. */
+  readonly blockedTrustCount?: number;
 }
 
 interface HandlerResult {
@@ -304,6 +313,8 @@ export class Game {
   readonly events: KeyEvents | undefined;
   readonly atlas: Atlas;
   readonly atlasSave: AtlasSave;
+  /** Task 75: per-map collision replies, written on every indoor entry. */
+  readonly collisions: CollisionStore;
   readonly tactics: Tactics;
   readonly elements: Elements;
   readonly battles: BattleLog;
@@ -346,6 +357,8 @@ export class Game {
   private readonly handlers: ReadonlyMap<string, ToolHandler>;
   private lastCompletion: import("./completion.ts").CompletionState | null = null;
   private lastAchievements: import("./achievements.ts").AchievementsData | null = null;
+  /** Task 69: per-map/cell encounter grid numbers; also shared with the grind loop. */
+  private readonly encounterGrids = new EncounterGridCache();
   private lastCompletionAt = 0;
   private leaveNotice: string | null = null;
   private readonly timedSeen = new Set<string>();
@@ -358,6 +371,7 @@ export class Game {
     events: KeyEvents | undefined,
     atlas: Atlas,
     atlasSave: AtlasSave,
+    collisions: CollisionStore,
     tactics: Tactics,
     elements: Elements,
     battles: BattleLog,
@@ -381,6 +395,7 @@ export class Game {
     this.events = events;
     this.atlas = atlas;
     this.atlasSave = atlasSave;
+    this.collisions = collisions;
     this.tactics = tactics;
     this.elements = elements;
     this.battles = battles;
@@ -428,6 +443,7 @@ export class Game {
     this.moveState.saveSlot = this.saveSlot;
     this.moveState.link = (mapId, from, to, how, detail) =>
       this.atlas.link(mapId, from, to, how, detail);
+    this.moveState.forgetBlocked = (mapId, steps) => this.atlas.forgetBlocked(mapId, steps);
     this.moveState.moves = (mapId) => this.atlas.moves(mapId);
     this.handlers = new Map<string, ToolHandler>([
       ["go", (args, pilot) => this.toolGo(args, pilot)],
@@ -465,6 +481,12 @@ export class Game {
     const signal = options.signal;
     const game = byKey(options.game).key;
     const atlas = await Atlas.load(options.atlasFile, signal);
+    const collisionDir =
+      options.collisionDir ??
+      (options.atlasFile === undefined
+        ? undefined
+        : join(dirname(options.atlasFile), `collision-${game}`));
+    const collisions = await CollisionStore.load(collisionDir, signal);
     const atlasSaveFile =
       options.atlasSaveFile ??
       (options.atlasFile === undefined
@@ -503,6 +525,7 @@ export class Game {
       options.events,
       atlas,
       atlasSave,
+      collisions,
       tactics,
       elements,
       battles,
@@ -524,6 +547,7 @@ export class Game {
     created.moveState.walkpathTurnLead = options.walkpathTurnLead;
     created.moveState.walkpathEventPollMs = options.walkpathEventPollMs;
     created.moveState.walkpathEventWaitMs = options.walkpathEventWaitMs;
+    created.moveState.blockedTrustCount = options.blockedTrustCount;
     created.notes =
       options.notesFile === undefined ? [] : await loadNotes(options.notesFile, signal);
     // A web restart must still show the boss table and walker notes the tactician wrote.
@@ -1286,6 +1310,18 @@ export class Game {
     const pos = record((await pilot.send("pos")).pos);
     const mapId = num(pos.map) ?? null;
     if (mapId === null || pos.state === "ChangeMap" || pos.state === "FieldReady") return mapId;
+    // Task 75: keep the collision data of every indoor map as it is entered, not on every
+    // tool (chart runs after each one). A re-entry has a different previous map id; the story
+    // changes maps, so the newest entry overwrites the file. The world map has terrain, not
+    // layers, and is never cached.
+    if (mapId !== 1 && this.mapId !== mapId) {
+      try {
+        const collision = record((await pilot.send("collision")).collision);
+        await this.collisions.remember(mapId, collision);
+      } catch {
+        // A map still loading or an older bridge: the atlas and the hints still work.
+      }
+    }
     const found = new Map<string, Json[]>();
     for (const kind of ["GotoMap", "TresureBox", "Event"]) {
       const listing = record((await pilot.send("entities", { kind, max: 200 })).entities);
@@ -1591,14 +1627,37 @@ export class Game {
 
   /**
    * After interact: standing somewhere far from where the press was made, on the same map,
-   * means a jump stone (or a lift) carried the party; the atlas keeps it as a link.
+   * means a jump stone carried the party; the atlas keeps it as a link. A changed map id is
+   * a lift ride instead: the edge is cross-map and keeps the standing cell, the direction
+   * pressed, the target map and the landing cell (task 71, Fire-Powered Ship 257 → 634).
    */
-  async noteJump(pilot: Pilot, message: string): Promise<void> {
+  async noteJump(
+    pilot: Pilot,
+    message: string,
+    startMap: number | null = null,
+    press: Cell | null = null,
+  ): Promise<void> {
     const match = /站在 \((\d+), (\d+)\)/u.exec(message);
+    const facing = /面朝(Up|Down|Left|Right)/u.exec(message);
     const pos = record((await pilot.send("pos")).pos);
     const cell = cellOf(pos.cell);
-    if (match === null || cell === null || pos.state !== "Player") return;
+    const map = num(pos.map);
+    if (match === null || cell === null) return;
     const start: Cell = [Number(match[1]), Number(match[2])];
+    if (map !== undefined && startMap !== null && map !== startMap) {
+      const dir = facing?.[1];
+      if (press !== null && dir !== undefined) {
+        let layer: number | null = null;
+        try {
+          layer = await move.collisionLayer(pilot);
+        } catch {
+          // An older bridge or a test without the reply: the landing is still recorded.
+        }
+        await this.atlas.ride(startMap, start, press, dir, map, cell, "坐一趟", layer);
+      }
+      return;
+    }
+    if (pos.state !== "Player") return;
     if (Math.abs(cell[0] - start[0]) + Math.abs(cell[1] - start[1]) > 1) {
       await this.atlas.link(pos.map, start, cell, "调查后跳");
     }
@@ -1693,6 +1752,26 @@ export class Game {
   }
 
   /**
+   * Task 69: the world-map encounter grid at one cell. The caller prefers a single `map.grids`
+   * value; otherwise this asks `encountgrid` (cached). Null means unreadable, so callers fall
+   * back to the old region rectangle rather than pretending the party is on another grid.
+   */
+  private async worldGridAt(
+    pilot: Pilot,
+    mapId: number | null,
+    cell: readonly [number, number] | null,
+    fallback: number | null,
+  ): Promise<number | null> {
+    if (cell === null) return fallback;
+    try {
+      const grids = await this.encounterGrids.read(pilot, mapId, [cell]);
+      return grids.get(nav.cellKey(cell[0], cell[1])) ?? fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  /**
    * Task 45: ask the bridge for the current map's completion and update the save-local bestiary.
    * `force` skips the short cache (a leave check must see the chest just opened).
    */
@@ -1756,6 +1835,14 @@ export class Game {
       [areaName, this.mapName()].filter((value) => value !== "").join(" ") ||
       (world ? "世界地图" : `地图 ${pos.map ?? "?"}`);
     const region = encounters?.region ?? null;
+    // 11-09 (task 69): the world map's regions report all four bounds as 0, so the current
+    // "region" is its encounter grid number. `map.grids` has exactly one value at the player;
+    // otherwise ask encountgrid for the player's cell. The region's own grid is the last resort.
+    const mapGrids = encounters?.map?.grids ?? [];
+    const soleGrid = mapGrids.length === 1 ? (mapGrids[0] ?? null) : null;
+    const grid = world
+      ? (soleGrid ?? (await this.worldGridAt(pilot, pos.map, pos.cell, region?.grid ?? null)))
+      : null;
     // 11-05 rule: only what this map can meet now. Bridge 0.13.7's whole-map union wins; an old
     // bridge falls back to the parties underfoot. A vehicle never changes the answer (grinding on
     // a chocobo still farms the current region). Rate-0 formations never roll.
@@ -1818,7 +1905,7 @@ export class Game {
       mapName,
       world,
       region,
-      regionLabel: region === null ? null : regionLabel(region),
+      grid,
       treasure: data.save?.treasure ?? [],
       entities,
       monsters,
@@ -1907,7 +1994,10 @@ export class Game {
     const excused = this.excusedBestiary(state);
     const remaining = missingLines(state, excused);
     if (remaining.length === 0) return null;
-    const leaving = this.isLeaving(state, goal);
+    // Task 69: look up both grids before judging, so the leave check is one decision. Null means
+    // the bridge cannot answer and isLeaving keeps the old rectangle behaviour.
+    const gridOutside = await this.worldGridOutside(state, pilot, goal);
+    const leaving = this.isLeaving(state, goal, gridOutside);
     const story = state.oneTime ? this.storyEventAt(state, goal) : null;
     if (!leaving && !story) return null;
     // A countdown escape is not blocked: the clock is the deadline, not this guard. The
@@ -2030,7 +2120,7 @@ export class Game {
       this.withFlee(args, async () => {
         const result = await travel.travelToMap(
           pilot,
-          { atlas: this.atlas, moveState: this.moveState },
+          { atlas: this.atlas, moveState: this.moveState, collisions: this.collisions },
           choice.mapId,
           () => undefined,
           this.travelOptions(args),
@@ -2047,6 +2137,7 @@ export class Game {
         const result = await travel.explore(pilot, {
           atlas: this.atlas,
           moveState: this.moveState,
+          collisions: this.collisions,
           limits: { maxHops: this.travelMaxHops, maxMinutes: this.travelMaxMinutes },
           guard: options.guard,
           lookAround: async (runner) => (await this.toolLookAround(runner)).text,
@@ -2083,9 +2174,41 @@ export class Game {
         : state.mapName;
   }
 
-  /** Does this goal cross an exit, or leave the current world-map region? */
-  private isLeaving(state: import("./completion.ts").CompletionState, goal: Cell): boolean {
-    if (state.world && state.region !== null) {
+  /**
+   * Task 69: whether the goal is on another world-map encounter grid. Null when either grid
+   * cannot be read (an old bridge or a failed query), so isLeaving can use the old rectangle.
+   */
+  private async worldGridOutside(
+    state: import("./completion.ts").CompletionState,
+    pilot: Pilot,
+    goal: Cell,
+  ): Promise<boolean | null> {
+    if (!state.world) return null;
+    let current = state.region?.grid ?? null;
+    if (current === null) {
+      let pos;
+      try {
+        pos = parsePositionReply(await pilot.send("pos"));
+      } catch {
+        return null;
+      }
+      if (pos.cell === null) return null;
+      current = await this.worldGridAt(pilot, pos.map, pos.cell, null);
+    }
+    const target = await this.worldGridAt(pilot, state.mapId, goal, null);
+    if (current === null || target === null) return null;
+    return target !== current;
+  }
+
+  /** Does this goal cross an exit, or leave the current world-map region/grid? */
+  private isLeaving(
+    state: import("./completion.ts").CompletionState,
+    goal: Cell,
+    gridOutside: boolean | null = null,
+  ): boolean {
+    if (gridOutside === true) return true;
+    // Task 69: the rectangle is only a fallback; a known grid number wins over a stale range.
+    if (gridOutside === null && state.world && state.region !== null) {
       const start = state.region.start;
       const end = state.region.end;
       const outside =
@@ -2127,6 +2250,19 @@ export class Game {
         let ship = truthy(args.by_ship);
         const ride = await travel.rideState(pilot);
         if (ride !== "") ship = ride === "Ship";
+        // 11-09: an exit may be in another region of this map (Walse Castle 54). Leave and
+        // re-enter through a landing that reaches it, or say which landings would.
+        const detour = await travel.detourToCell(
+          pilot,
+          { atlas: this.atlas, moveState: this.moveState, collisions: this.collisions },
+          goal,
+          (line) => legs.push(line),
+          this.travelOptions(args),
+        );
+        if (detour !== null) {
+          legs.push(detour);
+          return { text: legs.join("\n") };
+        }
         [, message] = await move.navigate(
           pilot,
           goal,
@@ -2270,8 +2406,9 @@ export class Game {
     return await this.withWalkLabel(`interact (${goal[0]}, ${goal[1]})`, async () => {
       const refusal = await this.guardLeave(args, pilot, goal);
       if (refusal !== null) return refusal;
+      const [startMap] = await travel.currentMapAndCell(pilot);
       const message = await move.openAt(pilot, goal, () => undefined, this.moveState);
-      await this.noteJump(pilot, message);
+      await this.noteJump(pilot, message, startMap, goal);
       return { text: message };
     });
   }
@@ -2443,6 +2580,7 @@ export class Game {
             }
             return { completion, known: new Set(this.bestiary.numbers), names };
           },
+          gridCache: this.encounterGrids,
           defer: async (monsters, reason) => {
             const state = this.lastCompletion;
             if (state === null) return;
@@ -2495,7 +2633,14 @@ export class Game {
   }
 
   private async toolUseItem(args: Json, pilot: Pilot): Promise<HandlerResult> {
-    const [, detail] = await menu.useItem(pilot, String(args.item), String(args.target));
+    // 11-09: when the item list's cursor cannot reach the item, leave the bridge's rows and
+    // keys in the activity log (kind error) so the next failure has real data.
+    const [, detail] = await menu.useItem(
+      pilot,
+      String(args.item),
+      String(args.target),
+      (message) => this.onIncident?.(message),
+    );
     return { text: detail };
   }
 

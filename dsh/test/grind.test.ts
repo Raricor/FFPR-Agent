@@ -224,6 +224,12 @@ function pilotFor(world: World, monsters: readonly TestMonster[] = []): FakePilo
       regions: [],
     },
   });
+  // Task 69: the world map's per-cell encounter grid. Tests that need boundaries override it.
+  pilot.onQuery("encountgrid", (fields) => ({
+    encountgrid: (Array.isArray(fields.cells) ? fields.cells : []).map(() =>
+      world.world ? 169 : null,
+    ),
+  }));
   return pilot;
 }
 
@@ -450,10 +456,19 @@ void test("grind stops at max_minutes", async () => {
   assert.ok(report.minutes >= 1);
 });
 
-void test("on the world map every step stays inside the current region", async () => {
-  const world = makeWorld({ map: 1, world: true, battleEvery: 2, gold: 100 });
+void test("on the world map every step stays on the starting encounter grid", async () => {
+  const world = makeWorld({ map: 1, world: true, battleEvery: 1, gold: 100 });
+  const startGrid = 169;
   const region = { start: [4, 4] as const, end: [6, 6] as const };
+  const gridAt = ([x, y]: Cell): number => (x >= 5 && y >= 5 ? startGrid : 114);
   const pilot = pilotFor(world);
+  pilot.onQuery("encountgrid", (fields) => ({
+    encountgrid: (Array.isArray(fields.cells) ? fields.cells : []).map((raw) =>
+      Array.isArray(raw) && typeof raw[0] === "number" && typeof raw[1] === "number"
+        ? gridAt([raw[0], raw[1]])
+        : null,
+    ),
+  }));
   world.fighter = () => {
     world.gold += 1000;
     world.state = "Player";
@@ -462,12 +477,23 @@ void test("on the world map every step stays inside the current region", async (
   const report = await grind(pilot, parseOptions({ until_gold: 1000 }), contextFor(world, []));
   assert.ok(world.targets.length > 0);
   for (const [x, y] of world.targets) {
+    assert.equal(gridAt([x, y]), startGrid, `walked into another grid: (${x}, ${y})`);
     assert.ok(
       x >= region.start[0] && x <= region.end[0] && y >= region.start[1] && y <= region.end[1],
-      `walked outside the region: (${x}, ${y})`,
+      `walked outside the old region: (${x}, ${y})`,
     );
   }
   assert.equal(report.stop, "钱够了(1100/1000)");
+});
+
+void test("an old bridge without encountgrid makes grind stop and say why", async () => {
+  const world = makeWorld({ map: 1, world: true });
+  const pilot = pilotFor(world);
+  pilot.onQuery("encountgrid", { ok: false, error: "bridge_error:未知的 op:encountgrid" });
+  const report = await grind(pilot, parseOptions({ until_gold: 1000 }), contextFor(world, []));
+  assert.equal(report.battles, 0);
+  assert.deepEqual(world.targets, []);
+  assert.equal(report.stop, "读不到当前所在的世界地图区域，不能保证留在本区域，先停下");
 });
 
 void test("grind refuses a call with no stopping condition", async () => {

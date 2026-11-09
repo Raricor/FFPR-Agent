@@ -11,8 +11,8 @@
 
 import { Atlas } from "../atlas.ts";
 import type { CompletionMonster, CompletionState } from "../completion.ts";
-import type { EncounterRegion } from "../encounters.ts";
-import { parseEncounters } from "../encounters.ts";
+import type { EncounterRegion, EncounterTable } from "../encounters.ts";
+import { EncounterGridCache, parseEncounters } from "../encounters.ts";
 import { describeError } from "../errors.ts";
 import { cellKey, hasTerrain, terrainRule } from "../nav.ts";
 import type { Cell, CellGrid } from "../nav.ts";
@@ -54,6 +54,8 @@ const GRIND_TRAVEL = { maxHops: 8, maxMinutes: Number.POSITIVE_INFINITY } as con
 export const DEFAULT_BESTIARY_DEFER_BATTLES = 15;
 /** Task 68: a missable monster's grind stops after this many minutes even if still missing. */
 export const DEFAULT_BESTIARY_MISSABLE_MINUTES = 40;
+/** Task 69: no grid number means the loop cannot promise to stay on this encounter area. */
+const UNKNOWN_REGION = "读不到当前所在的世界地图区域，不能保证留在本区域，先停下";
 
 export interface GrindOptions {
   readonly untilGold?: number;
@@ -172,6 +174,8 @@ export interface GrindContext {
   }>;
   /** Task 68: write the deferred low-probability monsters into the backlog. */
   readonly defer?: (monsters: readonly CompletionMonster[], reason: string) => Promise<void> | void;
+  /** Task 69: the Game's per-map/cell encounter grid cache; a fresh one is enough in tests. */
+  readonly gridCache?: EncounterGridCache;
   readonly say?: Say;
 }
 
@@ -336,14 +340,13 @@ const STEPS: readonly Cell[] = [
   [-1, -1],
 ];
 
-/** A nearby open cell to walk to; cycling through them makes the back-and-forth. */
-function nextStep(
+/** The nearby open cells the loop may step to; cycling through them makes the back-and-forth. */
+function stepCandidates(
   grid: WalkGrid,
   here: Cell,
   region: EncounterRegion | null,
   blocked: ReadonlySet<string>,
-  turn: number,
-): Cell | null {
+): Cell[] {
   const choices: Cell[] = [];
   for (const [dx, dy] of STEPS) {
     const cell: Cell = [here[0] + dx, here[1] + dy];
@@ -352,7 +355,49 @@ function nextStep(
     if (!walkable(grid, cell)) continue;
     choices.push(cell);
   }
-  return choices.length === 0 ? null : (choices[turn % choices.length] ?? null);
+  return choices;
+}
+
+/** The encounter grid at one cell; throws when the bridge cannot answer. */
+async function readGrid(
+  pilot: Pilot,
+  cache: EncounterGridCache,
+  mapId: number | null,
+  cell: Cell,
+): Promise<number | null> {
+  const grids = await cache.read(pilot, mapId, [cell]);
+  return grids.get(cellKey(cell[0], cell[1])) ?? null;
+}
+
+/**
+ * Task 69: on the world map only cells with the starting cell's encounter grid are walked.
+ * The bridge is asked for all nearby cells in one `encountgrid` call; the cache answers the
+ * rest. When the grid is unknown (an old bridge), the old rectangle filter still applies.
+ */
+async function nextStep(
+  pilot: Pilot,
+  grid: WalkGrid,
+  here: Cell,
+  region: EncounterRegion | null,
+  startGrid: number | null,
+  cache: EncounterGridCache,
+  mapId: number | null,
+  blocked: ReadonlySet<string>,
+  turn: number,
+): Promise<Cell | null> {
+  const choices = stepCandidates(grid, here, startGrid === null ? region : null, blocked);
+  if (startGrid === null || choices.length === 0) {
+    return choices.length === 0 ? null : (choices[turn % choices.length] ?? null);
+  }
+  const grids = await cache.read(pilot, mapId, choices);
+  const same = choices.filter((cell) => grids.get(cellKey(cell[0], cell[1])) === startGrid);
+  return same.length === 0 ? null : (same[turn % same.length] ?? null);
+}
+
+/** The single grid `encounters.map.grids` gives on a world map, else null. */
+function soleGrid(encounters: EncounterTable | null): number | null {
+  const grids = encounters?.map?.grids ?? [];
+  return grids.length === 1 ? (grids[0] ?? null) : null;
 }
 
 /**
@@ -856,7 +901,19 @@ export async function grind(
     // means the current region is unknown, and the check below stops instead of wandering.
   }
   const region = grid0.world ? (encounters?.region ?? null) : null;
-  if (grid0.world && (region?.start == null || region.end == null)) {
+  const gridCache = context.gridCache ?? new EncounterGridCache();
+  let startGrid = grid0.world ? soleGrid(encounters) : null;
+  if (grid0.world && startGrid === null) {
+    try {
+      startGrid = await readGrid(pilot, gridCache, start.position.map, spot);
+    } catch {
+      startGrid = null;
+    }
+    // Task 69: a bridge that still gives the region's own grid is better than nothing, but a
+    // query that fails there still stops below (candidate cells cannot be checked).
+    startGrid ??= region?.grid ?? null;
+  }
+  if (grid0.world && startGrid === null && (region?.start == null || region.end == null)) {
     return finish(
       pilot,
       start,
@@ -864,7 +921,7 @@ export async function grind(
       new Map<number, string>(),
       0,
       [],
-      "读不到当前所在的世界地图区域，不能保证留在本区域，先停下",
+      UNKNOWN_REGION,
       startedMs,
       false,
     );
@@ -980,11 +1037,40 @@ export async function grind(
       stop = "读不到当前位置，先停下";
       break;
     }
-    if (grid.world && region !== null && !insideRegion(here, region)) {
+    if (grid.world && startGrid === null && region !== null && !insideRegion(here, region)) {
       stop = `已经离开当前世界地图区域(在 ${here[0]}, ${here[1]})，先停下`;
       break;
     }
-    const target = nextStep(grid, here, region, occupied, turn);
+    if (grid.world && startGrid !== null) {
+      let hereGrid: number | null;
+      try {
+        hereGrid = await readGrid(pilot, gridCache, snapshot.position.map, here);
+      } catch {
+        stop = UNKNOWN_REGION;
+        break;
+      }
+      if (hereGrid !== startGrid) {
+        stop = `已经离开当前世界地图遇敌区(在 ${here[0]}, ${here[1]})，先停下`;
+        break;
+      }
+    }
+    let target: Cell | null;
+    try {
+      target = await nextStep(
+        pilot,
+        grid,
+        here,
+        region,
+        startGrid,
+        gridCache,
+        snapshot.position.map,
+        occupied,
+        turn,
+      );
+    } catch {
+      stop = UNKNOWN_REGION;
+      break;
+    }
     turn += 1;
     if (target === null) {
       stop = "附近没有能走的格子，走不过去，先停下";
@@ -1054,11 +1140,27 @@ export async function grind(
         "(请自己走回去再刷)";
       break;
     }
-    if (grid.world && region !== null) {
+    if (grid.world && startGrid === null && region !== null) {
       const now = snapshot.position.cell;
       if (now !== null && !insideRegion(now, region)) {
         stop = `走出了当前世界地图区域(在 ${now[0]}, ${now[1]})，先停下`;
         break;
+      }
+    }
+    if (grid.world && startGrid !== null) {
+      const now = snapshot.position.cell;
+      if (now !== null) {
+        let nowGrid: number | null;
+        try {
+          nowGrid = await readGrid(pilot, gridCache, snapshot.position.map, now);
+        } catch {
+          stop = UNKNOWN_REGION;
+          break;
+        }
+        if (nowGrid !== startGrid) {
+          stop = `走出了当前世界地图遇敌区(在 ${now[0]}, ${now[1]})，先停下`;
+          break;
+        }
       }
     }
     if (atGoal()) break;
