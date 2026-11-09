@@ -80,6 +80,8 @@ export interface BattleHooks {
   /** Where battle records go (task 36); absent in tests that only drive the keys. */
   recorder?: BattleLog;
   report?: (mapId: number | null, verdict: string, detail: string) => string | Promise<string>;
+  /** Task 82: the activity log sink for a refused item-cursor move after battle. */
+  onIncident?: (message: string) => void;
   elements?: ElementLearner;
 }
 
@@ -1429,7 +1431,7 @@ export async function regular(
     const where = await wipeReport(pilot, names, slot);
     return where + (note ? `;${note}` : "");
   }
-  const healed = await patchUp(pilot, say);
+  const healed = await patchUp(pilot, say, 4, hooks.onIncident);
   let message = `按${which}打完 ${show(pyRound((pilot.now() - started) / 1000, 0))} 秒(敌人:${names};${detail})`;
   if (!truthy(result.ok)) message = `战斗没打完:${show(result.error)}`;
   if (fleeNote !== "") message = `${fleeNote},${message}`;
@@ -1474,6 +1476,7 @@ export async function patchUp(
   pilot: Pilot,
   say: Say = () => undefined,
   casts = 4,
+  report?: (message: string) => void,
 ): Promise<string[]> {
   await pilot.send("wait", { timeout: 30000 }, 40_000);
   const done: string[] = [];
@@ -1519,7 +1522,7 @@ export async function patchUp(
       if (!outcome?.[0] && item !== "") {
         const held = await heldItems(pilot);
         if (Object.entries(held).some(([name, count]) => count > 0 && holds(name, item))) {
-          outcome = await useItem(pilot, item, patient);
+          outcome = await useItem(pilot, item, patient, report);
         }
       }
       if (outcome === null) break;

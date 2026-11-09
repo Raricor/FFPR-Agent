@@ -71,10 +71,9 @@ interface ItemListState {
 }
 
 /**
- * The item window's list as the bridge reads it. `rows` is the whole list, but `listCursor`
- * counts rows in the visible window: after a page scroll it stays on the last visible row while
- * the list moves underneath. `selected` names the highlighted item and is the reliable position
- * across pages (11-09: 恢复药 was on the second screen and the cursor "could not reach" it).
+ * The item window's list as the bridge reads it. `rows` is the whole list and `listCursor` is
+ * the item's index in it (11-10: the field list is a two-column grid, and Down/Up move two
+ * entries at a time). `selected` names the highlighted item and is the reliable position.
  */
 async function itemListState(pilot: Pilot): Promise<ItemListState> {
   const item = record((await menuState(pilot)).item);
@@ -92,22 +91,53 @@ async function itemListState(pilot: Pilot): Promise<ItemListState> {
   };
 }
 
-async function steerItemList(
-  pilot: Pilot,
-  target: number,
+/** The cursor and names any grid list exposes, whichever window the bridge reads. */
+export interface GridListState {
+  readonly names: readonly string[];
+  readonly selected: string;
+  readonly selectedIndex: number | null;
+  readonly listCursor: number | null;
+}
+
+/**
+ * Move a menu list's cursor onto `targetIndex`. 11-10: the field item list is a two-column
+ * grid, so Down/Up jump two rows (wrapping at the bottom) and Right/Left move one cell; pressing
+ * Down only reached the left column and the right column was never reached (the eye drops
+ * failure after battle). Read the position again after every key and pick the next key from the
+ * new difference, so a wrap cannot leave the loop pressing in the old direction.
+ *
+ * The column count is inferred from the first Down/Up (default 2), for lists that lay out
+ * differently. Stuck when both `selected` and `listCursor` stay put three reads in a row.
+ */
+export async function steerGridList<S extends GridListState>(
+  read: () => Promise<S>,
+  targetIndex: number,
   targetName: string,
   press: (key: string) => Promise<void>,
   tries = 120,
-): Promise<{ ok: boolean; state: ItemListState }> {
-  let state = await itemListState(pilot);
+  initial?: S,
+): Promise<{ ok: boolean; state: S }> {
+  let state = initial ?? (await read());
+  let columns = 2;
   let stuck = 0;
   for (let i = 0; i < tries; i++) {
     const at = state.selectedIndex ?? state.listCursor;
-    if (state.selected === targetName || at === target) return { ok: true, state };
+    if ((targetName !== "" && state.selected === targetName) || at === targetIndex) {
+      return { ok: true, state };
+    }
     if (at === null) return { ok: false, state };
-    await press(at < target ? "Down" : "Up");
-    const after = await itemListState(pilot);
-    if (after.selected === targetName || (after.selectedIndex ?? after.listCursor) === target) {
+    const difference = targetIndex - at;
+    const vertical = Math.abs(difference) >= columns;
+    const key = vertical ? (difference > 0 ? "Down" : "Up") : difference > 0 ? "Right" : "Left";
+    await press(key);
+    const after = await read();
+    const position = after.selectedIndex ?? after.listCursor;
+    if (vertical) {
+      // A wrap (bottom to top) has the wrong sign for the key and is not a column count.
+      const step = position === null ? null : key === "Down" ? position - at : at - position;
+      if (step !== null && step > 0 && step < state.names.length) columns = step;
+    }
+    if ((targetName !== "" && after.selected === targetName) || position === targetIndex) {
       return { ok: true, state: after };
     }
     stuck =
@@ -116,6 +146,22 @@ async function steerItemList(
     state = after;
   }
   return { ok: false, state };
+}
+
+async function steerItemList(
+  pilot: Pilot,
+  target: number,
+  targetName: string,
+  press: (key: string) => Promise<void>,
+  tries = 120,
+): Promise<{ ok: boolean; state: ItemListState }> {
+  return await steerGridList(
+    async () => await itemListState(pilot),
+    target,
+    targetName,
+    press,
+    tries,
+  );
 }
 
 function keyRuns(keys: readonly string[]): string {

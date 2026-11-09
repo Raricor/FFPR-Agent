@@ -29,13 +29,41 @@ export interface FakeItemMenuOptions {
   readonly targetMode?: string;
   readonly area?: string;
   readonly icon?: string;
-  /** Rows visible at once. When set, listCursor counts within the window, as in the game. */
-  readonly pageSize?: number;
+  /** Cells per row (11-10: the field item list is two columns). */
+  readonly columns?: number;
+  /** Where the cursor starts; the end, to test steering back and wrapping. */
+  readonly cursor?: number;
   /** Keep the list cursor where it is, to test the failure diagnostic. */
   readonly stuck?: boolean;
 }
 
 type Stage = "closed" | "top" | "command" | "list" | "target" | "done";
+
+/**
+ * 11-10's real-machine rules: Down/Up move a whole row (+/- columns) and wrap at the bottom,
+ * Right/Left move one cell and change row when they cross an edge. The last row may be short,
+ * so a vertical move skips past rows that have no cell in that column.
+ */
+export function moveGridCursor(index: number, key: string, count: number, columns: number): number {
+  if (count === 0) return index;
+  if (key === "Right") return (index + 1) % count;
+  if (key === "Left") return (index - 1 + count) % count;
+  if (key !== "Down" && key !== "Up") return index;
+  const rows = Math.ceil(count / columns);
+  const col = index % columns;
+  const step = key === "Down" ? 1 : -1;
+  let row = Math.floor(index / columns) + step;
+  if (row < 0) row = rows - 1;
+  if (row >= rows) row = 0;
+  for (let guard = 0; guard < rows; guard++) {
+    const width = Math.min(columns, count - row * columns);
+    if (col < width) return row * columns + col;
+    row += step;
+    if (row < 0) row = rows - 1;
+    if (row >= rows) row = 0;
+  }
+  return index;
+}
 
 export class FakeItemMenu {
   readonly items: FakeItem[];
@@ -45,13 +73,12 @@ export class FakeItemMenu {
   readonly targetMode: string;
   readonly area: string;
   readonly icon: string;
-  readonly pageSize: number | undefined;
+  readonly columns: number;
   readonly stuck: boolean;
   stage: Stage = "closed";
   topCursor = 0;
   commandCursor = 0;
-  listCursor = 0;
-  visibleOffset = 0;
+  listCursor: number;
   targetCursor = 0;
 
   constructor(options: FakeItemMenuOptions) {
@@ -65,8 +92,9 @@ export class FakeItemMenu {
     this.targetMode = options.targetMode ?? "Single";
     this.area = options.area ?? "卡文镇";
     this.icon = options.icon ?? "<IC_ITEM>";
-    this.pageSize = options.pageSize;
+    this.columns = options.columns ?? 2;
     this.stuck = options.stuck === true;
+    this.listCursor = options.cursor ?? 0;
   }
 
   install(pilot: FakePilot): void {
@@ -135,34 +163,15 @@ export class FakeItemMenu {
   }
 
   private moveList(key: string): void {
-    const page = this.pageSize;
-    if (page === undefined) {
-      if (key === "Down") this.listCursor = Math.min(this.items.length - 1, this.listCursor + 1);
-      if (key === "Up") this.listCursor = Math.max(0, this.listCursor - 1);
-      return;
-    }
-    const visible = this.visibleOffset + this.listCursor;
-    if (key === "Down" && visible < this.items.length - 1) {
-      // At the bottom of a page the cursor stays there and the list scrolls underneath it.
-      if (this.listCursor < page - 1) this.listCursor += 1;
-      else this.visibleOffset += 1;
-    }
-    if (key === "Up" && visible > 0) {
-      if (this.listCursor > 0) this.listCursor -= 1;
-      else this.visibleOffset -= 1;
-    }
-  }
-
-  private visibleIndex(): number {
-    return this.pageSize === undefined ? this.listCursor : this.visibleOffset + this.listCursor;
+    this.listCursor = moveGridCursor(this.listCursor, key, this.items.length, this.columns);
   }
 
   private selectedName(): string {
-    return this.items[this.visibleIndex()]?.name ?? "";
+    return this.items[this.listCursor]?.name ?? "";
   }
 
   private consume(): void {
-    const item = this.items[this.visibleIndex()];
+    const item = this.items[this.listCursor];
     if (item !== undefined && item.count > 0) item.count -= 1;
     const member = this.members.find((entry) => entry.name === this.target);
     if (member !== undefined && this.targetStatus !== undefined) {

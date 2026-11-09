@@ -4,7 +4,8 @@ import { join } from "node:path";
 import test from "node:test";
 import type { TranscriptEntry } from "./fake-pilot.ts";
 import { FakePilot, recordedCalls, scriptReplies } from "./fake-pilot.ts";
-import { buy, findRow, whoCan } from "../src/engine/skills/shop.ts";
+import { buy, findRow, sell, whoCan } from "../src/engine/skills/shop.ts";
+import { FakeSellMenu } from "./fake-sell-menu.ts";
 
 interface Case {
   readonly name: string;
@@ -31,6 +32,30 @@ void test("who can wear it, from the shop's marks", () => {
     { name: "可露儿", canEquip: true },
   ];
   assert.equal(whoCan(rows), fixture.whoCan);
+});
+
+void test("sell reaches a right-column item on the two-column sell grid", async () => {
+  const pilot = new FakePilot();
+  const menu = new FakeSellMenu({
+    items: [
+      { name: "恢复药", count: 2, price: 10 },
+      { name: "帐篷", count: 1, price: 100 },
+      { name: "皮帽", count: 1, price: 50 },
+      { name: "青铜铠", count: 1, price: 400 },
+    ],
+    gil: 1000,
+  });
+  menu.install(pilot);
+  assert.deepEqual(await sell(pilot, "青铜铠", 1), [true, "卖了「青铜铠」×1,得到 400,现在 1400"]);
+  assert.equal(menu.items[3]?.count, 0);
+  assert.deepEqual(pilot.keys(), [
+    ["Down*1"],
+    ["Enter"],
+    ["Down"],
+    ["Right"],
+    ["Enter"],
+    ["Enter"],
+  ]);
 });
 
 const gearNames: Record<string, string> = {

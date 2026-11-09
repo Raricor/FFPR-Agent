@@ -115,6 +115,39 @@ void test("patchUp uses eye drops when no one can cast the cure", async () => {
   assert.deepEqual(await patchUp(pilot), ["给 蕾娜 用了「眼药」:黑暗 治好了"]);
 });
 
+void test("patchUp writes a failed item-cursor move to the activity log", async () => {
+  const pilot = new FakePilot();
+  const menu = new FakeItemMenu({
+    items: [
+      { name: "恢复药", count: 2 },
+      { name: "眼药", count: 1 },
+    ],
+    members: [
+      { name: "巴兹", hp: 100, maxHp: 100 },
+      { name: "蕾娜", hp: 100, maxHp: 100, status: ["Blind"] },
+    ],
+    target: "蕾娜",
+    targetStatus: "Blind",
+    stuck: true,
+  });
+  menu.install(pilot);
+  const reports: string[] = [];
+  assert.deepEqual(
+    await patchUp(
+      pilot,
+      () => undefined,
+      4,
+      (message) => reports.push(message),
+    ),
+    ["光标没能移到「眼药」"],
+  );
+  const text = reports.join("\n");
+  assert.match(text, /use_item 定位失败:目标「眼药」第 1 行/);
+  assert.match(text, /listCursor=0/);
+  assert.match(text, /键=Tab→Down→Enter×2→Right×3/);
+  assert.match(text, /道具行 1:0:恢复药×2,1:眼药×1/);
+});
+
 void test("patchUp presses nothing when neither spell nor item cures", async () => {
   const pilot = new FakePilot();
   const menu = new FakeItemMenu({

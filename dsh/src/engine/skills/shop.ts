@@ -6,6 +6,7 @@
 import type { Pilot, Reply } from "../pilot.ts";
 import { isRecord, num, records, record, text, truthy } from "../values.ts";
 import { moveCursor, pick } from "./cursor.ts";
+import { steerGridList, type GridListState } from "./menu.ts";
 
 export const ICON = /^<[^>]+>/;
 
@@ -279,33 +280,71 @@ export async function sell(pilot: Pilot, item: string, count = 1): Promise<[bool
   return [false, `金钱没有变化(${show(before)}),可能没卖成`];
 }
 
+interface SellListState extends GridListState {
+  readonly rows: Reply[];
+}
+
+/** The sell list as the shop exposes it: focus first (0.13.2+), then the translated cursor. */
+async function sellListState(pilot: Pilot): Promise<SellListState> {
+  const shop = await shopState(pilot);
+  const rows = records(shop.rows);
+  const names = rows.map((row) => iconName(row.name));
+  const focus = rows.findIndex((row) => truthy(row.focus));
+  const cursor = num(shop.cursor);
+  const absolute = num(shop.listCursor);
+  const index =
+    focus >= 0
+      ? focus
+      : (cursor ?? (absolute !== undefined && absolute < names.length ? absolute : null));
+  return {
+    rows,
+    names,
+    selected: index === null ? "" : (names[index] ?? ""),
+    selectedIndex: index,
+    listCursor: absolute ?? cursor ?? null,
+  };
+}
+
+function sameNames(after: readonly string[], before: readonly string[]): boolean {
+  return after.length === before.length && after.every((name, index) => name === before[index]);
+}
+
 /**
- * Move the sell list's cursor onto `item`, scrolling down then up through the list as
- * drawn; the row, or None when the list does not have it.
+ * Move the sell list's cursor onto `item`, scrolling down then up through the list as drawn;
+ * the row, or None when the list does not have it.
+ *
+ * 11-10 (inferred, not yet checked on the real machine): the sell list is the same two-column
+ * grid as the field item list, so once the item is on screen this uses steerGridList instead of
+ * walking Down/Up one row at a time (todo 55: selling never worked). Claude should sell once
+ * on the laptop to confirm the grid and update this comment.
  */
 export async function findRow(pilot: Pilot, item: string, tries = 120): Promise<Reply | null> {
   let seenBottom = false;
   for (let i = 0; i < tries; i++) {
-    const rows = records((await shopState(pilot)).rows);
-    const names = rows.map((row) => iconName(row.name));
-    const focusIndex = rows.findIndex((row) => truthy(row.focus));
-    const focus = focusIndex < 0 ? null : focusIndex;
-    const target = pick(names, item);
-    if (target !== null && focus !== null && target === focus) return rows[target] ?? null;
-    let key: string;
-    if (target !== null && focus !== null) key = target > focus ? "Down" : "Up";
-    else key = seenBottom ? "Up" : "Down";
-    const beforeNames = names;
-    const beforeFocus = focus;
+    const before = await sellListState(pilot);
+    const target = pick(before.names, item);
+    if (target !== null) {
+      if (before.selectedIndex === target) return before.rows[target] ?? null;
+      const press = async (key: string): Promise<void> => {
+        await pilot.send("keys", { keys: [key], gap: 110 });
+      };
+      const steered = await steerGridList(
+        async () => await sellListState(pilot),
+        target,
+        before.names[target] ?? item,
+        press,
+        Math.max(1, tries - i),
+        before,
+      );
+      if (!steered.ok) return null;
+      const at = steered.state.selectedIndex ?? target;
+      return steered.state.rows[at] ?? null;
+    }
+    const key = seenBottom ? "Up" : "Down";
     await pilot.send("keys", { keys: [key], gap: 110 });
-    const afterRows = records((await shopState(pilot)).rows);
-    const afterNames = afterRows.map((row) => iconName(row.name));
-    const afterFocusIndex = afterRows.findIndex((row) => truthy(row.focus));
-    const afterFocus = afterFocusIndex < 0 ? null : afterFocusIndex;
+    const after = await sellListState(pilot);
     const same =
-      afterFocus === beforeFocus &&
-      afterNames.length === beforeNames.length &&
-      afterNames.every((name, index) => name === beforeNames[index]);
+      after.selectedIndex === before.selectedIndex && sameNames(after.names, before.names);
     if (same) {
       // the cursor did not move: the end of the list
       if (seenBottom || key === "Up") return null;

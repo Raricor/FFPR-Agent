@@ -148,14 +148,13 @@ void test("useItem cures blindness from the field menu", async () => {
     ["Enter"],
     ["Enter"],
     ["Down"],
-    ["Down"],
     ["Enter"],
     ["Down"],
     ["Enter"],
   ]);
 });
 
-void test("useItem pages down to an item below the first page", async () => {
+void test("useItem reaches a right-column item deep in a long list", async () => {
   const pilot = new FakePilot();
   const items = Array.from({ length: 11 }, (_, index) => ({
     name: `道具${index + 1}`,
@@ -173,13 +172,9 @@ void test("useItem pages down to an item below the first page", async () => {
     true,
     "给 蕾娜 用了「眼药」:黑暗 治好了",
   ]);
-  assert.equal(
-    pilot
-      .keys()
-      .map((keys) => keys[0])
-      .filter((key) => key === "Down").length,
-    13, // top menu once, eleven rows of items, then 蕾娜
-  );
+  const keys = pilot.keys().map((keys) => keys[0]);
+  assert.equal(keys.filter((key) => key === "Down").length, 7); // top, five rows, 蕾娜
+  assert.equal(keys.filter((key) => key === "Right").length, 1); // odd index: the right column
 });
 
 void test("cast says the caster is short of MP when a grey spell costs more", async () => {
@@ -209,7 +204,7 @@ void test("cast says battle-only only when the bridge marks the spell that way",
   ]);
 });
 
-void test("useItem reaches an item on the second screen of a long list", async () => {
+void test("useItem reaches a late item on a long list", async () => {
   const pilot = new FakePilot();
   const items = Array.from({ length: 30 }, (_, index) => ({
     name: `道具${index + 1}`,
@@ -221,7 +216,6 @@ void test("useItem reaches an item on the second screen of a long list", async (
     members: PARTY,
     target: "蕾娜",
     targetStatus: "Blind",
-    pageSize: 8,
   });
   menu.install(pilot);
   assert.deepEqual(await useItem(pilot, "眼药", "蕾娜"), [
@@ -229,6 +223,117 @@ void test("useItem reaches an item on the second screen of a long list", async (
     "给 蕾娜 用了「眼药」:黑暗 治好了",
   ]);
   assert.equal(menu.stage, "done");
+});
+
+void test("useItem moves right into the right column instead of pressing Down", async () => {
+  const pilot = new FakePilot();
+  const menu = new FakeItemMenu({
+    items: [
+      { name: "恢复药", count: 1 },
+      { name: "解毒药", count: 1 },
+      { name: "帐篷", count: 1 },
+      { name: "眼药", count: 1 },
+    ],
+    members: PARTY,
+    target: "蕾娜",
+    targetStatus: "Blind",
+  });
+  menu.install(pilot);
+  assert.deepEqual(await useItem(pilot, "眼药", "蕾娜"), [
+    true,
+    "给 蕾娜 用了「眼药」:黑暗 治好了",
+  ]);
+  assert.deepEqual(pilot.keys(), [
+    ["Tab"],
+    ["Down"],
+    ["Enter"],
+    ["Enter"],
+    ["Down"],
+    ["Right"],
+    ["Enter"],
+    ["Down"],
+    ["Enter"],
+  ]);
+});
+
+void test("useItem reaches the last row of an odd-length grid", async () => {
+  const pilot = new FakePilot();
+  const items = Array.from({ length: 30 }, (_, index) => ({
+    name: `道具${index + 1}`,
+    count: 1,
+  }));
+  items.push({ name: "眼药", count: 1 });
+  const menu = new FakeItemMenu({ items, members: PARTY, target: "蕾娜", targetStatus: "Blind" });
+  menu.install(pilot);
+  assert.deepEqual(await useItem(pilot, "眼药", "蕾娜"), [
+    true,
+    "给 蕾娜 用了「眼药」:黑暗 治好了",
+  ]);
+  assert.equal(menu.listCursor, 30);
+  assert.equal(
+    pilot
+      .keys()
+      .map((keys) => keys[0])
+      .filter((key) => key === "Down").length,
+    17, // top, fifteen rows, 蕾娜
+  );
+});
+
+void test("useItem steers back from the end of the list to an early item", async () => {
+  const pilot = new FakePilot();
+  const items = Array.from({ length: 31 }, (_, index) => ({
+    name: `道具${index + 1}`,
+    count: 1,
+  }));
+  items[1] = { name: "眼药", count: 1 };
+  const menu = new FakeItemMenu({
+    items,
+    members: PARTY,
+    target: "蕾娜",
+    targetStatus: "Blind",
+    cursor: 30,
+  });
+  menu.install(pilot);
+  assert.deepEqual(await useItem(pilot, "眼药", "蕾娜"), [
+    true,
+    "给 蕾娜 用了「眼药」:黑暗 治好了",
+  ]);
+  const keys = pilot.keys().map((keys) => keys[0]);
+  assert.equal(keys.filter((key) => key === "Up").length >= 14, true);
+  assert.equal(keys.includes("Left"), true);
+});
+
+void test("useItem infers a three-column list instead of hard-coding two", async () => {
+  const pilot = new FakePilot();
+  const items = Array.from({ length: 7 }, (_, index) => ({
+    name: `道具${index + 1}`,
+    count: 1,
+  }));
+  items[5] = { name: "眼药", count: 1 };
+  const menu = new FakeItemMenu({
+    items,
+    members: PARTY,
+    target: "蕾娜",
+    targetStatus: "Blind",
+    columns: 3,
+  });
+  menu.install(pilot);
+  assert.deepEqual(await useItem(pilot, "眼药", "蕾娜"), [
+    true,
+    "给 蕾娜 用了「眼药」:黑暗 治好了",
+  ]);
+  assert.deepEqual(pilot.keys(), [
+    ["Tab"],
+    ["Down"],
+    ["Enter"],
+    ["Enter"],
+    ["Down"],
+    ["Right"],
+    ["Right"],
+    ["Enter"],
+    ["Down"],
+    ["Enter"],
+  ]);
 });
 
 void test("useItem reports the stuck item rows and keys to the error log", async () => {

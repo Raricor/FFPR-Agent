@@ -903,15 +903,10 @@
           "kind": "send",
           "op": "keys",
           "fields": {
-            "keys": ["Down"],
+            "keys": ["Right"],
             "gap": 110
           },
           "wait": 30
-        },
-        {
-          "kind": "query",
-          "q": "shop",
-          "fields": {}
         },
         {
           "kind": "query",
