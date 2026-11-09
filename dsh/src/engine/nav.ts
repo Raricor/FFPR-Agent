@@ -34,6 +34,18 @@ export interface ObservedMove {
   readonly kind?: string;
   /** The layer the party stood on after the move, when it was read. */
   readonly toLayer?: number;
+  /** The layer the party stood on when this was observed (a blocked step, a conveyor). */
+  readonly layer?: number;
+  /** Task 73: how many times a blocked step was hit; absent on old records, read as 1. */
+  readonly count?: number;
+  /** Task 73: when a blocked step was first recorded. */
+  readonly at?: string;
+}
+
+/** A cell that may carry the party away, and the layer it is on; null when not known. */
+export interface DangerCell {
+  readonly cell: Cell;
+  readonly layer: number | null;
 }
 
 /** Integer-keyed heights keep the Python dict's insertion order, which BFS depends on. */
@@ -51,6 +63,12 @@ export interface LayeredGrid {
   readonly transitions?: ReadonlyMap<string, number | null>;
   /** Walking moves seen earlier on this map, keyed by the cell they start from. */
   readonly moves?: ReadonlyMap<string, readonly ObservedMove[]>;
+  /**
+   * Cells that carry the party away (conveyors, water currents), keyed by cell. A number is
+   * the height the danger is on; null means every height (older entities without `myLayer`).
+   * They are avoided when another way exists, not walls.
+   */
+  readonly dangers?: ReadonlyMap<string, number | null>;
 }
 
 export function cellKey(x: number, y: number): string {
@@ -66,6 +84,19 @@ const EMPTY_CELLS: ReadonlySet<string> = new Set();
 const EMPTY_EDGES: ReadonlySet<string> = new Set();
 const EMPTY_TRANSITIONS: ReadonlyMap<string, number | null> = new Map();
 const EMPTY_MOVES: ReadonlyMap<string, readonly ObservedMove[]> = new Map();
+const EMPTY_LAYER_CUTS: ReadonlyMap<number, ReadonlySet<string>> = new Map();
+
+/**
+ * The height an entity's `myLayer` names. The bridge writes the game's map layer (9 bottom,
+ * 10 ground, 11 upper); LAYER_Z is the route searcher's height, nine less (11-09, Walse
+ * Castle 54: the water at myLayer 10 is on Ground, myLayer 11 on Upper). Null when the
+ * reply has no such layer, as older entity records.
+ */
+export function entityLayer(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  const layer = Math.trunc(value) - 9;
+  return layer >= 0 ? layer : null;
+}
 
 /** Attribute grid with the player marked @; columns and rows labelled with cell numbers. */
 export function renderCells(cells: CellGrid): string {
@@ -429,6 +460,7 @@ export function layeredGrid(
   blocked: Iterable<Cell>,
   transitions: Iterable<Cell | LayerChange> = [],
   moves: readonly ObservedMove[] = [],
+  dangers: Iterable<DangerCell> = [],
 ): LayeredGrid | null {
   const { layers, here } = collisionData(collision);
   if (layers.length === 0 || !here) return null;
@@ -459,6 +491,10 @@ export function layeredGrid(
     list.push(move);
     moveCells.set(key, list);
   }
+  const dangerCells = new Map<string, number | null>();
+  for (const danger of dangers) {
+    dangerCells.set(cellKey(danger.cell[0], danger.cell[1]), danger.layer);
+  }
   return {
     heights,
     center: here,
@@ -466,6 +502,7 @@ export function layeredGrid(
     blocked: blockedCells,
     transitions: transitionCells,
     moves: moveCells,
+    dangers: dangerCells,
   };
 }
 
@@ -488,10 +525,13 @@ function cellAt(grid: LayeredGrid, x: number, y: number, z: number): string {
   if (!rows || !(y >= 0 && y < rows.length && x >= 0 && x < (rows[y]?.length ?? 0))) {
     return "1";
   }
-  if (grid.blocked.has(cellKey(x, y)) && !(x === grid.center[0] && y === grid.center[1])) {
-    return "1";
-  }
-  return rows[y]?.[x] ?? "1";
+  const start = x === grid.center[0] && y === grid.center[1];
+  if (grid.blocked.has(cellKey(x, y)) && !start) return "1";
+  const value = rows[y]?.[x] ?? "1";
+  // 11-09: the party may stand on a cell the collision data calls a wall (a GotoMap or
+  // PointIn door/landing; the game drops it there). That cell is walkable from the party's
+  // side, or every search starting on it stayed put and called the goal unreachable.
+  return start && !OPEN.has(value) ? "0" : value;
 }
 
 /** A cell with the height it is on, as the layered search walks it. */
@@ -503,6 +543,12 @@ function nodeKey(node: LayerNode): string {
 
 function layerNode(node: LayerNode): LayerNode {
   return [node[0], node[1], node[2]];
+}
+
+/** Whether stepping on this node is dangerous; a danger with no layer applies everywhere. */
+export function isDangerNode(grid: LayeredGrid, node: LayerNode): boolean {
+  const layer = grid.dangers?.get(cellKey(node[0], node[1]));
+  return layer === undefined ? false : layer === null || layer === node[2];
 }
 
 /**
@@ -520,6 +566,8 @@ export function layeredRoute(
   grid: LayeredGrid,
   goal: Cell,
   cut: ReadonlySet<string> = EMPTY_EDGES,
+  layerCut: ReadonlyMap<number, ReadonlySet<string>> = EMPTY_LAYER_CUTS,
+  allowDanger = false,
 ): LayerNode[] {
   const start: LayerNode = [grid.center[0], grid.center[1], grid.z];
   const previous = new Map<string, LayerNode | null>();
@@ -558,7 +606,8 @@ export function layeredRoute(
         [x, y - 1],
       ];
       for (const [nx, ny] of neighbours) {
-        if (cut.has(edgeKey([x, y], [nx, ny]))) continue;
+        const edge = edgeKey([x, y], [nx, ny]);
+        if (cut.has(edge) || (layerCut.get(z)?.has(edge) ?? false)) continue;
         const key = cellKey(nx, ny);
         const change = transitions.get(key);
         const candidates: number[] =
@@ -572,6 +621,10 @@ export function layeredRoute(
         for (const nz of candidates) {
           const there = cellAt(grid, nx, ny, nz);
           if (!OPEN.has(there) && !(nx === goal[0] && ny === goal[1])) continue;
+          const nextNode: LayerNode = [nx, ny, nz];
+          if (!allowDanger && isDangerNode(grid, nextNode) && !(nx === goal[0] && ny === goal[1])) {
+            continue;
+          }
           // A change of height through a plain step needs a stair cell. A ToLayer cell
           // names its target layer itself (11-03, Fire-Powered Ship 261). The stair is on
           // the upper floor: climbing needs the cell entered there to be a stair, going
@@ -590,6 +643,9 @@ export function layeredRoute(
       const nz = move.toLayer ?? z;
       const there = cellAt(grid, tx, ty, nz);
       if (!OPEN.has(there) && !(tx === goal[0] && ty === goal[1])) continue;
+      if (!allowDanger && isDangerNode(grid, [tx, ty, nz]) && !(tx === goal[0] && ty === goal[1])) {
+        continue;
+      }
       enqueue(node, [tx, ty, nz]);
     }
   }
@@ -616,6 +672,133 @@ export function layeredRoute(
     path.push(layerNode(before));
   }
   return path.reverse();
+}
+
+/**
+ * Connected components of the layered grid, following the same moves as layeredRoute: open
+ * neighbours, stairs and ToLayer cells for height changes, half-walls, the same-map moves, and
+ * cuts. Task 75 uses it to name the block of a map each exit and landing belongs to, so a map
+ * split in two by its collision data can be planned as two nodes instead of one.
+ *
+ * With `allowDanger` false, cells that carry the party away are not entered (task 70); callers
+ * ask a second time with true to find the blocks reachable only by stepping on one.
+ * Returns nodeKey → component id; ids count up in scan order. The grid's center cell is open
+ * like layeredRoute's start, so a live collision reply can place the party on a wall cell.
+ */
+export function layeredComponents(
+  grid: LayeredGrid,
+  cut: ReadonlySet<string> = EMPTY_EDGES,
+  layerCut: ReadonlyMap<number, ReadonlySet<string>> = EMPTY_LAYER_CUTS,
+  allowDanger = false,
+): Map<string, number> {
+  const blocks = new Map<string, number>();
+  const transitions = grid.transitions ?? EMPTY_TRANSITIONS;
+  const moves = grid.moves ?? EMPTY_MOVES;
+  let next = 0;
+
+  const add = (node: LayerNode, id: number, queue: LayerNode[]): void => {
+    const key = nodeKey(node);
+    if (blocks.has(key)) return;
+    blocks.set(key, id);
+    queue.push(node);
+  };
+
+  for (const [z, rows] of grid.heights) {
+    for (let y = 0; y < rows.length; y++) {
+      for (let x = 0; x < (rows[y]?.length ?? 0); x++) {
+        const first: LayerNode = [x, y, z];
+        const firstKey = nodeKey(first);
+        if (blocks.has(firstKey) || !OPEN.has(cellAt(grid, x, y, z))) continue;
+        if (!allowDanger && isDangerNode(grid, first)) continue;
+        const id = next;
+        next += 1;
+        const queue: LayerNode[] = [];
+        add(first, id, queue);
+        let head = 0;
+        while (head < queue.length) {
+          const node = queue[head];
+          head += 1;
+          if (!node) break;
+          const [cx, cy, cz] = node;
+          const here = cellAt(grid, cx, cy, cz);
+          const outgoing = moves.get(cellKey(cx, cy)) ?? [];
+          if (!outgoing.some(forcedMove)) {
+            const neighbours: Cell[] = [
+              [cx + 1, cy],
+              [cx - 1, cy],
+              [cx, cy + 1],
+              [cx, cy - 1],
+            ];
+            for (const [nx, ny] of neighbours) {
+              const edge = edgeKey([cx, cy], [nx, ny]);
+              if (cut.has(edge) || (layerCut.get(cz)?.has(edge) ?? false)) continue;
+              const key = cellKey(nx, ny);
+              const change = transitions.get(key);
+              const candidates: number[] =
+                change !== undefined
+                  ? change === null
+                    ? [...grid.heights.keys()]
+                    : [change]
+                  : ny === cy
+                    ? [cz]
+                    : [...grid.heights.keys()];
+              for (const nz of candidates) {
+                const there = cellAt(grid, nx, ny, nz);
+                if (!OPEN.has(there)) continue;
+                const nextNode: LayerNode = [nx, ny, nz];
+                if (!allowDanger && isDangerNode(grid, nextNode)) continue;
+                const stair = nz > cz ? STAIRS.has(there) : STAIRS.has(here);
+                if (nz !== cz && change === undefined && !stair) continue;
+                if (halfWallBlocks(here, there, nx - cx, ny - cy)) continue;
+                add(nextNode, id, queue);
+              }
+            }
+          }
+          for (const move of outgoing) {
+            const [tx, ty] = move.to;
+            const nz = move.toLayer ?? cz;
+            if (!OPEN.has(cellAt(grid, tx, ty, nz))) continue;
+            if (!allowDanger && isDangerNode(grid, [tx, ty, nz])) continue;
+            add([tx, ty, nz], id, queue);
+          }
+        }
+      }
+    }
+  }
+  return blocks;
+}
+
+/**
+ * A route that keeps off conveyors and water currents when it can, and uses them only when
+ * that is the only way to the goal. `danger` lists the dangerous nodes stepped on, so the
+ * caller can say the party will be carried away (11-09, Walse Castle 54).
+ */
+export function layeredRouteAvoiding(
+  grid: LayeredGrid,
+  goal: Cell,
+  cut: ReadonlySet<string> = EMPTY_EDGES,
+  layerCut: ReadonlyMap<number, ReadonlySet<string>> = EMPTY_LAYER_CUTS,
+): { path: LayerNode[]; danger: LayerNode[] } {
+  const safe = layeredRoute(grid, goal, cut, layerCut, false);
+  const safeEnd = safe.at(-1);
+  if (safeEnd?.[0] === goal[0] && safeEnd[1] === goal[1]) {
+    return { path: safe, danger: [] };
+  }
+  const risky = layeredRoute(grid, goal, cut, layerCut, true);
+  const riskyEnd = risky.at(-1);
+  if (riskyEnd?.[0] !== goal[0] || riskyEnd[1] !== goal[1]) {
+    return { path: safe, danger: [] };
+  }
+  const danger = risky.filter((node, index) => {
+    const last = index === risky.length - 1;
+    return (
+      !last &&
+      index !== 0 &&
+      isDangerNode(grid, node) &&
+      !(node[0] === goal[0] && node[1] === goal[1])
+    );
+  });
+  return { path: risky, danger };
 }
 /**
  * The cells of layeredRoute: the path, or the path to the reachable cell nearest the goal.
