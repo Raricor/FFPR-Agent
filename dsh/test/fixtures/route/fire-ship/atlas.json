@@ -1,0 +1,775 @@
+{
+  "250": {
+    "name": "火力船",
+    "exits": [
+      {
+        "cell": [12, 17],
+        "to": 1,
+        "name": "GotoMap"
+      }
+    ],
+    "chests": [],
+    "links": [
+      {
+        "from": [15, 17],
+        "to": [15, 18],
+        "how": "走不过去"
+      },
+      {
+        "from": [16, 18],
+        "to": [15, 18],
+        "how": "走不过去"
+      },
+      {
+        "from": [15, 17],
+        "to": [15, 16],
+        "how": "走不过去"
+      },
+      {
+        "from": [16, 16],
+        "to": [15, 16],
+        "how": "走不过去"
+      }
+    ]
+  },
+  "251": {
+    "name": "火力船 船内",
+    "exits": [
+      {
+        "cell": [15, 17],
+        "to": 252,
+        "name": "GotoMap"
+      }
+    ],
+    "chests": [],
+    "links": [
+      {
+        "from": [12, 16],
+        "to": [12, 17],
+        "how": "走不过去"
+      }
+    ]
+  },
+  "252": {
+    "name": "火力船 船内",
+    "exits": [
+      {
+        "cell": [9, 3],
+        "to": 251,
+        "name": "GotoMap",
+        "land": [15, 16],
+        "landLayer": 1
+      },
+      {
+        "cell": [9, 12],
+        "to": 253,
+        "name": "GotoMap"
+      }
+    ],
+    "chests": [],
+    "links": [
+      {
+        "from": [9, 12],
+        "to": [9, 11],
+        "how": "走不过去"
+      }
+    ]
+  },
+  "253": {
+    "name": "火力船 机房",
+    "exits": [
+      {
+        "cell": [16, 21],
+        "to": 252,
+        "name": "GotoMap",
+        "land": [9, 12],
+        "landLayer": 1
+      },
+      {
+        "cell": [13, 13],
+        "to": 254,
+        "name": "GotoMap",
+        "land": [5, 6],
+        "landLayer": 1
+      },
+      {
+        "cell": [5, 16],
+        "to": 255,
+        "name": "GotoMap",
+        "land": [6, 25],
+        "landLayer": 2
+      },
+      {
+        "cell": [16, 15],
+        "to": 256,
+        "name": "GotoMap",
+        "land": [6, 20],
+        "landLayer": 1
+      },
+      {
+        "cell": [14, 6],
+        "to": 257,
+        "name": "GotoMap",
+        "land": [5, 8],
+        "landLayer": 2
+      }
+    ],
+    "chests": [
+      {
+        "cell": [5, 9],
+        "name": "コテージ"
+      }
+    ],
+    "links": [
+      {
+        "from": [8, 11],
+        "to": [8, 11],
+        "how": "换层到第 0 层",
+        "kind": "layer",
+        "toLayer": 0
+      },
+      {
+        "from": [8, 10],
+        "to": [8, 10],
+        "how": "换层到第 1 层",
+        "kind": "layer",
+        "toLayer": 1
+      }
+    ]
+  },
+  "254": {
+    "name": "火力船 机房",
+    "exits": [
+      {
+        "cell": [5, 7],
+        "to": 253,
+        "name": "GotoMap",
+        "land": [13, 14],
+        "landLayer": 1
+      }
+    ],
+    "chests": [
+      {
+        "cell": [5, 4],
+        "name": "ミスリルの小手"
+      }
+    ]
+  },
+  "255": {
+    "name": "火力船 机房",
+    "exits": [
+      {
+        "cell": [19, 20],
+        "to": 258,
+        "name": "GotoMap",
+        "land": [4, 7],
+        "landLayer": 1
+      },
+      {
+        "cell": [10, 16],
+        "to": 634,
+        "name": "GotoMap",
+        "land": [5, 8],
+        "landLayer": 2
+      },
+      {
+        "cell": [6, 6],
+        "to": 635,
+        "name": "GotoMap",
+        "land": [5, 8],
+        "landLayer": 2
+      },
+      {
+        "cell": [6, 26],
+        "to": 253,
+        "name": "GotoMap",
+        "land": [5, 17],
+        "landLayer": 1
+      }
+    ],
+    "chests": [
+      {
+        "cell": [15, 16],
+        "name": "フェニックスのお"
+      }
+    ]
+  },
+  "256": {
+    "name": "火力船 机房",
+    "exits": [
+      {
+        "cell": [6, 20],
+        "to": 253,
+        "name": "GotoMap",
+        "land": [16, 15],
+        "landLayer": 1
+      },
+      {
+        "cell": [8, 11],
+        "to": 261,
+        "name": "GotoMap"
+      },
+      {
+        "cell": [8, 8],
+        "to": 259,
+        "name": "GotoMap"
+      }
+    ],
+    "chests": [
+      {
+        "cell": [11, 17],
+        "name": "ミスリルの小手"
+      }
+    ],
+    "links": [
+      {
+        "from": [8, 15],
+        "to": [8, 14],
+        "how": "走不过去",
+        "at": "2026-11-08T23:41:26.328Z",
+        "count": 1
+      },
+      {
+        "from": [11, 18],
+        "to": [11, 17],
+        "how": "走不过去",
+        "at": "2026-11-09T00:10:10.670Z",
+        "count": 1
+      },
+      {
+        "from": [10, 17],
+        "to": [11, 17],
+        "how": "走不过去",
+        "at": "2026-11-09T00:11:21.467Z",
+        "count": 1
+      }
+    ]
+  },
+  "257": {
+    "name": "火力船 升降机",
+    "exits": [
+      {
+        "cell": [5, 9],
+        "to": 253,
+        "name": "GotoMap",
+        "land": [14, 7],
+        "landLayer": 1
+      }
+    ],
+    "chests": [],
+    "links": [
+      {
+        "from": [4, 7],
+        "to": [3, 7],
+        "how": "走不过去"
+      },
+      {
+        "from": [4, 6],
+        "to": [3, 6],
+        "how": "走不过去"
+      },
+      {
+        "from": [4, 6],
+        "to": [4, 6],
+        "how": "坐一趟",
+        "kind": "ride",
+        "press": [3, 6],
+        "dir": "Left",
+        "toMap": 634,
+        "landLayer": 2
+      }
+    ]
+  },
+  "258": {
+    "name": "火力船 机房",
+    "exits": [
+      {
+        "cell": [4, 8],
+        "to": 255,
+        "name": "GotoMap",
+        "land": [19, 21],
+        "landLayer": 2
+      }
+    ],
+    "chests": [
+      {
+        "cell": [4, 5],
+        "name": "エリクサー"
+      }
+    ],
+    "links": [
+      {
+        "from": [5, 5],
+        "to": [5, 4],
+        "how": "走不过去",
+        "at": "2026-11-08T23:57:42.825Z",
+        "count": 1
+      },
+      {
+        "from": [3, 5],
+        "to": [3, 4],
+        "how": "走不过去",
+        "at": "2026-11-08T23:57:45.246Z",
+        "count": 1
+      }
+    ]
+  },
+  "260": {
+    "name": "火力船 升降机",
+    "exits": [
+      {
+        "cell": [4, 9],
+        "to": 261,
+        "name": "GotoMap",
+        "land": [13, 20],
+        "landLayer": 1
+      }
+    ],
+    "chests": [],
+    "links": [
+      {
+        "from": [3, 7],
+        "to": [2, 7],
+        "how": "走不过去"
+      },
+      {
+        "from": [3, 6],
+        "to": [2, 6],
+        "how": "走不过去"
+      },
+      {
+        "from": [3, 6],
+        "to": [4, 6],
+        "how": "坐一趟",
+        "kind": "ride",
+        "press": [2, 6],
+        "dir": "Left",
+        "toMap": 635,
+        "landLayer": 2
+      }
+    ]
+  },
+  "261": {
+    "name": "火力船 机房",
+    "exits": [
+      {
+        "cell": [13, 19],
+        "to": 260,
+        "name": "GotoMap",
+        "land": [4, 8],
+        "landLayer": 2
+      },
+      {
+        "cell": [10, 31],
+        "to": 262,
+        "name": "GotoMap",
+        "land": [3, 5],
+        "landLayer": 1
+      },
+      {
+        "cell": [10, 25],
+        "to": 263,
+        "name": "GotoMap",
+        "land": [4, 8],
+        "landLayer": 2
+      },
+      {
+        "cell": [13, 7],
+        "to": 264,
+        "name": "GotoMap"
+      },
+      {
+        "cell": [20, 13],
+        "to": 265,
+        "name": "GotoMap"
+      },
+      {
+        "cell": [6, 18],
+        "to": 265,
+        "name": "GotoMap"
+      },
+      {
+        "cell": [20, 22],
+        "to": 256,
+        "name": "GotoMap"
+      },
+      {
+        "cell": [16, 25],
+        "to": 268,
+        "name": "GotoMap"
+      },
+      {
+        "cell": [18, 18],
+        "to": 262,
+        "name": "GotoMap",
+        "land": [11, 5],
+        "landLayer": 1
+      }
+    ],
+    "chests": [
+      {
+        "cell": [13, 27],
+        "name": "盗賊の小手"
+      },
+      {
+        "cell": [7, 8],
+        "name": "グリーンベレー"
+      }
+    ],
+    "links": [
+      {
+        "from": [13, 25],
+        "to": [15, 23],
+        "how": "传送带"
+      },
+      {
+        "from": [13, 23],
+        "to": [11, 23],
+        "how": "传送带"
+      },
+      {
+        "from": [13, 23],
+        "to": [13, 22],
+        "how": "传送带"
+      },
+      {
+        "from": [13, 23],
+        "to": [8, 22],
+        "how": "传送带"
+      },
+      {
+        "from": [15, 19],
+        "to": [15, 19],
+        "how": "换层到第 2 层",
+        "kind": "layer",
+        "toLayer": 2
+      },
+      {
+        "from": [15, 20],
+        "to": [15, 20],
+        "how": "换层到第 1 层",
+        "kind": "layer",
+        "toLayer": 1
+      },
+      {
+        "from": [15, 19],
+        "to": [14, 19],
+        "how": "走不过去"
+      },
+      {
+        "from": [13, 23],
+        "to": [13, 22],
+        "how": "传送带",
+        "kind": "conveyor",
+        "toLayer": 1
+      },
+      {
+        "from": [17, 20],
+        "to": [17, 19],
+        "how": "走不过去",
+        "layer": 1,
+        "at": "2026-11-08T23:17:03.722Z",
+        "count": 1
+      },
+      {
+        "from": [16, 19],
+        "to": [16, 19],
+        "how": "换层到第 2 层",
+        "kind": "layer",
+        "toLayer": 2
+      },
+      {
+        "from": [16, 19],
+        "to": [17, 19],
+        "how": "走不过去",
+        "layer": 2,
+        "at": "2026-11-08T23:17:05.478Z",
+        "count": 1
+      },
+      {
+        "from": [16, 20],
+        "to": [16, 20],
+        "how": "换层到第 1 层",
+        "kind": "layer",
+        "toLayer": 1
+      },
+      {
+        "from": [15, 15],
+        "to": [15, 14],
+        "how": "走不过去",
+        "layer": 2,
+        "at": "2026-11-08T23:21:18.907Z",
+        "count": 1
+      },
+      {
+        "from": [15, 23],
+        "to": [15, 24],
+        "how": "走不过去",
+        "layer": 1,
+        "at": "2026-11-08T23:31:30.703Z",
+        "count": 1
+      },
+      {
+        "from": [15, 18],
+        "to": [14, 18],
+        "how": "走不过去",
+        "layer": 2,
+        "at": "2026-11-08T23:33:03.790Z",
+        "count": 1
+      },
+      {
+        "from": [15, 18],
+        "to": [14, 18],
+        "how": "走不过去",
+        "layer": 1,
+        "at": "2026-11-08T23:35:24.380Z",
+        "count": 1
+      },
+      {
+        "from": [11, 18],
+        "to": [12, 18],
+        "how": "走不过去",
+        "layer": 1,
+        "at": "2026-11-08T23:36:55.439Z",
+        "count": 1
+      },
+      {
+        "from": [13, 25],
+        "to": [13, 22],
+        "how": "传送带",
+        "kind": "conveyor",
+        "toLayer": 1
+      }
+    ]
+  },
+  "262": {
+    "name": "火力船 通道",
+    "exits": [
+      {
+        "cell": [3, 5],
+        "to": 261,
+        "name": "GotoMap",
+        "land": [10, 31],
+        "landLayer": 1
+      },
+      {
+        "cell": [11, 5],
+        "to": 261,
+        "name": "GotoMap",
+        "land": [18, 18],
+        "landLayer": 1
+      }
+    ],
+    "chests": []
+  },
+  "263": {
+    "name": "火力船 升降机",
+    "exits": [
+      {
+        "cell": [4, 9],
+        "to": 261,
+        "name": "GotoMap",
+        "land": [10, 26],
+        "landLayer": 1
+      }
+    ],
+    "chests": [],
+    "links": [
+      {
+        "from": [3, 7],
+        "to": [2, 7],
+        "how": "走不过去",
+        "at": "2026-11-09T00:15:42.586Z",
+        "count": 1
+      },
+      {
+        "from": [3, 6],
+        "to": [2, 6],
+        "how": "走不过去",
+        "at": "2026-11-09T00:15:43.907Z",
+        "count": 1
+      },
+      {
+        "from": [3, 6],
+        "to": [4, 6],
+        "how": "坐一趟",
+        "kind": "ride",
+        "press": [2, 6],
+        "dir": "Left",
+        "toMap": 636,
+        "landLayer": 2
+      }
+    ]
+  },
+  "265": {
+    "name": "火力船 机房",
+    "exits": [
+      {
+        "cell": [10, 11],
+        "to": 636,
+        "name": "GotoMap"
+      },
+      {
+        "cell": [12, 11],
+        "to": 637,
+        "name": "GotoMap"
+      },
+      {
+        "cell": [14, 11],
+        "to": 638,
+        "name": "GotoMap"
+      },
+      {
+        "cell": [15, 8],
+        "to": 261,
+        "name": "GotoMap"
+      },
+      {
+        "cell": [6, 13],
+        "to": 261,
+        "name": "GotoMap"
+      }
+    ],
+    "chests": [],
+    "links": [
+      {
+        "from": [14, 16],
+        "to": [13, 16],
+        "how": "走不过去",
+        "at": "2026-11-09T15:05:29.434Z",
+        "count": 1
+      },
+      {
+        "from": [12, 16],
+        "to": [13, 16],
+        "how": "走不过去",
+        "at": "2026-11-09T15:05:31.653Z",
+        "count": 1
+      },
+      {
+        "from": [14, 16],
+        "to": [15, 16],
+        "how": "走不过去",
+        "at": "2026-11-09T15:06:32.863Z",
+        "count": 1
+      }
+    ]
+  },
+  "634": {
+    "name": "火力船 升降机",
+    "exits": [
+      {
+        "cell": [5, 9],
+        "to": 255,
+        "name": "GotoMap",
+        "land": [10, 17],
+        "landLayer": 2
+      }
+    ],
+    "chests": [],
+    "links": [
+      {
+        "from": [4, 7],
+        "to": [3, 7],
+        "how": "走不过去"
+      },
+      {
+        "from": [4, 6],
+        "to": [3, 6],
+        "how": "走不过去"
+      },
+      {
+        "from": [4, 6],
+        "to": [4, 6],
+        "how": "坐一趟",
+        "kind": "ride",
+        "press": [3, 6],
+        "dir": "Left",
+        "toMap": 257,
+        "landLayer": 2
+      },
+      {
+        "from": [4, 6],
+        "to": [9, 17],
+        "how": "坐一趟",
+        "kind": "ride",
+        "press": [3, 6],
+        "dir": "Left",
+        "toMap": 255,
+        "landLayer": 2
+      }
+    ]
+  },
+  "635": {
+    "name": "火力船 升降机",
+    "exits": [
+      {
+        "cell": [5, 9],
+        "to": 255,
+        "name": "GotoMap",
+        "land": [6, 7],
+        "landLayer": 2
+      }
+    ],
+    "chests": [],
+    "links": [
+      {
+        "from": [4, 7],
+        "to": [3, 7],
+        "how": "走不过去",
+        "count": 3,
+        "at": "2026-11-08T22:34:48.400Z"
+      },
+      {
+        "from": [4, 6],
+        "to": [3, 6],
+        "how": "走不过去",
+        "count": 2,
+        "at": "2026-11-09T00:00:11.107Z"
+      },
+      {
+        "from": [4, 6],
+        "to": [3, 6],
+        "how": "坐一趟",
+        "kind": "ride",
+        "press": [3, 6],
+        "dir": "Left",
+        "toMap": 260,
+        "landLayer": 2
+      }
+    ]
+  },
+  "636": {
+    "name": "火力船 升降机",
+    "exits": [
+      {
+        "cell": [5, 9],
+        "to": 265,
+        "name": "GotoMap"
+      }
+    ],
+    "chests": []
+  },
+  "637": {
+    "name": "火力船 升降机",
+    "exits": [
+      {
+        "cell": [5, 9],
+        "to": 265,
+        "name": "GotoMap"
+      }
+    ],
+    "chests": []
+  },
+  "638": {
+    "name": "火力船 升降机",
+    "exits": [
+      {
+        "cell": [5, 9],
+        "to": 265,
+        "name": "GotoMap"
+      }
+    ],
+    "chests": []
+  }
+}
