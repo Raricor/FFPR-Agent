@@ -29,6 +29,10 @@ export interface FakeItemMenuOptions {
   readonly targetMode?: string;
   readonly area?: string;
   readonly icon?: string;
+  /** Rows visible at once. When set, listCursor counts within the window, as in the game. */
+  readonly pageSize?: number;
+  /** Keep the list cursor where it is, to test the failure diagnostic. */
+  readonly stuck?: boolean;
 }
 
 type Stage = "closed" | "top" | "command" | "list" | "target" | "done";
@@ -41,10 +45,13 @@ export class FakeItemMenu {
   readonly targetMode: string;
   readonly area: string;
   readonly icon: string;
+  readonly pageSize: number | undefined;
+  readonly stuck: boolean;
   stage: Stage = "closed";
   topCursor = 0;
   commandCursor = 0;
   listCursor = 0;
+  visibleOffset = 0;
   targetCursor = 0;
 
   constructor(options: FakeItemMenuOptions) {
@@ -58,6 +65,8 @@ export class FakeItemMenu {
     this.targetMode = options.targetMode ?? "Single";
     this.area = options.area ?? "卡文镇";
     this.icon = options.icon ?? "<IC_ITEM>";
+    this.pageSize = options.pageSize;
+    this.stuck = options.stuck === true;
   }
 
   install(pilot: FakePilot): void {
@@ -115,8 +124,7 @@ export class FakeItemMenu {
       if (key === "Up") this.commandCursor = Math.max(0, this.commandCursor - 1);
       if (key === "Enter" && this.commandCursor === 0) this.stage = "list";
     } else if (this.stage === "list") {
-      if (key === "Down") this.listCursor = Math.min(this.items.length - 1, this.listCursor + 1);
-      if (key === "Up") this.listCursor = Math.max(0, this.listCursor - 1);
+      if (!this.stuck) this.moveList(key);
       if (key === "Enter") this.stage = "target";
     } else if (this.stage === "target") {
       if (key === "Down")
@@ -126,8 +134,35 @@ export class FakeItemMenu {
     }
   }
 
+  private moveList(key: string): void {
+    const page = this.pageSize;
+    if (page === undefined) {
+      if (key === "Down") this.listCursor = Math.min(this.items.length - 1, this.listCursor + 1);
+      if (key === "Up") this.listCursor = Math.max(0, this.listCursor - 1);
+      return;
+    }
+    const visible = this.visibleOffset + this.listCursor;
+    if (key === "Down" && visible < this.items.length - 1) {
+      // At the bottom of a page the cursor stays there and the list scrolls underneath it.
+      if (this.listCursor < page - 1) this.listCursor += 1;
+      else this.visibleOffset += 1;
+    }
+    if (key === "Up" && visible > 0) {
+      if (this.listCursor > 0) this.listCursor -= 1;
+      else this.visibleOffset -= 1;
+    }
+  }
+
+  private visibleIndex(): number {
+    return this.pageSize === undefined ? this.listCursor : this.visibleOffset + this.listCursor;
+  }
+
+  private selectedName(): string {
+    return this.items[this.visibleIndex()]?.name ?? "";
+  }
+
   private consume(): void {
-    const item = this.items[this.listCursor];
+    const item = this.items[this.visibleIndex()];
     if (item !== undefined && item.count > 0) item.count -= 1;
     const member = this.members.find((entry) => entry.name === this.target);
     if (member !== undefined && this.targetStatus !== undefined) {
@@ -166,6 +201,7 @@ export class FakeItemMenu {
           commandCursor: this.commandCursor,
           rows: this.itemRows(),
           listCursor: this.listCursor,
+          selected: this.selectedName(),
         },
       }),
       target: () => ({
@@ -176,6 +212,7 @@ export class FakeItemMenu {
           commandCursor: this.commandCursor,
           rows: this.itemRows(),
           listCursor: this.listCursor,
+          selected: this.selectedName(),
           targets: this.members.map((member) => ({
             name: member.name,
             hp: member.hp,
@@ -199,6 +236,7 @@ export class FakeItemMenu {
         state: "TargetSelect",
         rows: this.itemRows(),
         listCursor: this.listCursor,
+        selected: this.selectedName(),
         targets: this.members.map((member) => ({
           name: member.name,
           hp: member.hp,

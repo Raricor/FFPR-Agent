@@ -52,6 +52,78 @@ const PARTY = [
   { name: "蕾娜", hp: 80, maxHp: 100, status: ["Blind"] },
 ];
 
+interface CastAbility {
+  readonly name: string;
+  readonly id: number;
+  readonly mp: number;
+  readonly usable?: boolean;
+  readonly battleOnly?: boolean;
+}
+
+/** The bridge's magic window for a cast test: Tab → Magic → White → the ability list. */
+function installCastMenu(pilot: FakePilot, mp: number, abilities: readonly CastAbility[]): void {
+  let stage: "closed" | "top" | "types" | "list" = "closed";
+  let topCursor = 0;
+  const members = [
+    { name: "蕾娜", hp: 100, maxHp: 100, mp, maxMp: 124 },
+    { name: "加拉夫", hp: 60, maxHp: 100, mp: 20, maxMp: 20 },
+  ];
+  pilot.on("pos", { pos: { state: "Player" } });
+  pilot.on("leave", { ok: true, presses: 1 });
+  pilot.on("keys", (fields) => {
+    const raw = fields.keys;
+    const keys = Array.isArray(raw)
+      ? raw.filter((key): key is string => typeof key === "string")
+      : [];
+    for (const spec of keys) {
+      const [key = "", count] = spec.split("*");
+      for (let i = 0; i < (count === undefined ? 1 : Number(count)); i++) {
+        if (key === "Tab") stage = "top";
+        else if (stage === "top") {
+          if (key === "Down") topCursor = Math.min(0, topCursor + 1);
+          if (key === "Up") topCursor = Math.max(0, topCursor - 1);
+          if (key === "Enter") stage = "types";
+        } else if (stage === "types" && key === "Enter") stage = "list";
+      }
+    }
+    return { ok: true };
+  });
+  pilot.onQuery("sample", () => ({ sample: { party: members } }));
+  pilot.onQuery("menu", () => {
+    const top = { open: true, commands: [{ id: "Magic", name: "魔法" }], cursor: topCursor };
+    if (stage === "top") return { menu: top };
+    if (stage === "types") {
+      return {
+        menu: {
+          ...top,
+          state: "Magic",
+          magic: {
+            character: "蕾娜",
+            commands: [{ name: "白魔法", enabled: true }],
+            commandCursor: 0,
+          },
+        },
+      };
+    }
+    if (stage === "list") {
+      return {
+        menu: {
+          ...top,
+          state: "Magic",
+          magic: {
+            character: "蕾娜",
+            state: "MagicList",
+            abilities,
+            contentIds: abilities.map((ability) => ability.id),
+            abilityCursor: 0,
+          },
+        },
+      };
+    }
+    return { menu: { open: false } };
+  });
+}
+
 void test("useItem cures blindness from the field menu", async () => {
   const pilot = new FakePilot();
   const menu = new FakeItemMenu({
@@ -108,6 +180,82 @@ void test("useItem pages down to an item below the first page", async () => {
       .filter((key) => key === "Down").length,
     13, // top menu once, eleven rows of items, then 蕾娜
   );
+});
+
+void test("cast says the caster is short of MP when a grey spell costs more", async () => {
+  const pilot = new FakePilot();
+  installCastMenu(pilot, 0, [{ name: "<IC_WMGC>治疗", id: 10, mp: 4, usable: false }]);
+  assert.deepEqual(await cast(pilot, "蕾娜", "治疗", "加拉夫"), [
+    false,
+    "蕾娜 MP 0,不够放「治疗」(要 4)",
+  ]);
+});
+
+void test("cast does not guess battle-only when the grey spell has no reason data", async () => {
+  const pilot = new FakePilot();
+  installCastMenu(pilot, 100, [{ name: "治疗", id: 10, mp: 4, usable: false }]);
+  assert.deepEqual(await cast(pilot, "蕾娜", "治疗", "加拉夫"), [
+    false,
+    "菜单里「治疗」是灰的,原因读不到(可能是 MP 不够或这里不能用)",
+  ]);
+});
+
+void test("cast says battle-only only when the bridge marks the spell that way", async () => {
+  const pilot = new FakePilot();
+  installCastMenu(pilot, 100, [{ name: "治疗", id: 10, mp: 4, usable: false, battleOnly: true }]);
+  assert.deepEqual(await cast(pilot, "蕾娜", "治疗", "加拉夫"), [
+    false,
+    "现在用不了「治疗」:这个魔法在地图上不能用(只能在战斗里用)",
+  ]);
+});
+
+void test("useItem reaches an item on the second screen of a long list", async () => {
+  const pilot = new FakePilot();
+  const items = Array.from({ length: 30 }, (_, index) => ({
+    name: `道具${index + 1}`,
+    count: 1,
+  }));
+  items[20] = { name: "眼药", count: 1 };
+  const menu = new FakeItemMenu({
+    items,
+    members: PARTY,
+    target: "蕾娜",
+    targetStatus: "Blind",
+    pageSize: 8,
+  });
+  menu.install(pilot);
+  assert.deepEqual(await useItem(pilot, "眼药", "蕾娜"), [
+    true,
+    "给 蕾娜 用了「眼药」:黑暗 治好了",
+  ]);
+  assert.equal(menu.stage, "done");
+});
+
+void test("useItem reports the stuck item rows and keys to the error log", async () => {
+  const pilot = new FakePilot();
+  const menu = new FakeItemMenu({
+    items: [
+      { name: "恢复药", count: 2 },
+      { name: "解毒药", count: 1 },
+      { name: "眼药", count: 1 },
+    ],
+    members: PARTY,
+    target: "蕾娜",
+    targetStatus: "Blind",
+    stuck: true,
+  });
+  menu.install(pilot);
+  const reports: string[] = [];
+  assert.deepEqual(await useItem(pilot, "眼药", "蕾娜", (message) => reports.push(message)), [
+    false,
+    "光标没能移到「眼药」",
+  ]);
+  const text = reports.join("\n");
+  assert.match(text, /use_item 定位失败:目标「眼药」第 2 行/);
+  assert.match(text, /listCursor=0/);
+  assert.match(text, /focus=无/);
+  assert.match(text, /键=Tab→Down→Enter×2→Down×3/);
+  assert.match(text, /道具行 1:0:恢复药×2,1:解毒药×1,2:眼药×1/);
 });
 
 void test("useItem says the bag has no such item", async () => {

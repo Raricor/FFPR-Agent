@@ -61,6 +61,120 @@ export async function partyState(pilot: Pilot): Promise<Reply[]> {
   return records(record((await pilot.query("sample")).sample).party);
 }
 
+interface ItemListState {
+  readonly rows: Reply[];
+  readonly names: string[];
+  readonly selected: string;
+  readonly selectedIndex: number | null;
+  readonly listCursor: number | null;
+  readonly focus: number | null;
+}
+
+/**
+ * The item window's list as the bridge reads it. `rows` is the whole list, but `listCursor`
+ * counts rows in the visible window: after a page scroll it stays on the last visible row while
+ * the list moves underneath. `selected` names the highlighted item and is the reliable position
+ * across pages (11-09: 恢复药 was on the second screen and the cursor "could not reach" it).
+ */
+async function itemListState(pilot: Pilot): Promise<ItemListState> {
+  const item = record((await menuState(pilot)).item);
+  const rows = records(item.rows);
+  const names = rows.map((row) => iconName(row.name));
+  const selected = iconName(item.selected);
+  const focus = rows.findIndex((row) => truthy(row.focus));
+  return {
+    rows,
+    names,
+    selected,
+    selectedIndex: selected === "" ? null : pick(names, selected),
+    listCursor: num(item.listCursor) ?? null,
+    focus: focus < 0 ? null : focus,
+  };
+}
+
+async function steerItemList(
+  pilot: Pilot,
+  target: number,
+  targetName: string,
+  press: (key: string) => Promise<void>,
+  tries = 120,
+): Promise<{ ok: boolean; state: ItemListState }> {
+  let state = await itemListState(pilot);
+  let stuck = 0;
+  for (let i = 0; i < tries; i++) {
+    const at = state.selectedIndex ?? state.listCursor;
+    if (state.selected === targetName || at === target) return { ok: true, state };
+    if (at === null) return { ok: false, state };
+    await press(at < target ? "Down" : "Up");
+    const after = await itemListState(pilot);
+    if (after.selected === targetName || (after.selectedIndex ?? after.listCursor) === target) {
+      return { ok: true, state: after };
+    }
+    stuck =
+      after.selected === state.selected && after.listCursor === state.listCursor ? stuck + 1 : 0;
+    if (stuck >= 3) return { ok: false, state: after };
+    state = after;
+  }
+  return { ok: false, state };
+}
+
+function keyRuns(keys: readonly string[]): string {
+  const runs: string[] = [];
+  let key = "";
+  let count = 0;
+  for (const next of keys) {
+    if (next === key) {
+      count += 1;
+      continue;
+    }
+    if (key !== "") runs.push(count === 1 ? key : `${key}×${count}`);
+    key = next;
+    count = 1;
+  }
+  if (key !== "") runs.push(count === 1 ? key : `${key}×${count}`);
+  return runs.join("→");
+}
+
+/**
+ * Write the failed item-cursor read to the activity log. The bridge's item rows have no focus
+ * column today, so the state says that instead of guessing; `selected` and the rows around it
+ * still show where the game's cursor actually was (task 77).
+ */
+function reportItemFailure(
+  report: ((message: string) => void) | undefined,
+  target: string,
+  targetIndex: number,
+  state: ItemListState,
+  pressed: readonly string[],
+): void {
+  const selectedAt = state.selectedIndex;
+  const focus = state.focus === null ? "无" : `第 ${state.focus} 行`;
+  report?.(
+    `use_item 定位失败:目标「${target}」第 ${targetIndex} 行;` +
+      `选中「${state.selected || "读不到"}」${selectedAt === null ? "" : `第 ${selectedAt} 行`};` +
+      `listCursor=${state.listCursor ?? "读不到"};focus=${focus};键=${keyRuns(pressed)}`,
+  );
+  const parts = state.rows.map((row, index) => {
+    const mark = index === state.focus ? "*" : "";
+    return `${index}${mark}:${iconName(row.name) || "?"}×${num(row.count) ?? "?"}`;
+  });
+  let chunk = "";
+  let number = 0;
+  for (const part of parts) {
+    if (chunk !== "" && `${chunk},${part}`.length > 140) {
+      number += 1;
+      report?.(`道具行 ${number}:${chunk}`);
+      chunk = part;
+    } else {
+      chunk = chunk === "" ? part : `${chunk},${part}`;
+    }
+  }
+  if (chunk !== "") {
+    number += 1;
+    report?.(`道具行 ${number}:${chunk}`);
+  }
+}
+
 /**
  * Cast a spell from the field menu: Magic → caster → the list holding `spell` → target
  * (the caster when not given). Each step is checked against the menu the bridge (0.4.1+)
@@ -100,6 +214,7 @@ export async function useItem(
   pilot: Pilot,
   item: string,
   target: string,
+  report?: (message: string) => void,
 ): Promise<[boolean, string]> {
   const pos = record((await pilot.send("pos")).pos);
   if (pos.state !== "Player") {
@@ -116,7 +231,7 @@ export async function useItem(
     return [false, `包里没有「${item}」,有:${held.filter(Boolean).join("、") || "(空)"}`];
   }
   try {
-    return await useFromMenu(pilot, party, whom, item, beforeCount);
+    return await useFromMenu(pilot, party, whom, item, beforeCount, report);
   } finally {
     await leaveMenu(pilot);
   }
@@ -128,9 +243,12 @@ async function useFromMenu(
   whom: number,
   item: string,
   beforeCount: number,
+  report?: (message: string) => void,
 ): Promise<[boolean, string]> {
-  const press = async (key: string): Promise<void> => {
-    await pilot.send("keys", { keys: [key], gap: 120 });
+  const pressed: string[] = [];
+  const press = async (key: string, gap = 120): Promise<void> => {
+    pressed.push(key);
+    await pilot.send("keys", { keys: [key], gap });
   };
   const cursor =
     (...path: string[]) =>
@@ -145,7 +263,7 @@ async function useFromMenu(
   const beforeStatuses = statuses(patient);
   const beforeHp = num(patient.hp) ?? 0;
 
-  await pilot.send("keys", { keys: ["Tab"], gap: 100 });
+  await press("Tab", 100);
   let menu = await waitMenu(pilot, (m) => truthy(m.open) && truthy(m.commands));
   const ids = records(menu.commands).map((command) => text(command.id));
   if (!ids.includes("Item")) {
@@ -179,7 +297,9 @@ async function useFromMenu(
   if (found === null || (num(rows[found]?.count) ?? 0) <= 0) {
     return [false, `包里没有「${item}」,有:${itemNames.filter(Boolean).join("、")}`];
   }
-  if (!(await steer(cursor("item", "listCursor"), press, found))) {
+  const steered = await steerItemList(pilot, found, itemNames[found] ?? item, press);
+  if (!steered.ok) {
+    reportItemFailure(report, itemNames[found] ?? item, found, steered.state, pressed);
     return [false, `光标没能移到「${show(itemNames[found])}」`];
   }
   await press("Enter");
@@ -218,6 +338,14 @@ async function useFromMenu(
   if (afterHp > beforeHp) return [true, `给 ${name} 用了「${used}」:HP ${beforeHp}→${afterHp}`];
   if (afterCount < beforeCount) return [true, `给 ${name} 用了「${used}」`];
   return [false, `「${used}」的数量没有减少(${beforeCount}),可能没用出去`];
+}
+
+/**
+ * True only with explicit data. The bridge's `usable: false` cannot tell MP from scene, and an
+ * unknown field is not evidence, so the caller says "cause unreadable" instead (11-09).
+ */
+function battleOnly(entry: Reply): boolean {
+  return entry.battleOnly === true || entry.usableInField === false;
 }
 
 async function castFromMenu(
@@ -309,11 +437,22 @@ async function castFromMenu(
     return [false, `${show(caster.name)} 的魔法里没有「${spell}」,有:${known}`];
   }
   const entry = records(record(menu.magic).abilities)[found] ?? {};
+  const spellName = iconName(entry.name) || show(entry.name);
+  const cost = num(entry.mp);
+  const casterMp = num(caster.mp);
   if (entry.usable === false) {
-    return [false, `现在用不了「${show(entry.name)}」:这个魔法在地图上不能用(只能在战斗里用)`];
+    // 11-09: at MP 0 the menu greys out a field spell too. `usable: false` only says "grey";
+    // the old code guessed "battle only" and the model thought it could not heal on the map.
+    if (cost !== undefined && casterMp !== undefined && casterMp < cost) {
+      return [false, `${show(caster.name)} MP ${casterMp},不够放「${spellName}」(要 ${cost})`];
+    }
+    if (battleOnly(entry)) {
+      return [false, `现在用不了「${spellName}」:这个魔法在地图上不能用(只能在战斗里用)`];
+    }
+    return [false, `菜单里「${spellName}」是灰的,原因读不到(可能是 MP 不够或这里不能用)`];
   }
-  if ((num(entry.mp) ?? 0) > (num(caster.mp) ?? 0)) {
-    return [false, `MP 不够:「${show(entry.name)}」要 ${show(entry.mp)},只有 ${show(caster.mp)}`];
+  if (cost !== undefined && casterMp !== undefined && casterMp < cost) {
+    return [false, `${show(caster.name)} MP ${casterMp},不够放「${spellName}」(要 ${cost})`];
   }
   // The list is a grid of every slot of the magic type, three a row, unlearned ones blank,
   // and the cursor moves over all of them; `abilities` holds the learned ones only (10-20:
