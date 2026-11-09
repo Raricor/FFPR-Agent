@@ -9,14 +9,24 @@ import {
   cellKey,
   corners,
   edgeKey,
+  entityLayer,
   hasTerrain,
   layeredGrid,
-  layeredRoute,
+  layeredRouteAvoiding,
   pathToward,
   search,
   terrainRule,
 } from "../nav.ts";
-import type { Cell, CellGrid, CellRule, LayerChange, LayerNode, ObservedMove } from "../nav.ts";
+import type {
+  Cell,
+  CellGrid,
+  CellRule,
+  DangerCell,
+  LayerChange,
+  LayerNode,
+  LayeredGrid,
+  ObservedMove,
+} from "../nav.ts";
 import { isRecord, num, record, records, text, truthy, type Json } from "../values.ts";
 import { eventBaseName, fallMoves } from "../view.ts";
 import {
@@ -77,14 +87,26 @@ export interface MoveState {
     from: Cell,
     to: Cell,
     how: string,
-    detail?: { kind?: string; toLayer?: number },
+    detail?: { kind?: string; toLayer?: number; layer?: number },
   ) => Promise<void>;
+  /** Forgets atlas "走不过去" records a walk proved wrong; the Game wires it in (task 73). */
+  forgetBlocked?: (mapId: unknown, steps: readonly ObservedMove[]) => Promise<void>;
+  /**
+   * Task 73: a "走不过去" record hit this many times is a reliable wall and is not re-walked.
+   * Config carries the live value; old records count as one hit.
+   */
+  blockedTrustCount?: number;
   /**
    * Steps found blocked in the game, keyed by map (the bridge map id), then edgeKey. Kept for
    * the whole run so the next walk on that map does not hit the same wall again (11-03,
    * Fire-Powered Ship 261: the same (8,22)→(7,22) step was walked into twice).
    */
   cuts?: Map<string, Set<string>>;
+  /**
+   * Blocked steps found on a layered map, by map id then height (11-09, Walse Castle 54:
+   * a step blocked on the ground floor must not close the same step on the upper floor).
+   */
+  layeredCuts?: Map<string, Map<number, Set<string>>>;
   /** Ways seen earlier on a map (conveyors, falls, layer changes), for the next plan. */
   moves?: (mapId: unknown) => readonly ObservedMove[];
   /**
@@ -96,6 +118,13 @@ export interface MoveState {
 }
 
 const EMPTY_CUT: ReadonlySet<string> = new Set<string>();
+
+/**
+ * Task 73: after this many blocks a "走不过去" record is trusted as a wall. A stale record
+ * (11-09, map 252: one temporary NPC turned (9,13)→(9,14) into a permanent wall) is re-walked
+ * until then, but a real wall is not hit on every plan.
+ */
+export const BLOCKED_TRUST_COUNT = 3;
 
 // Task 58: these are the defaults; Config carries the live values on MoveState.
 export const WALKPATH_TIMEOUT_MS = 60_000;
@@ -145,11 +174,13 @@ export function walkpathEventWaitMs(state?: MoveState): number {
 const MAX_WALK_TURNS = 200;
 
 // Named events that move the party although their cells are open floor (10-27: the
-// Fire-Powered Ship's conveyor 流される carried the player off the path).
-const CONVEYOR_EVENTS: ReadonlySet<string> = new Set(["流される"]);
+// Fire-Powered Ship's conveyor 流される carried the player off the path). A prefix can say
+// how far it carries the party: Walse Castle's 54 "１マス流される" and "３マス流される".
+const CONVEYOR_WORDS: readonly string[] = ["流される"];
 
 export function isConveyorEvent(name: string): boolean {
-  return CONVEYOR_EVENTS.has(eventBaseName(name));
+  const base = eventBaseName(name);
+  return CONVEYOR_WORDS.some((word) => base.includes(word));
 }
 
 /** Python's tuple repr for a cell, which the messages embed. */
@@ -177,6 +208,21 @@ function mapNumber(value: unknown): number | null {
 
 function sameCell(a: Cell | null, b: Cell | null): boolean {
   return a !== null && b !== null && a[0] === b[0] && a[1] === b[1];
+}
+
+/** Whether two recorded blocked steps are the same edge on the same floor (task 73). */
+function sameBlockedMove(left: ObservedMove, right: ObservedMove): boolean {
+  return (
+    sameCell(left.from, right.from) &&
+    sameCell(left.to, right.to) &&
+    left.layer === right.layer &&
+    left.kind === right.kind
+  );
+}
+
+/** Whether a recorded blocked step is the directed step from→to being hit now. */
+function sameMoveStep(move: ObservedMove, from: Cell, to: Cell): boolean {
+  return sameCell(move.from, from) && sameCell(move.to, to);
 }
 
 function adjacent(a: Cell, b: Cell): boolean {
@@ -245,6 +291,37 @@ function cutsFor(state: MoveState, map: unknown): Set<string> {
   return cut;
 }
 
+/**
+ * Keep a blocked step. On a layered map it belongs to the floor the party stood on, so the
+ * same step on the other floor stays open (11-09, Walse Castle 54); a one-floor map keeps
+ * the old map-wide cut.
+ */
+async function recordBlockedStep(
+  pilot: Pilot,
+  state: MoveState,
+  map: unknown,
+  cut: Set<string>,
+  from: Cell,
+  to: Cell,
+  layered: number | null,
+): Promise<void> {
+  const layer = layered === null ? null : ((await collisionLayer(pilot)) ?? layered);
+  if (layer === null) {
+    cut.add(edgeKey(from, to));
+  } else {
+    state.layeredCuts ??= new Map();
+    const key = show(map);
+    const layers = state.layeredCuts.get(key) ?? new Map<number, Set<string>>();
+    const edges = layers.get(layer) ?? new Set<string>();
+    edges.add(edgeKey(from, to));
+    layers.set(layer, edges);
+    state.layeredCuts.set(key, layers);
+  }
+  if (state.link) {
+    await state.link(map, from, to, "走不过去", layer === null ? {} : { layer });
+  }
+}
+
 function cellGridOf(value: unknown): CellGrid | null {
   if (!isRecord(value)) return null;
   const origin = cellOf(value.origin);
@@ -296,12 +373,24 @@ export async function walkLeg(
 
 /**
  * Cells to keep off: chests, NPCs and shop counters (RelayInteraction: talking to it
- * talks to the keeper behind), none of them in the collision data, entrances, since
- * crossing stairs or a door on the way swaps the map, and conveyor cells, which carry
- * the party away. The caller removes the goal.
+ * talks to the keeper behind), none of them in the collision data, and entrances, since
+ * crossing stairs or a door on the way swaps the map. Conveyors and currents are soft
+ * hazards kept in `dangers`, not here. The caller removes the goal.
  */
 export async function occupiedCells(pilot: Pilot): Promise<Cell[]> {
   return (await blockingCells(pilot)).blocked;
+}
+
+/** A PointIn cell a map exit may drop the party on, with the height it lands on. */
+export interface Landing {
+  readonly cell: Cell;
+  readonly layer: number | null;
+}
+
+/** A hypothetical start, for asking whether a landing could reach a goal. */
+export interface PlanStart {
+  readonly cell: Cell;
+  readonly layer?: number | null;
 }
 
 /**
@@ -319,14 +408,18 @@ async function blockingCells(
 ): Promise<{
   blocked: Cell[];
   conveyors: ReadonlySet<string>;
+  dangers: DangerCell[];
   transitions: LayerChange[];
   falls: Cell[];
+  landings: Landing[];
   holeMoves: ObservedMove[];
 }> {
   const found = new Map<string, Cell>();
   const conveyors = new Set<string>();
+  const dangers = new Map<string, DangerCell>();
   const transitions = new Map<string, LayerChange>();
   const falls = new Map<string, Cell>();
+  const landings = new Map<string, Landing>();
   let holeMoves: ObservedMove[] = [];
   const kinds = ["TresureBox", "Npc", "RelayInteraction", "GotoMap", "Event"];
   if (withTransitions) kinds.push("ToLayer", "PointIn");
@@ -346,13 +439,23 @@ async function blockingCells(
       // PointIn cells are arrival points, not obstacles; the named ones are landing spots
       // where a fall or a script puts the party (11-03, Fire-Powered Ship 261).
       if (kind === "PointIn") {
-        if (name.includes("落下点")) falls.set(key, cell);
+        if (name.includes("落下点")) {
+          falls.set(key, cell);
+        } else {
+          landings.set(key, { cell, layer: entityLayer(entity.myLayer) });
+        }
         continue;
       }
-      // Events are ordinary floor unless they are known to move the party.
-      if (kind === "Event" && !isConveyorEvent(name)) continue;
+      // Events are ordinary floor unless they are known to carry the party away. Water
+      // currents (流される) are the same as conveyors, but keep the layer they sit on: the
+      // same cell on the other floor is ordinary floor (11-09, Walse Castle 54).
+      if (kind === "Event") {
+        if (!isConveyorEvent(name)) continue;
+        conveyors.add(key);
+        dangers.set(key, { cell, layer: entityLayer(entity.myLayer) });
+        continue;
+      }
       found.set(key, cell);
-      if (kind === "Event") conveyors.add(key);
     }
   }
   if (withTransitions) {
@@ -362,10 +465,25 @@ async function blockingCells(
   return {
     blocked: [...found.values()],
     conveyors,
+    dangers: [...dangers.values()],
     transitions: [...transitions.values()],
     falls: [...falls.values()],
+    landings: [...landings.values()],
     holeMoves,
   };
+}
+
+/** Every PointIn cell a map exit may drop the party on, except the named fall landings. */
+export async function landingCells(pilot: Pilot): Promise<Landing[]> {
+  const reply = record((await pilot.send("entities", { kind: "PointIn", max: 60 })).entities);
+  return records(reply.entities).flatMap((entity): Landing[] => {
+    if (!isRecord(entity)) return [];
+    const active = entity.active === undefined ? true : truthy(entity.active);
+    const cell = cellOf(entity.cell);
+    const name = text(entity.name) ?? "";
+    if (!active || cell === null || name.includes("落下点")) return [];
+    return [{ cell, layer: entityLayer(entity.myLayer) }];
+  });
 }
 
 /** The layer a ToLayer entity puts the party on: the property's `layer` (0 bottom, 1
@@ -395,14 +513,27 @@ interface LayerInfo {
 interface Planned {
   readonly here: Cell | null;
   readonly path: Cell[];
+  /**
+   * False when the map could not be read well enough to tell a disconnected goal from an
+   * unreadable one (no cells/collision reply, no layered grid, a start off the grid).
+   * `canReach` then says "maybe" instead of stopping the walk (11-09).
+   */
+  readonly known: boolean;
   /** Conveyor cells including the goal, so a ride onto it can be recognised. */
   readonly conveyors: ReadonlySet<string>;
   /** Named 落下点 cells in view, so a fall off the path can be told apart from a walk. */
   readonly falls: ReadonlySet<string>;
+  /** Danger cells the route has to step on; empty when another way was found. */
+  readonly washed: readonly Cell[];
   /** Set on a multi-floor map (11-03, Fire-Powered Ship 261); undefined on one floor. */
   readonly layer?: LayerInfo;
   /** The grid this plan searched, for the walk view's cropped rows (task 61). */
   readonly base?: WalkBase;
+  /**
+   * Task 73: the atlas "走不过去" records this path went around because they were not yet
+   * trusted. A walk that gets through forgets them; one blocked on the same step counts it.
+   */
+  readonly suspects?: readonly ObservedMove[];
 }
 
 /**
@@ -416,9 +547,45 @@ export async function plan(
   cut: ReadonlySet<string> = EMPTY_CUT,
   state?: MoveState,
   map?: unknown,
+  start?: PlanStart,
 ): Promise<[Cell | null, Cell[]]> {
-  const { here, path } = await plannedRoute(pilot, goal, byShip, cut, state, map);
+  const { here, path } = await plannedRoute(pilot, goal, byShip, cut, state, map, start);
   return [here, path];
+}
+
+/**
+ * Whether a route from `start` reaches `goal` on this map. Used to judge the landings of a
+ * map record before sending the party through another map (11-09, Walse Castle 54).
+ *
+ * Only a route that was actually searched may say "no": an unreadable cells/collision reply,
+ * a missing layered grid, a start cell off the grid or a malformed layer is "maybe", so
+ * callers walk instead of refusing (11-09, Fire-Powered Ship 252: a party standing on the
+ * door cell was told the goal was disconnected).
+ */
+export async function canReach(
+  pilot: Pilot,
+  goal: Cell,
+  state?: MoveState,
+  map?: unknown,
+  start?: PlanStart,
+): Promise<boolean> {
+  try {
+    const { here, path, known } = await plannedRoute(
+      pilot,
+      goal,
+      false,
+      EMPTY_CUT,
+      state,
+      map,
+      start,
+    );
+    if (here === null || !known) return true;
+    return sameCell(path[path.length - 1] ?? null, goal);
+  } catch {
+    // Reading the map failed (old bridge, malformed collision reply, no route data). That is
+    // no evidence of a disconnected goal; let navigate try, as it did before task 70.
+    return true;
+  }
 }
 
 /**
@@ -482,11 +649,20 @@ async function plannedRoute(
   cut: ReadonlySet<string>,
   state?: MoveState,
   map?: unknown,
+  start?: PlanStart,
 ): Promise<Planned> {
   const raw = (await pilot.send("cells", { r: WORLD_RADIUS })).cells;
   const cells = cellGridOf(raw);
-  if (cells === null)
-    return { here: null, path: [], conveyors: new Set(), falls: new Set<string>() };
+  if (cells === null) {
+    return {
+      here: null,
+      path: [],
+      known: false,
+      conveyors: new Set(),
+      falls: new Set<string>(),
+      washed: [],
+    };
+  }
   if (hasTerrain(cells)) {
     const aloft = await flying(pilot);
     const rule = terrainRule(byShip, aloft);
@@ -509,20 +685,22 @@ async function plannedRoute(
     return {
       here: cells.center,
       path: pathToward(grid, goal, rule, cut),
+      known: true,
       conveyors: new Set(),
       falls: new Set(),
+      washed: [],
       base: worldBase(state?.game ?? "", mapNumber(map), grid),
     };
   }
   const collision = record((await pilot.send("collision")).collision);
   const floors = Array.isArray(collision.layers) ? collision.layers.length : 0;
-  const { blocked, conveyors, transitions, falls, holeMoves } = await blockingCells(
+  const { blocked, conveyors, dangers, transitions, falls, holeMoves } = await blockingCells(
     pilot,
     floors > 1,
   );
   const moves = [...(state?.moves && map !== undefined ? state.moves(map) : []), ...holeMoves];
-  // A conveyor or fall whose landing we have seen is a directed edge; until then it stays
-  // an occupied cell, so the party does not walk onto it blind.
+  // A conveyor or fall whose landing we have seen is a directed edge; until then it stays a
+  // danger cell, so the party does not walk onto it blind but can when there is no other way.
   const forced = new Set(
     moves
       .filter(
@@ -534,30 +712,172 @@ async function plannedRoute(
       )
       .map((move) => cellKey(move.from[0], move.from[1])),
   );
-  const occupied = blocked.filter(
-    (cell) => !sameCell(cell, goal) && !forced.has(cellKey(cell[0], cell[1])),
+  const occupied = blocked.filter((cell) => !sameCell(cell, goal));
+  const risky = dangers.filter(
+    (danger) =>
+      !sameCell(danger.cell, goal) && !forced.has(cellKey(danger.cell[0], danger.cell[1])),
   );
-  const grid = layeredGrid(collision, occupied, transitions, moves);
+  const grid = layeredGrid(collision, occupied, transitions, moves, risky);
+  const fallSet = new Set(falls.map((cell) => cellKey(cell[0], cell[1])));
   if (grid === null) {
     return {
       here: cells.center,
       path: [],
+      known: false,
       conveyors,
-      falls: new Set(falls.map((cell) => cellKey(cell[0], cell[1]))),
+      falls: fallSet,
+      washed: [],
     };
   }
-  // 3/5 are directional walls, not a rule to relax: a route that crosses their walled side
-  // is one the game refuses (11-03, Fire-Powered Ship 261). The old sideways-stairs fallback
-  // is gone; the game's own route is still tried first in navigate().
-  const route = layeredRoute(grid, goal, cut);
+  const startGrid = start === undefined ? grid : startAt(grid, start);
+  const onGrid = startOnGrid(startGrid, startGrid.center);
+  const layerCut = observedLayerCuts(moves, grid, state, map);
+  const route = layeredRouteAvoiding(startGrid, goal, cut, layerCut);
+  let nodes = route.path;
+  let danger = route.danger;
+  let suspects: ObservedMove[] | undefined;
+  const last = nodes[nodes.length - 1];
+  // 11-09: an old "走不过去" record may be one temporary block. When removing the untrusted
+  // ones makes the goal reachable, walk that route and let the walk prove the record right or
+  // wrong (task 73); the trusted records and this call's cuts stay walls. Without both callbacks
+  // the atlas cannot be updated, so a test/standalone plan keeps reading the record as a wall.
+  const canVerify = state?.link !== undefined && state.forgetBlocked !== undefined;
+  if (
+    canVerify &&
+    onGrid &&
+    !sameCell(last === undefined ? null : ([last[0], last[1]] as const), goal)
+  ) {
+    const untrusted = untrustedBlockedSteps(moves, grid, state, map);
+    if (untrusted.length > 0) {
+      const relaxedCuts = observedLayerCuts(
+        moves,
+        grid,
+        state,
+        map,
+        (move) => !untrusted.includes(move),
+      );
+      const relaxed = layeredRouteAvoiding(startGrid, goal, cut, relaxedCuts);
+      const relaxedPath = cellsOf(relaxed.path);
+      if (sameCell(relaxedPath[relaxedPath.length - 1] ?? null, goal)) {
+        nodes = relaxed.path;
+        danger = relaxed.danger;
+        suspects = untrusted.filter((move) => pathHasStep(relaxedPath, move.from, move.to));
+        // In a one-way graph a removed record always appears on the new path; keep the list
+        // whole if a loaded record duplicated another and the match missed.
+        if (suspects.length === 0) suspects = untrusted;
+      }
+    }
+  }
   return {
-    here: grid.center,
-    path: cellsOf(route),
+    here: startGrid.center,
+    path: cellsOf(nodes),
+    known: onGrid,
     conveyors,
-    falls: new Set(falls.map((cell) => cellKey(cell[0], cell[1]))),
-    layer: layerInfo(grid, route, transitions),
-    base: indoorBase(state?.game ?? "", mapNumber(map), grid),
+    falls: fallSet,
+    washed: danger.map(([x, y]) => [x, y] as const),
+    layer: layerInfo(startGrid, nodes, transitions),
+    base: indoorBase(state?.game ?? "", mapNumber(map), startGrid),
+    ...(suspects === undefined ? {} : { suspects }),
   };
+}
+
+/** Whether a planned cell path walks the directed step from→to somewhere. */
+function pathHasStep(path: readonly Cell[], from: Cell, to: Cell): boolean {
+  for (let i = 1; i < path.length; i++) {
+    if (sameCell(path[i - 1] ?? null, from) && sameCell(path[i] ?? null, to)) return true;
+  }
+  return false;
+}
+
+/** Whether the party's start cell lies on the floor the layered grid searched. */
+function startOnGrid(grid: LayeredGrid, cell: Cell): boolean {
+  const rows = grid.heights.get(grid.z);
+  if (rows === undefined) return false;
+  return (
+    cell[1] >= 0 && cell[1] < rows.length && cell[0] >= 0 && cell[0] < (rows[cell[1]]?.length ?? 0)
+  );
+}
+
+/** The grid seen from a hypothetical landing, as a map exit would drop the party there. */
+function startAt(grid: LayeredGrid, start: PlanStart): LayeredGrid {
+  const layer = start.layer ?? null;
+  return {
+    ...grid,
+    center: start.cell,
+    z: layer !== null && grid.heights.has(layer) ? layer : grid.z,
+  };
+}
+
+/** The base collision layer of a map, where records without a layer are taken to belong. */
+function baseLayer(grid: LayeredGrid): number | null {
+  for (const layer of grid.heights.keys()) return layer;
+  return null;
+}
+
+/**
+ * Blocked steps from the atlas (and this run) as cuts per height. A record without a layer
+ * belongs to the base floor: on 54 the old (28,52)→(28,53) refusal was made on the ground
+ * floor and must not close the upper corridor to the world-map exit (11-09).
+ *
+ * `keep` leaves out untrusted atlas records for the verification route (task 73); this call's
+ * own cuts in `state.layeredCuts` are never left out.
+ */
+function observedLayerCuts(
+  moves: readonly ObservedMove[],
+  grid: LayeredGrid,
+  state: MoveState | undefined,
+  map: unknown,
+  keep: (move: ObservedMove) => boolean = () => true,
+): Map<number, Set<string>> {
+  const out = new Map<number, Set<string>>();
+  const add = (layer: number, from: Cell, to: Cell): void => {
+    if (!grid.heights.has(layer)) return;
+    const set = out.get(layer) ?? new Set<string>();
+    set.add(edgeKey(from, to));
+    out.set(layer, set);
+  };
+  const base = baseLayer(grid);
+  for (const move of moves) {
+    if (move.how !== "走不过去" || !keep(move)) continue;
+    const layer = move.layer ?? base;
+    if (layer !== null) add(layer, move.from, move.to);
+  }
+  if (state?.layeredCuts !== undefined && map !== undefined) {
+    for (const [layer, cut] of state.layeredCuts.get(show(map)) ?? []) {
+      const set = out.get(layer) ?? new Set<string>();
+      for (const edge of cut) set.add(edge);
+      out.set(layer, set);
+    }
+  }
+  return out;
+}
+
+/** The atlas blocked steps still worth walking through: not yet trusted, not cut this call. */
+function untrustedBlockedSteps(
+  moves: readonly ObservedMove[],
+  grid: LayeredGrid,
+  state: MoveState | undefined,
+  map: unknown,
+): ObservedMove[] {
+  const trust = blockedTrustCount(state);
+  const base = baseLayer(grid);
+  const own =
+    state?.layeredCuts === undefined || map === undefined
+      ? undefined
+      : state.layeredCuts.get(show(map));
+  return moves.filter((move) => {
+    if (move.how !== "走不过去" || (move.count ?? 1) >= trust) return false;
+    const layer = move.layer ?? base;
+    if (layer === null || !grid.heights.has(layer)) return false;
+    // A step cut in this same call stays a wall, whatever an old record says (task 73).
+    return own?.get(layer)?.has(edgeKey(move.from, move.to)) !== true;
+  });
+}
+
+/** Task 73's Config value: how many blocks make a "走不过去" record a wall. */
+function blockedTrustCount(state: MoveState | undefined): number {
+  const count = state?.blockedTrustCount ?? BLOCKED_TRUST_COUNT;
+  return Number.isFinite(count) ? Math.max(1, Math.trunc(count)) : BLOCKED_TRUST_COUNT;
 }
 
 function cellsOf(route: readonly LayerNode[]): Cell[] {
@@ -638,7 +958,7 @@ async function rideEnd(pilot: Pilot, conveyors: ReadonlySet<string>): Promise<Js
 }
 
 /** The layer the route searcher reports right now, or null when the bridge cannot say. */
-async function collisionLayer(pilot: Pilot): Promise<number | null> {
+export async function collisionLayer(pilot: Pilot): Promise<number | null> {
   const collision = record((await pilot.send("collision")).collision);
   const layer = collision.searchLayer;
   return typeof layer === "number" && Number.isFinite(layer) ? Math.trunc(layer) : null;
@@ -916,6 +1236,91 @@ export async function gameRoute(pilot: Pilot, goal: Cell): Promise<Cell[]> {
   return beside ? [...path, goal] : [];
 }
 
+/** How long a lift's map change is watched for (task 71: the Fire-Powered Ship lift takes ~15 s). */
+export const LIFT_WAIT_MS = 30_000;
+export const LIFT_POLL_MS = 500;
+
+export interface RideOutcome {
+  readonly map: number | null;
+  readonly cell: Cell | null;
+  readonly changed: boolean;
+  readonly detail: string;
+}
+
+/**
+ * Take a recorded lift: walk to `from`, face `dir`, press Enter, then wait for the map id to
+ * change. The map id is the only arrival signal (257 → 634, 635 → 260); the platform animates
+ * first, so a single pos read right after the key is not enough. Task 71.
+ */
+export async function rideAt(
+  pilot: Pilot,
+  state: MoveState,
+  from: Cell,
+  dir: string,
+  say: Say = () => undefined,
+): Promise<RideOutcome> {
+  const start = record((await pilot.send("pos")).pos);
+  const startMap = mapNumber(start.map);
+  if (startMap === null) {
+    return {
+      map: null,
+      cell: cellOf(start.cell),
+      changed: false,
+      detail: "读不到当前地图，没坐电梯",
+    };
+  }
+  if (!sameCell(cellOf(start.cell), from)) {
+    const [reached, message] = await navigate(pilot, from, false, say, 8, state);
+    if (!reached) {
+      return {
+        map: startMap,
+        cell: cellOf(record((await pilot.send("pos")).pos).cell),
+        changed: false,
+        detail: `走不到电梯 ${cellText(from)}:${message}`,
+      };
+    }
+  }
+  const help = await dismissFieldHelp(pilot);
+  if (help === "stuck") {
+    return { map: startMap, cell: from, changed: false, detail: FIELD_HELP_STUCK };
+  }
+  if (help === "closed") say("  关掉了操作提示");
+  const result = await pilot.send("keys", { keys: [`${dir}:60`, "Enter"], gap: 250 });
+  if (!truthy(result.ok)) {
+    return {
+      map: startMap,
+      cell: from,
+      changed: false,
+      detail: `没按成:${show(result.error)}`,
+    };
+  }
+  const deadline = pilot.now() + LIFT_WAIT_MS;
+  let pos = record((await pilot.send("pos")).pos);
+  while (pilot.now() < deadline) {
+    const map = mapNumber(pos.map);
+    if (map !== null && map !== startMap) {
+      // The map id changed when the lift moved; wait for the field to settle, then read where
+      // the party was put down (task 71: it is not always the PointIn cell).
+      await pilot.send("wait", { timeout: 30000 }, 40_000);
+      const now = record((await pilot.send("pos")).pos);
+      return {
+        map: mapNumber(now.map) ?? map,
+        cell: cellOf(now.cell) ?? cellOf(pos.cell),
+        changed: true,
+        detail: `坐了一趟到地图 ${show(now.map)},在 ${show(now.cell)}`,
+      };
+    }
+    await pilot.sleep(LIFT_POLL_MS);
+    pos = record((await pilot.send("pos")).pos);
+  }
+  return {
+    map: mapNumber(pos.map),
+    cell: cellOf(pos.cell),
+    changed: false,
+    detail: `按了${dir}的确认,地图号没变`,
+  };
+}
+
 /** How long an arrival is watched for the map change an entrance makes (10-27). */
 export const SETTLE_MS = 1500;
 export const SETTLE_POLL_MS = 250;
@@ -997,6 +1402,20 @@ export async function navigate(
   // 261: the same step was walked into twice).
   const cut = cutsFor(state, startMap);
   const seen = new Set<string>();
+  const washed = new Map<string, Cell>();
+  /** Task 73: atlas records this walk is testing; they stay until the goal is reached. */
+  const verifying: ObservedMove[] = [];
+  const remember = (suspects: readonly ObservedMove[] | undefined): void => {
+    for (const suspect of suspects ?? []) {
+      if (!verifying.some((known) => sameBlockedMove(known, suspect))) verifying.push(suspect);
+    }
+  };
+  const forgetVerified = async (): Promise<void> => {
+    if (verifying.length === 0) return;
+    const steps = [...verifying];
+    verifying.length = 0;
+    await state.forgetBlocked?.(startMap, steps);
+  };
   // A bridge without walkpath (0.13.x) or a LAN that cannot be reached falls back to the
   // old corner-by-corner walk for the rest of this call; the pilot remembers it across calls.
   let useWalkpath = true;
@@ -1008,6 +1427,17 @@ export async function navigate(
     if (state.walk !== null && state.walk !== undefined) {
       state.walk = finishWalk(state.walk, reason, new Date().toISOString());
     }
+  };
+  const noteWashed = (cells: readonly Cell[]): void => {
+    for (const cell of cells) {
+      const key = cellKey(cell[0], cell[1]);
+      if (!washed.has(key)) washed.set(key, cell);
+    }
+  };
+  const washedNote = (): string => {
+    if (washed.size === 0) return "";
+    const where = [...washed.values()].map((cell) => cellText(cell)).join("、");
+    return `(这条路上会踩到危险格 ${where},没有别的路,可能被水流冲走或被传送带带走)`;
   };
   for (;;) {
     if (turns >= MAX_WALK_TURNS) break;
@@ -1026,21 +1456,24 @@ export async function navigate(
       return [true, `进入了地图 ${show(now.map)},现在在 ${show(now.cell)}`];
     }
     const planned = await plannedRoute(pilot, goal, byShip, cut, state, startMap);
+    remember(planned.suspects);
     const [here, initial] = [planned.here, planned.path];
+    noteWashed(planned.washed);
     if (here === null) {
       await pilot.send("wait", { timeout: 30000 }, 40_000);
       continue;
     }
     if (sameCell(here, goal)) {
       endWalk("arrived");
+      await forgetVerified();
       const entered = await enteredAfterArriving(pilot, startMap);
       const floor = planned.layer
         ? `,第 ${planned.layer.end} 层(共 ${planned.layer.count} 层)`
         : "";
-      return entered ?? [true, `到达 ${cellText(goal)}${floor}`];
+      return entered ?? [true, `到达 ${cellText(goal)}${floor}${washedNote()}`];
     }
     let path = walkPathCells(initial);
-    if (!byShip && !(await onWorldMap(pilot))) {
+    if (!byShip && planned.suspects === undefined && !(await onWorldMap(pilot))) {
       // Indoors the game's own search comes first: it knows heights, stairs and which
       // side a cell can be entered from (control plan §4.9). Ours is the fallback, and
       // also when the game's route takes a step that already failed or crosses a conveyor.
@@ -1086,7 +1519,8 @@ export async function navigate(
         : "";
       return [
         false,
-        `在 ${cellText(here)} ${how}走不过去${floor},这里已是离 ${cellText(goal)} 最近的地方`,
+        `在 ${cellText(here)} ${how}走不过去${floor},这里已是离 ${cellText(goal)} 最近的地方` +
+          washedNote(),
       ];
     }
     say(`  ${cellText(here)} → ${cellText(path[path.length - 1] ?? null)}:${path.length - 1} 格`);
@@ -1148,11 +1582,12 @@ export async function navigate(
         if (moved) return moved;
         if (truthy(result.ok) || reason === "arrived") {
           if (sameCell(cellOf(current.cell), goal)) {
+            await forgetVerified();
             const entered = await enteredAfterArriving(pilot, startMap);
             const floor = planned.layer
               ? `,第 ${planned.layer.end} 层(共 ${planned.layer.count} 层)`
               : "";
-            return entered ?? [true, `到达 ${cellText(goal)}${floor}`];
+            return entered ?? [true, `到达 ${cellText(goal)}${floor}${washedNote()}`];
           }
           // The command stopped on the cell before a jump or at the window's edge: replan.
           continue;
@@ -1194,14 +1629,34 @@ export async function navigate(
               ? (path[index] ?? cellOf(current.cell))
               : cellOf(current.cell);
           const ahead = cellOf(result.next) ?? (index >= 0 ? path[index + 1] : undefined);
+          const suspect =
+            stuck === null || ahead === undefined
+              ? undefined
+              : verifying.find((move) => sameMoveStep(move, stuck, ahead));
           if (stuck !== null && ahead !== undefined) {
-            cut.add(edgeKey(stuck, ahead));
-            if (state.link) await state.link(startMap, stuck, ahead, "走不过去");
+            await recordBlockedStep(
+              pilot,
+              state,
+              startMap,
+              cut,
+              stuck,
+              ahead,
+              planned.layer?.start ?? null,
+            );
           }
           say(
             `  在 ${show(current.cell)} 被挡住` +
               (ahead === undefined ? "" : `(到 ${cellText(ahead)} 这一步走不过去)`),
           );
+          if (suspect !== undefined && stuck !== null) {
+            // Task 73: the ignored record was right after all. The count is already one
+            // higher through the link, and this walk ends blocked rather than trying again.
+            endWalk("blocked");
+            return [
+              false,
+              `在 ${cellText(stuck)} ${how}走不过去(地图记录里的这一步又试了一次,还是被挡)`,
+            ];
+          }
           continue;
         }
         if (reason === "off_path") continue;
@@ -1250,15 +1705,32 @@ export async function navigate(
         const stuck = cellOf(current.cell);
         const at = stuck === null ? -1 : path.findIndex((cell) => sameCell(cell, stuck));
         const ahead = at >= 0 && at < path.length - 1 ? path[at + 1] : undefined;
+        const suspect =
+          stuck === null || ahead === undefined
+            ? undefined
+            : verifying.find((move) => sameMoveStep(move, stuck, ahead));
         if (stuck !== null && ahead !== undefined) {
-          cut.add(edgeKey(stuck, ahead));
-          if (state.link) await state.link(startMap, stuck, ahead, "走不过去");
+          await recordBlockedStep(
+            pilot,
+            state,
+            startMap,
+            cut,
+            stuck,
+            ahead,
+            planned.layer?.start ?? null,
+          );
         }
         say(
           `  在 ${show(current.cell)} 被挡住` +
             (ahead === undefined ? "" : `(到 ${cellText(ahead)} 这一步走不过去)`),
         );
         endWalk("blocked");
+        if (suspect !== undefined && stuck !== null) {
+          return [
+            false,
+            `在 ${cellText(stuck)} ${how}走不过去(地图记录里的这一步又试了一次,还是被挡)`,
+          ];
+        }
         break;
       }
       endWalk("stopped");
@@ -1273,7 +1745,7 @@ export async function navigate(
     return [false, `走了 ${turns} 次还没到 ${cellText(goal)}`];
   }
   endWalk("stopped");
-  return [false, `走了 ${legs} 段还没到 ${cellText(goal)}`];
+  return [false, `走了 ${legs} 段还没到 ${cellText(goal)}${washedNote()}`];
 }
 
 const FACING: readonly (readonly [number, number, string])[] = [

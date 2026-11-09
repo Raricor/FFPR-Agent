@@ -31,6 +31,7 @@ void test("Config defaults point at FF5's deployment paths and slot", () => {
   assert.equal(config.walkpathTurnLead, 0.6);
   assert.equal(config.walkpathEventPollMs, 200);
   assert.equal(config.walkpathEventWaitMs, 2500);
+  assert.equal(config.blockedTrustCount, 3);
   assert.equal(config.tacticianKeepVisible, 2);
   assert.equal(config.bridgeUrl, undefined);
 });
@@ -106,6 +107,7 @@ void test("Config keeps explicit values", () => {
     walkpathTurnLead: 0.8,
     walkpathEventPollMs: 50,
     walkpathEventWaitMs: 900,
+    blockedTrustCount: 5,
     tacticianKeepVisible: 5,
   });
   assert.equal(config.role, "tactician");
@@ -132,5 +134,6 @@ void test("Config keeps explicit values", () => {
   assert.equal(config.walkpathTurnLead, 0.8);
   assert.equal(config.walkpathEventPollMs, 50);
   assert.equal(config.walkpathEventWaitMs, 900);
+  assert.equal(config.blockedTrustCount, 5);
   assert.equal(config.tacticianKeepVisible, 5);
 });

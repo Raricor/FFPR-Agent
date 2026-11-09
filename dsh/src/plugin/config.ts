@@ -14,6 +14,7 @@ import {
   DEFAULT_BESTIARY_MISSABLE_MINUTES,
 } from "../engine/skills/grind.ts";
 import {
+  BLOCKED_TRUST_COUNT,
   WALKPATH_BLOCKED_MS,
   WALKPATH_EVENT_POLL_MS,
   WALKPATH_EVENT_WAIT_MS,
@@ -151,6 +152,8 @@ const RawConfig = Schema.object({
   /** Task 63: how often and how long a walkpath Event/dialog stop is watched for battle. */
   walkpathEventPollMs: Schema.number().default(WALKPATH_EVENT_POLL_MS),
   walkpathEventWaitMs: Schema.number().default(WALKPATH_EVENT_WAIT_MS),
+  /** Task 73: blocks before a "走不过去" record is trusted instead of re-walked. */
+  blockedTrustCount: Schema.number().default(BLOCKED_TRUST_COUNT),
   /** Task 67: finished tactician child sessions left visible; older ones are archived. */
   tacticianKeepVisible: Schema.number().default(DEFAULT_TACTICIAN_KEEP_VISIBLE),
 });
@@ -192,6 +195,7 @@ export const Config = Schema.transform(RawConfig, (config) => {
     walkpathTurnLead: config.walkpathTurnLead ?? WALKPATH_TURN_LEAD,
     walkpathEventPollMs: config.walkpathEventPollMs ?? WALKPATH_EVENT_POLL_MS,
     walkpathEventWaitMs: config.walkpathEventWaitMs ?? WALKPATH_EVENT_WAIT_MS,
+    blockedTrustCount: config.blockedTrustCount ?? BLOCKED_TRUST_COUNT,
     tacticianKeepVisible: config.tacticianKeepVisible ?? DEFAULT_TACTICIAN_KEEP_VISIBLE,
   };
 });
