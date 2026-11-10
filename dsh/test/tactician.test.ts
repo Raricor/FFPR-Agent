@@ -15,6 +15,7 @@ import * as gambit from "../src/engine/skills/gambit.ts";
 import { Config } from "../src/plugin/config.ts";
 import {
   callTactician,
+  startTactician,
   TACTICIAN_OUTPUT_SCHEMA,
   TacticianArchiveQueue,
   tacticianPreset,
@@ -80,6 +81,52 @@ void test("the tactician call uses the spawn preset, the caller delivery and the
   assert.equal(plan.walkerNotes, "先开左边的开关");
   assert.equal(plan.askUp, "缺眼药");
   assert.deepEqual(gambit.check(plan.tables[0]), []);
+});
+
+void test("the child is published before the plan arrives", async () => {
+  let settle: (value: typeof PLAN_RESULT) => void = () => undefined;
+  const answer = new Promise<typeof PLAN_RESULT>((resolve) => {
+    settle = resolve;
+  });
+  const starter: TacticianStarter = {
+    startActivation() {
+      return Promise.resolve({ childId: "child-1" as SessionId, result: answer });
+    },
+  };
+  const call = startTactician(
+    starter,
+    {} as Agent,
+    new AbortController().signal,
+    "ff5",
+    "### 地图\n地图 260 火力船",
+    NO_SESSIONS,
+  );
+  await call.started;
+  const state = await Promise.race([
+    call.result.then(() => "answered"),
+    Promise.resolve("waiting"),
+  ]);
+  assert.equal(state, "waiting");
+  settle(PLAN_RESULT);
+  assert.equal((await call.result).walkerNotes, "先开左边的开关");
+});
+
+void test("a failed start rejects the publication promise as well", async () => {
+  const starter: TacticianStarter = {
+    startActivation() {
+      return Promise.reject(new Error("spawn 坏了"));
+    },
+  };
+  const call = startTactician(
+    starter,
+    {} as Agent,
+    new AbortController().signal,
+    "ff5",
+    "地图 1",
+    NO_SESSIONS,
+  );
+  await assert.rejects(call.started, /战术官没有叫起来:spawn 坏了/);
+  await assert.rejects(call.result, /战术官没有叫起来:spawn 坏了/);
 });
 
 void test("a tactician that stops with an error is a Chinese failure", async () => {

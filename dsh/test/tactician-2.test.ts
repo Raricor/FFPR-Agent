@@ -180,11 +180,14 @@ void test("a job change triggers party-changed and the fact sheet names the lost
     ]);
     const result = await h.game.run("inventory", {}, h.pilot);
     assert.equal(h.calls(), 1);
+    assert.match(result, /战术官在后台写地图 30 的规则表/);
+    await h.game.whenTacticianIdle();
     assert.match(h.facts[0] ?? "", /队伍变了,旧规则表用不了/);
     assert.match(h.facts[0] ?? "", /从黑魔法师换成了武僧/);
     assert.match(h.facts[0] ?? "", /黑魔法:火炎/);
-    assert.match(result, /换职业后重写/);
     assert.equal(h.game.tactics.current(30)?.version, 2);
+    const next = await h.game.run("inventory", {}, h.pilot);
+    assert.match(next, /换职业后重写/);
   } finally {
     await h.close();
   }
@@ -258,8 +261,10 @@ void test("a hard battle's debrief fact sheet carries the battle record summary"
       await h.game.hooks.report?.(30, "hard", "巴兹倒下");
       return "";
     };
-    await h.game.run("inventory", {}, h.pilot);
+    const result = await h.game.run("inventory", {}, h.pilot);
     assert.equal(h.calls(), 1);
+    assert.match(result, /战术官在后台写地图 30 的规则表/);
+    await h.game.whenTacticianIdle();
     assert.match(h.facts[0] ?? "", /### 这一场的战斗记录/);
     assert.match(h.facts[0] ?? "", /普通战:吃力\(巴兹倒下\)/);
     assert.match(h.facts[0] ?? "", /敌人用过:/);

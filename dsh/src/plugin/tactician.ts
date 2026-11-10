@@ -15,7 +15,7 @@ import type { ObjectJsonSchema, ToolDefinition } from "@deepseek-ai/dsh-tools";
 import type { ActivityLog } from "../engine/activity.ts";
 import { Atlas } from "../engine/atlas.ts";
 import { describeError } from "../engine/errors.ts";
-import { readTacticianPlan, type TacticianPlan } from "../engine/facts.ts";
+import { readTacticianPlan, type TacticianCall, type TacticianPlan } from "../engine/facts.ts";
 import { byKey } from "../engine/games.ts";
 import { Guide } from "../engine/guide/kb.ts";
 import { tacticianPrompt, TOOLS } from "../engine/prompt.ts";
@@ -155,8 +155,80 @@ export class TacticianArchiveQueue implements TacticianSessionRecorder {
 
 /**
  * Start one tactician under the calling agent (dsh-subagent `startActivation`, delivery
- * `caller`), wait for its structured result, and read it as a plan.
+ * `caller`) and hand back two promises. `started` resolves only after the child is published:
+ * dsh's cancellation signal then no longer kills it (dsh-subagent README.zh 「失败与恢复」:
+ * 调用方信号仅取消尚未发布的工作,发布后通过 dispose() 取消), so the game loop can keep walking
+ * while `result` is still being written (task 86).
  */
+export function startTactician(
+  starter: TacticianStarter,
+  agent: Agent,
+  signal: AbortSignal,
+  game: string,
+  facts: string,
+  sessions: TacticianSessionRecorder,
+): TacticianCall {
+  const map = /地图[:：]?\s*(\d+)/u.exec(facts)?.[1] ?? "?";
+  const prompt: ContentBlock[] = [{ type: "text", text: facts }];
+  let publish: () => void = () => undefined;
+  let fail: (error: unknown) => void = () => undefined;
+  const started = new Promise<void>((resolve, reject) => {
+    publish = resolve;
+    fail = reject;
+  });
+  // A caller that only awaits `result` must not leave the publication failure unhandled.
+  void started.catch(() => undefined);
+  const result = (async (): Promise<TacticianPlan> => {
+    let activation: TacticianActivation;
+    try {
+      activation = await starter.startActivation({
+        provider: "spawn",
+        label: `战术官 地图 ${map}`,
+        request: {
+          agentPreset: tacticianPreset(game),
+          prompt,
+          parent: agent,
+          outputSchema: TACTICIAN_OUTPUT_SCHEMA,
+        },
+        signal: AbortSignal.any([signal, AbortSignal.timeout(TACTICIAN_TIMEOUT_MS)]),
+        delivery: "caller",
+      });
+      publish();
+    } catch (error) {
+      // An abort is a publication failure too: without rejecting `started` the game loop would
+      // wait on it forever when its tool call was cancelled (task 86).
+      const reason: unknown = signal.reason;
+      const failure = signal.aborted
+        ? reason
+        : new Error(`战术官没有叫起来:${describeError(error)}`, { cause: error });
+      fail(failure);
+      throw failure;
+    }
+    let answer: SubagentResult;
+    try {
+      answer = await activation.result;
+    } catch (error) {
+      signal.throwIfAborted();
+      throw new Error(`战术官没有回答:${describeError(error)}`, { cause: error });
+    } finally {
+      // Covers success, a non-completed stop and a result rejection (including the timeout).
+      sessions.finished(game, activation.childId);
+    }
+    if (answer.stopReason !== "completed") {
+      signal.throwIfAborted();
+      throw new Error(
+        `战术官没有完成(${answer.stopReason})` +
+          (answer.diagnostic === undefined ? "" : `:${answer.diagnostic}`),
+      );
+    }
+    return readTacticianPlan(answer.structured);
+  })();
+  // The game may read only `started` when publication fails; keep that path free of warnings.
+  result.catch(() => undefined);
+  return { started, result };
+}
+
+/** Start one tactician and wait for its plan (bosses and boss-prep, task 86). */
 export async function callTactician(
   starter: TacticianStarter,
   agent: Agent,
@@ -165,44 +237,7 @@ export async function callTactician(
   facts: string,
   sessions: TacticianSessionRecorder,
 ): Promise<TacticianPlan> {
-  const map = /地图[:：]?\s*(\d+)/u.exec(facts)?.[1] ?? "?";
-  const prompt: ContentBlock[] = [{ type: "text", text: facts }];
-  let activation: TacticianActivation;
-  try {
-    activation = await starter.startActivation({
-      provider: "spawn",
-      label: `战术官 地图 ${map}`,
-      request: {
-        agentPreset: tacticianPreset(game),
-        prompt,
-        parent: agent,
-        outputSchema: TACTICIAN_OUTPUT_SCHEMA,
-      },
-      signal: AbortSignal.any([signal, AbortSignal.timeout(TACTICIAN_TIMEOUT_MS)]),
-      delivery: "caller",
-    });
-  } catch (error) {
-    signal.throwIfAborted();
-    throw new Error(`战术官没有叫起来:${describeError(error)}`, { cause: error });
-  }
-  let result: SubagentResult;
-  try {
-    result = await activation.result;
-  } catch (error) {
-    signal.throwIfAborted();
-    throw new Error(`战术官没有回答:${describeError(error)}`, { cause: error });
-  } finally {
-    // Covers success, a non-completed stop and a result rejection (including the timeout).
-    sessions.finished(game, activation.childId);
-  }
-  if (result.stopReason !== "completed") {
-    signal.throwIfAborted();
-    throw new Error(
-      `战术官没有完成(${result.stopReason})` +
-        (result.diagnostic === undefined ? "" : `:${result.diagnostic}`),
-    );
-  }
-  return readTacticianPlan(result.structured);
+  return await startTactician(starter, agent, signal, game, facts, sessions).result;
 }
 
 /** Register the tactician preset's read-only tools, loaded once from this game's files. */

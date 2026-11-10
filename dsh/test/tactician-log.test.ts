@@ -94,6 +94,7 @@ void test("a tactician call is written with its map, reason, tables and walker f
         }),
     });
     await game.run("inventory", {}, pilot());
+    await game.whenTacticianIdle();
     const lines = (await readFile(tacticianFile, "utf8")).trim().split("\n");
     assert.equal(lines.length, 1);
     const call = JSON.parse(lines[0] ?? "") as Json;

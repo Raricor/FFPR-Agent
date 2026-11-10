@@ -39,7 +39,7 @@ import { formatNotes, formatTactician, notesContext, tacticianContext } from "./
 import { registerPresetMount } from "./preset-hooks.ts";
 import { installPresetSwitch, playerPresetId, type PresetSelector } from "./preset-switch.ts";
 import type { EngineSlot } from "./registry.ts";
-import { callTactician, TacticianArchiveQueue } from "./tactician.ts";
+import { startTactician, TACTICIAN_TIMEOUT_MS, TacticianArchiveQueue } from "./tactician.ts";
 import { gameToolDefinitions, type GameToolHost } from "./tools.ts";
 
 declare module "@deepseek-ai/dsh-llm" {
@@ -246,7 +246,16 @@ export async function startEngine(
       incidentsFile: config.incidentsFile,
       incidentsStateFile: config.incidentsStateFile,
       bestiarySaveFile: config.bestiarySaveFile,
+      routeFile: config.routeFile,
+      routeBattleSeconds: config.routeBattleSeconds,
+      healHpPercent: config.healHpPercent,
+      healMpReservePercent: config.healMpReservePercent,
+      healItemHpPercent: config.healItemHpPercent,
+      healFullPercent: config.healFullPercent,
+      saveTimerMinSeconds: config.saveTimerMinSeconds,
+      storyStuckSeconds: config.storyStuckSeconds,
       tacticianBoss: config.tacticianBoss,
+      tacticianIntervalMinutes: config.tacticianIntervalMinutes,
       travelMaxHops: config.travelMaxHops,
       travelMaxMinutes: config.travelMaxMinutes,
       bestiaryDeferBattles: config.bestiaryDeferBattles,
@@ -257,6 +266,8 @@ export async function startEngine(
       walkpathEventPollMs: config.walkpathEventPollMs,
       walkpathEventWaitMs: config.walkpathEventWaitMs,
       blockedTrustCount: config.blockedTrustCount,
+      carryRepeatLimit: config.carryRepeatLimit,
+      carryTotalLimit: config.carryTotalLimit,
       signal,
     });
     game.onIncident = (message) => {
@@ -503,7 +514,7 @@ export function gameToolHost(
         engine.activity.beginTool(name);
         bind({ agent, signal });
         try {
-          return await engine.game.run(name, args, pilot);
+          return await engine.game.run(name, args, pilot, signal);
         } finally {
           bind(null);
           engine.activity.endTool();
@@ -591,16 +602,28 @@ export function installPlayer(
     },
   });
   let binding: TacticianBinding | null = null;
+  // Task 86: the queued road trigger starts after its tool returned, when `binding` is gone.
+  // The last tool's agent is still the player's live session; a fresh timeout signal is used
+  // because the tool's own signal is cancelled when that call ends. dsh only honours the
+  // signal until it publishes the child (dsh-subagent README.zh 「失败与恢复」).
+  let lastAgent: Agent | undefined = undefined;
   const prepare = (engine: PlayerEngine): void => {
     // The tactician runs under the same agent and cancellation as the tool call that needed it.
-    engine.game.setTactician(async (facts) => {
-      if (binding?.agent === undefined) {
+    engine.game.setTactician((facts, options) => {
+      const agent = binding?.agent ?? lastAgent;
+      if (agent === undefined) {
         throw new Error("这次工具调用没有主智能体,叫不了战术官");
       }
-      return await callTactician(
+      // A background child deliberately ignores the tool's signal: after that tool returns the
+      // signal is cancelled, and dsh's signal only owns the unpublished start.
+      const signal =
+        options?.background === true
+          ? AbortSignal.timeout(TACTICIAN_TIMEOUT_MS)
+          : (binding?.signal ?? AbortSignal.timeout(TACTICIAN_TIMEOUT_MS));
+      return startTactician(
         ctx.subagents,
-        binding.agent,
-        binding.signal,
+        agent,
+        signal,
         engine.game.game,
         facts,
         tacticianSessions,
@@ -609,6 +632,7 @@ export function installPlayer(
   };
   const host = gameToolHost(slot, prepare, (call) => {
     binding = call;
+    if (call?.agent !== undefined) lastAgent = call.agent;
   });
   const tools = gameToolDefinitions(
     host,

@@ -242,8 +242,24 @@ void test("the code-enforced moments pick one trigger, in the documented order",
   });
   assert.equal(chooseTrigger({ mapId: 1, tactics: new Tactics(), met: [] }), null);
   const stale = game.tactics;
+  // 11-10 (task 86): a new monster alone no longer calls the tactician on a map with tables.
+  assert.equal(chooseTrigger({ mapId: 260, tactics: stale, met: ["败怨魔", "新怪"] }), null);
   assert.equal(
-    chooseTrigger({ mapId: 260, tactics: stale, met: ["败怨魔", "新怪"] })?.kind,
+    chooseTrigger({
+      mapId: 260,
+      tactics: stale,
+      met: ["败怨魔", "新怪"],
+      bossNames: ["新怪"],
+    })?.kind,
+    "new-monster",
+  );
+  assert.equal(
+    chooseTrigger({
+      mapId: 260,
+      tactics: stale,
+      met: ["败怨魔", "新怪"],
+      lastBattle: { mapId: 260, verdict: "hard", detail: "巴兹倒下" },
+    })?.kind,
     "new-monster",
   );
   assert.equal(

@@ -13,6 +13,19 @@ import { FakePilot } from "./fake-pilot.ts";
 const LAPTOP: Laptop = { host: "laptop", user: "player", key: "/tmp/key", root: "C:/ffpr" };
 const TABLE: Json = { 巴兹: [{ do: "攻击" }] };
 
+function deferred<T>(): { readonly promise: Promise<T>; resolve(value: T): void } {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((settle) => {
+    resolve = settle;
+  });
+  return {
+    promise,
+    resolve: (value) => {
+      resolve(value);
+    },
+  };
+}
+
 function record(seq: number, type: string, body: Json = {}): Json {
   return { seq, t: `2026-10-20T12:00:${String(seq).padStart(2, "0")}Z`, type, ...body };
 }
@@ -36,6 +49,19 @@ function eventsWith(live: Json): KeyEvents {
   events.feed(record(1, "hello", { product: "FF5", gameVersion: "1.2.0", plugin: "0.7.2" }), false);
   events.feed(live, true);
   return events;
+}
+
+/** An event cell that names a boss, so afterTool takes the synchronous boss-prep path. */
+function bossHere(pilot: FakePilot): void {
+  pilot.on("entities", (fields) =>
+    fields.kind === "Event"
+      ? {
+          entities: {
+            entities: [{ kind: "Event", cell: [2, 2], name: "首领 测试", active: true }],
+          },
+        }
+      : { entities: { total: 0, entities: [] } },
+  );
 }
 
 function pilotFor(live: Json, options: { conveyor?: boolean; blocked?: boolean } = {}): FakePilot {
@@ -102,13 +128,14 @@ interface Harness {
 
 async function harness(
   live: Json,
-  plan: () => TacticianPlan,
+  plan: () => TacticianPlan | Promise<TacticianPlan>,
   options: {
     boss?: boolean;
     blocked?: boolean;
     conveyor?: boolean;
     tables?: Json[];
     monsters?: string[];
+    interval?: number;
   } = {},
 ): Promise<Harness> {
   const directory = await mkdtemp(join(tmpdir(), "ffpr-tactician-"));
@@ -124,6 +151,7 @@ async function harness(
     tacticsFile: join(directory, "tactics.json"),
     elementsFile: join(directory, "elements.json"),
     tacticianBoss: options.boss ?? true,
+    ...(options.interval === undefined ? {} : { tacticianIntervalMinutes: options.interval }),
     tactician: (fact) => {
       called += 1;
       facts.push(fact);
@@ -155,8 +183,9 @@ void test("a map with no tactics calls the tactician once and installs its table
   try {
     const result = await h.game.run("inventory", {}, h.pilot);
     assert.equal(h.calls(), 1);
-    assert.match(result, /战术官\(地图 30\):先开左边的开关/);
-    assert.match(result, /战术官建议:缺眼药/);
+    assert.match(result, /战术官在后台写地图 30 的规则表/);
+    assert.match(result, /写好之前按现有表 \/ 默认规则打/);
+    await h.game.whenTacticianIdle();
     assert.ok(h.game.tactics.has(30));
     assert.equal(h.game.mapNameOf(30), "图尔村");
     assert.deepEqual(h.game.tacticianInfoFor(30), {
@@ -165,6 +194,9 @@ void test("a map with no tactics calls the tactician once and installs its table
       askUp: "缺眼药",
     });
     assert.match(h.facts[0] ?? "", /### 地图[\s\S]*地图 30/);
+    const next = await h.game.run("inventory", {}, h.pilot);
+    assert.match(next, /战术官\(地图 30\):先开左边的开关/);
+    assert.match(next, /战术官建议:缺眼药/);
   } finally {
     await h.close();
   }
@@ -204,7 +236,8 @@ void test("the title screen or map 0 never calls the tactician", async () => {
   }
 });
 
-void test("a monster unseen when the tables were written calls the tactician again", async () => {
+void test("a new monster on a map that has tables does not call again", async () => {
+  // 11-10 (task 86): map 271 called the tactician seven times, mostly for new-monster.
   const h = await harness(
     sample(),
     () => ({ tables: [TABLE], walkerNotes: "新怪要小心", askUp: "" }),
@@ -212,10 +245,10 @@ void test("a monster unseen when the tables were written calls the tactician aga
   );
   h.game.events?.enemies.set(30, new Set(["哥布林", "新怪"]));
   try {
-    await h.game.run("inventory", {}, h.pilot);
-    assert.equal(h.calls(), 1);
-    assert.match(h.facts[0] ?? "", /写战术时没见过的怪:新怪/);
-    assert.deepEqual(h.game.tactics.monstersSeen(30), ["哥布林", "新怪"]);
+    const result = await h.game.run("inventory", {}, h.pilot);
+    assert.equal(h.calls(), 0);
+    assert.doesNotMatch(result, /战术官/);
+    assert.deepEqual(h.game.tactics.monstersSeen(30), ["哥布林"]);
   } finally {
     await h.close();
   }
@@ -231,8 +264,10 @@ void test("a hard battle calls the tactician with the result", async () => {
     return "";
   };
   try {
-    await h.game.run("inventory", {}, h.pilot);
+    const result = await h.game.run("inventory", {}, h.pilot);
     assert.equal(h.calls(), 1);
+    assert.match(result, /战术官在后台写地图 30 的规则表/);
+    await h.game.whenTacticianIdle();
     assert.match(h.facts[0] ?? "", /hard 或 lost\(hard:巴兹倒下\)/);
   } finally {
     await h.close();
@@ -247,9 +282,12 @@ void test("three blocked steps call the tactician once", async () => {
   );
   try {
     const result = await h.game.run("go", { to: [5, 2] }, h.pilot);
-    assert.match(result, /战术官\(地图 30\):绕开挡住的地方/);
+    assert.match(result, /战术官在后台写地图 30 的规则表/);
     assert.equal(h.calls(), 1);
+    await h.game.whenTacticianIdle();
     assert.match(h.facts[0] ?? "", /被挡住/);
+    const next = await h.game.run("inventory", {}, h.pilot);
+    assert.match(next, /战术官\(地图 30\):绕开挡住的地方/);
   } finally {
     await h.close();
   }
@@ -263,9 +301,12 @@ void test("a conveyor ride calls the tactician once", async () => {
   );
   try {
     const result = await h.game.run("go", { to: [5, 2] }, h.pilot);
-    assert.match(result, /战术官\(地图 30\):传送带往东/);
+    assert.match(result, /战术官在后台写地图 30 的规则表/);
     assert.equal(h.calls(), 1);
+    await h.game.whenTacticianIdle();
     assert.match(h.facts[0] ?? "", /踩到传送带/);
+    const next = await h.game.run("inventory", {}, h.pilot);
+    assert.match(next, /战术官\(地图 30\):传送带往东/);
   } finally {
     await h.close();
   }
@@ -329,6 +370,7 @@ void test("bad tables are retried at most twice, then the passing ones are insta
     walkerNotes: "坏表",
     askUp: "",
   }));
+  bossHere(h.pilot);
   try {
     const result = await h.game.run("inventory", {}, h.pilot);
     assert.equal(h.calls(), 3);
@@ -346,12 +388,102 @@ void test("after the last retry the passing tables are installed and reported", 
     walkerNotes: "一套能用的",
     askUp: "",
   }));
+  bossHere(h.pilot);
   try {
     const result = await h.game.run("inventory", {}, h.pilot);
     assert.equal(h.calls(), 3);
     assert.match(result, /先装上能通过的 1 套/);
+    assert.match(result, /首领表已经按地图 30 存好/);
+    const boss = h.game.tactics.boss(30);
+    assert.ok(boss);
+    assert.deepEqual(boss.table, TABLE);
+  } finally {
+    await h.close();
+  }
+});
+
+void test("a road trigger returns before the answer and the next result carries the notes", async () => {
+  const pending = deferred<TacticianPlan>();
+  const h = await harness(sample(), () => pending.promise);
+  try {
+    const first = await h.game.run("inventory", {}, h.pilot);
+    assert.equal(h.calls(), 1);
+    assert.match(first, /战术官在后台写地图 30 的规则表，写好之前按现有表 \/ 默认规则打/);
+    assert.equal(h.game.tactics.has(30), false);
+    // The same map is already being written: no second child.
+    const second = await h.game.run("inventory", {}, h.pilot);
+    assert.equal(h.calls(), 1);
+    assert.doesNotMatch(second, /战术官在后台写/);
+    pending.resolve({ tables: [TABLE], walkerNotes: "后台写好了", askUp: "带眼药" });
+    await h.game.whenTacticianIdle();
     assert.ok(h.game.tactics.has(30));
+    const third = await h.game.run("inventory", {}, h.pilot);
+    assert.match(third, /战术官\(地图 30\):后台写好了/);
+    assert.match(third, /战术官建议:带眼药/);
+    assert.equal(h.calls(), 1);
+  } finally {
+    await h.close();
+  }
+});
+
+void test("a background call retries bad tables without holding the next tool", async () => {
+  let call = 0;
+  const h = await harness(sample(), () => {
+    call += 1;
+    return call === 1
+      ? { tables: [{ 巴兹: [{ if: "ally.hp_pct < 50" }] }], walkerNotes: "坏表", askUp: "" }
+      : { tables: [TABLE], walkerNotes: "改好了", askUp: "" };
+  });
+  try {
+    const first = await h.game.run("inventory", {}, h.pilot);
+    assert.match(first, /战术官在后台写地图 30 的规则表/);
+    await h.game.whenTacticianIdle();
+    assert.equal(h.calls(), 2);
+    assert.match(h.facts[1] ?? "", /上次交回的规则表有问题/);
     assert.deepEqual(h.game.tactics.current(30), TABLE);
+    const next = await h.game.run("inventory", {}, h.pilot);
+    assert.match(next, /战术官\(地图 30\):改好了/);
+  } finally {
+    await h.close();
+  }
+});
+
+void test("the interval keeps a second road trigger on one map waiting", async () => {
+  const h = await harness(sample(), () => ({
+    tables: [TABLE],
+    walkerNotes: "间隔测试",
+    askUp: "",
+  }));
+  try {
+    await h.game.run("inventory", {}, h.pilot);
+    await h.game.whenTacticianIdle();
+    assert.equal(h.calls(), 1);
+    h.game.events?.enemies.set(30, new Set(["首领 新怪"]));
+    const soon = await h.game.run("inventory", {}, h.pilot);
+    assert.equal(h.calls(), 1);
+    assert.doesNotMatch(soon, /在后台写/);
+    h.pilot.advance(10 * 60_000);
+    await h.game.run("inventory", {}, h.pilot);
+    assert.equal(h.calls(), 2);
+    await h.game.whenTacticianIdle();
+  } finally {
+    await h.close();
+  }
+});
+
+void test("a new monster that is a boss still calls on a map with tables", async () => {
+  const h = await harness(
+    sample(),
+    () => ({ tables: [TABLE], walkerNotes: "首领新怪", askUp: "" }),
+    { tables: [TABLE], monsters: ["哥布林"] },
+  );
+  h.game.events?.enemies.set(30, new Set(["哥布林", "首领 新怪"]));
+  try {
+    const result = await h.game.run("inventory", {}, h.pilot);
+    assert.equal(h.calls(), 1);
+    assert.match(result, /战术官在后台写地图 30 的规则表/);
+    await h.game.whenTacticianIdle();
+    assert.match(h.facts[0] ?? "", /首领 新怪/);
   } finally {
     await h.close();
   }

@@ -85,6 +85,22 @@ export interface TacticianPlan {
   readonly askUp: string;
 }
 
+/**
+ * One started tactician call. `started` resolves once dsh has published the child, so a
+ * caller that returns to the game loop can keep waiting on `result` without the tool call's
+ * cancellation signal killing an unpublished child (task 86).
+ */
+export interface TacticianCall {
+  readonly started: Promise<void>;
+  readonly result: Promise<TacticianPlan>;
+}
+
+/** A tactician runner; older tests may still return a plain plan promise. */
+export type TacticianRunner = (
+  facts: string,
+  options?: { readonly background?: boolean },
+) => TacticianCall | Promise<TacticianPlan>;
+
 /** The game data buildFacts reads; Game satisfies it, tests can build it directly. */
 export interface FactsGame {
   readonly events: KeyEvents | undefined;
@@ -120,6 +136,8 @@ export interface TriggerState {
   readonly mapName?: string;
   /** Town areas the tactician already covered on one of their maps. */
   readonly townsCovered?: ReadonlySet<string>;
+  /** Boss names the guide marks for this area (task 86: a new boss still calls). */
+  readonly bossNames?: readonly string[];
 }
 
 /** "卡纳克镇 旅店" -> "卡纳克镇": the inn, the shops and the pub belong to the town. */
@@ -155,16 +173,24 @@ export function chooseTrigger(state: TriggerState): TriggerReason | null {
   }
   const stored = state.tactics.monstersSeen(mapId);
   const fresh = [...new Set(state.met)].filter((monster) => !stored.includes(monster)).sort();
-  if (fresh.length > 0) {
-    return {
-      kind: "new-monster",
-      mapId,
-      detail: `写战术时还没见过:${fresh.join("、")}`,
-      monsters: fresh,
-    };
-  }
   const last = state.lastBattle;
-  if (last?.mapId === mapId && BAD.has(last.verdict)) {
+  const lastBad = last?.mapId === mapId && BAD.has(last.verdict);
+  if (fresh.length > 0) {
+    // 11-10 (task 86): a map with tables does not call the tactician again for every new
+    // monster: 271 called it seven times. The monster is still in the event stream, so the next
+    // call for another reason carries it. A new boss or a hard/lost fight is the exception.
+    const bosses = fresh.filter((monster) => isBossMonster(monster, state.bossNames));
+    if (bosses.length > 0 || lastBad) {
+      const listed = bosses.length > 0 ? bosses : fresh;
+      return {
+        kind: "new-monster",
+        mapId,
+        detail: `写战术时还没见过:${listed.join("、")}`,
+        monsters: listed,
+      };
+    }
+  }
+  if (lastBad) {
     return { kind: "bad-battle", mapId, detail: `${last.verdict}:${last.detail}` };
   }
   if (state.blocked && state.blocked.count >= 3) {
@@ -174,6 +200,17 @@ export function chooseTrigger(state: TriggerState): TriggerReason | null {
     return { kind: "conveyor", mapId, detail: state.ride };
   }
   return null;
+}
+
+/**
+ * A new monster that is a boss. The guide's ludo chapter names are the reliable source; the
+ * game's event cells sometimes say 首领/ボス in the name (task 86).
+ */
+function isBossMonster(name: string, bossNames: readonly string[] | undefined): boolean {
+  if (/boss|首领|ボス/iu.test(name)) return true;
+  return (bossNames ?? []).some(
+    (boss) => boss !== "" && (name.includes(boss) || boss.includes(name)),
+  );
 }
 
 /** One `limit`-sized prefix of the guide, saying what was left out. */
