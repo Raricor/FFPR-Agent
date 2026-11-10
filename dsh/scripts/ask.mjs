@@ -17,6 +17,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { zstdDecompressSync } from "node:zlib";
 
 const PORT = Number(process.env.FFPR_DSH_PORT || 3081);
@@ -121,60 +122,118 @@ function brief(sessionId, fromSeq = 0) {
   }
 }
 
-async function waitForTurnEnd(sessionId, afterSeq) {
+/** The user text a `user/message` event carries, for logs that lack the RPC identity. */
+function messageText(event) {
+  const data = event.data ?? {};
+  const message = data.message ?? data;
+  const content = Array.isArray(message.content) ? message.content : [];
+  return content.map((part) => (typeof part?.text === "string" ? part.text : "")).join("");
+}
+
+/**
+ * The turn this prompt opened: its `user/message` event carries the requestId sent with
+ * session/prompt. A previous round interrupted by a restart may append a late `turn/end`
+ * after we start waiting; that end belongs to an older turn and must not finish this wait
+ * (task 109). Returns null until the prompt's own message is in the log.
+ */
+export function promptTurn(all, requestId, afterSeq, promptText) {
+  const ours =
+    all.find(
+      (event) =>
+        event.type === "user/message" &&
+        (event.seq ?? -1) > afterSeq &&
+        (event.data?.source?.rpcId === requestId ||
+          event.data?.message?.source?.rpcId === requestId),
+    ) ??
+    all.find(
+      (event) =>
+        event.type === "user/message" &&
+        (event.seq ?? -1) > afterSeq &&
+        messageText(event) === promptText,
+    );
+  if (ours === undefined) return null;
+  const seq = ours.seq ?? -1;
+  let turn = null;
+  for (const event of all) {
+    if ((event.seq ?? -1) > seq) break;
+    if (event.type === "turn/start" && typeof event.data?.turn === "number") {
+      turn = event.data.turn;
+    }
+  }
+  return turn === null ? null : { turn, seq };
+}
+
+/** Whether that turn has ended after its prompt message. */
+export function turnEnded(all, prompt) {
+  return all.some(
+    (event) =>
+      event.type === "turn/end" &&
+      (event.seq ?? -1) > prompt.seq &&
+      event.data?.turn === prompt.turn,
+  );
+}
+
+async function waitForTurnEnd(sessionId, requestId, promptText, afterSeq) {
   const deadline = Date.now() + TURN_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    const ended = events(sessionId).some((e) => e.type === "turn/end" && e.seq > afterSeq);
-    if (ended) return;
+    const all = events(sessionId);
+    const prompt = promptTurn(all, requestId, afterSeq, promptText);
+    if (prompt !== null && turnEnded(all, prompt)) return;
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
   throw new Error(`no turn/end within ${TURN_TIMEOUT_MS / 60000} minutes`);
 }
 
-const argv = process.argv.slice(2);
-if (argv[0] === "--show") {
-  show(argv[1]);
-} else if (argv[0] === "--brief") {
-  brief(argv[1]);
-} else if (argv[0] === "--cancel") {
-  // Stop a running turn (dsh-api-session-controller `session/cancel`), e.g. before restarting
-  // that session's game underneath it.
-  const cookie = await connect();
-  console.log(await call(cookie, "session/cancel", { request: { sessionId: argv[1] } }));
-} else if (argv[0] === "--command") {
-  // Slash commands answer in the call itself (dsh-commands' `commands/execute` remote).
-  const cookie = await connect();
-  const { sessionId } = await call(cookie, "session/create", {
-    request: { cwd: CWD, agentPreset: PRESET },
-  });
-  const execution = await call(cookie, "commands/execute", {
-    agentId: sessionId,
-    line: argv[1],
-    submittedAttachments: [],
-  });
-  console.log(`session ${sessionId}`);
-  console.log(
-    execution ? `[${execution.result.kind}]\n${execution.result.text ?? ""}` : "没有这个命令",
-  );
-} else {
-  let sessionId = argv[0] === "--session" ? argv[1] : undefined;
-  const prompt = argv.at(-1);
-  if (!prompt || prompt.startsWith("--"))
-    throw new Error("usage: ask.mjs [--session <id>] <prompt>");
-  const cookie = await connect();
-  sessionId ??= (
-    await call(cookie, "session/create", { request: { cwd: CWD, agentPreset: PRESET } })
-  ).sessionId;
-  const before = Math.max(-1, ...events(sessionId).map((e) => e.seq ?? -1));
-  await call(cookie, "session/prompt", {
-    request: {
-      requestId: randomUUID(),
-      sessionId,
-      mode: "queue",
-      content: [{ type: "text", text: prompt }],
-    },
-  });
-  console.log(`session ${sessionId}`);
-  await waitForTurnEnd(sessionId, before);
-  show(sessionId, before + 1);
+async function main() {
+  const argv = process.argv.slice(2);
+  if (argv[0] === "--show") {
+    show(argv[1]);
+  } else if (argv[0] === "--brief") {
+    brief(argv[1]);
+  } else if (argv[0] === "--cancel") {
+    // Stop a running turn (dsh-api-session-controller `session/cancel`), e.g. before restarting
+    // that session's game underneath it.
+    const cookie = await connect();
+    console.log(await call(cookie, "session/cancel", { request: { sessionId: argv[1] } }));
+  } else if (argv[0] === "--command") {
+    // Slash commands answer in the call itself (dsh-commands' `commands/execute` remote).
+    const cookie = await connect();
+    const { sessionId } = await call(cookie, "session/create", {
+      request: { cwd: CWD, agentPreset: PRESET },
+    });
+    const execution = await call(cookie, "commands/execute", {
+      agentId: sessionId,
+      line: argv[1],
+      submittedAttachments: [],
+    });
+    console.log(`session ${sessionId}`);
+    console.log(
+      execution ? `[${execution.result.kind}]\n${execution.result.text ?? ""}` : "没有这个命令",
+    );
+  } else {
+    let sessionId = argv[0] === "--session" ? argv[1] : undefined;
+    const prompt = argv.at(-1);
+    if (!prompt || prompt.startsWith("--"))
+      throw new Error("usage: ask.mjs [--session <id>] <prompt>");
+    const cookie = await connect();
+    sessionId ??= (
+      await call(cookie, "session/create", { request: { cwd: CWD, agentPreset: PRESET } })
+    ).sessionId;
+    const before = Math.max(-1, ...events(sessionId).map((e) => e.seq ?? -1));
+    const requestId = randomUUID();
+    await call(cookie, "session/prompt", {
+      request: {
+        requestId,
+        sessionId,
+        mode: "queue",
+        content: [{ type: "text", text: prompt }],
+      },
+    });
+    console.log(`session ${sessionId}`);
+    await waitForTurnEnd(sessionId, requestId, prompt, before);
+    show(sessionId, before + 1);
+  }
 }
+
+const entry = process.argv[1];
+if (entry !== undefined && resolve(entry) === fileURLToPath(import.meta.url)) await main();
