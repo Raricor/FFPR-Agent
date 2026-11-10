@@ -239,10 +239,46 @@ def deploy(laptop: Laptop) -> None:
     )
 
 
-def launch(laptop: Laptop, game: Game, timeout: float = 60) -> str:
-    """Ask Steam on the desktop to start the game; returns the session task's state."""
+def launch_message(status: dict) -> str:
+    """One Chinese sentence for the result of Start-Game (FfprCommon.psm1)."""
+    if status.get("locked"):
+        return "笔记本锁屏了，等用户解锁"
+    if status.get("steam_dialog"):
+        return "Steam 在等用户点对话框"
+    if status.get("steam_login_timeout"):
+        seconds = status["steam_login_timeout"]
+        if not isinstance(seconds, int):
+            seconds = 90
+        return f"{seconds} 秒内没等到 Steam 登录"
+    if status.get("state") == "refused":
+        return status.get("note") or "别的作品还开着，一次只开一作"
+    if status.get("already"):
+        return status.get("note") or "已经开着"
+    if status.get("state") == "error":
+        return status.get("note") or "启动失败"
+    parts = ["已启动"]
+    if status.get("window_small"):
+        width, height = status.get("window_width"), status.get("window_height")
+        if width and height:
+            parts.append(f"窗口 {width}×{height} 太小（宽 < 800）")
+        else:
+            parts.append("窗口太小（宽 < 800）")
+    if status.get("requested_again"):
+        parts.append("补发过一次启动请求")
+    elif status.get("note") and "没等到游戏窗口" in status["note"]:
+        parts.append(status["note"])
+    return "，".join(parts)
+
+
+def launch(laptop: Laptop, game: Game, timeout: float = 300) -> str:
+    """Ask Steam on the desktop to start the game; returns a Chinese result sentence.
+
+    Start-Game may first wait up to 90 s for a cold Steam to log on, then up to 120 s for the
+    window, so a shorter polling budget (the old CLI default was 60 s) would give up while the
+    desktop script is still doing its job.
+    """
     request = session_request(f"steam://rungameid/{game.app_id}", [], None, False)
-    return run_in_session(laptop, request, timeout).get("state")
+    return launch_message(run_in_session(laptop, request, max(timeout, 300)))
 
 
 def install_plugin(laptop: Laptop, game: Game, build: bool = True) -> str:

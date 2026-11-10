@@ -37,6 +37,99 @@ function Get-SteamRoot {
     throw '找不到 Steam 的安装目录'
 }
 
+# Steam writes connection_log.txt in the user's local time. The log line starts with
+# "[2026-11-09 22:45:50]"; compare that with the laptop's own clock, not the dev box's.
+function Get-SteamConnectionLog {
+    Join-Path (Get-SteamRoot) 'logs\connection_log.txt'
+}
+
+# Steam keeps its logs open for writing. Read with ReadWrite sharing so the check never fails
+# just because Steam is still running.
+function Read-SharedLines([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) { return @() }
+    $text = ''
+    try {
+        $stream = [IO.File]::Open($Path, 'Open', 'Read', 'ReadWrite')
+        try {
+            $reader = New-Object IO.StreamReader($stream)
+            try { $text = $reader.ReadToEnd() } finally { $reader.Dispose() }
+        } finally { $stream.Dispose() }
+    } catch {
+        return @()
+    }
+    @($text -split "`r?`n")
+}
+
+function Get-SteamLogTime([string]$Line) {
+    $m = [regex]::Match($Line, '^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]')
+    if (-not $m.Success) { return $null }
+    $when = [datetime]::MinValue
+    $parsed = [datetime]::TryParseExact(
+        $m.Groups[1].Value, 'yyyy-MM-dd HH:mm:ss',
+        [Globalization.CultureInfo]::InvariantCulture,
+        [Globalization.DateTimeStyles]::None, [ref]$when)
+    if ($parsed) { return $when }
+    $null
+}
+
+# Lines added since a snapshot. A shorter file means Steam rotated it; then every line counts.
+function Get-NewSteamLines([string[]]$Lines, [int]$AfterCount) {
+    if (-not $Lines -or $Lines.Count -eq 0) { return @() }
+    if ($AfterCount -lt 0 -or $AfterCount -gt $Lines.Count) { return @($Lines) }
+    if ($AfterCount -eq $Lines.Count) { return @() }
+    @($Lines[$AfterCount..($Lines.Count - 1)])
+}
+
+function Test-SteamLogMatch([string]$Line, [string]$Pattern, [datetime]$Since) {
+    if ($Line -notmatch $Pattern) { return $false }
+    $when = Get-SteamLogTime $Line
+    if ($null -eq $when) { return $true }
+    $when -ge $Since
+}
+
+function Test-NewSteamLog {
+    param(
+        [string[]]$Lines,
+        [string]$Pattern,
+        [datetime]$Since,
+        [int]$AfterCount = 0
+    )
+    foreach ($line in @(Get-NewSteamLines $Lines $AfterCount)) {
+        if (Test-SteamLogMatch $line $Pattern $Since) { return $true }
+    }
+    $false
+}
+
+function Test-DesktopLocked {
+    [bool](Get-Process -Name LogonUI -ErrorAction SilentlyContinue)
+}
+
+# Cold-start Steam and wait for its own log to say it is logged on. Requesting
+# steam://rungameid before this lost the request twice (11-04, 11-08). The lock screen and a
+# Steam dialog are reported at once instead of waiting for the full timeout.
+function Wait-SteamLogin([int]$TimeoutSeconds = 90) {
+    $log = Get-SteamConnectionLog
+    $after = @(Read-SharedLines $log).Count
+    # Second-resolution log lines: accept a line stamped in the same second as the start.
+    $since = (Get-Date).AddSeconds(-2)
+    $steam = Join-Path (Get-SteamRoot) 'steam.exe'
+    if (-not (Test-Path -LiteralPath $steam)) { throw "找不到 steam.exe:$steam" }
+    Start-Process -FilePath $steam
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        if (Test-DesktopLocked) { return @{ state = 'locked' } }
+        $lines = @(Read-SharedLines $log)
+        if (Test-NewSteamLog $lines '\[Logged On' $since $after) {
+            return @{ state = 'logged_on' }
+        }
+        if (Test-NewSteamLog $lines 'waiting for user response' $since $after) {
+            return @{ state = 'steam_dialog' }
+        }
+        Start-Sleep -Milliseconds 1000
+    }
+    @{ state = 'login_timeout' }
+}
+
 function Get-SteamLibraries {
     $root = Get-SteamRoot
     $libs = @($root)
@@ -101,6 +194,8 @@ using System.Runtime.InteropServices;
 public static class FfprWindow {
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string cls, string title);
+    [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
+    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
 
     // The game's own window. MainWindowHandle is not enough: BepInEx's console belongs to the
     // same process and can be the "main" window.
@@ -112,6 +207,13 @@ public static class FfprWindow {
             if (owner == pid) return h;
         }
         return IntPtr.Zero;
+    }
+
+    // Client area, not the outer window: the game's 320x240 case is about the drawable area.
+    public static int[] ClientSize(IntPtr hWnd) {
+        RECT r;
+        if (!GetClientRect(hWnd, out r)) return new int[] { 0, 0 };
+        return new int[] { r.Right - r.Left, r.Bottom - r.Top };
     }
 }
 '@
@@ -144,13 +246,16 @@ function Get-RunningGames {
 #   2. At most one game at a time. If another game is running, refuse and say which one -- never
 #      close it for the user, because that would lose unsaved progress. If the requested game is
 #      already running, do not ask Steam to start it again.
-# Still wait for the window before returning (max 120 s): on 10-29 a launch that returned early
-# made the next game's schtasks /run get ignored. launch-game.ps1 and run-in-session.ps1 both call
-# this, so the two launch paths cannot drift apart. Returns the status fields run-in-session.ps1
-# writes.
+# Still wait for the window before returning (max 120 s, after any wait for a cold Steam login):
+# on 10-29 a launch that returned early made the next game's schtasks /run get ignored.
+# launch-game.ps1 and run-in-session.ps1 both call this, so the two launch paths cannot drift
+# apart. Returns the status fields run-in-session.ps1 writes, plus locked, steam_dialog,
+# steam_login_timeout, requested_again, window_small and window_width/window_height.
 function Start-Game {
     param(
-        [Parameter(Mandatory = $true)][string]$Game
+        [Parameter(Mandatory = $true)][string]$Game,
+        # How long a cold Steam may take to log on (Wait-SteamLogin).
+        [int]$SteamLoginTimeout = 90
     )
     $key = $Game.ToLower()
     $appId = Get-FfprAppId $key
@@ -169,22 +274,97 @@ function Start-Game {
         return @{ state = 'started'; already = $true; note = "$($key.ToUpper()) 已经开着" }
     }
 
+    # The lock screen is handled in the desktop session by the pilot; here only report it and
+    # stop. Never try to unlock.
+    if (Test-DesktopLocked) {
+        return @{ state = 'error'; locked = $true; note = '笔记本锁屏了，等用户解锁' }
+    }
+
+    # 11-04/11-08: a rungameid request sent before Steam was logged on was lost. Start Steam
+    # first and let its own log confirm the login.
+    if (-not (Get-Process -Name steam -ErrorAction SilentlyContinue)) {
+        $login = Wait-SteamLogin $SteamLoginTimeout
+        if ($login.state -eq 'locked') {
+            return @{ state = 'error'; locked = $true; note = '笔记本锁屏了，等用户解锁' }
+        }
+        if ($login.state -eq 'steam_dialog') {
+            return @{ state = 'error'; steam_dialog = $true; note = 'Steam 在等用户点对话框' }
+        }
+        if ($login.state -eq 'login_timeout') {
+            return @{
+                state = 'error'
+                steam_login_timeout = $SteamLoginTimeout
+                note = "$SteamLoginTimeout 秒内没等到 Steam 登录"
+            }
+        }
+    }
+
     $exe = $null
     try { $exe = (Get-GameExe (Find-GameDir $key)).BaseName } catch { $exe = $null }
+    $log = Get-SteamConnectionLog
+    $after = @(Read-SharedLines $log).Count
+    # Steam's log has one-second resolution; accept the same second as the request.
+    $since = (Get-Date).AddSeconds(-2)
     Start-Process -FilePath "steam://rungameid/$appId"
     # Unknown game directory: Start-Process has handed off, but there is no process name to watch.
     if (-not $exe) { return @{ state = 'started' } }
 
     $deadline = (Get-Date).AddSeconds(120)
+    # If the window still has not appeared after a minute, send the request once more.
+    $retryAt = (Get-Date).AddSeconds(60)
+    $requestedAgain = $false
     $hwnd = $null
     while ($null -eq $hwnd -and (Get-Date) -lt $deadline) {
+        if (Test-DesktopLocked) {
+            return @{
+                state = 'error'
+                locked = $true
+                requested_again = $requestedAgain
+                note = '笔记本锁屏了，等用户解锁'
+            }
+        }
+        $lines = @(Read-SharedLines $log)
+        if (Test-NewSteamLog $lines 'waiting for user response' $since $after) {
+            return @{
+                state = 'error'
+                steam_dialog = $true
+                requested_again = $requestedAgain
+                note = 'Steam 在等用户点对话框'
+            }
+        }
         $hwnd = Find-GameWindow $exe
-        if ($null -eq $hwnd) { Start-Sleep -Milliseconds 500 }
+        if ($null -eq $hwnd) {
+            if (-not $requestedAgain -and (Get-Date) -ge $retryAt) {
+                Start-Process -FilePath "steam://rungameid/$appId"
+                $requestedAgain = $true
+            }
+            Start-Sleep -Milliseconds 500
+        }
     }
+
     if ($null -eq $hwnd) {
-        return @{ state = 'started'; note = '120 秒内没等到游戏窗口' }
+        $note = '120 秒内没等到游戏窗口'
+        if ($requestedAgain) { $note = "$note，补发过一次启动请求" }
+        return @{ state = 'started'; requested_again = $requestedAgain; note = $note }
     }
-    @{ state = 'started' }
+
+    [int[]]$size = [FfprWindow]::ClientSize($hwnd)
+    $width = [int]$size[0]
+    $height = [int]$size[1]
+    $notes = @()
+    $result = @{ state = 'started' }
+    if ($width -lt 800) {
+        $result.window_small = $true
+        $result.window_width = $width
+        $result.window_height = $height
+        $notes += "窗口 ${width}×${height} 太小（宽 < 800）"
+    }
+    if ($requestedAgain) {
+        $result.requested_again = $true
+        $notes += '补发过一次启动请求后等到了游戏窗口'
+    }
+    if ($notes.Count -gt 0) { $result.note = $notes -join '，' }
+    $result
 }
 
 # Start-Process in Windows PowerShell 5.1 joins -ArgumentList with spaces and no quoting, so
