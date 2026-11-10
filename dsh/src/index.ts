@@ -15,7 +15,7 @@ import { latestActivities, type CurrentSource } from "./plugin/current.ts";
 import { detectionSource } from "./plugin/detect.ts";
 import { installOverview } from "./plugin/overview.ts";
 import { installPanel } from "./plugin/panel.ts";
-import { createEngineSlot, installPlayer } from "./plugin/player.ts";
+import { createEngineSlot, createPlayerLog, installPlayer } from "./plugin/player.ts";
 import { engineFor, registerSlot, slotFor, slots } from "./plugin/registry.ts";
 import { installStageOfficer } from "./plugin/stage-officer.ts";
 import { installTactician } from "./plugin/tactician.ts";
@@ -32,14 +32,28 @@ export const inject = ["tools", "agents", "systemPrompt", "subagents", "commands
 
 export async function apply(ctx: Context, config: ConfigValue): Promise<void> {
   const logger = ctx.logger("ffpr");
-  const log = {
-    info: (message: string) => {
-      logger.info(message);
+  // Task 109: ctx.logger only reaches cordis's in-memory buffer; mirror warnings into the
+  // activity log of every running engine this entry serves, so the overview page shows them.
+  const log = createPlayerLog(
+    {
+      info: (message: string) => {
+        logger.info(message);
+      },
+      warn: (message: string) => {
+        logger.warn(message);
+      },
     },
-    warn: (message: string) => {
-      logger.warn(message);
+    () => {
+      if (config.role === "panel") {
+        return [...slots().values()].flatMap((slot) => {
+          const activity = slot.current()?.activity;
+          return activity === undefined ? [] : [activity];
+        });
+      }
+      const activity = slotFor(config.game)?.current()?.activity;
+      return activity === undefined ? [] : [activity];
     },
-  };
+  );
   await installStageOfficer(ctx, config, log);
   // The root entry only makes dsh serve lib/client.js (dsh-client-modules scans root loader
   // entries by exact package name). 10-29 (task 24): it also registers the routes once, keyed by

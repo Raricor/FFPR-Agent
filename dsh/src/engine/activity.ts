@@ -11,13 +11,14 @@ import { appendFile, mkdir, readFile, rename, rm, stat } from "node:fs/promises"
 import { dirname, join } from "node:path";
 import { describeError, isMissingFile } from "./errors.ts";
 import { DEPS } from "./paths.ts";
+import { cleanIconTags } from "./icons.ts";
 
 export const MAX_ENTRIES = 500;
 export const MAX_TEXT = 200;
 export const MAX_FILE_BYTES = 5 * 1024 * 1024;
 export const DEFAULT_LOG_LIMIT = 200;
 
-export const ACTIVITY_KINDS = ["tool", "error", "event", "link"] as const;
+export const ACTIVITY_KINDS = ["tool", "error", "warn", "event", "link"] as const;
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
 
 export interface ActivityEntry {
@@ -135,7 +136,7 @@ export class ActivityLog {
 
   /** Append one line; empty text is skipped so the page never shows a blank row. */
   record(kind: ActivityKind, text: string): void {
-    const line = shorten(this.redact(oneLine(text)));
+    const line = shorten(this.redact(cleanIconTags(oneLine(text))));
     if (line === "") return;
     const entry: ActivityEntry = {
       at: this.now().toISOString(),

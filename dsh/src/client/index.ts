@@ -279,7 +279,7 @@ interface CurrentCard {
 interface ActivityEntry {
   readonly at: string;
   readonly game: string;
-  readonly kind: "tool" | "event" | "link" | "error";
+  readonly kind: "tool" | "event" | "link" | "warn" | "error";
   readonly text: string;
 }
 
@@ -788,6 +788,7 @@ function isActivityEntry(value: unknown): value is ActivityEntry {
     (value.kind === "tool" ||
       value.kind === "event" ||
       value.kind === "link" ||
+      value.kind === "warn" ||
       value.kind === "error")
   );
 }
@@ -1855,12 +1856,14 @@ function kindLabel(kind: string): string {
   if (kind === "tool") return "AI 操作";
   if (kind === "event") return "事件";
   if (kind === "link") return "连接";
+  if (kind === "warn") return "警告";
   if (kind === "error") return "报错";
   return kind;
 }
 
 function kindColor(kind: string): string {
   if (kind === "error") return toneColor("wipe");
+  if (kind === "warn") return toneColor("hard");
   if (kind === "event") return toneColor("business");
   if (kind === "link") return toneColor("muted");
   return "var(--dsw-alias-label-secondary)";

@@ -168,3 +168,10 @@ void test("mergeActivity filters by since, game and limit, newest first", () => 
   assert.equal(mergeActivity([ff5], { limit: 0 }).length, 0);
   assert.equal(mergeActivity([ff5], { limit: 9999 }).length, 2);
 });
+
+void test("activity records warnings and strips game icon tags", () => {
+  const log = new ActivityLog({ game: "ff5", now: clock().now });
+  log.record("warn", "买了「<IC_BMGC>冰冻」×1");
+  assert.equal(log.entries[0]?.kind, "warn");
+  assert.equal(log.entries[0].text, "买了「冰冻」×1");
+});
