@@ -1,6 +1,6 @@
 # 桥插件(FfprBridge)
 
-BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（设计方案 §5），从不改游戏数据和存档。当前版本 0.14.2。
+BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（设计方案 §5），从不改游戏数据和存档。当前版本 0.14.5。
 
 - 所有挂钩都是 postfix，只读参数和返回值，不改参数、不改返回值，也不改任何游戏对象。
 - 调用游戏的地方只有取值函数和纯查询。
@@ -14,6 +14,9 @@ BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（�
 - 把以上内容写进 `BepInEx/ffpr/probe-<启动时间>.jsonl`，同时推送给 WebSocket 客户端。
 - 在查询通道上回答查询(见「查询通道」)。
 - 0.5.0 起，在局域网连接上替开发机按键(见「局域网连接」)。0.9.0 起按键走虚拟手柄，游戏在后台、最小化时也能玩。
+- 0.14.5:新增仅 FF5 的 `export` 整作静态数据查询：`maps` / `monsters` / `encounters` / `treasures` / `shops` / `items` / `magic`，按 `offset` / `limit` 分页，只读 `MasterManager`；`treasures` 的 `mapId` / `cell` / `contentId` / `contentName` 和部分数值字段读不到时为 null。
+- 0.14.4:新增仅 FF5 的 `bluemagic`(已学会的青魔法 + 主数据里的全部青魔法和学法)和 `monstermoves`(`ids` 里每只怪的 AI 招式、能否学成青魔法、附带状态);`battle.hit` 的状态名为空时改用 `ConditionType` 枚举名，不再丢状态；`gameover.autosave` 改从 `SaveContentController`/`SaveContentView` 的实际行读取，并在必要时退回 `SaveSlotData`。
+- 0.14.3(仅 FF5):`sample` 和 `pos` 新增 `timer`(`active` / `seconds` / `paused`)，读卡纳克城逃脱那个画面上的倒计时；开始、重开和结束时推 `timer.start` / `timer.end`。`sample` 和新的 `gameover` 查询新增 `gameover`(`open` / `prompt` / `cursor` / `autosave`)，能认出「读取」自动保存的继续框和「返回标题画面」确认框；这时 `pos.state` 仍是 `Event`，要看 `gameover.open`。
 - 0.14.2:新增 `config` 查询(只读，游戏线程上答):从 `ConfigSaveData` 读自动战斗保持、ATB 模式、战斗/消息速度、自动冲刺、重装备、光标记忆等设置，能对上枚举文字的给 `battleMode`；`battleAuto` 是当前战斗的自动战斗开关(`BattleStatusControl.isAutoMode`，不在战斗时为 null)。`battle.act` 新增 `auto`：这一招是不是游戏自动选的(FF5 `BattleActData.isAuto`，FF6 `IsAutoBattleAct`，FF1-FF4 没有该字段，写 null)。
 - 0.14.1:修 `walkpath` 拐角。虚拟手柄改成游戏线程一帧最多发一个完整状态事件，同一帧的按/放不再互相覆盖，`stop` 和走路结束会把全部已知按钮写成松开，旧方向键不会卡住;整数格读数先在 `from` 上看到到达帧(`moving` false)、之后 `moving` 又变 true 时换出拐角方向(`mode=step`)，没看到到达帧就等读数跳到拐角格再换(`mode=flip`)，小数读数仍按 `turnLead`(`mode=lead`);`turns` 加 `mode` / `arriveFrame` / `stopFrame` / `moving` / `raw` 诊断。
 - 0.14.0:`walkpath` 命令:一次收下整条格子路线，在游戏线程上逐帧按住虚拟手柄方向键连续走完，拐角提前换键不停顿;回复带停下的原因、`index`、`steps`、`pos`、`next` 和每个拐角的 `turns`(真机标定用)。`walkpath` 可带只用于显示的 `goal`/`label`;新增 `walk` 查询和 `walk.start` / `walk.progress` / `walk.end` 推送，笔记本和网页都能显示规划和走到哪一段。`cells` 新增可选的 `at`，可以任意格子为中心读窗口，便于开发机拼整张地图寻路。
@@ -63,8 +66,13 @@ BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（�
 | `GameState.Dialog.cs` | 对话框和选项 |
 | `GameState.Battle.cs` | 战斗：敌我单位、战斗菜单、ATB 设置 |
 | `GameState.Config.cs` | 游戏设置：`ConfigSaveData` 各字段、ATB 模式文字、当前战斗的自动战斗开关(0.14.2) |
+| `GameState.Timer.cs` | FF5 画面上的倒计时：`sample` / `pos` 的 `timer`、`timer.start` / `timer.end` 推送(0.14.3) |
+| `GameState.GameOver.cs` | FF5 游戏结束的两个选择框：`sample` 的 `gameover` 和 `gameover` 查询(0.14.3) |
 | `GameState.BattleAct.cs` | 战斗出招：出招方、指令、能力、目标、是否自动、每个目标的结算 |
 | `GameState.MonsterAi.cs` | FF5 怪物 AI 脚本查询(按需读，不每帧读) |
+| `GameState.MonsterMoves.cs` | FF5 怪物招式：AI 脚本里的能力、青魔法判定、`ConditionGroup` 状态(0.14.4) |
+| `GameState.BlueMagic.cs` | FF5 青魔法：主数据全部青魔法、已学会的、`Learning` 学法(0.14.4) |
+| `GameState.Export.cs` | FF5 整作静态数据导出：`export` 查询的七张表(0.14.5) |
 | `GameState.Menus.cs` | 带光标的界面：商店、地图菜单(魔法、道具、装备)、存档列表 |
 
 ## 编译与安装(0.11.0 起)
@@ -120,8 +128,9 @@ FfprBridge/
 | `bestiary.register` | 图鉴登记怪物时 | 怪物 ID、数量 |
 | `steam.setAchievement` / `steam.setProgress` | 游戏调用 Steam 时(0.3.0 起，同一内容只记一次) | API 名和数值 |
 | `map.change` | 换地图时(0.3.0 起) | 离开的地图和格子、到达的地图和格子 |
-| `pos.change` | 位置记录一变就写,每 4 帧检查一次(0.5.0 起) | 和查询 `pos` 相同:地图、格子、朝向、是否在走、主状态、对话 / 战斗标志、存档次数 |
+| `pos.change` | 位置记录一变就写,每 4 帧检查一次(0.5.0 起) | 和查询 `pos` 相同:地图、格子、朝向、是否在走、主状态、对话 / 战斗标志、存档次数；FF5 0.14.3 起还有 `timer` |
 | `save.write` | 存档写完时(0.4.0 起) | 存档位、结果 |
+| `timer.start` / `timer.end` | FF5 画面上的倒计时出现 / 消失时(0.14.3 起，每 4 帧检查一次) | `start`：剩余 `seconds`、`paused`、总时长 `required`；`end`：`reason`(`finished` 到点 / `cleared` 提前移除 / `restarted` 换了一个) |
 | `battle.act` | 一招开始执行时(0.13.0 起) | 出招方 `actor`、`command`、`abilities`、`items`、`targets`、`act`、`use`、`counter`、`auto`(0.14.2);见下 |
 | `battle.hit` | 一招里每个目标的结算完成时(0.13.0 起) | `act`(同一招的简短摘要)、`target`、`value`、`hit`、`hitCount`、`miss`、`heal`、`conditions` |
 | `battle.ai` | 游戏第一次取到怪物 AI 脚本时(0.13.1 起) | `monster`(怪物编号，未知时 null)、`scriptId`、`scriptName`、`length` |
@@ -135,6 +144,8 @@ FfprBridge/
 | `party` | 队伍成员：职业、等级、HP、MP、经验值 |
 | `field` | 玩家坐标，有本地、世界、实体、格子四种，还有移动状态 |
 | `dialog` / `choice` | 窗口当前状态 |
+| `timer` | 仅 FF5(0.14.3)：画面上的倒计时，`active` / `seconds` / `paused` |
+| `gameover` | 仅 FF5(0.14.3；`autosave` 0.14.4 修)：游戏结束的选择框，`open` / `prompt` / `cursor` / `autosave` |
 | `battle` | 是否在战斗中;0.13.0 起 FF4-FF6 有 `atb`(`wait` / `active`)、`battleSpeed`(设置里的档位)和 `atbSpeed`(当前战斗用的倍率);FF1-FF3 是回合制，这三项为 null |
 
 某一部分读不出来时，那一部分写成 `{"error": ...}`，其余部分照常写入。
@@ -145,10 +156,11 @@ FfprBridge/
 
 | op | 返回 | 起始版本 |
 | --- | --- | --- |
-| `pos` | 地图、主状态、格子、朝向、是否在走、对话 / 战斗标志、存档次数；0.13.6 起还有 `area`(GpsAreaId)、`areaType`(0 是世界地图)、`areaText` | 0.2 |
+| `pos` | 地图、主状态、格子、朝向、是否在走、对话 / 战斗标志、存档次数；0.13.6 起还有 `area`(GpsAreaId)、`areaType`(0 是世界地图)、`areaText`；FF5 0.14.3 起还有 `timer` | 0.2 |
 | `cells` (`r`, `at`) | 格子地形码;0.14.0 起可选 `at`(`[x, y]`)指定读取窗口的中心，缺省是玩家；回复里 `center` 仍是玩家的格子，`at` 是这次读的中心，`origin` 是窗口左上角 | 0.2 |
 | `walk` | 当前或最后一条 `walkpath`:seq、active、map、path、goal、label、index、steps、cell、segment、turns、startedAt、endedAt、reason;一条都没走过为 null | 0.14.0 |
 | `config` | 游戏当前设置：`isKeepAutoBattle`、`battleModeIndex` 和 `battleMode`(wait / active)、`battleSpeedIndex`、`battleMessageSpeedIndex`、`messageSpeed`、`isAutoDash`、`reequipIndex`、`isCursorMemory`、`battleModeButton`(原始值)和 `battleModeButtonName`；`battleAuto` 是当前战斗的自动战斗开关，不在战斗时为 null。读不到时 `config` 为 null，顶层带 `error` | 0.14.2 |
+| `gameover` | 仅 FF5：游戏结束的选择框，`open`、`prompt`(`continue` / `to-title` / null)、`cursor`(0 是 / 1 否 / null)、`autosave`(自动保存那行的 `map` / `label` / `time`，没有为 null；0.14.4 修读法) | 0.14.3 / 0.14.4 |
 | `sample` | 立即采样一次完整状态 | 0.2 |
 | `entities` (`kind`, `max`) | 入口(含目的地)、宝箱(含内容)、NPC、事件，以及所在格子；0.13.4 起换层格带目标层、门带联动和触发状态、PointIn 带 link/title、事件带脚本和动作；0.13.5 起 `kind: "All"` 列出所有分组/未识别实体，gimmick 实体带区域和落点 link；0.13.6 起宝箱带 `opened`、`hidden`、`treasureType`、`contentName` | 0.2.1 |
 | `route` (`to`) | 游戏自己的寻路结果(实测不可靠，改用 `collision` 自己寻路) | 0.2.x |
@@ -168,6 +180,9 @@ FfprBridge/
 | `encountgrid` (`cells`: [[x,y], …], 最多 64) | 每格的遇敌格子号(读不到为 null) | 0.13.8 |
 | `bridge` | 这一包和运行时:作品、版本、进程、启动时间、端口、局域网、客户端、挂钩、最近 100 条按键、最近 50 条警告;0.13.0 起有 `hookErrors` | 0.12.0 |
 | `monsterai` (`id` / `ids`) | FF5 怪物 AI 脚本:脚本名、原文(截断)、能认出的能力名;不给编号就是当前战斗的敌人 | 0.13.0 |
+| `monstermoves` (`ids`) | FF5 每只怪的 AI 招式：`abilityId`、名字、`blueMagic`、附带状态 `conditions`、招式的 `rate`；不给 `ids` 就是当前战斗的敌人 | 0.14.4 |
+| `bluemagic` | FF5 青魔法：`learned`(已学会)和 `all`(主数据全部青魔法 + `learnedBy` 学法) | 0.14.4 |
+| `export` (`table`, `offset`, `limit`) | FF5 整作静态数据的一页：`table` 是七张表之一，`limit` 默认 200、上限 500；回复 `export: {table, total, offset, rows, build}` | 0.14.5 |
 
 ### `bridge` 查询(0.12.0)
 
@@ -220,6 +235,36 @@ FfprBridge/
 
 `battleMode` 用游戏自己的 `BattleUtility.GetBattleModeByConfigValue` 映射，绝不按数字猜；映射不了就不写这个键。`battleAuto` 是**当前这场战斗**的自动战斗开关，取自 `BattlePlugManager.BattleStatusControl.isAutoMode`；不在战斗时为 null，`isKeepAutoBattle` 只是“跨战斗保持”的设置。读不到设置时回复里 `config` 为 null，顶层 `error` 说明原因。
 
+### 倒计时和游戏结束(0.14.3,仅 FF5)
+
+卡纳克城逃脱的 10 分钟倒计时在地图左上角和战斗右上角显示的是游戏自己的 `GrobalTimer`。`sample` 和 `pos` 里都有 `timer`：
+
+```json
+"timer": {"active": true, "seconds": 487.25, "paused": false}
+```
+
+- `active`：画面上有倒计时时为 true。判定用 `GrobalTimer.IsDisplayUI` 且计时器还没 `isFinished`；这是推断，待真机核对。
+- `seconds`：剩余秒数（保留两位小数，不小于 0）；不在倒计时时 null。
+- `paused`：游戏计时器暂停时为 true（例如部分菜单/选择时）；不在倒计时时 null。
+
+`timer.start` 在倒计时出现（或重开）时推送，带 `seconds`、`paused`、`required`（总时长）。`timer.end` 在它消失时推送，`reason` 是 `finished`（到点）、`cleared`（提前移除：离开地图、读档等）或 `restarted`（换了一个计时器）。
+
+游戏结束（全灭或倒计时到点）后，`sample` 里的 `gameover` 和直接查询 `{"id":1,"op":"gameover"}` 给出同一个对象：
+
+```json
+"gameover": {
+  "open": true,
+  "prompt": "continue",
+  "cursor": 0,
+  "autosave": {"map": "卡纳克城 1 层", "label": "自动保存", "time": "2026/11/10 1:48"}
+}
+```
+
+- `prompt`：`continue` 是「读取」窗口（自动保存栏 +「要从最新的保存数据开始吗？」）；`to-title` 是「返回标题画面。可以吗？」；没认出时为 null。
+- `cursor`：0 是“是”，1 是“否”，读不到 null。两个框的默认光标不同（继续框默认“是”，返回标题框默认“否”），以这个字段为准。
+- `autosave`：`continue` 窗口上那一行自动保存；`map` / `label` / `time` 是画面上的文字（`map` 会拼上楼层，`time` 是自动保存下面的存档时间，不是右边的游戏时间），没开这个窗口或读不到时 null。0.14.4 起直接从 `GameOverLoadPopup.saveContentController` 的 `SaveContentView` 读 `areaNameText`/`floorNameText`/`slotNameText`/`timeStampDate`/`timeStampTime`，不再因为 `SaveContentController.IsExistData` 为 false 就提前返回；画面上读不到时退回 `SlotData`/`GameOverPopupController.saveData` 的 `CurrentArea`/`CurrentLocation`/`TimeStamp`，`map` 优先用游戏自己的 `GetLocationTextBySaveData`。**这条退回链是推断，待真机核对。**
+- 这两个框打开时，游戏自己的 `pos.state` 仍是 `Event`，`dialog` 里还留着游戏结束前的最后一句台词，`saveui.open` / `title.open` 都是 false。所以要看 `gameover.open` / `gameover.prompt`，不要靠 `dialog` 或 `state` 判断。
+
 ### 战斗事件(0.13.0)
 
 `battle.act` 挂在 `Last.Battle.BattleActExection.InitPrepareState` 的 postfix 上。它是状态机进入“准备一招”的第一步，此时 `InStagingBattleActData` 里还留着完整的指令、能力表和目标。字段：
@@ -248,7 +293,7 @@ FfprBridge/
  "conditions": [{"name": "中毒", "change": "add"}]}
 ```
 
-`hit` 是游戏的 `HitType`(`Hit`、`Critical`、`Miss`、`Recovery`、`MPHit` 等);`value` 为正值，伤害还是回复看 `hit` / `heal`。`act.counter` 在 FF1-FF4 为 null，其余同 `battle.act`。`battle.ai` 每个脚本只推一次，用来在开发机留档；脚本正文不进事件，查询 `monsterai` 才读。`conditions` 来自这一目标的结算结果;`change` 在 `HitType` 为 `RecoveryCondition` 时写 `remove`，其余写 `add`，这是从命中类型推断的，还没在真机逐条核对。没有状态时 `conditions` 为 null。
+`hit` 是游戏的 `HitType`(`Hit`、`Critical`、`Miss`、`Recovery`、`MPHit` 等);`value` 为正值，伤害还是回复看 `hit` / `heal`。`act.counter` 在 FF1-FF4 为 null，其余同 `battle.act`。`battle.ai` 每个脚本只推一次，用来在开发机留档；脚本正文不进事件，查询 `monsterai` 才读。`conditions` 来自这一目标的结算结果;`change` 在 `HitType` 为 `RecoveryCondition` 时写 `remove`，其余写 `add`，这是从命中类型推断的，还没在真机逐条核对。没有状态时 `conditions` 为 null。0.14.4 起，`Condition.MesIdName` 为空时用 `ConditionType` 枚举名兜底（和 `party[].status` 一样），不再把黑暗、中毒、石化这些空名字的状态丢掉。
 
 ### `monsterai` 查询(0.13.0,仅 FF5)
 
@@ -278,6 +323,95 @@ FfprBridge/
 - `scriptFormat` 是 `json`(能解析出 `Mnemonics`)、`json (no recognized opcodes)` 或 `text`(按行猜的)。
 - `abilities` 只列“能确定是能力编号”的项:用游戏自己的 `BattleAI.k...AbilityId` 常量决定第几个操作数是能力 ID。`Act` 这一条会按位置把 `iValues` 和 `rValues` 全配对列出，所以 `Act [381, 540] rValues [65, 35]` 会得到两项，各带 `rate`;`StartTable…EndTable` 之间的项带 `table`(0、1…)，同一组是一次抽签。认不出的 opcode 不列，不猜。
 - 名字:先用 `ContentUtitlity.GetAbilityName`，再查 `GetMesIdAbilityName` / `GetMesIdBattle`，最后遍历 `Content` 的 `MesIdBattle`(`MSG_MON_ATK_*`)和 `MesIdName`。`"None"` 视为没有名字;文本键也查不到中文时，`name` 为 null，另带 `nameKey`(原始键);`name` 有中文时不再带 `nameKey`。`name` 和 `nameKey` 都是 null 才表示游戏连键都没给。字段没弄清的脚本格式:游戏用 `Format`(`SystemFlag` / `Segments` / `ScriptLocal` / `Mnemonics` / `Animations`)表示一份脚本，桥读了 `Mnemonics[].operands` 的 `iValues`/`rValues` 和 `StartTable`/`EndTable`;条件、跳转和标签的完整语义还没弄清。
+
+### `bluemagic` 查询(0.14.4,仅 FF5)
+
+```json
+{"id": 1, "op": "bluemagic"}
+```
+
+回复：
+
+```json
+{"ok": true, "bluemagic": {
+  "learned": [{"id": 392, "name": "闪光"}],
+  "all": [
+    {"id": 392, "name": "闪光", "learnedBy": "怪物施放（青魔法师带「学习」）"}
+  ]
+}}
+```
+
+- `all` 是 `Ability` 主数据里 `TypeId == AbilityType.BlueMagic`(504) 的全部青魔法，按 id 排序；名字用游戏自己的 `ContentUtitlity.GetAbilityName` / `Content` 解析。`learnedBy` 先找 `Learning` 主数据里 `ContentId` 对得上的行，按 `LearningType` 写“Lv… / 职业… Lv… / 剧情 / 装备 / 魔法石”；没有对应行时写 FF5 的规则「怪物施放（青魔法师带「学习」）」。**`Learning` 的 `Value1` / `Value2` / `JobId` 语义是推断，待真机核对。**
+- `learned` 是队伍里每个 `OwnedCharacterData.OwnedAbilityList` 中 `Ability.TypeId == 504` 的项，按 id 排序。读不到 `UserDataManager`、`OwnedCharacterList` 或所有角色的能力表时写 `null`；读到了但一个都没学写 `[]`。**没有用 `OwnedMagicList`**：它是 `Magic`（白/黑魔法）的集合，不是已学青魔法。
+- 字段来源：`Last.Management.UserDataManager.OwnedCharacterList`、`Last.Data.User.OwnedCharacterData.OwnedAbilityList`、`Last.Data.Master.Ability`、`Last.Data.Master.Learning`。
+
+### `monstermoves` 查询(0.14.4,仅 FF5)
+
+```json
+{"id": 1, "op": "monstermoves", "ids": [41, 42]}
+```
+
+传 `ids` 时只查这些怪物；不给 `ids` 时用当前战斗里的全部敌人。回复：
+
+```json
+{"ok": true, "monstermoves": [{
+  "id": 41, "name": "船员尘埃",
+  "scriptId": 41, "scriptName": "sc_ai_041_CrewDust", "source": "cache",
+  "moves": [
+    {"abilityId": 392, "name": "闪光", "blueMagic": true,
+     "conditions": ["黑暗"], "rate": 65}
+  ]
+}]}
+```
+
+- `moves` 来自 `Monster.ScriptId` → AI 脚本，解析器和 `monsterai` 是同一份（`Act` / `StartTable` / `LoopAct` 等，认不出的 opcode 不列）；同一只怪同一个 `abilityId` 只留一条，`rate` 取第一次读到的。`rate` 是脚本里的权重/百分比，不是独立概率。
+- `blueMagic`：先用 `BlueMagicData.BlueMagicLearningAbilityIds`（`usedAbilityId` → 可学成的青魔法 id），再退回 `Ability.TypeId == 504`。这招教的是另一个 id 时另带 `blueMagicId`。读不到青魔法主数据时为 `false`，不是猜的。
+- `conditions`：`Ability.ConditionGroupId` → `GroupMasterUtility.GetConditionMasters`（内部是 `ConditionGroup.GroupId` → `ConditionId` → `Condition`）。名字用 `Condition.MesIdName`，空时用 `ConditionType` 枚举名兜底。没有状态组或查不到时是空数组；**法术类的状态走 `Magic.FunctionGroupId` 函数组，这条链还没解开，所以法术类状态可能缺**。整条链路是推断，待真机核对。
+- 读不到脚本时 `moves` 为 null，另带 `error`（和 `monsterai` 的“脚本没有载入”同一原因）。`source` 同 `monsterai`。
+- 字段来源：`Last.Data.Master.Monster.ScriptId`、`MonsterAiScript`、`Last.Data.Master.Ability.ConditionGroupId`、`Last.Data.Master.ConditionGroup`、`Last.Data.Master.Condition`、`Last.Systems.GroupMasterUtility`、`Serial.FF5.Management.BlueMagicData.BlueMagicLearningAbilityIds`。
+
+### `export` 查询(0.14.5,仅 FF5)
+
+把整作的静态数据分页导出，给离线知识模块用(任务 93)。只读主数据，不加载地图、不读存档、不改任何状态。
+
+```json
+{"id": 1, "op": "export", "table": "monsters", "offset": 0, "limit": 200}
+```
+
+回复：
+
+```json
+{"ok": true, "export": {
+  "table": "monsters", "total": 512, "offset": 0, "build": "1.2.0",
+  "rows": [
+    {"id": 1, "name": "哥布林", "bookId": 1, "level": 1, "hp": 4, "mp": 0,
+     "weak": [], "absorb": [], "nullify": [], "statusImmune": [],
+     "drops": [{"itemId": 1, "name": "药水", "rate": 30}],
+     "steal": [{"itemId": 1, "name": "药水", "rate": null}],
+     "boss": false, "scriptId": 1,
+     "moves": [{"abilityId": 1, "name": "攻击", "blueMagic": false,
+                "conditions": [], "rate": 100}]}
+  ]
+}}
+```
+
+`limit` 默认 200、上限 500；`offset` 负数按 0。`total` 是整张表的行数，`rows` 只是这一页。`build` 读 `UnityEngine.Application.version`，读不到为 null。主数据没载入或表名不认识时 `ok` 为 false、顶层带 `error`。`monsters` 的 `moves` 只给这一页的怪物读 AI 脚本；脚本没载入时 `moves` 为 null(不是空数组)。为了和任务 93 的行类型一致，`maps.areaType`、`monsters.scriptId`、`treasures.flag` 写成字符串(原始数值转成文本，读不到为 null)。
+
+| table | 每行字段 | 主数据来源 |
+| --- | --- | --- |
+| `maps` | `{id, name, areaId, areaName, areaType}` | `Map.Id` / `MapName` / `MapTitle` / `AreaId`，`Area.AreaName` / `MapType` |
+| `monsters` | `{id, name, bookId, level, hp, mp, weak, absorb, nullify, statusImmune, drops, steal, boss, scriptId, moves}` | `Monster` 的 `Id` / `MesIdName` / `Lv` / `Hp` / `Mp` / `ResistanceAttribute` / `ResistanceCondition` / `Boss` / `ScriptId` / `DropRate` / `DropContentId1..8` / `StealContentId1..4`；`AttributeGroup` 的 `GroupId` / `AttributeId` / `TypeId` / `MesIdName`；`ConditionGroup` + `Condition`；`PictureBook` + `PictureBookGroup` 给 `bookId`；`moves` 复用 `monstermoves` |
+| `encounters` | `{scope, mapId, areaId, groupId, weight, monsterIds}` | `Map.MonsterSetId` → `MonsterSet.MonsterSet1..16` + `MonsterSetNRate` → `MonsterParty.Monster1..9`；世界地图的 `EncountArea.Foot01..32MonsterSet` |
+| `treasures` | `{id, areaId, mapId, cell, hidden, contentId, contentName, count, flag}` | `TreasureBox.Id` / `GpsAreaId` / `TreasureType` / `Count` / `Flag`；`hidden` 是 `TreasureType == 2` |
+| `shops` | `{id, mapId, areaName, kind, products: [{itemId, name, price}]}` | `ProductGroup.Id` / `MesIdName`、`Product.GroupId` / `ContentId` / `Coefficient`、`Content`、`ShopSign.GpsAreaId` / `SignType`、`Map.AreaId`、`Area.AreaName`；价格取 `Item` / `Weapon` / `Armor` / `Ability` / `Magic` 的 `Buy` |
+| `items` | `{id, name, kind, price, cures, restores}` | `Content`(只取 `TypeId` 为 Item / Weapon / Armor)、`Item` / `Weapon` / `Armor` 的 `Buy`，`Item.StandardValue` / `MenuFunctionGroupId` / `BattleFunctionGroupId`、`FunctionGroup` + `Function` |
+| `magic` | `{id, name, school, mp, cures}` | `Ability.TypeId` 为 White(1) / Black(2) / TimeMagic(501) / Summon(9) / BlueMagic(504)；名字用游戏自己的 `ContentUtitlity.GetAbilityName`；`mp` 是 `Ability.UseValue`；`cures` 走 `FunctionGroup`/`Function` |
+
+- 属性名用 `AttributeGroup.MesIdName`，为空时用 `AttributeType` 枚举名；`weak` 含 `TypeId == 1` 和 `DoubleWeak(401)`，`nullify` 是 `Invalid(3)`，`absorb` 是 `Absorption(4)` 和 `AbsorptionWeakPhysics(403)`。
+- 状态名用 `Condition.MesIdName`，为空时按 `GameState.Party.cs` 的做法用 `ConditionType` 枚举名兜底。`cures` 里 `RecoveryCondition` / `RecoveryConditionMulti` / `UserRecoveryCondition` 的 `FunctionNValue1..3` 当作状态 id 或状态组 id 两种都试。
+- **`treasures` 的 `mapId`、`cell`、`contentId`、`contentName` 一定是 null**：`TreasureBox` 只有 `Id` / `Flag` / `GpsAreaId` / `TreasureType` / `Count`，地图号、格子和内容在加载后的地图实体 `PropertyTresureBox` 上，这个查询按任务要求不加载地图。**待真机核对**:`contentId`/格子后续只能从地图实体补。
+- **推断，待真机核对**:`monsters.drops[].rate` 用 `Monster.DropRate`(所有掉落槽共用)，每槽的 `DropContentIdNValue` 当作数量而没有导出；`steal[].rate` 没有对应字段所以是 null。`items[].restores.hp` 来自 `Item.StandardValue` + `Recovery`，`restores.mp` 来自 `RecoveryEx`，哪种道具走哪条函数是推断。`shops` 用 `ShopSign.Id == ProductGroup.Id` 关联地点和种类，`Product.Coefficient` 当作百分比折价，`mapId` 取同一 `AreaId` 的第一张地图；这些都要真机核对。`magic` 用 `Ability` 而不是较小的 `Magic` 主数据，是为了包含召唤和青魔法。
+- 字段来源：`Last.Data.Master.Map`、`Area`、`Monster`、`AttributeGroup`、`ConditionGroup`、`Condition`、`PictureBook`、`PictureBookGroup`、`MonsterSet`、`MonsterParty`、`EncountArea`、`TreasureBox`、`ProductGroup`、`Product`、`Content`、`ShopSign`、`Item`、`Weapon`、`Armor`、`FunctionGroup`、`Function`、`Ability`；`MasterManager.GetList<T>()` / `GetData<T>()`。
 
 ### 脚本格式(0.13.2，按船员尘埃 sc_ai_041_CrewDust 的例子)
 
@@ -410,4 +544,10 @@ FfprBridge/
 | 战斗菜单 | `Last.UI.KeyInput.BattleCommandSelectController`、`Serial.FF5.UI.KeyInput.BattleQuantityAbilityInfomationController` |
 | 商店 | `Last.UI.KeyInput.ShopController`、`ShopCommandMenuController`、`ShopTradeWindowController` |
 | 存读档列表 | `Last.UI.KeyInput.SaveListController`(显示顺序 `[21, 22, 1..20]`) |
+| 倒计时(0.14.3,仅 FF5) | `Last.Management.TimerInstanceManager.instance.GrobalTimer`(`GrobalTimer.Timer`；`Last.Timer.Timer.requiredSec` / `elapsedSec` / `RemainingSeconds` / `isPause` / `isFinished`) |
+| 游戏结束(0.14.3,仅 FF5) | `Last.UI.KeyInput.GameOverPopupController`(`stateMachine`、`view.loadPopup`、`commonPopup`、`saveData`)、`GameOverLoadPopup`、`GameOverSelectPopup`、`CommonPopup` |
+| 自动保存行(0.14.4,仅 FF5) | `GameOverLoadPopup.saveContentController`(`SaveContentController.view`、`SlotData`、`slotName`、`GetLocationTextBySaveData`)、`Last.UI.KeyInput.SaveContentView`(`areaNameText`/`floorNameText`/`slotNameText`/`timeStampDate`/`timeStampTime`)、`SaveSlotData.CurrentArea`/`CurrentLocation`/`TimeStamp` |
+| 青魔法(0.14.4,仅 FF5) | `Last.Data.Master.Ability.TypeId == 504`、`Last.Data.User.OwnedCharacterData.OwnedAbilityList`、`Last.Management.UserDataManager.OwnedCharacterList`、`Last.Data.Master.Learning`、`Serial.FF5.Management.BlueMagicData.BlueMagicLearningAbilityIds`、`Serial.ProviderManager.instance.BlueMagicProvider` |
+| 怪物招式状态(0.14.4,仅 FF5) | `Last.Data.Master.Ability.ConditionGroupId`、`Last.Data.Master.ConditionGroup`、`Last.Data.Master.Condition`、`Last.Systems.GroupMasterUtility.GetConditionMasters` |
+| 整作导出(0.14.5,仅 FF5) | `Last.Data.Master.MasterManager.GetList<T>()` / `GetData<T>()`；`Map`、`Area`、`Monster`、`AttributeGroup`、`ConditionGroup`、`Condition`、`PictureBook`、`PictureBookGroup`、`MonsterSet`、`MonsterParty`、`EncountArea`、`TreasureBox`、`ProductGroup`、`Product`、`Content`、`ShopSign`、`Item`、`Weapon`、`Armor`、`FunctionGroup`、`Function`、`Ability`；`UnityEngine.Application.version` |
 | 地图菜单 | `Last.UI.KeyInput.MainMenuController`;魔法 `Serial.FF5.UI.KeyInput.AbilityWindowController`;道具 `ItemWindowController`;装备 `EquipmentWindowController` |
