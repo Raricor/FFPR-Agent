@@ -3,7 +3,7 @@
     "type": "function",
     "function": {
       "name": "go",
-      "description": "去一个地方。to 给地图号(62、\"地图 62\")、地图名的一部分(\"图尔村\"),或坐标([12, 8]、\"12,8\")。给地图时按地图记录自己排路线,每离开一张图都检查完成度,可以经过世界地图(步行或骑飞龙);名字对上多张会列出来让你挑,不走、不猜。给坐标时在当前地图走过去;世界地图上坐船会自动走海路,骑飞龙去入口会自动降落。坐标只用在没有名字的地方,不要用坐标一段一段地挪。穿过打不过的区域时带 flee: true,路上遇敌先逃跑,逃不了才按策略表打。结果列出走过的每一跳、停在哪、为什么停和没走通的出口。",
+      "description": "去一个地方。to 给地图号(62、\"地图 62\")、地图名的一部分(\"图尔村\"),或坐标([12, 8]、\"12,8\")。给地图时按地图记录自己排路线,每离开一张图都检查完成度,可以经过世界地图(步行或骑飞龙);名字对上多张会列出来让你挑,不走、不猜。给坐标时在当前地图走过去;世界地图上坐船会自动走海路,骑飞龙去入口会自动降落。坐标如果落在已知出口/入口上,代码会把它当成去那张地图,和写地图名一样先过出发检查。坐标只用在没有名字的地方,不要用坐标一段一段地挪。穿过打不过的区域时带 flee: true,路上遇敌先逃跑,逃不了才按策略表打。结果列出走过的每一跳、停在哪、为什么停和没走通的出口。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -28,6 +28,88 @@
           }
         },
         "required": ["to"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "route",
+      "description": "一段路一次走完:按 stops 里给的地方排好顺序,走路、途中的普通战斗和剧情都由代码处理,不再一步一步问你。stops 每项写 {to, do?, optional?}:to 和 go 的写法一样(地图号、地图名、坐标或「地图号:x,y」);do 写 open(开宝箱、拿隐藏道具)、save(到存档点存 20 号位)、talk(调查/对话)、grind(到 to 刷怪),省略就只是走到;grind 要带 until(至少一项):bestiary 怪名或图鉴号、blueMagic 青魔法名、battles 场数、minutes 分钟,到 to 后调现有刷怪循环,满足一项就停;倒计时期间所有 grind 路标都会跳过。optional 是可选路标(倒计时不够可以跳过),默认只有 do: open 的算可选。end 是终点(比如出口地图),不写就把最后一个 stops 当终点。不带 stops 和 end 调用时,从上次的路线进度接着走;没有进度时按当前阶段计划接着走。一段路上要去的地方已经清楚时就用 route,不要一格一格地 go。结果每个路标一行(到了、开了什么、跳过、用时),最后写停下原因;倒计时还开着时写剩余秒数。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "stops": {
+            "type": "array",
+            "description": "按想去的顺序给路标;代码会重新排成最省时的顺序",
+            "items": {
+              "type": "object",
+              "properties": {
+                "to": {
+                  "type": ["integer", "string", "array"],
+                  "items": {
+                    "type": "integer"
+                  },
+                  "description": "地图号、地图名的一部分、坐标 [x, y] / \"x,y\",或 \"地图号:x,y\""
+                },
+                "do": {
+                  "type": "string",
+                  "enum": ["open", "save", "talk", "grind"],
+                  "description": "open 开宝箱/拿隐藏道具;save 到存档点存 20 号位;talk 调查/对话;grind 到 to 刷怪(要写 until)"
+                },
+                "until": {
+                  "type": "object",
+                  "description": "do: grind 的停止条件,至少一项;到 to 后用现有刷怪循环,满足一项就停",
+                  "properties": {
+                    "bestiary": {
+                      "type": "array",
+                      "items": {
+                        "type": ["string", "integer"]
+                      },
+                      "description": "要登记进本档图鉴的怪名或图鉴号"
+                    },
+                    "blueMagic": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "要学会的青魔法名"
+                    },
+                    "battles": {
+                      "type": "integer",
+                      "description": "刷满多少场"
+                    },
+                    "minutes": {
+                      "type": "number",
+                      "description": "最多刷多少分钟"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "optional": {
+                  "type": "boolean",
+                  "description": "可选路标(倒计时不够可以跳过);do: open 默认可选,终点不可选"
+                }
+              },
+              "required": ["to"]
+            }
+          },
+          "end": {
+            "type": ["integer", "string", "array"],
+            "items": {
+              "type": "integer"
+            },
+            "description": "终点,写法同 to(如出口地图号或出口坐标);不写就用最后一个 stops"
+          },
+          "flee": {
+            "type": "boolean",
+            "description": "路上的普通战斗先逃跑,逃不了才按策略表打"
+          },
+          "leave_incomplete": {
+            "type": "string",
+            "description": "阶段检查没通过却确实要走时的具体理由;不带就拒绝"
+          }
+        }
       }
     }
   },
@@ -272,7 +354,7 @@
     "type": "function",
     "function": {
       "name": "grind",
-      "description": "在附近刷怪,代码自动来回走、遇敌按本图策略打、状态差回旅店住店,中间不问模型。until_gold、until_level、until_bestiary 至少要给一个,否则拒绝执行。默认最多刷 20 分钟;结果报告刷了多久、打了几场、赚了多少钱、升了几级、本档图鉴新登记了哪些怪、用掉的道具、住了几次店和为什么停。钱不够或本图鉴没齐时优先用它,不要用 go 一格一格地走。",
+      "description": "在附近刷怪,代码自动来回走、遇敌按本图策略打、状态差回旅店住店,中间不问模型。until_gold、until_level、until_bestiary 至少要给一个,否则拒绝执行。until_bestiary 按概率自己定预算:以后还会出现的怪刷一阵(默认最多 15 场)没遇到就停下、自动记欠账,可以直接离开;会错过的怪一直刷到上限(默认 40 分钟),停下后由你决定。max_minutes 只是总时长上限。默认最多刷 20 分钟;结果报告刷了多久、打了几场、赚了多少钱、升了几级、本档图鉴新登记了哪些怪、用掉的道具、住了几次店和为什么停。钱不够或本图鉴没齐时优先用它,不要用 go 一格一格地走。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -495,7 +577,7 @@
     "type": "function",
     "function": {
       "name": "done",
-      "description": "目标模式下不用 done:这一轮写进展即可,系统会自动开始下一轮;整个目标真的完成时用目标工具标完成。",
+      "description": "目标模式下不用 done:这一轮写进展即可,系统会自动开始下一轮;整个目标真的完成时用 update_goal 标完成。",
       "parameters": {
         "type": "object",
         "properties": {
