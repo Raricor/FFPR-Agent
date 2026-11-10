@@ -148,6 +148,44 @@ void test("checkStrategy accepts a party that matches the names and roles", asyn
   assert.deepEqual(checkStrategy(magissa, [{ name: "蕾娜" }, { name: "加拉夫" }]), []);
 });
 
+void test("checkStrategy rejects a fallen target when the action is not a revive", () => {
+  const good = parsed({
+    version: 2,
+    rules: [
+      {
+        who: "all",
+        if: "ally.count(not alive) > 0",
+        do: "白魔法:复活",
+        to: "ally.first(not alive)",
+      },
+      { who: "all", do: "攻击" },
+    ],
+  });
+  assert.deepEqual(checkStrategy(good, ["蕾娜", "巴兹"]), []);
+
+  const bad = parsed({
+    version: 2,
+    rules: [
+      {
+        who: "all",
+        if: "ally.count(not alive) > 0",
+        do: "白魔法:治疗",
+        to: "ally.first(not alive)",
+      },
+      { who: "all", do: "攻击" },
+    ],
+  });
+  const problems = checkStrategy(bad, ["蕾娜", "巴兹"]);
+  assert.ok(
+    problems.some(
+      (problem) =>
+        problem.includes("第 1 条规则") &&
+        problem.includes("目标是倒下的同伴") &&
+        problem.includes("不是复活类"),
+    ),
+  );
+});
+
 void test("checkStrategy reports names that are neither in the party nor a role", async () => {
   const magissa = parsed(await fixture("magissa-fuza.json"));
   const problems = checkStrategy(magissa, ["蕾娜", "法利斯"]);

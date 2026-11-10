@@ -7,6 +7,7 @@
 
 import { describeError } from "../errors.ts";
 import { isRecord, text } from "../values.ts";
+import { isReviveAction } from "../skills/gambit.ts";
 import { ExpressionError, expressionType, parseExpression } from "./expr.ts";
 import type { Strategy, StrategyPhase, StrategyReaction, StrategyRule } from "./types.ts";
 
@@ -267,6 +268,19 @@ export function parseStrategy(json: unknown): Strategy | string[] {
   };
 }
 
+/**
+ * Whether `to` picks a fallen ally: the legacy target converted by fromLegacy
+ * (ally.first(not alive)), or the same written with alive/hp. Spaces are ignored, so the
+ * common spellings all count; an expression the parser rejected elsewhere never reaches here.
+ */
+export function targetsFallenAlly(to: string | undefined): boolean {
+  if (to === undefined) return false;
+  const compact = to.replace(/\s+/gu, "");
+  return /^(?:倒下的同伴|ally\.first\((?:notalive|alive==(?:false|0)|(?:hp|hp_pct)(?:<=|==)0)\))$/u.test(
+    compact,
+  );
+}
+
 function partyNames(party: readonly unknown[] | undefined): Set<string> | null {
   if (party === undefined) return null;
   const names = new Set<string>();
@@ -318,9 +332,15 @@ export function checkStrategy(strategy: unknown, party?: readonly unknown[]): st
   ];
   if (allRules.length === 0) problems.push("策略里没有规则");
   for (const { rule, label } of allRules) {
-    if (rule.who === "all" || rule.who === "any" || roles.has(rule.who)) continue;
-    if (names !== null && !names.has(rule.who)) {
+    const group = rule.who === "all" || rule.who === "any" || roles.has(rule.who);
+    if (!group && names !== null && !names.has(rule.who)) {
       problems.push(`${label}:队伍里没有「${rule.who}」`);
+    }
+    if (targetsFallenAlly(rule.to) && !isReviveAction(rule.do)) {
+      problems.push(
+        `${label}:目标是倒下的同伴,但「${rule.do}」不是复活类;` +
+          "治疗对倒下的人没用,要用复活魔法(比如 白魔法:复活)或 道具:不死鸟之尾",
+      );
     }
   }
   return problems;

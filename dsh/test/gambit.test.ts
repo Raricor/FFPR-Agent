@@ -192,6 +192,32 @@ void test("the check sends bad tables back with reasons", () => {
   assert.ok(problems.some((problem) => problem.startsWith("巴兹:")));
 });
 
+void test("the check rejects healing a fallen ally instead of reviving", () => {
+  assert.deepEqual(
+    check({
+      蕾娜: [{ if: "ally.dead >= 1", do: "白魔法:复活", target: "倒下的同伴" }, { do: "攻击" }],
+    }),
+    [],
+  );
+  assert.deepEqual(
+    check({
+      蕾娜: [{ if: "ally.dead >= 1", do: "道具:不死鸟之尾", target: "倒下的同伴" }, { do: "攻击" }],
+    }),
+    [],
+  );
+  const problems = check({
+    蕾娜: [{ do: "白魔法:治疗", target: "倒下的同伴" }, { do: "攻击" }],
+  });
+  assert.ok(
+    problems.some(
+      (problem) =>
+        problem.includes("蕾娜 第 1 条") &&
+        problem.includes("目标是倒下的同伴") &&
+        problem.includes("不是复活类"),
+    ),
+  );
+});
+
 void test("old plans and default rules", () => {
   for (const item of fixture.normalize) {
     assert.deepEqual(normalize(item.plan), item.out);

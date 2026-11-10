@@ -118,9 +118,6 @@ const PENDING_TIMEOUT_MS = 30_000;
 const HEAL_ABILITIES: ReadonlySet<string> = new Set(["治疗", "救疗", "回复"]);
 const GENERIC_ACTIONS: ReadonlySet<string> = new Set(["攻击", "防御", "换列", "道具"]);
 
-/** The item names that revive; containment, because the bag may tag icons onto names. */
-const REVIVE_ITEMS = /不死鸟|凤凰/u;
-
 function holds(expression: string | undefined, snapshot: BattleSnapshot): boolean {
   if (expression === undefined || expression.trim() === "") return true;
   const value = evaluate(expression, snapshot);
@@ -163,7 +160,7 @@ export function effectOf(action: ParsedAction): EffectKind | null {
   const ability = action.ability;
   if (ability === "") return null;
   if (action.command === "道具") {
-    if (REVIVE_ITEMS.test(ability)) return "revive";
+    if (gambit.isReviveAction(action.command + ":" + ability)) return "revive";
     for (const [, item] of Object.entries(gambit.CURES).map(([, cure]) => cure)) {
       if (item !== "" && (ability.includes(item) || item.includes(ability))) return "cure";
     }
@@ -171,7 +168,7 @@ export function effectOf(action: ParsedAction): EffectKind | null {
     if (/^(高级)?恢复药$|^药$/u.test(ability)) return "heal";
     return null;
   }
-  if (ability.includes("复活")) return "revive";
+  if (gambit.isReviveAction(action.command + ":" + ability)) return "revive";
   if (HEAL_ABILITIES.has(ability.replace(/\+$/u, ""))) return "heal";
   if (cureAilmentOf(ability) !== null) return "cure";
   return null;

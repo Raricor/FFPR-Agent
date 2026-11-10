@@ -105,6 +105,24 @@ function pyString(value: unknown): string {
   return JSON.stringify(value);
 }
 
+/** Items that bring a fallen ally back; containment, because the bag may tag icons onto names. */
+export const REVIVE_ITEMS = /不死鸟|凤凰/u;
+
+/**
+ * Whether a rule's `do` revives: 道具:不死鸟之尾 (or 凤凰之尾), or a revival spell such as
+ * 白魔法:复活. Used both by the static checks and by the strategy executor, so a rule the
+ * check accepts is one the executor also treats as a revive.
+ */
+export function isReviveAction(action: string): boolean {
+  const trimmed = action.trim();
+  const separator = trimmed.indexOf(":");
+  if (separator < 0) return false;
+  const command = trimmed.slice(0, separator).trim();
+  const ability = trimmed.slice(separator + 1).trim();
+  if (command === "道具") return REVIVE_ITEMS.test(ability);
+  return ability.includes("复活");
+}
+
 /** ENEMY, SELF, WEAKEST, FALLEN, or AILING for 「状态:毒」 (an ally with that status). */
 export function targetOf(rule: unknown): string | undefined {
   const raw = isRecord(rule) && truthy(rule.target) ? rule.target : "";
@@ -531,6 +549,11 @@ export function check(table: unknown, game = "ff5"): string[] {
         problems.push(
           `${actor} 第 ${index} 条:目标「${pyString(rule.target)}」不认识;` +
             "能用:敌人、自己、hp最低的同伴、倒下的同伴、状态:毒(有这个状态的同伴)",
+        );
+      } else if (targetOf(rule) === FALLEN && !isReviveAction(pyString(rule.do))) {
+        problems.push(
+          `${actor} 第 ${index} 条:目标是倒下的同伴,但「${pyString(rule.do)}」不是复活类;` +
+            "治疗对倒下的人没用,要用复活魔法(比如 白魔法:复活)或 道具:不死鸟之尾",
         );
       }
     }
