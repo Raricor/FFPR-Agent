@@ -29,6 +29,7 @@ import type {
   ObservedMove,
 } from "../nav.ts";
 import { isRecord, num, record, records, text, truthy, type Json } from "../values.ts";
+import { movesFromMovingGimmickMap } from "../atlas.ts";
 import { eventBaseName, fallMoves } from "../view.ts";
 import {
   beginWalk,
@@ -97,7 +98,7 @@ export interface MoveState {
     from: Cell,
     to: Cell,
     how: string,
-    detail?: { kind?: string; toLayer?: number; layer?: number },
+    detail?: { kind?: string; toLayer?: number; layer?: number; gimmick?: boolean },
   ) => Promise<void>;
   /** Forgets atlas "走不过去" records a walk proved wrong; the Game wires it in (task 73). */
   forgetBlocked?: (mapId: unknown, steps: readonly ObservedMove[]) => Promise<void>;
@@ -143,6 +144,16 @@ export interface MoveState {
    * a step blocked on the ground floor must not close the same step on the upper floor).
    */
   layeredCuts?: Map<string, Map<number, Set<string>>>;
+  /**
+   * Task 99: maps this run has confirmed have a moving gimmick (seen in the entities or in
+   * `pos.state: Gimmick`). Their refusals stay in this go's plan instead of the map record.
+   */
+  gimmickMaps?: Set<string>;
+  /**
+   * Task 99: maps whose `kind: All` entities have been read this run, so a non-moving map is
+   * not re-read on every replan (the full query is the expensive one).
+   */
+  gimmickChecked?: Set<string>;
   /** Ways seen earlier on a map (conveyors, falls, layer changes), for the next plan. */
   moves?: (mapId: unknown) => readonly ObservedMove[];
   /**
@@ -178,6 +189,17 @@ export const EVENT_TRY_WAIT_MS = 1_000;
  */
 export const CARRY_REPEAT_LIMIT = 2;
 export const CARRY_TOTAL_LIMIT = 4;
+
+/*
+ * Task 99 (11-10): Fire-Powered Ship 270's sliding floor is an entity, not a collision change,
+ * so a step blocked while the platform was elsewhere was written as a permanent wall. The map
+ * is recognised by inference: the bridge's entities name/type the moving gimmick, or a
+ * position read on the map has been in MainState=Gimmick. Nothing in the game states it
+ * directly, so keep these words conservative and easy to extend.
+ */
+const MOVING_GIMMICK_WORDS: readonly string[] = ["滑动地板", "移动平台", "Gimmick"];
+const MOVING_GIMMICK_HOW = "移动机关";
+export const MOVING_GIMMICK_QUERY_MAX = 400;
 
 // Task 58: these are the defaults; Config carries the live values on MoveState.
 export const WALKPATH_TIMEOUT_MS = 60_000;
@@ -258,6 +280,25 @@ const CONVEYOR_WORDS: readonly string[] = ["流される"];
 export function isConveyorEvent(name: string): boolean {
   const base = eventBaseName(name);
   return CONVEYOR_WORDS.some((word) => base.includes(word));
+}
+
+/**
+ * Task 99: whether one bridge entity is a moving gimmick, by its name or its type. This is a
+ * guess from the words the games use; 11-10's map 270 gives `SlidingFloorGimmickArea` and its
+ * display name contains 滑动地板/移动平台. An unknown moving object still gets caught by the
+ * `pos.state: Gimmick` fallback.
+ */
+export function isMovingGimmickEntity(entity: Json): boolean {
+  const words = [text(entity.name), text(entity.kind), text(entity.class)]
+    .filter((value): value is string => value !== undefined)
+    .join(" ")
+    .toLowerCase();
+  return MOVING_GIMMICK_WORDS.some((word) => words.includes(word.toLowerCase()));
+}
+
+/** Task 99: whether any of a map's entities (or a seen Gimmick state) marks it as moving. */
+export function hasMovingGimmick(entities: readonly Json[], sawGimmickState = false): boolean {
+  return sawGimmickState || entities.some((entity) => isMovingGimmickEntity(entity));
 }
 
 /** Python's tuple repr for a cell, which the messages embed. */
@@ -379,10 +420,45 @@ function cutsFor(state: MoveState, map: unknown): Set<string> {
   return cut;
 }
 
+/** Task 99: the maps this run already knows move; the atlas field is written once per map. */
+function gimmickMaps(state: MoveState | undefined): Set<string> | null {
+  if (state === undefined) return null;
+  return (state.gimmickMaps ??= new Set());
+}
+
+/**
+ * Task 99: remember that a map moves, in this run and in the map record. The record goes
+ * through `state.link` with `gimmick: true`; the Game's existing wiring passes it to
+ * Atlas.link, which treats it as a mark, not as a move.
+ */
+async function markMovingGimmick(
+  state: MoveState,
+  map: unknown,
+  cell: Cell | null = null,
+): Promise<void> {
+  const maps = gimmickMaps(state);
+  if (maps === null) return;
+  const key = show(map);
+  if (maps.has(key)) return;
+  maps.add(key);
+  await state.link?.(map, cell ?? [0, 0], cell ?? [0, 0], MOVING_GIMMICK_HOW, {
+    gimmick: true,
+  });
+}
+
+/** Task 99: refusals kept for one `go` on a moving-gimmick map. */
+interface TemporaryCuts {
+  readonly edges: Set<string>;
+  readonly layers: Map<number, Set<string>>;
+}
+
 /**
  * Keep a blocked step. On a layered map it belongs to the floor the party stood on, so the
  * same step on the other floor stays open (11-09, Walse Castle 54); a one-floor map keeps
  * the old map-wide cut.
+ *
+ * With `temporary`, the step only closes this `go`'s search: a moving platform may be gone
+ * next time (task 99), and nothing goes into the atlas.
  */
 async function recordBlockedStep(
   pilot: Pilot,
@@ -393,11 +469,24 @@ async function recordBlockedStep(
   to: Cell,
   layered: number | null,
   remember = true,
+  temporary?: TemporaryCuts,
 ): Promise<void> {
   const layer = layered === null ? null : ((await collisionLayer(pilot)) ?? layered);
   if (layer === null) {
     cut.add(edgeKey(from, to));
-  } else {
+    if (temporary === undefined) cutsFor(state, map).add(edgeKey(from, to));
+  }
+  if (temporary !== undefined) {
+    if (layer !== null) {
+      const edges = temporary.layers.get(layer) ?? new Set<string>();
+      edges.add(edgeKey(from, to));
+      temporary.layers.set(layer, edges);
+    } else {
+      temporary.edges.add(edgeKey(from, to));
+    }
+    return;
+  }
+  if (layer !== null) {
     state.layeredCuts ??= new Map();
     const key = show(map);
     const layers = state.layeredCuts.get(key) ?? new Map<number, Set<string>>();
@@ -441,6 +530,9 @@ export async function walkLeg(
   for (let i = 0; i < 10; i++) {
     result = await pilot.send("walk", { to: [x, y], timeout: 30000 }, 40_000);
     const pos = record(result.pos);
+    if (pos.state === "Gimmick" && num(pos.map) !== undefined) {
+      await markMovingGimmick(state, pos.map, cellOf(pos.cell));
+    }
     if (truthy(result.ok)) return result;
     if (truthy(pos.battle) || pos.state === "Battle") {
       const battle = await regular(pilot, state.battle ?? {}, say, state.saveSlot, {
@@ -495,6 +587,7 @@ export interface PlanStart {
 async function blockingCells(
   pilot: Pilot,
   withTransitions = false,
+  withGimmick = false,
 ): Promise<{
   blocked: Cell[];
   conveyors: ReadonlySet<string>;
@@ -505,6 +598,8 @@ async function blockingCells(
   holeMoves: ObservedMove[];
   /** Task 83: active Event cells by cellKey, with the entity's name. */
   events: ReadonlyMap<string, string>;
+  /** Task 99: this map has a moving gimmick (an entity or a seen Gimmick state). */
+  gimmick: boolean;
 }> {
   const found = new Map<string, Cell>();
   const conveyors = new Set<string>();
@@ -513,6 +608,7 @@ async function blockingCells(
   const falls = new Map<string, Cell>();
   const landings = new Map<string, Landing>();
   const events = new Map<string, string>();
+  const seenEntities: Json[] = [];
   let holeMoves: ObservedMove[] = [];
   const kinds = ["TresureBox", "Npc", "RelayInteraction", "GotoMap", "Event"];
   if (withTransitions) kinds.push("ToLayer", "PointIn");
@@ -520,6 +616,7 @@ async function blockingCells(
     const reply = record((await pilot.send("entities", { kind, max: 200 })).entities);
     for (const entity of Array.isArray(reply.entities) ? reply.entities : []) {
       if (!isRecord(entity)) continue;
+      seenEntities.push(entity);
       const active = entity.active === undefined ? true : truthy(entity.active);
       const cell = cellOf(entity.cell);
       if (!active || cell === null) continue;
@@ -554,9 +651,15 @@ async function blockingCells(
       found.set(key, cell);
     }
   }
-  if (withTransitions) {
-    const all = record((await pilot.send("entities", { kind: "All", max: 400 })).entities);
-    holeMoves = fallMoves(records(all.entities));
+  // Task 99: moving gimmicks can sit in any group, so read them all (0.13.5's kind All). This
+  // also gives the hole edges when transitions were asked for, instead of a second query.
+  if (withTransitions || withGimmick) {
+    const all = record(
+      (await pilot.send("entities", { kind: "All", max: MOVING_GIMMICK_QUERY_MAX })).entities,
+    );
+    const entities = records(all.entities);
+    seenEntities.push(...entities);
+    if (withTransitions) holeMoves = fallMoves(entities);
   }
   return {
     blocked: [...found.values()],
@@ -567,6 +670,7 @@ async function blockingCells(
     landings: [...landings.values()],
     holeMoves,
     events,
+    gimmick: (withGimmick || withTransitions) && hasMovingGimmick(seenEntities),
   };
 }
 
@@ -636,6 +740,11 @@ interface Planned {
    * tell an event cell from a wall and to try a goal that is one.
    */
   readonly events?: ReadonlyMap<string, string>;
+  /**
+   * Task 99: this map has a moving gimmick; refusals stay in this `go`'s plan instead of the
+   * map record.
+   */
+  readonly gimmick?: boolean;
   /**
    * Task 83: cells reachable from the start when an event goal was planned, so the tries can
    * skip a side that is a wall without walking there. Undefined for other goals.
@@ -766,6 +875,7 @@ async function plannedRoute(
   state?: MoveState,
   map?: unknown,
   start?: PlanStart,
+  temporaryLayers?: ReadonlyMap<number, ReadonlySet<string>>,
 ): Promise<Planned> {
   const raw = (await pilot.send("cells", { r: WORLD_RADIUS })).cells;
   const cells = cellGridOf(raw);
@@ -810,15 +920,30 @@ async function plannedRoute(
   }
   const collision = record((await pilot.send("collision")).collision);
   const floors = Array.isArray(collision.layers) ? collision.layers.length : 0;
-  const { blocked, conveyors, dangers, transitions, falls, holeMoves, events } =
-    await blockingCells(pilot, floors > 1);
+  const mapKey = map === undefined ? null : show(map);
+  const checked = mapKey !== null && (state?.gimmickChecked?.has(mapKey) ?? false);
+  const { blocked, conveyors, dangers, transitions, falls, holeMoves, events, gimmick } =
+    await blockingCells(pilot, floors > 1, map !== undefined && !checked);
+  if (mapKey !== null && state !== undefined) {
+    (state.gimmickChecked ??= new Set()).add(mapKey);
+  }
+  const recordedMoves = state?.moves && map !== undefined ? state.moves(map) : [];
+  const seenGimmick =
+    (mapKey !== null && (state?.gimmickMaps?.has(mapKey) ?? false)) ||
+    movesFromMovingGimmickMap(recordedMoves);
+  const movingGimmick = gimmick || seenGimmick;
+  if (movingGimmick && state !== undefined && map !== undefined) {
+    await markMovingGimmick(state, map, cells.center);
+  }
   // Task 83: a "走不过去" record whose target is an event cell is not a wall. It stays in
   // the atlas (it is still history), but this plan must not use it. 11-10, map 265: the three
   // records all ended on 通路に流される cells, and grind walked two of those steps later.
-  const moves = [
-    ...(state?.moves && map !== undefined ? state.moves(map) : []),
-    ...holeMoves,
-  ].filter((move) => !blockedOnEvent(move, events));
+  const moves = [...recordedMoves, ...holeMoves].filter(
+    (move) =>
+      !blockedOnEvent(move, events) &&
+      // Task 99: a single refusal on a moving map is a snapshot, not a wall.
+      !(movingGimmick && move.how === "走不过去" && (move.count ?? 1) < 2),
+  );
   // A conveyor or fall whose landing we have seen is a directed edge; until then it stays a
   // danger cell, so the party does not walk onto it blind but can when there is no other way.
   const forced = new Set(
@@ -851,7 +976,7 @@ async function plannedRoute(
   }
   const startGrid = start === undefined ? grid : startAt(grid, start);
   const onGrid = startOnGrid(startGrid, startGrid.center);
-  const layerCut = observedLayerCuts(moves, grid, state, map);
+  const layerCut = observedLayerCuts(moves, grid, state, map, undefined, temporaryLayers);
   const route = layeredRouteAvoiding(startGrid, goal, cut, layerCut);
   // Task 83: an event goal is tried from every standable side. The reachable cells tell the
   // tries which sides are walls without walking to each one first.
@@ -879,6 +1004,7 @@ async function plannedRoute(
         state,
         map,
         (move) => !untrusted.includes(move),
+        temporaryLayers,
       );
       const relaxed = layeredRouteAvoiding(startGrid, goal, cut, relaxedCuts);
       const relaxedPath = cellsOf(relaxed.path);
@@ -900,6 +1026,7 @@ async function plannedRoute(
     falls: fallSet,
     washed: danger.map(([x, y]) => [x, y] as const),
     events,
+    ...(movingGimmick ? { gimmick: true } : {}),
     ...(reachable === undefined ? {} : { reachable }),
     layer: layerInfo(startGrid, nodes, transitions),
     base: indoorBase(state?.game ?? "", mapNumber(map), startGrid),
@@ -954,12 +1081,19 @@ function observedLayerCuts(
   state: MoveState | undefined,
   map: unknown,
   keep: (move: ObservedMove) => boolean = () => true,
+  temporary?: ReadonlyMap<number, ReadonlySet<string>>,
 ): Map<number, Set<string>> {
   const out = new Map<number, Set<string>>();
   const add = (layer: number, from: Cell, to: Cell): void => {
     if (!grid.heights.has(layer)) return;
     const set = out.get(layer) ?? new Set<string>();
     set.add(edgeKey(from, to));
+    out.set(layer, set);
+  };
+  const addEdge = (layer: number, edge: string): void => {
+    if (!grid.heights.has(layer)) return;
+    const set = out.get(layer) ?? new Set<string>();
+    set.add(edge);
     out.set(layer, set);
   };
   const base = baseLayer(grid);
@@ -970,10 +1104,12 @@ function observedLayerCuts(
   }
   if (state?.layeredCuts !== undefined && map !== undefined) {
     for (const [layer, cut] of state.layeredCuts.get(show(map)) ?? []) {
-      const set = out.get(layer) ?? new Set<string>();
-      for (const edge of cut) set.add(edge);
-      out.set(layer, set);
+      for (const edge of cut) addEdge(layer, edge);
     }
+  }
+  // Task 99: a moving-gimmick map also has refusals found earlier in this same go.
+  for (const [layer, cut] of temporary ?? []) {
+    for (const edge of cut) addEdge(layer, edge);
   }
   return out;
 }
@@ -1681,6 +1817,7 @@ async function stepIntoEvent(
     pos.state === "Gimmick" ||
     String(result.error).includes("Gimmick")
   ) {
+    await markMovingGimmick(state, startMap, cellOf(pos.cell));
     await pilot.send("wait", { timeout: 30000 }, 40_000);
   }
   return null;
@@ -1754,7 +1891,12 @@ export async function navigate(
   // step instead of into it again; the cell stays usable from other sides. Kept on the map
   // in MoveState, so the next go on the same map also knows (11-03, Fire-Powered Ship
   // 261: the same step was walked into twice).
-  const cut = cutsFor(state, startMap);
+  const mapCut = cutsFor(state, startMap);
+  // Task 99: on a moving-gimmick map a refusal only closes this go's search. Keep those
+  // steps apart from the map's lasting cuts and layer cuts.
+  const goCut = new Set<string>();
+  const goLayers = new Map<number, Set<string>>();
+  let cut = new Set<string>();
   const seen = new Set<string>();
   const washed = new Map<string, Cell>();
   /** Task 73: atlas records this walk is testing; they stay until the goal is reached. */
@@ -1875,12 +2017,28 @@ export async function navigate(
       plans += 1;
     }
     freePlan = false;
+    cut = new Set([...mapCut, ...goCut]);
     const pos = record((await pilot.send("pos")).pos);
+    if (pos.state === "Gimmick" && num(pos.map) !== undefined) {
+      await markMovingGimmick(state, pos.map, cellOf(pos.cell));
+    }
     if (pos.map !== startMap) {
       return await leftStartMap(pos, where, "被带到");
     }
     where = cellOf(pos.cell) ?? where;
-    const planned = await plannedRoute(pilot, goal, byShip, cut, state, startMap);
+    const planned = await plannedRoute(
+      pilot,
+      goal,
+      byShip,
+      cut,
+      state,
+      startMap,
+      undefined,
+      goLayers,
+    );
+    const temporary: TemporaryCuts | undefined = planned.gimmick
+      ? { edges: goCut, layers: goLayers }
+      : undefined;
     remember(planned.suspects);
     const [here, initial] = [planned.here, planned.path];
     noteWashed(planned.washed);
@@ -2106,6 +2264,7 @@ export async function navigate(
           String(result.error).includes("Gimmick")
         ) {
           // The bridge already waited 5 s for the door; one more wait then replan.
+          await markMovingGimmick(state, startMap, cellOf(current.cell));
           await pilot.send("wait", { timeout: 30000 }, 40_000);
           continue;
         }
@@ -2148,6 +2307,7 @@ export async function navigate(
               ahead,
               planned.layer?.start ?? null,
               !eventAhead,
+              temporary,
             );
           }
           say(
@@ -2260,6 +2420,7 @@ export async function navigate(
             ahead,
             planned.layer?.start ?? null,
             !eventAhead,
+            temporary,
           );
         }
         say(

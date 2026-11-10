@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { Atlas } from "../src/engine/atlas.ts";
+import { Atlas, movesFromMovingGimmickMap } from "../src/engine/atlas.ts";
 import type { Json } from "../src/engine/values.ts";
 
 interface DescribeCase {
@@ -223,4 +223,61 @@ void test("atlas ignores a missing file and rejects a non-object one", async () 
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+void test("a moving-gimmick map keeps its flag and ignores one-off blocked steps", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-atlas-"));
+  const path = join(directory, "atlas.json");
+  try {
+    await writeFile(
+      path,
+      JSON.stringify({
+        270: {
+          name: "火力船 270",
+          exits: [],
+          chests: [],
+          gimmick: true,
+          links: [
+            { from: [1, 0], to: [2, 0], how: "走不过去", count: 1 },
+            { from: [3, 0], to: [4, 0], how: "走不过去", count: 2 },
+            { from: [5, 0], to: [6, 0], how: "传送带", kind: "conveyor" },
+          ],
+        },
+      }),
+      "utf8",
+    );
+    const atlas = await Atlas.load(path);
+    assert.equal(atlas.gimmick(270), true);
+    assert.equal(movesFromMovingGimmickMap(atlas.moves(270)), true);
+    assert.deepEqual(
+      atlas.moves(270).map((move) => [move.from, move.to, move.count]),
+      [
+        [[3, 0], [4, 0], 2],
+        [[5, 0], [6, 0], undefined],
+      ],
+      "only the once-seen refusal is dropped; a repeated one may be a real wall",
+    );
+    // A new one-off refusal is not written either, even when move.ts could not tell the map.
+    await atlas.link(270, [7, 0], [8, 0], "走不过去");
+    assert.equal(
+      (atlas.maps.get("270")?.links as Json[]).some(
+        (link) => link.how === "走不过去" && link.from instanceof Array && link.from[0] === 7,
+      ),
+      false,
+    );
+    await atlas.visit(270, "火力船 270", [], []); // look_around keeps the inferred flag
+    assert.equal(atlas.gimmick(270), true);
+    const reloaded = await Atlas.load(path);
+    assert.equal(reloaded.gimmick(270), true);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("marking a moving gimmick is a flag, not a walked link", async () => {
+  const atlas = new Atlas();
+  await atlas.link(270, [10, 5], [10, 5], "移动机关", { gimmick: true });
+  assert.equal(atlas.gimmick(270), true);
+  assert.deepEqual(atlas.moves(270), []);
+  assert.equal(atlas.links(270), "");
 });

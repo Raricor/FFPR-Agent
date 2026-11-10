@@ -19,6 +19,26 @@ import { isRecord, num, records, text, type Json } from "./values.ts";
 /** The "how" of a step the game refused; it is a hint, not a permanent wall (task 73). */
 const BLOCKED_HOW = "走不过去";
 
+/**
+ * Task 99: a map whose gimmicks move the floor itself (Fire-Powered Ship 270's sliding floor).
+ * A refusal there is a position in time, not a wall, so one-off "走不过去" records are not
+ * used for planning. The flag is inferred from the entities and kept in the map record.
+ */
+const MOVING_GIMMICK_FLAG = "gimmick";
+
+/**
+ * Task 99: a non-enumerable mark on `moves()`'s array. move.ts must know that the loaded map
+ * record says "moving gimmick" even when the entities query cannot tell, without inventing a
+ * fake link (which would show up in the model's map view).
+ */
+const MOVING_GIMMICK_MARK = Symbol("moving-gimmick");
+type MarkedMoves = ObservedMove[] & { readonly [MOVING_GIMMICK_MARK]?: boolean };
+
+/** Task 99: whether `moves()` came from a map recorded as having a moving gimmick. */
+export function movesFromMovingGimmickMap(moves: readonly ObservedMove[]): boolean {
+  return (moves as MarkedMoves)[MOVING_GIMMICK_MARK] === true;
+}
+
 /** A ride that changes the map without walking onto an exit: a lift, an elevator. */
 export interface Ride {
   /** Where the party stood when it pressed. */
@@ -112,6 +132,9 @@ export class Atlas {
     });
     const entry: Json = { name: name || "", exits: merged, chests: [...chests] };
     if (Array.isArray(old.links) && old.links.length > 0) entry.links = old.links;
+    // Task 99: look_around rewrites the entry from the entities, so keep a flag learned by
+    // walking or from an earlier look.
+    if (old[MOVING_GIMMICK_FLAG] === true) entry[MOVING_GIMMICK_FLAG] = true;
     if (!sameJson(old, entry)) {
       this.maps.set(key, entry);
       await this.save();
@@ -119,22 +142,56 @@ export class Atlas {
     if (isNew) await this.onNewVisit?.(key);
   }
 
+  /** Task 99: whether a map is known to have a moving gimmick the collision grid lacks. */
+  gimmick(mapId: unknown): boolean {
+    return this.maps.get(String(mapId))?.[MOVING_GIMMICK_FLAG] === true;
+  }
+
+  /** Task 99: keep the fact that this map's gimmicks move; it survives look_around. */
+  async markGimmick(mapId: unknown): Promise<void> {
+    const key = String(mapId);
+    let entry = this.maps.get(key);
+    if (!entry) {
+      entry = { name: "", exits: [], chests: [] };
+      this.maps.set(key, entry);
+    }
+    if (entry[MOVING_GIMMICK_FLAG] === true) return;
+    entry[MOVING_GIMMICK_FLAG] = true;
+    await this.save();
+  }
+
   /**
    * A way between two cells that are not next to each other, found by doing it: a jump stone
    * (interact at one, land on the other). The grid cannot show these.
+   *
+   * `gimmick: true` is not a link at all: it marks the map as having a moving gimmick (task
+   * 99). move.ts writes it through the same callback so the Game's wiring needs no new hook.
    */
   async link(
     mapId: unknown,
     start: readonly number[],
     end: readonly number[],
     how: string,
-    detail: { readonly kind?: string; readonly toLayer?: number; readonly layer?: number } = {},
+    detail: {
+      readonly kind?: string;
+      readonly toLayer?: number;
+      readonly layer?: number;
+      readonly gimmick?: boolean;
+    } = {},
   ): Promise<void> {
+    if (detail.gimmick === true) {
+      await this.markGimmick(mapId);
+      return;
+    }
     const key = String(mapId);
     let entry = this.maps.get(key);
     if (!entry) {
       entry = { name: "", exits: [], chests: [] };
       this.maps.set(key, entry);
+    }
+    if (how === BLOCKED_HOW && entry[MOVING_GIMMICK_FLAG] === true) {
+      // Task 99: a moving platform makes a refusal temporary; never turn it into a wall.
+      return;
     }
     const links = records(entry.links);
     entry.links = links;
@@ -283,12 +340,18 @@ export class Atlas {
    */
   moves(mapId: unknown): ObservedMove[] {
     const entry = this.maps.get(String(mapId));
-    return records(entry?.links).flatMap((link): ObservedMove[] => {
+    const moving = entry?.[MOVING_GIMMICK_FLAG] === true;
+    const out = records(entry?.links).flatMap((link): ObservedMove[] => {
       if (text(link.kind) === "ride") return [];
       const from = cellTuple(link.from);
       const to = cellTuple(link.to);
       if (from === null || to === null) return [];
       const how = text(link.how) ?? "";
+      // Task 99: on a moving-gimmick map, a refusal seen once is a snapshot of where the
+      // platform was. Repeated refusals (count 2+) may be a real wall, so those stay.
+      if (moving && how === BLOCKED_HOW && Math.max(1, Math.trunc(num(link.count) ?? 1)) < 2) {
+        return [];
+      }
       const move: ObservedMove = {
         from,
         to,
@@ -301,6 +364,8 @@ export class Atlas {
       };
       return [move];
     });
+    if (moving) Object.defineProperty(out, MOVING_GIMMICK_MARK, { value: true });
+    return out;
   }
 
   async save(): Promise<void> {

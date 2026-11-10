@@ -8,7 +8,9 @@ import { FakePilot, recordedCalls, scriptReplies } from "./fake-pilot.ts";
 import type { Cell, CellGrid } from "../src/engine/nav.ts";
 import { Atlas } from "../src/engine/atlas.ts";
 import {
+  hasMovingGimmick,
   landHere,
+  MOVING_GIMMICK_QUERY_MAX,
   landingSpots,
   navigate,
   openAt,
@@ -128,12 +130,13 @@ for (const item of fixture.cases) {
     const extraReply = extra ? [{ kind: "send" as const, op: "entities", reply: extra.reply }] : [];
     scriptReplies(pilot, [...item.transcript, ...extraReply, ...settle.map(toPosReply)]);
     noEntrances(pilot);
+    noGimmicks(pilot);
     noWalkpath(pilot);
     assert.deepEqual(await run(pilot), item.out);
     const settleCalls = settle.map(() => ({ kind: "send", op: "pos", fields: {}, wait: 30 }));
     const extraCalls = extra ? [extra.call] : [];
     const calls = recordedCalls(pilot).filter(
-      (call) => !isEntranceQuery(call) && !isWalkpathCall(call),
+      (call) => !isEntranceQuery(call) && !isGimmickQuery(call) && !isWalkpathCall(call),
     );
     assert.deepEqual(calls, [...item.calls, ...extraCalls, ...settleCalls]);
   });
@@ -147,6 +150,20 @@ function noEntrances(pilot: FakePilot): void {
   pilot.when("entities", (fields) => fields.kind === "GotoMap" && fields.max === 300, {
     entities: { total: 0, entities: [] },
   });
+}
+
+/** The task-99 moving-gimmick probe is TS only; the Python transcripts never asked for it. */
+function noGimmicks(pilot: FakePilot): void {
+  pilot.when(
+    "entities",
+    (fields) => fields.kind === "All" && fields.max === MOVING_GIMMICK_QUERY_MAX,
+    { entities: { total: 0, entities: [] } },
+  );
+}
+
+function isGimmickQuery(call: unknown): boolean {
+  const { op, fields } = call as { op?: string; fields?: { kind?: unknown; max?: unknown } };
+  return op === "entities" && fields?.kind === "All" && fields.max === MOVING_GIMMICK_QUERY_MAX;
 }
 
 function isEntranceQuery(call: unknown): boolean {
@@ -1528,4 +1545,154 @@ void test("an old bridge without cells.at keeps the one-window world walk", asyn
     (call) => call.kind === "send" && call.op === "cells" && call.fields.at !== undefined,
   );
   assert.ok(atReads.length <= 1, "an old bridge is not asked for at again");
+});
+
+/** An indoor map whose entities name a moving gimmick, so refusals must stay temporary. */
+function movingGimmickPilot(here: () => Cell, size = 8): FakePilot {
+  const pilot = indoorPilot(here, size);
+  pilot.on("entities", (fields) =>
+    fields.kind === "All"
+      ? {
+          entities: {
+            total: 1,
+            entities: [
+              { kind: "SlidingFloorGimmickArea", cell: [0, 0], name: "滑动地板", active: true },
+            ],
+          },
+        }
+      : { entities: { total: 0, entities: [] } },
+  );
+  return pilot;
+}
+
+void test("a moving gimmick makes a blocked step temporary and unrecorded", async () => {
+  let here: Cell = [0, 0];
+  let sent = 0;
+  const pilot = movingGimmickPilot(() => here);
+  pilot.on("walkpath", (fields) => {
+    sent += 1;
+    const path = fields.path as Cell[];
+    if (sent === 1) {
+      here = [1, 0];
+      return {
+        ok: false,
+        reason: "blocked",
+        index: 1,
+        steps: 1,
+        pos: { map: 260, cell: [1, 0] },
+        next: [2, 0],
+        turns: [],
+      };
+    }
+    const last = path[path.length - 1];
+    assert.ok(last);
+    here = [last[0], last[1]];
+    return {
+      ok: true,
+      reason: "arrived",
+      index: path.length - 1,
+      steps: path.length - 1,
+      pos: { map: 260, cell: [here[0], here[1]] },
+      next: null,
+      turns: [],
+    };
+  });
+  const links: { readonly from: Cell; readonly to: Cell; readonly how: string }[] = [];
+  const state: MoveState = {
+    drake: null,
+    link: (_map, from, to, how) => {
+      links.push({ from: [...from], to: [...to], how });
+      return Promise.resolve();
+    },
+  };
+  assert.deepEqual(await navigate(pilot, [4, 0], false, () => undefined, 4, state), [
+    true,
+    "到达 (4, 0)",
+  ]);
+  assert.deepEqual(
+    links.filter((link) => link.how === "走不过去"),
+    [],
+    "the map record never gets the one-off refusal",
+  );
+  assert.ok(
+    links.some((link) => link.how === "移动机关"),
+    "the map is marked as having a moving gimmick",
+  );
+  assert.equal(state.gimmickMaps?.has("260"), true);
+  assert.equal(
+    state.cuts?.get("260")?.has("1,0>2,0") ?? false,
+    false,
+    "the refusal only closed this go",
+  );
+});
+
+void test("a single blocked record on a moving-gimmick map no longer closes the step", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-gimmick-"));
+  const file = join(directory, "atlas.json");
+  try {
+    const write = async (count: number): Promise<Atlas> => {
+      await writeFile(
+        file,
+        JSON.stringify({
+          260: {
+            name: "火力船",
+            exits: [],
+            chests: [],
+            gimmick: true,
+            links: [{ from: [1, 0], to: [2, 0], how: "走不过去", count }],
+          },
+        }),
+        "utf8",
+      );
+      return await Atlas.load(file);
+    };
+    const once = await write(1);
+    const pilot = indoorPilot(() => [0, 0], 6);
+    const [here, path] = await plan(
+      pilot,
+      [4, 0],
+      false,
+      new Set<string>(),
+      { drake: null, moves: () => once.moves(260) },
+      260,
+    );
+    assert.deepEqual(here, [0, 0]);
+    assert.deepEqual(
+      path.slice(0, 3),
+      [
+        [0, 0],
+        [1, 0],
+        [2, 0],
+      ],
+      "the once-seen refusal is not a wall",
+    );
+
+    const twice = await write(2);
+    const [, avoided] = await plan(
+      pilot,
+      [4, 0],
+      false,
+      new Set<string>(),
+      { drake: null, moves: () => twice.moves(260) },
+      260,
+    );
+    assert.notDeepEqual(
+      avoided.slice(0, 3),
+      [
+        [0, 0],
+        [1, 0],
+        [2, 0],
+      ],
+      "a repeated refusal may be a real wall and still counts",
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("moving gimmicks are recognised by name, type or a seen Gimmick state", () => {
+  assert.equal(hasMovingGimmick([{ kind: "SlidingFloorGimmickArea" }]), true);
+  assert.equal(hasMovingGimmick([{ kind: "DefaultEntity", name: "移动平台A" }]), true);
+  assert.equal(hasMovingGimmick([{ kind: "Npc", name: "士兵" }]), false);
+  assert.equal(hasMovingGimmick([], true), true, "a Gimmick state on the map is enough");
 });
