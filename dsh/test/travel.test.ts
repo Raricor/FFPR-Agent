@@ -959,6 +959,65 @@ void test("on a ship a coordinate goes by sea and names the world-map entrance",
   }
 });
 
+void test("a same-map go carried onto another map walks back over the recorded route", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-go-back-"));
+  try {
+    const game = calmGame(
+      await gameWithMaps(directory, {
+        260: { name: "火力船", exits: [{ cell: [2, 2], to: 261 }] },
+        261: { name: "出口", exits: [{ cell: [1, 1], to: 260 }] },
+      }),
+    );
+    const world = worldFor(game.atlas);
+    world.map = 260;
+    world.cell = [0, 0];
+    world.entries.set(260, [3, 0]);
+    world.entries.set(261, [5, 5]);
+    const pilot = playablePilot(world);
+    let first = true;
+    pilot.on("walkpath", (fields) => {
+      const path = fields.path as Cell[];
+      const last = path[path.length - 1] ?? [world.cell[0], world.cell[1]];
+      if (first && world.map === 260) {
+        first = false;
+        world.map = 261;
+        world.cell = [5, 5];
+        return {
+          ok: false,
+          reason: "map_changed",
+          index: 2,
+          steps: 2,
+          pos: { map: 260, cell: [2, 0] },
+          next: null,
+          turns: [],
+        };
+      }
+      world.cell = [last[0], last[1]];
+      const exit = world.exits.get(world.map)?.get(`${last[0]},${last[1]}`);
+      if (exit !== undefined) {
+        world.map = exit;
+        world.cell = world.entries.get(exit) ?? [3, 0];
+      }
+      return {
+        ok: true,
+        reason: "arrived",
+        index: path.length - 1,
+        steps: path.length - 1,
+        pos: { map: world.map, cell: [world.cell[0], world.cell[1]] },
+        next: null,
+        turns: [],
+      };
+    });
+    const result = await game.run("go", { to: [4, 0] }, pilot);
+    assert.equal(world.map, 260, result);
+    assert.deepEqual(world.cell, [4, 0], result);
+    assert.match(result, /地图记录里有回去的路/);
+    assert.match(result, /到达 \(4, 0\)/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 void test("go refuses an incomplete coordinate leave, then allows it with a reason", async () => {
   const directory = await mkdtemp(join(tmpdir(), "ffpr-go-cell-guard-"));
   try {

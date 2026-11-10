@@ -57,6 +57,15 @@ import { FIELD_HELP_STUCK, dismissFieldHelp } from "./screens.ts";
 type Say = (line: string) => void;
 
 /**
+ * Task 84: carries seen in one `go`, shared by the recursive walk back across maps so the
+ * repeat and total limits cover the whole call, not each map hop.
+ */
+export interface CarryBudget {
+  readonly seen: Map<string, number>;
+  total: number;
+}
+
+/**
  * The wind drake's state, once a module variable in Python: where it was last left, and the
  * battle hooks passed on to fights met on the way (the Game holds both).
  */
@@ -105,6 +114,24 @@ export interface MoveState {
   eventTryCount?: number;
   /** Task 83: how long to wait between those tries. */
   eventTryWaitMs?: number;
+  /** Task 84: the same carry (same start cell → same landing) this many times stops one go. */
+  carryRepeatLimit?: number;
+  /** Task 84: how many carries one go may take before it stops. */
+  carryTotalLimit?: number;
+  /** Task 84: whether the atlas records a way from one map to another (the Game wires it in). */
+  routeBack?: (from: number, to: number) => boolean;
+  /**
+   * Task 84: walk back to the goal's map and on to the goal, all inside the same go call. The
+   * Game supplies it because crossing maps needs the atlas and travel.ts; null when the map
+   * records say there is no way back.
+   */
+  returnToGoal?: (
+    pilot: Pilot,
+    goalMap: number,
+    goal: Cell,
+    say: Say,
+    budget: CarryBudget,
+  ) => Promise<[boolean, string]>;
   /**
    * Steps found blocked in the game, keyed by map (the bridge map id), then edgeKey. Kept for
    * the whole run so the next walk on that map does not hit the same wall again (11-03,
@@ -143,6 +170,14 @@ export const BLOCKED_TRUST_COUNT = 3;
  */
 export const EVENT_TRY_COUNT = 3;
 export const EVENT_TRY_WAIT_MS = 1_000;
+
+/*
+ * Task 84 (11-10): a conveyor, fall or trap can carry the party off the path, and the old
+ * `go` handed the call back to the model after one ride. It now walks on from the landing.
+ * Two limits keep a loop from running forever: the same edge twice, and four rides in one go.
+ */
+export const CARRY_REPEAT_LIMIT = 2;
+export const CARRY_TOTAL_LIMIT = 4;
 
 // Task 58: these are the defaults; Config carries the live values on MoveState.
 export const WALKPATH_TIMEOUT_MS = 60_000;
@@ -199,6 +234,18 @@ export function eventTryCount(state?: MoveState): number {
 export function eventTryWaitMs(state?: MoveState): number {
   const wait = state?.eventTryWaitMs ?? EVENT_TRY_WAIT_MS;
   return Number.isFinite(wait) ? Math.max(0, Math.trunc(wait)) : EVENT_TRY_WAIT_MS;
+}
+
+/** Task 84: Config's repeats of one carry before one go stops, defaulting to two. */
+export function carryRepeatLimit(state?: MoveState): number {
+  const count = state?.carryRepeatLimit ?? CARRY_REPEAT_LIMIT;
+  return Number.isFinite(count) ? Math.max(1, Math.trunc(count)) : CARRY_REPEAT_LIMIT;
+}
+
+/** Task 84: Config's carries per go before it stops, defaulting to four. */
+export function carryTotalLimit(state?: MoveState): number {
+  const count = state?.carryTotalLimit ?? CARRY_TOTAL_LIMIT;
+  return Number.isFinite(count) ? Math.max(1, Math.trunc(count)) : CARRY_TOTAL_LIMIT;
 }
 /** A whole navigate call's loop cap; battles do not count against `legs`, so this bounds them. */
 const MAX_WALK_TURNS = 200;
@@ -1077,10 +1124,30 @@ function transitionOnPath(
   return fallback;
 }
 
+/** Task 84: the game carried the party off the path, within this map or to another one. */
+interface CarriedAway {
+  readonly from: Cell;
+  readonly to: Cell;
+  readonly how: "传送带" | "掉下去";
+  readonly mapChanged: boolean;
+  /** Where the party ended when the map changed; unused for a same-map carry. */
+  readonly map: unknown;
+}
+
+type AfterWalk =
+  | { readonly kind: "carried"; readonly carry: CarriedAway }
+  /** The carry started on the goal itself: the cell asked for was reached, so not a deviation. */
+  | { readonly kind: "arrived"; readonly text: string }
+  | null;
+
 /**
  * What the game did to the party during a walk, beyond the planned steps: a conveyor ride, a
  * fall onto a 落下点, or a layer change. Each is kept in the atlas as a directed way, so the
  * next plan on this map can use it (11-03, Fire-Powered Ship 261).
+ *
+ * Task 84: a ride or fall that lands on another map is reported too (untouched atlas: the edge
+ * belongs to the old map), and a carry that starts on the goal is the arrival the caller asked
+ * for, not a deviation.
  */
 async function afterWalk(
   pilot: Pilot,
@@ -1090,47 +1157,68 @@ async function afterWalk(
   path: readonly Cell[],
   state: MoveState,
   seen: Set<string>,
-): Promise<[false, string] | null> {
+  goal: Cell,
+): Promise<AfterWalk> {
   let pos = record(position);
-  if (pos.map !== mapId) return null;
-  if (planned.conveyors.size > 0 && onConveyor(pos.cell, planned.conveyors)) {
+  const startedElsewhere = pos.map !== mapId;
+  if (!startedElsewhere && planned.conveyors.size > 0 && onConveyor(pos.cell, planned.conveyors)) {
     // The walk reply can be read as the belt starts: the party still stands on it (10-27: the
     // atlas got "在 (13, 23) 传送带 到 (13, 23)" and the tactician took it for a loop belt).
     pos = await rideEnd(pilot, planned.conveyors);
   }
-  if (pos.map !== mapId) return null;
   const cell = cellOf(pos.cell);
   if (cell === null) return null;
-  const onPath = path.some((cellOnPath) => sameCell(cellOnPath, cell));
-  const layer = planned.layer === undefined ? null : await collisionLayer(pilot);
+  const mapChanged = pos.map !== mapId;
+  // A same-cell landing on another map proves nothing, so leave the planned-cell test out.
+  // A landing back on the cell the walk started from is a carry even though it is in the
+  // path: a loop belt can put the party back where it stood (task 84).
+  const backToStart =
+    path.length > 1 &&
+    sameCell(cell, path[0] ?? null) &&
+    !sameCell(cell, path[path.length - 1] ?? null);
+  const onPath =
+    !mapChanged && !backToStart && path.some((cellOnPath) => sameCell(cellOnPath, cell));
+  const layer = mapChanged || planned.layer === undefined ? null : await collisionLayer(pilot);
 
-  if (!onPath && planned.conveyors.size > 0 && !onConveyor(pos.cell, planned.conveyors)) {
+  if (planned.conveyors.size > 0 && (mapChanged || !onConveyor(pos.cell, planned.conveyors))) {
     const conveyor = conveyorNear(path, planned.conveyors);
-    if (conveyor !== null) {
+    if (conveyor !== null && !onPath) {
+      if (sameCell(conveyor, goal)) {
+        return { kind: "arrived", text: `到达 ${cellText(goal)},踩上去后被带到 ${cellText(cell)}` };
+      }
       const key = `conveyor:${cellKey(conveyor[0], conveyor[1])}>${cellKey(cell[0], cell[1])}`;
-      if (state.link && !seen.has(key)) {
+      if (!mapChanged && state.link && !seen.has(key)) {
         seen.add(key);
         await state.link(mapId, conveyor, cell, "传送带", {
           kind: "conveyor",
           ...(layer === null ? {} : { toLayer: layer }),
         });
       }
-      return [false, `踩到传送带 ${cellText(conveyor)},被带到 ${cellText(cell)}`];
+      return {
+        kind: "carried",
+        carry: { from: conveyor, to: cell, how: "传送带", mapChanged, map: pos.map },
+      };
     }
   }
 
-  if (!onPath && planned.falls.size > 0) {
+  if (planned.falls.size > 0) {
     const fall = conveyorNear(path, planned.falls);
-    if (fall !== null) {
+    if (fall !== null && !onPath) {
+      if (sameCell(fall, goal)) {
+        return { kind: "arrived", text: `到达 ${cellText(goal)},踩上去后掉到 ${cellText(cell)}` };
+      }
       const key = `fall:${cellKey(fall[0], fall[1])}>${cellKey(cell[0], cell[1])}`;
-      if (state.link && !seen.has(key)) {
+      if (!mapChanged && state.link && !seen.has(key)) {
         seen.add(key);
         await state.link(mapId, fall, cell, "掉下去", {
           kind: "fall",
           ...(layer === null ? {} : { toLayer: layer }),
         });
       }
-      return [false, `踩到落下点 ${cellText(fall)},掉到 ${cellText(cell)}`];
+      return {
+        kind: "carried",
+        carry: { from: fall, to: cell, how: "掉下去", mapChanged, map: pos.map },
+      };
     }
   }
 
@@ -1657,6 +1745,7 @@ export async function navigate(
   say: Say = () => undefined,
   legs = 8,
   state: MoveState = { drake: null },
+  budget?: CarryBudget,
 ): Promise<[boolean, string]> {
   const how = byShip ? "船" : "步行";
   const startMap = record((await pilot.send("pos")).pos).map;
@@ -1704,6 +1793,80 @@ export async function navigate(
     const where = [...washed.values()].map((cell) => cellText(cell)).join("、");
     return `(这条路上会踩到危险格 ${where},没有别的路,可能被水流冲走或被传送带带走)`;
   };
+  // Task 84: every carry of this go, in order, and the two loop limits. The budget is shared
+  // with a walk back across maps so a recursive navigate counts against the same call.
+  const carried: string[] = [];
+  const carryBudget: CarryBudget = budget ?? { seen: new Map<string, number>(), total: 0 };
+  const withCarried = (message: string): string => [...carried, message].join("\n");
+  /** Record one carry; a return means one of the limits says to stop. */
+  const noteCarry = (carry: CarriedAway): [boolean, string] | null => {
+    const key = `${cellKey(carry.from[0], carry.from[1])}>${cellKey(carry.to[0], carry.to[1])}`;
+    const count = (carryBudget.seen.get(key) ?? 0) + 1;
+    carryBudget.seen.set(key, count);
+    carryBudget.total += 1;
+    const line =
+      carry.how === "传送带"
+        ? `在 ${cellText(carry.from)} 踩到传送带，被带到 ${cellText(carry.to)},从这里接着走`
+        : `在 ${cellText(carry.from)} 踩到落下点，掉到 ${cellText(carry.to)},从这里接着走`;
+    carried.push(line);
+    const repeats = carryRepeatLimit(state);
+    if (count >= repeats) {
+      return [
+        false,
+        withCarried(
+          `同一处 ${cellText(carry.from)} → ${cellText(carry.to)} 被带走了 ${count} 次,停下`,
+        ),
+      ];
+    }
+    const total = carryTotalLimit(state);
+    if (carryBudget.total >= total) {
+      return [false, withCarried(`这次 go 里已经被带走了 ${carryBudget.total} 次,到上限了,停下`)];
+    }
+    return null;
+  };
+  /** Where the party was last seen on the go's first map, for a map-change report. */
+  let where: Cell | null = null;
+  /**
+   * Task 84: the go left its first map before reaching the goal. Reaching the goal and then
+   * stepping into an entrance is still an arrival; a real detour walks back when the atlas
+   * has a way, and otherwise stops with both places named.
+   */
+  const leftStartMap = async (
+    now: Reply,
+    fromCell: Cell | null,
+    verb: string,
+  ): Promise<[boolean, string]> => {
+    if (fromCell !== null && sameCell(fromCell, goal)) {
+      endWalk("map_changed");
+      await pilot.send("wait", { timeout: 30000 }, 40_000);
+      const settled = record((await pilot.send("pos")).pos);
+      return [true, withCarried(`进入了地图 ${show(settled.map)},现在在 ${show(settled.cell)}`)];
+    }
+    const goalMap = mapNumber(startMap);
+    const nowMap = mapNumber(now.map);
+    if (
+      goalMap !== null &&
+      nowMap !== null &&
+      state.routeBack?.(nowMap, goalMap) === true &&
+      state.returnToGoal
+    ) {
+      carried.push(
+        `中途在 ${cellText(fromCell)} ${verb}地图 ${show(now.map)} ${cellText(cellOf(now.cell))},` +
+          `地图记录里有回去的路,从这里走回去`,
+      );
+      endWalk("stopped");
+      const [reached, message] = await state.returnToGoal(pilot, goalMap, goal, say, carryBudget);
+      return [reached, withCarried(message)];
+    }
+    endWalk("map_changed");
+    return [
+      false,
+      withCarried(
+        `原目标在地图 ${show(startMap)} ${cellText(goal)},中途在 ${cellText(fromCell)} ` +
+          `${verb}地图 ${show(now.map)} ${cellText(cellOf(now.cell))},按地图记录回不去`,
+      ),
+    ];
+  };
   for (;;) {
     if (turns >= MAX_WALK_TURNS) break;
     turns += 1;
@@ -1714,12 +1877,9 @@ export async function navigate(
     freePlan = false;
     const pos = record((await pilot.send("pos")).pos);
     if (pos.map !== startMap) {
-      // Walked onto an entrance or stairs: the goal's coordinates belonged to the old map.
-      endWalk("map_changed");
-      await pilot.send("wait", { timeout: 30000 }, 40_000);
-      const now = record((await pilot.send("pos")).pos);
-      return [true, `进入了地图 ${show(now.map)},现在在 ${show(now.cell)}`];
+      return await leftStartMap(pos, where, "被带到");
     }
+    where = cellOf(pos.cell) ?? where;
     const planned = await plannedRoute(pilot, goal, byShip, cut, state, startMap);
     remember(planned.suspects);
     const [here, initial] = [planned.here, planned.path];
@@ -1735,14 +1895,25 @@ export async function navigate(
       const floor = planned.layer
         ? `,第 ${planned.layer.end} 层(共 ${planned.layer.count} 层)`
         : "";
-      return entered ?? [true, `到达 ${cellText(goal)}${floor}${washedNote()}`];
+      return entered === null
+        ? [true, withCarried(`到达 ${cellText(goal)}${floor}${washedNote()}`)]
+        : [true, withCarried(entered[1])];
     }
     // Task 83: an event cell is not a wall. Walk beside it and try stepping in from every
     // reachable side; a refusal there is a matter of timing (11-10, Fire-Powered Ship 265).
     const eventName = planned.events?.get(cellKey(goal[0], goal[1]));
     if (eventName !== undefined) {
       endWalk("event_goal");
-      return await stepOntoEventGoal(pilot, goal, eventName, planned, say, state, startMap);
+      const [eventReached, eventText] = await stepOntoEventGoal(
+        pilot,
+        goal,
+        eventName,
+        planned,
+        say,
+        state,
+        startMap,
+      );
+      return [eventReached, withCarried(eventText)];
     }
     let path = walkPathCells(initial);
     if (!byShip && planned.suspects === undefined && !(await onWorldMap(pilot))) {
@@ -1791,8 +1962,10 @@ export async function navigate(
         : "";
       return [
         false,
-        `在 ${cellText(here)} ${how}走不过去${floor},这里已是离 ${cellText(goal)} 最近的地方` +
-          washedNote(),
+        withCarried(
+          `在 ${cellText(here)} ${how}走不过去${floor},这里已是离 ${cellText(goal)} 最近的地方` +
+            washedNote(),
+        ),
       ];
     }
     say(`  ${cellText(here)} → ${cellText(path[path.length - 1] ?? null)}:${path.length - 1} 格`);
@@ -1824,6 +1997,18 @@ export async function navigate(
       } else {
         state.walk = updateWalkFromReply(state.walk ?? null, result, new Date().toISOString());
         let current = record(result.pos);
+        if (current.map === startMap) {
+          where = cellOf(current.cell) ?? where;
+        } else {
+          // The walk changed the map: the last planned cell it could have stood on says
+          // whether that was the goal itself (an exit cell) or an earlier detour.
+          const index =
+            typeof result.index === "number" && Number.isFinite(result.index)
+              ? Math.trunc(result.index)
+              : -1;
+          where =
+            (index >= 0 && index < path.length ? path[index] : path[path.length - 1]) ?? where;
+        }
         let reason = text(result.reason) ?? (truthy(result.ok) ? "arrived" : "");
         if (reason === "state:Event" || reason === "dialog") {
           // Task 63: an encounter's opening Event frame looks like a story stop; wait to see
@@ -1844,14 +2029,57 @@ export async function navigate(
             flee: state.flee === true,
           });
           say(`  途中遇敌,${battle}`);
-          const moved = await afterWalk(pilot, result.pos, startMap, planned, path, state, seen);
-          if (moved) return moved;
+          const moved = await afterWalk(
+            pilot,
+            result.pos,
+            startMap,
+            planned,
+            path,
+            state,
+            seen,
+            goal,
+          );
+          if (moved !== null) {
+            if (moved.kind === "arrived") return [true, withCarried(moved.text)];
+            const stopped = noteCarry(moved.carry);
+            if (stopped !== null) return stopped;
+            if (moved.carry.mapChanged) {
+              return await leftStartMap(
+                { map: moved.carry.map, cell: moved.carry.to },
+                moved.carry.from,
+                moved.carry.how === "传送带" ? "被带到" : "掉到",
+              );
+            }
+          }
           // Not one of the caller's legs: a long walk may meet several fights (task 56).
           freePlan = true;
           continue;
         }
-        const moved = await afterWalk(pilot, result.pos, startMap, planned, path, state, seen);
-        if (moved) return moved;
+        const moved = await afterWalk(
+          pilot,
+          result.pos,
+          startMap,
+          planned,
+          path,
+          state,
+          seen,
+          goal,
+        );
+        if (moved !== null) {
+          if (moved.kind === "arrived") return [true, withCarried(moved.text)];
+          const stopped = noteCarry(moved.carry);
+          if (stopped !== null) return stopped;
+          if (moved.carry.mapChanged) {
+            return await leftStartMap(
+              { map: moved.carry.map, cell: moved.carry.to },
+              moved.carry.from,
+              moved.carry.how === "传送带" ? "被带到" : "掉到",
+            );
+          }
+          // A same-map carry: replan from the landing, not one of the caller's legs.
+          freePlan = true;
+          continue;
+        }
         if (truthy(result.ok) || reason === "arrived") {
           if (sameCell(cellOf(current.cell), goal)) {
             await forgetVerified();
@@ -1859,14 +2087,16 @@ export async function navigate(
             const floor = planned.layer
               ? `,第 ${planned.layer.end} 层(共 ${planned.layer.count} 层)`
               : "";
-            return entered ?? [true, `到达 ${cellText(goal)}${floor}${washedNote()}`];
+            return entered === null
+              ? [true, withCarried(`到达 ${cellText(goal)}${floor}${washedNote()}`)]
+              : [true, withCarried(entered[1])];
           }
           // The command stopped on the cell before a jump or at the window's edge: replan.
           continue;
         }
         if (reason === "state:FieldHelp" || current.state === "FieldHelp") {
           const help = await dismissFieldHelp(pilot);
-          if (help === "stuck") return [false, FIELD_HELP_STUCK];
+          if (help === "stuck") return [false, withCarried(FIELD_HELP_STUCK)];
           if (help === "closed") say("  关掉了操作提示");
           continue;
         }
@@ -1889,7 +2119,8 @@ export async function navigate(
         ) {
           await pilot.send("wait", { timeout: 30000 }, 40_000);
           const now = record((await pilot.send("pos")).pos);
-          return [true, `进入了地图 ${show(now.map)},现在在 ${show(now.cell)}`];
+          const fromCell = current.map === startMap ? (cellOf(current.cell) ?? where) : where;
+          return await leftStartMap(now, fromCell, "被带到");
         }
         if (reason === "blocked") {
           const index =
@@ -1933,7 +2164,9 @@ export async function navigate(
             endWalk("blocked");
             return [
               false,
-              `在 ${cellText(stuck)} ${how}走不过去(地图记录里的这一步又试了一次,还是被挡)`,
+              withCarried(
+                `在 ${cellText(stuck)} ${how}走不过去(地图记录里的这一步又试了一次,还是被挡)`,
+              ),
             ];
           }
           continue;
@@ -1942,18 +2175,27 @@ export async function navigate(
         if (reason === "dialog" || reason.startsWith("state:")) {
           return [
             false,
-            `停在 ${show(current.cell)}:${show(`interrupted:${reason || "walkpath"}`)}`,
+            withCarried(
+              `停在 ${show(current.cell)}:${show(`interrupted:${reason || "walkpath"}`)}`,
+            ),
           ];
         }
-        return [false, `停在 ${show(current.cell)}:${show(reason === "" ? result.error : reason)}`];
+        return [
+          false,
+          withCarried(`停在 ${show(current.cell)}:${show(reason === "" ? result.error : reason)}`),
+        ];
       }
     }
 
     // The old way, kept for bridge 0.13.x and a LAN that is down: one closed-loop walk per
     // turn of the route. Battles inside walkLeg do not use a leg either.
+    let replanned = false;
     for (const [x, y] of corners(path)) {
+      where = [x, y];
       const result = await walkLeg(pilot, x, y, say, state);
-      const reached = cellOf(record(result.pos).cell);
+      const walked = record(result.pos);
+      if (walked.map === startMap) where = cellOf(walked.cell) ?? where;
+      const reached = cellOf(walked.cell);
       if (state.walk !== null && state.walk !== undefined && reached !== null) {
         const index = path.findIndex((cell) => sameCell(cell, reached));
         state.walk = updateWalk(state.walk, {
@@ -1962,10 +2204,28 @@ export async function navigate(
           steps: Math.max(0, path.length - 1),
         });
       }
-      const moved = await afterWalk(pilot, result.pos, startMap, planned, path, state, seen);
-      if (moved) {
-        endWalk("stopped");
-        return moved;
+      const moved = await afterWalk(pilot, result.pos, startMap, planned, path, state, seen, goal);
+      if (moved !== null) {
+        if (moved.kind === "arrived") {
+          endWalk("arrived");
+          return [true, withCarried(moved.text)];
+        }
+        const stopped = noteCarry(moved.carry);
+        if (stopped !== null) {
+          endWalk("stopped");
+          return stopped;
+        }
+        if (moved.carry.mapChanged) {
+          return await leftStartMap(
+            { map: moved.carry.map, cell: moved.carry.to },
+            moved.carry.from,
+            moved.carry.how === "传送带" ? "被带到" : "掉到",
+          );
+        }
+        // A same-map carry: replan from the landing, not one of the caller's legs.
+        freePlan = true;
+        replanned = true;
+        break;
       }
       if (truthy(result.ok)) continue;
       const current = record(result.pos);
@@ -1975,10 +2235,10 @@ export async function navigate(
         current.state === "FieldReady" ||
         String(result.error).includes("ChangeMap")
       ) {
-        endWalk("map_changed");
         await pilot.send("wait", { timeout: 30000 }, 40_000);
         const now = record((await pilot.send("pos")).pos);
-        return [true, `进入了地图 ${show(now.map)},现在在 ${show(now.cell)}`];
+        const fromCell = current.map === startMap ? (cellOf(current.cell) ?? where) : where;
+        return await leftStartMap(now, fromCell, "被带到");
       }
       if (result.error === "blocked") {
         const stuck = cellOf(current.cell);
@@ -2014,24 +2274,26 @@ export async function navigate(
         if (suspect !== undefined && stuck !== null) {
           return [
             false,
-            `在 ${cellText(stuck)} ${how}走不过去(地图记录里的这一步又试了一次,还是被挡)`,
+            withCarried(
+              `在 ${cellText(stuck)} ${how}走不过去(地图记录里的这一步又试了一次,还是被挡)`,
+            ),
           ];
         }
         break;
       }
       endWalk("stopped");
-      return [false, `停在 ${show(current.cell)}:${show(result.error)}`];
+      return [false, withCarried(`停在 ${show(current.cell)}:${show(result.error)}`)];
     }
-    endWalk("arrived");
+    if (!replanned) endWalk("arrived");
     // A goal beyond the planning window: this leg ended at the nearest cell in view, and
     // the next plan, from there, sees further. One that gets no closer stops above.
   }
   if (turns >= MAX_WALK_TURNS) {
     endWalk("timeout");
-    return [false, `走了 ${turns} 次还没到 ${cellText(goal)}`];
+    return [false, withCarried(`走了 ${turns} 次还没到 ${cellText(goal)}`)];
   }
   endWalk("stopped");
-  return [false, `走了 ${legs} 段还没到 ${cellText(goal)}${washedNote()}`];
+  return [false, withCarried(`走了 ${legs} 段还没到 ${cellText(goal)}${washedNote()}`)];
 }
 
 const FACING: readonly (readonly [number, number, string])[] = [

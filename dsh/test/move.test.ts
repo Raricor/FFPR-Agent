@@ -276,13 +276,71 @@ void test("navigate ignores the game's route when it crosses a conveyor", async 
   assert.notDeepEqual(walks[0], [4, 1], "used the game's straight route through the conveyor");
 });
 
-void test("a conveyor ride is reported and recorded as a way in the atlas", async () => {
-  let here: Cell = [0, 1];
-  const pilot = conveyorPilot(() => here);
+/** A 5x3 room with the middle column walled above and below the belt at (2,1). */
+function beltPilot(here: () => Cell): FakePilot {
+  const rows = ["00100", "00000", "00100"];
+  const pilot = new FakePilot();
+  pilot.on("pos", () => ({ pos: { map: 260, cell: [here()[0], here()[1]] } }));
+  pilot.on("cells", () => ({
+    cells: {
+      origin: [0, 0],
+      center: [here()[0], here()[1]],
+      attr: rows.map(() => Array.from({ length: 5 }, () => 0)),
+    },
+  }));
+  pilot.on("collision", () => ({
+    collision: {
+      searchLayer: 1,
+      playerCell: [here()[0], here()[1]],
+      layers: [{ name: "GroundCollision", rows }],
+    },
+  }));
+  pilot.on("entities", (fields) =>
+    fields.kind === "Event"
+      ? {
+          entities: {
+            total: 1,
+            entities: [{ kind: "Event", cell: [2, 1], name: "流される①", active: true }],
+          },
+        }
+      : { entities: { total: 0, entities: [] } },
+  );
   pilot.on("route", { route: {} });
-  pilot.on("walk", () => {
-    here = [9, 30];
-    return { ok: true, pos: { map: 260, cell: [9, 30] } };
+  return pilot;
+}
+
+function arrivedAt(here: Cell): Record<string, unknown> {
+  return {
+    ok: true,
+    reason: "arrived",
+    index: 0,
+    steps: 0,
+    pos: { map: 260, cell: [here[0], here[1]] },
+    next: null,
+    turns: [],
+  };
+}
+
+void test("a conveyor ride is reported, recorded, and go walks on to the goal", async () => {
+  let here: Cell = [0, 1];
+  let sent = 0;
+  const pilot = beltPilot(() => here);
+  pilot.on("walkpath", () => {
+    sent += 1;
+    if (sent === 1) {
+      here = [0, 2];
+      return {
+        ok: false,
+        reason: "off_path",
+        index: -1,
+        steps: 0,
+        pos: { map: 260, cell: [0, 2] },
+        next: null,
+        turns: [],
+      };
+    }
+    here = [4, 1];
+    return arrivedAt(here);
   });
   const links: unknown[] = [];
   const state: MoveState = {
@@ -293,27 +351,50 @@ void test("a conveyor ride is reported and recorded as a way in the atlas", asyn
     },
   };
   assert.deepEqual(await navigate(pilot, [4, 1], false, () => undefined, 8, state), [
-    false,
-    "踩到传送带 (2, 1),被带到 (9, 30)",
+    true,
+    "在 (2, 1) 踩到传送带，被带到 (0, 2),从这里接着走\n" +
+      "到达 (4, 1)(这条路上会踩到危险格 (2, 1),没有别的路,可能被水流冲走或被传送带带走)",
   ]);
-  assert.deepEqual(links, [{ mapId: 260, from: [2, 1], to: [9, 30], how: "传送带" }]);
+  assert.equal(sent, 2, "the walk went on from the landing");
+  assert.deepEqual(links, [{ mapId: 260, from: [2, 1], to: [0, 2], how: "传送带" }]);
 });
 
-void test("a ride read as it starts is followed to where the belt stops", async () => {
+void test("a ride read as it starts is followed to where the belt stops, then go walks on", async () => {
   // 10-27, map 261: the walk's reply still showed the party on the belt, and the atlas got a
   // ride from (13, 23) to (13, 23).
   let here: Cell = [0, 1];
   let polls = 0;
-  const pilot = conveyorPilot(() => here);
-  pilot.on("route", { route: {} });
-  pilot.on("walk", () => {
-    here = [2, 1];
-    return { ok: true, pos: { map: 260, cell: [2, 1], moving: true } };
+  let riding = false;
+  let sent = 0;
+  const pilot = beltPilot(() => here);
+  pilot.on("walkpath", () => {
+    sent += 1;
+    if (sent === 1) {
+      here = [2, 1];
+      polls = 0;
+      riding = true;
+      return {
+        ok: true,
+        reason: "off_path",
+        index: 1,
+        steps: 1,
+        pos: { map: 260, cell: [2, 1], moving: true },
+        next: null,
+        turns: [],
+      };
+    }
+    here = [4, 1];
+    return arrivedAt(here);
   });
   pilot.on("pos", () => {
-    polls += 1;
-    if (polls > 3) here = [9, 30]; // the belt moves the party on after a few polls
-    return { pos: { map: 260, cell: [here[0], here[1]], moving: polls <= 3 } };
+    if (riding) {
+      polls += 1;
+      if (polls > 3) {
+        here = [0, 2]; // the belt moves the party on after a few polls
+        riding = false;
+      }
+    }
+    return { pos: { map: 260, cell: [here[0], here[1]], moving: riding } };
   });
   const links: unknown[] = [];
   const state: MoveState = {
@@ -323,9 +404,66 @@ void test("a ride read as it starts is followed to where the belt stops", async 
       return Promise.resolve();
     },
   };
-  const [, text] = await navigate(pilot, [4, 1], false, () => undefined, 8, state);
-  assert.equal(text, "踩到传送带 (2, 1),被带到 (9, 30)");
-  assert.deepEqual(links, [{ mapId: 260, from: [2, 1], to: [9, 30], how: "传送带" }]);
+  const [reached, text] = await navigate(pilot, [4, 1], false, () => undefined, 8, state);
+  assert.equal(reached, true);
+  assert.equal(
+    text,
+    "在 (2, 1) 踩到传送带，被带到 (0, 2),从这里接着走\n" +
+      "到达 (4, 1)(这条路上会踩到危险格 (2, 1),没有别的路,可能被水流冲走或被传送带带走)",
+  );
+  assert.deepEqual(links, [{ mapId: 260, from: [2, 1], to: [0, 2], how: "传送带" }]);
+});
+
+void test("the same conveyor edge carrying the party twice stops one go", async () => {
+  // The belt throws the party back to (0,2) every time, so the second try is the same edge.
+  let here: Cell = [0, 1];
+  let sent = 0;
+  const pilot = beltPilot(() => here);
+  pilot.on("walkpath", () => {
+    sent += 1;
+    here = [0, 2];
+    return {
+      ok: false,
+      reason: "off_path",
+      index: -1,
+      steps: 0,
+      pos: { map: 260, cell: [0, 2] },
+      next: null,
+      turns: [],
+    };
+  });
+  assert.deepEqual(await navigate(pilot, [4, 1], false, () => undefined, 8), [
+    false,
+    "在 (2, 1) 踩到传送带，被带到 (0, 2),从这里接着走\n" +
+      "在 (2, 1) 踩到传送带，被带到 (0, 2),从这里接着走\n" +
+      "同一处 (2, 1) → (0, 2) 被带走了 2 次,停下",
+  ]);
+  assert.equal(sent, 2, "the third walk was not sent");
+});
+
+void test("carrying away more than the total limit stops one go", async () => {
+  let here: Cell = [0, 1];
+  const pilot = beltPilot(() => here);
+  pilot.on("walkpath", () => {
+    here = [0, 2];
+    return {
+      ok: false,
+      reason: "off_path",
+      index: -1,
+      steps: 0,
+      pos: { map: 260, cell: [0, 2] },
+      next: null,
+      turns: [],
+    };
+  });
+  const state: MoveState = { drake: null, carryTotalLimit: 1 };
+  const [reached, text] = await navigate(pilot, [4, 1], false, () => undefined, 8, state);
+  assert.equal(reached, false);
+  assert.equal(
+    text,
+    "在 (2, 1) 踩到传送带，被带到 (0, 2),从这里接着走\n" +
+      "这次 go 里已经被带走了 1 次,到上限了,停下",
+  );
 });
 
 void test("a clerk behind a counter is talked to through the counter, not from behind", async () => {
@@ -961,6 +1099,80 @@ void test("a map change reported by walkpath is entering a map", async () => {
     };
   });
   assert.deepEqual(await navigate(pilot, [4, 0], false), [true, "进入了地图 261,现在在 [4, 0]"]);
+});
+
+void test("a same-map go carried to another map stops when the record has no way back", async () => {
+  const pilot = indoorPilot(() => [0, 0], 8);
+  let map = 260;
+  pilot.on("pos", () => ({ pos: { map, cell: [5, 0] } }));
+  pilot.on("walkpath", () => {
+    map = 261;
+    return {
+      ok: false,
+      reason: "map_changed",
+      index: 2,
+      steps: 2,
+      pos: { map: 260, cell: [2, 0] },
+      next: null,
+      turns: [],
+    };
+  });
+  assert.deepEqual(await navigate(pilot, [5, 0], false), [
+    false,
+    "原目标在地图 260 (5, 0),中途在 (2, 0) 被带到地图 261 (5, 0),按地图记录回不去",
+  ]);
+});
+
+void test("a same-map go carried to another map walks back when the record has a way", async () => {
+  const pilot = indoorPilot(() => [0, 0], 8);
+  let map = 260;
+  pilot.on("pos", () => ({ pos: { map, cell: [5, 0] } }));
+  pilot.on("walkpath", () => {
+    map = 261;
+    return {
+      ok: false,
+      reason: "map_changed",
+      index: 2,
+      steps: 2,
+      pos: { map: 260, cell: [2, 0] },
+      next: null,
+      turns: [],
+    };
+  });
+  const asked: unknown[] = [];
+  const state: MoveState = {
+    drake: null,
+    routeBack: (from, to) => {
+      asked.push({ from, to });
+      return true;
+    },
+    returnToGoal: (runner, goalMap, goal) => {
+      assert.equal(runner, pilot);
+      assert.equal(goalMap, 260);
+      assert.deepEqual(goal, [5, 0]);
+      return Promise.resolve([true, "到达 (5, 0)"]);
+    },
+  };
+  assert.deepEqual(await navigate(pilot, [5, 0], false, () => undefined, 8, state), [
+    true,
+    "中途在 (2, 0) 被带到地图 261 (5, 0),地图记录里有回去的路,从这里走回去\n到达 (5, 0)",
+  ]);
+  assert.deepEqual(asked, [{ from: 261, to: 260 }]);
+});
+
+void test("a carry that falls onto another map reports both maps and stops", async () => {
+  let here: Cell = [0, 1];
+  const pilot = conveyorPilot(() => here);
+  pilot.on("route", { route: {} });
+  pilot.on("walk", () => {
+    here = [3, 3];
+    return { ok: true, pos: { map: 261, cell: [3, 3] } };
+  });
+  assert.deepEqual(await navigate(pilot, [4, 1], false), [
+    false,
+    "在 (2, 1) 踩到传送带，被带到 (3, 3),从这里接着走\n" +
+      "原目标在地图 260 (4, 1),中途在 (2, 1) 被带到地图 261 (3, 3),按地图记录回不去",
+  ]);
 });
 
 void test("a state event that turns into a battle is fought as one", async () => {
