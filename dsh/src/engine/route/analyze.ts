@@ -51,6 +51,34 @@ function dependsOn(
   return false;
 }
 
+/**
+ * Task 100: the time the waypoint itself spends. A grind is budget battles × Config's
+ * seconds per battle, or its own minutes cap. With neither, task 68's bestiary budget is
+ * used; 15 battles is the deferral ceiling it starts from. `minimum` keeps several
+ * conditions from being added: whichever is reached first ends the grind.
+ */
+function ownMinutesOf(waypoint: Waypoint, battleSeconds: number): number {
+  if (waypoint.kind !== "grind" || waypoint.until === undefined) return waypoint.minutes ?? 0;
+  const until = waypoint.until;
+  const estimates: number[] = [];
+  if (until.minutes !== undefined) estimates.push(until.minutes);
+  if (until.battles !== undefined) estimates.push((until.battles * battleSeconds) / 60);
+  if (
+    until.battles === undefined &&
+    until.minutes === undefined &&
+    (until.bestiary !== undefined || until.blueMagic !== undefined)
+  ) {
+    estimates.push((DEFAULT_GRIND_BUDGET_BATTLES * battleSeconds) / 60);
+  }
+  return estimates.length === 0 ? (waypoint.minutes ?? 0) : Math.min(...estimates);
+}
+
+/** Task 68's deferral ceiling, used when a grind names no battle count. */
+export const DEFAULT_GRIND_BUDGET_BATTLES = 15;
+
+/** Route analysis falls back to the same 45 s as the plugin Config when no Config is passed. */
+const FALLBACK_BATTLE_SECONDS = 45;
+
 function legOf(
   from: RoutePoint,
   to: RoutePoint,
@@ -59,6 +87,7 @@ function legOf(
   label: string,
   estimate: PairEstimate,
   ownMinutes: number,
+  until?: Waypoint["until"],
 ): RouteLeg {
   return {
     from,
@@ -67,6 +96,7 @@ function legOf(
     label,
     map: to.map,
     cell: to.cell,
+    ...(until === undefined ? {} : { until }),
     maps: estimate.maps,
     hops: estimate.hops,
     cells: estimate.cells,
@@ -134,6 +164,7 @@ export function analyzeRoute(input: RouteInput, givenWorld: RouteWorld): RoutePl
     givenWorld.regions === undefined && givenWorld.collisions !== undefined
       ? { ...givenWorld, regions: RegionIndex.create(givenWorld.atlas, givenWorld.collisions) }
       : givenWorld;
+  const battleSeconds = world.battleSeconds ?? FALLBACK_BATTLE_SECONDS;
 
   const end = input.end ?? null;
   const points: RoutePoint[] = [
@@ -175,7 +206,8 @@ export function analyzeRoute(input: RouteInput, givenWorld: RouteWorld): RoutePl
         waypoint.kind,
         waypoint.label,
         pair.estimate,
-        waypoint.minutes ?? 0,
+        ownMinutesOf(waypoint, battleSeconds),
+        waypoint.until,
       ),
     );
     current = index + 1;

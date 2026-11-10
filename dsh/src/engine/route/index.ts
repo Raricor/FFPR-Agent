@@ -14,6 +14,7 @@ export { describe } from "./describe.ts";
 export { EXACT_WAYPOINT_LIMIT, orderStops } from "./order.ts";
 export type { EdgeMinutes, OrderResult, OrderStop } from "./order.ts";
 export type {
+  GrindUntil,
   PairEstimate,
   RouteDistance,
   RouteInput,

@@ -30,6 +30,7 @@ interface FakeState {
   position: Point | null;
   went: string[];
   acted: string[];
+  ground: string[];
   replans: { from: Point; rest: string[] }[];
 }
 
@@ -38,12 +39,17 @@ interface FakeHandlers {
   goTo?: (stop: Waypoint, state: FakeState) => Promise<{ ok: boolean; text: string } | null>;
   act?: (stop: Waypoint, state: FakeState) => Promise<ActResult | null>;
   replan?: (from: Point, rest: readonly Waypoint[], state: FakeState) => Promise<RoutePlan>;
+  grind?: (stop: Waypoint, state: FakeState) => Promise<ActResult | null>;
 }
 
 const START: Point = { map: 1, cell: [5, 5] };
 
 function waypoint(id: string, kind: WaypointKind, x: number, label = id): Waypoint {
   return { id, kind, map: 1, cell: [x, 5], label };
+}
+
+function grindWaypoint(id: string, x: number, label = id): Waypoint {
+  return { ...waypoint(id, "grind", x, label), until: { battles: 3 } };
 }
 
 function planFrom(start: Point, stops: readonly Waypoint[]): RoutePlan {
@@ -57,6 +63,7 @@ function planFrom(start: Point, stops: readonly Waypoint[]): RoutePlan {
       label: stop.label,
       map: stop.map,
       cell: stop.cell,
+      ...(stop.until === undefined ? {} : { until: stop.until }),
       maps: from.map === stop.map ? [stop.map] : [from.map, stop.map],
       hops: from.map === stop.map ? 0 : 1,
       cells: 1,
@@ -99,6 +106,14 @@ function fakePorts(state: FakeState, handlers: FakeHandlers = {}): RoutePorts {
       }
       return { ok: true, done: true, text: "完成" };
     },
+    grind: async (stop) => {
+      state.ground.push(stop.id);
+      if (handlers.grind !== undefined) {
+        const custom = await handlers.grind(stop, state);
+        if (custom !== null) return custom;
+      }
+      return { ok: true, done: true, text: "刷了 3 场;停打满 3 场" };
+    },
     replan: async (from, rest) => {
       state.replans.push({ from, rest: rest.map((entry) => entry.id) });
       if (handlers.replan === undefined) throw new Error("没料到会重排");
@@ -109,7 +124,7 @@ function fakePorts(state: FakeState, handlers: FakeHandlers = {}): RoutePorts {
 }
 
 function newState(position: Point | null = START): FakeState {
-  return { position, went: [], acted: [], replans: [] };
+  return { position, went: [], acted: [], ground: [], replans: [] };
 }
 
 async function inTemp(run: (dir: string) => Promise<void>): Promise<void> {
@@ -145,7 +160,8 @@ void test("four waypoints run in order and the progress file grows after each", 
     const result = await executeRoute(planFrom(START, stops), ports, { progressFile: file });
 
     assert.equal(result.reason, "completed");
-    assert.deepEqual(state.acted, ["a", "b", "c", "d"]);
+    assert.deepEqual(state.acted, ["a", "b", "c"]);
+    assert.deepEqual(state.ground, ["d"]);
     assert.deepEqual(snapshots, [[], ["a"], ["a", "b"], ["a", "b", "c"], ["a", "b", "c", "d"]]);
     const saved = await readProgress(file);
     assert.equal(saved.next, 4);
@@ -348,6 +364,55 @@ void test("the same waypoint failing twice stops the run", async () => {
     const saved = await readProgress(file);
     assert.equal(saved.next, 1);
     assert.deepEqual(saved.completed, ["a"]);
+  });
+});
+
+void test("a grind waypoint walks there, calls grind with until, then walks on", async () => {
+  await inTemp(async (dir) => {
+    const file = join(dir, "route-progress.json");
+    const stops = [grindWaypoint("g", 1, "刷怪 卡纳克"), waypoint("b", "chest", 2)];
+    const state = newState();
+    let seen: Waypoint | undefined;
+    const ports = fakePorts(state, {
+      grind: (stop) => {
+        seen = stop;
+        return Promise.resolve({ ok: true, done: true, text: "刷了 3 场;停打满 3 场" });
+      },
+    });
+
+    const result = await executeRoute(planFrom(START, stops), ports, { progressFile: file });
+
+    assert.equal(result.reason, "completed");
+    assert.deepEqual(state.went, ["g", "b"]);
+    assert.deepEqual(state.ground, ["g"]);
+    assert.deepEqual(state.acted, ["b"]);
+    assert.deepEqual(seen?.until, { battles: 3 });
+    assert.match(result.text, /刷了 3 场/);
+    assert.match(result.text, /停打满 3 场/);
+  });
+});
+
+void test("a running countdown skips every grind waypoint and keeps walking", async () => {
+  await inTemp(async (dir) => {
+    const file = join(dir, "route-progress.json");
+    const stops = [grindWaypoint("g", 1, "刷怪 卡纳克"), waypoint("b", "chest", 2)];
+    const state = newState();
+    const ports = {
+      ...fakePorts(state),
+      watch: () =>
+        Promise.resolve({
+          timer: { active: true, seconds: 30 },
+          gameover: null,
+        }),
+    };
+
+    const result = await executeRoute(planFrom(START, stops), ports, { progressFile: file });
+
+    assert.equal(result.reason, "completed");
+    assert.deepEqual(state.ground, []);
+    assert.deepEqual(state.acted, ["b"]);
+    assert.match(result.text, /跳过刷怪「刷怪 卡纳克」/);
+    assert.match(result.text, /倒计时剩 30 秒/);
   });
 });
 

@@ -32,6 +32,12 @@ export interface RoutePorts {
    * places the executor has no plan for return `decision` and are handed back to the AI.
    */
   act(stop: Waypoint): Promise<{ ok: boolean; done: boolean; text: string; decision?: string }>;
+  /**
+   * Task 100: run the existing grind loop at a `grind` waypoint and return one line about
+   * battles, registrations, learned blue magic and why it stopped. Omitted means the route
+   * fails that waypoint instead of silently treating it as done.
+   */
+  grind?(stop: Waypoint): Promise<{ ok: boolean; done: boolean; text: string; decision?: string }>;
   /** Re-run analyzeRoute from where the party actually is, over the waypoints left. */
   replan(
     from: { map: number; cell: Cell },
@@ -111,7 +117,7 @@ export interface RouteRunResult {
 
 const KIND_NAMES: Readonly<Record<WaypointKind | "end", string>> = {
   chest: "宝箱",
-  grind: "刷图鉴",
+  grind: "刷怪",
   shop: "商店",
   inn: "旅馆",
   save: "存档",
@@ -139,6 +145,7 @@ function waypointFromLeg(leg: RouteLeg): Waypoint {
     map: leg.map,
     cell: leg.cell,
     label: leg.label,
+    ...(leg.until === undefined ? {} : { until: leg.until }),
   };
 }
 
@@ -243,6 +250,13 @@ function waypointLabels(waypoints: readonly Waypoint[]): string {
     .map((waypoint) => `「${waypoint.label}」`)
     .join("、");
   return waypoints.length > 8 ? `${shown}…（还有 ${waypoints.length - 8} 个）` : shown;
+}
+
+/** Task 100: drop every remaining grind stop when a countdown is already running. */
+function grindIds(waypoints: readonly Waypoint[]): Set<string> {
+  return new Set(
+    waypoints.filter((waypoint) => waypoint.kind === "grind").map((waypoint) => waypoint.id),
+  );
 }
 
 function clampLines(lines: readonly string[]): readonly string[] {
@@ -459,6 +473,24 @@ async function run(
     if (gameover !== null) {
       return halt("gameover", gameover, "由 AI 决定读档还是继续");
     }
+    // Task 100: a running countdown skips every grind stop, optional or not. Record why in
+    // the text and drop the stops together so the remaining walk still reaches the end.
+    const timerNow = before?.timer ?? null;
+    if (timerNow?.active === true) {
+      const ids = grindIds(pending);
+      if (ids.size > 0) {
+        const dropped = pending.filter((waypoint) => ids.has(waypoint.id));
+        pending = pending.filter((waypoint) => !ids.has(waypoint.id));
+        legs = legs.filter((entry, index) => index < next || !ids.has(entry.waypoint));
+        const left =
+          timerNow.seconds === null
+            ? "倒计时进行中"
+            : `倒计时剩 ${Math.max(0, Math.round(timerNow.seconds))} 秒`;
+        lines.push(`${left}，跳过刷怪${waypointLabels(dropped)}：倒计时期间不刷怪`);
+        await save();
+        continue;
+      }
+    }
     if (next >= legs.length) {
       if (pending.length > 0) {
         return halt("unreachable", unreachableMessage(), "由 AI 决定换目标、换路线或手动前往");
@@ -579,7 +611,26 @@ async function run(
       continue;
     }
 
-    const acted = await ports.act(target);
+    // A countdown may have begun during the walk; do not start a grind under it either.
+    const beforeActWatch = await watchNow();
+    const timerAtAct = beforeActWatch?.timer ?? null;
+    if (target.kind === "grind" && timerAtAct?.active === true) {
+      const ids = grindIds(pending);
+      const dropped = pending.filter((waypoint) => ids.has(waypoint.id));
+      pending = pending.filter((waypoint) => !ids.has(waypoint.id));
+      legs = legs.filter((entry, index) => index < next || !ids.has(entry.waypoint));
+      const left =
+        timerAtAct.seconds === null
+          ? "倒计时进行中"
+          : `倒计时剩 ${Math.max(0, Math.round(timerAtAct.seconds))} 秒`;
+      lines.push(`${left}，跳过刷怪${waypointLabels(dropped)}：倒计时期间不刷怪`);
+      await save();
+      continue;
+    }
+    const acted =
+      target.kind === "grind" && ports.grind !== undefined
+        ? await ports.grind(target)
+        : await ports.act(target);
     const afterActWatch = await watchNow();
     const gameoverAfterAct = gameoverOf(afterActWatch);
     if (gameoverAfterAct !== null) {

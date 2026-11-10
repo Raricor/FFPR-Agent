@@ -147,6 +147,38 @@ void test("a boss without a save warns instead of inventing one", () => {
   assert.equal(plan.legs.length, 1);
 });
 
+void test("a grind waypoint's estimate adds budget battles at Config seconds each", () => {
+  const atlas = atlasWithMaps();
+  const plain = waypoint("g", "grind", 11, [5, 5]);
+  const grind: Waypoint = { ...plain, until: { battles: 4 } };
+  const base = analyzeRoute({ start: { map: 10, cell: [1, 1] }, waypoints: [plain] }, world(atlas));
+  const withGrind = analyzeRoute(
+    { start: { map: 10, cell: [1, 1] }, waypoints: [grind] },
+    { ...world(atlas), battleSeconds: 30 },
+  );
+  assert.ok(Math.abs(withGrind.total.minutes - base.total.minutes - 2) < 1e-9);
+  assert.equal(withGrind.legs[0]?.kind, "grind");
+});
+
+void test("a grind on the way is ordered before a farther chest", () => {
+  const atlas = atlasWithMaps();
+  const grind: Waypoint = {
+    ...waypoint("g", "grind", 11, [5, 5]),
+    until: { battles: 2 },
+  };
+  const plan = analyzeRoute(
+    {
+      start: { map: 10, cell: [1, 1] },
+      waypoints: [waypoint("far", "chest", 12, [3, 3]), grind],
+    },
+    { ...world(atlas), battleSeconds: 30 },
+  );
+  assert.deepEqual(
+    plan.legs.map((leg) => leg.waypoint),
+    ["g", "far"],
+  );
+});
+
 void test("describe keeps a long plan within 30 lines", () => {
   const atlas = atlasWithMaps();
   const waypoints = Array.from({ length: 30 }, (_, index) =>

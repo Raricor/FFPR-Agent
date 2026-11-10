@@ -13,6 +13,18 @@ import type { CollisionStore, RegionIndex } from "../regions.ts";
 
 export type WaypointKind = "chest" | "grind" | "shop" | "inn" | "save" | "boss" | "move" | "story";
 
+/** Task 100: what a `grind` waypoint stops at. Any combination is allowed; the first met ends it. */
+export interface GrindUntil {
+  /** Bestiary names or book numbers that must be registered in this save. */
+  readonly bestiary?: readonly (string | number)[];
+  /** Blue magic names that must be learned by someone in the party. */
+  readonly blueMagic?: readonly string[];
+  /** Stop after this many battles. */
+  readonly battles?: number;
+  /** Stop after this many minutes. */
+  readonly minutes?: number;
+}
+
 export interface Waypoint {
   readonly id: string;
   readonly kind: WaypointKind;
@@ -25,6 +37,8 @@ export interface Waypoint {
   readonly after?: readonly string[];
   /** Minutes spent at this waypoint (a grind budget), default 0. */
   readonly minutes?: number;
+  /** Task 100: a grind waypoint's stopping conditions; ignored by the other kinds. */
+  readonly until?: GrindUntil;
   /**
    * Task 89: a countdown may skip this waypoint (a chest) to reach the end in time. The route
    * tool defaults `do: open` to optional; the end is never optional.
@@ -75,6 +89,8 @@ export interface RouteWorld {
   readonly regions?: RegionIndex;
   /** Collision snapshots, used for walking estimates inside one map. */
   readonly collisions?: CollisionStore;
+  /** Task 100: Config's estimated seconds per battle, for a grind waypoint's own time. */
+  readonly battleSeconds?: number;
   readonly distance?: RouteDistance;
 }
 
@@ -87,6 +103,8 @@ export interface RouteLeg {
   readonly label: string;
   readonly map: number;
   readonly cell: Cell | null;
+  /** Task 100: kept across a plan so a resumed or analysed grind still knows its until. */
+  readonly until?: GrindUntil;
   /** From the starting map to the destination map, inclusive. */
   readonly maps: readonly number[];
   readonly hops: number;

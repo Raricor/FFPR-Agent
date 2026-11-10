@@ -14,6 +14,7 @@ import { describeError, isMissingFile } from "../errors.ts";
 import type { Cell } from "../nav.ts";
 import { isRecord, list, num, text } from "../values.ts";
 import type {
+  GrindUntil,
   RouteLeg,
   RoutePlan,
   RoutePoint,
@@ -100,6 +101,45 @@ function kindOf(value: unknown, where: string, allowEnd: boolean): WaypointKind 
   throw new Error(`${where} 的 kind 不认识`);
 }
 
+function untilOf(value: unknown, where: string): GrindUntil {
+  if (!isRecord(value)) throw new Error(`${where}.until 不是对象`);
+  const list = (raw: unknown, name: string, allowNumbers: boolean): (string | number)[] => {
+    const entries = Array.isArray(raw) ? raw : [];
+    if (entries.length === 0) throw new Error(`${where}.until.${name} 不能是空数组`);
+    return entries.map((entry, index) => {
+      if (typeof entry === "string" && entry.trim() !== "") return entry.trim();
+      if (allowNumbers && typeof entry === "number" && Number.isFinite(entry)) {
+        return Math.trunc(entry);
+      }
+      throw new Error(`${where}.until.${name}[${index}] 不是名字或数字`);
+    });
+  };
+  const bestiary =
+    value.bestiary === undefined ? undefined : list(value.bestiary, "bestiary", true);
+  const blueMagic =
+    value.blueMagic === undefined
+      ? undefined
+      : list(value.blueMagic, "blueMagic", false).map((name) => String(name));
+  const battles =
+    value.battles === undefined ? undefined : integer(value.battles, `${where}.until.battles`);
+  const minutes =
+    value.minutes === undefined ? undefined : numberOf(value.minutes, `${where}.until.minutes`);
+  if (
+    bestiary === undefined &&
+    blueMagic === undefined &&
+    battles === undefined &&
+    minutes === undefined
+  ) {
+    throw new Error(`${where}.until 至少要有一项`);
+  }
+  return {
+    ...(bestiary === undefined ? {} : { bestiary }),
+    ...(blueMagic === undefined ? {} : { blueMagic }),
+    ...(battles === undefined ? {} : { battles }),
+    ...(minutes === undefined ? {} : { minutes }),
+  };
+}
+
 function waypointOf(value: unknown, where: string): Waypoint {
   if (!isRecord(value)) throw new Error(`${where} 不是对象`);
   const after =
@@ -110,6 +150,7 @@ function waypointOf(value: unknown, where: string): Waypoint {
   if (value.minutes !== undefined && minutes === undefined) {
     throw new Error(`${where}.minutes 不是数字`);
   }
+  const until = value.until === undefined ? undefined : untilOf(value.until, where);
   const reach = text(value.reach);
   if (reach !== undefined && reach !== "cell" && reach !== "map") {
     throw new Error(`${where}.reach 只能是 cell 或 map`);
@@ -122,6 +163,7 @@ function waypointOf(value: unknown, where: string): Waypoint {
     label: stringOf(value.label, `${where}.label`),
     ...(after === undefined ? {} : { after }),
     ...(minutes === undefined ? {} : { minutes }),
+    ...(until === undefined ? {} : { until }),
     ...(value.optional === undefined ? {} : { optional: value.optional === true }),
     ...(reach === undefined ? {} : { reach }),
   };
@@ -137,6 +179,7 @@ function legOf(value: unknown, where: string): RouteLeg {
     label: stringOf(value.label, `${where}.label`),
     map: integer(value.map, `${where}.map`),
     cell: nullableCell(value.cell, `${where}.cell`),
+    ...(value.until === undefined ? {} : { until: untilOf(value.until, where) }),
     maps,
     hops: integer(value.hops, `${where}.hops`),
     cells: numberOf(value.cells, `${where}.cells`),

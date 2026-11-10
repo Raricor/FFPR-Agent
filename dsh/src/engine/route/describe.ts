@@ -8,7 +8,7 @@ import type { RouteLeg, RoutePlan, WaypointKind } from "./types.ts";
 
 const KIND_NAMES: Readonly<Record<WaypointKind | "end", string>> = {
   chest: "宝箱",
-  grind: "刷图鉴",
+  grind: "刷怪",
   shop: "商店",
   inn: "旅馆",
   save: "存档",
