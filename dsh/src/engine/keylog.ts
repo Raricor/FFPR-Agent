@@ -11,6 +11,7 @@
 
 import { readFile } from "node:fs/promises";
 import { describeError } from "./errors.ts";
+import { cleanIconTags } from "./icons.ts";
 import { isRecord, list, num, records, text, truthy, type Json } from "./values.ts";
 
 /** Shanghai time is fixed at +08:00 (no daylight saving). */
@@ -187,7 +188,7 @@ export class Builder {
       seq: record.seq ?? null,
       key: true,
       type: kind,
-      text: entryText,
+      text: cleanIconTags(entryText),
       progress,
     };
     if (Object.keys(data).length > 0) entry.data = data;
@@ -456,7 +457,7 @@ export class Builder {
     if (!data) return;
     const lines: unknown[] = Array.isArray(data.lines) ? data.lines : [];
     if (!Array.isArray(data.lines)) data.lines = lines;
-    lines.push(speaker ? `${speaker}:${line}` : line);
+    lines.push(cleanIconTags(speaker ? `${speaker}:${line}` : line));
     const firstValue = lines[0];
     const lastValue = lines[lines.length - 1];
     const first = typeof firstValue === "string" ? firstValue : "";

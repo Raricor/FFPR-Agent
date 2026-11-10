@@ -74,3 +74,34 @@ void test("unknown bridge records are ignored instead of breaking the battle", a
   assert.equal(battle.noteEvent({ type: "battle.ai" }, 1000), null);
   assert.equal(battle.currentView()?.events.length, 0);
 });
+
+void test("battle events drop icon tags from actor, ability, target and conditions", async () => {
+  const battle = await BattleLog.load("ff5", undefined);
+  battle.start({
+    mapId: null,
+    mapName: "",
+    boss: false,
+    enemies: [],
+    party: [],
+    table: { kind: "default", mapId: null },
+    startedAt: "2026-11-10T10:00:00.000Z",
+    startedMs: 0,
+  });
+  const recorded = battle.noteEvent(
+    {
+      type: "battle.act",
+      actor: { side: "enemy", name: "<IC_DRAG>哥布林", id: 1 },
+      command: { id: 1, name: "<IC_WMGC>治疗" },
+      abilities: [{ name: "<IC_WMGC>治疗" }],
+      targets: [{ side: "player", name: "<IC_BAG>巴兹", id: 1 }],
+      counter: false,
+    },
+    1000,
+  );
+  assert.equal(recorded?.actor, "哥布林");
+  assert.equal(recorded.action, "治疗");
+  assert.equal(recorded.target, "巴兹");
+  const line = battle.currentView()?.events[0]?.line ?? "";
+  assert.match(line, /哥布林 → 治疗 → 巴兹/);
+  assert.doesNotMatch(line, /<IC_/);
+});

@@ -4,11 +4,10 @@
  */
 
 import type { Pilot, Reply } from "../pilot.ts";
-import { isRecord, num, records, record, text, truthy } from "../values.ts";
+import { cleanName } from "../icons.ts";
+import { isRecord, num, records, record, truthy } from "../values.ts";
 import { moveCursor, pick } from "./cursor.ts";
 import { steerGridList, type GridListState } from "./menu.ts";
-
-export const ICON = /^<[^>]+>/;
 
 /** Python's str() for a value the messages embed, so None does not become "undefined". */
 function show(value: unknown): string {
@@ -59,7 +58,7 @@ export function whoCan(rows: Reply[]): string {
     if (truthy(row.up)) return "更强";
     return truthy(row.down) ? "更弱" : "差不多";
   };
-  return rows.map((row) => `${show(row.name)} ${mark(row)}`).join("、");
+  return rows.map((row) => `${cleanName(row.name)} ${mark(row)}`).join("、");
 }
 
 /**
@@ -89,7 +88,7 @@ export async function gearReport(pilot: Pilot): Promise<[boolean, string]> {
 }
 
 function iconName(value: unknown): string {
-  return (text(value) ?? "").replace(ICON, "");
+  return cleanName(value);
 }
 
 export async function gil(pilot: Pilot): Promise<number | null> {
@@ -105,7 +104,7 @@ export async function buy(pilot: Pilot, product: string, count = 1): Promise<[bo
   let shop = await shopState(pilot);
   if (!truthy(shop.open)) return [false, "商店没有打开:先和店员说话"];
   const products = records(shop.products);
-  const names = products.map((entry) => text(entry.name));
+  const names = products.map((entry) => cleanName(entry.name));
   const index = pick(names, product);
   if (index === null) {
     return [false, `这家店没有「${product}」,有:${names.filter(Boolean).join("、")}`];
@@ -125,7 +124,7 @@ export async function buy(pilot: Pilot, product: string, count = 1): Promise<[bo
     if (rows !== null) {
       const useful = rows
         .filter((row) => truthy(row.canEquip) && truthy(row.up))
-        .map((row) => show(row.name));
+        .map((row) => cleanName(row.name));
       if (useful.length === 0) {
         return [false, `不买「${show(names[index])}」:${whoCan(rows)},没有人用得上`];
       }

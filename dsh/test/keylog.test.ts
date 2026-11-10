@@ -71,6 +71,12 @@ function kinds(builder: Builder): [string, string, string][] {
   return builder.entries.map((entry) => [entry.type, entry.text, entry.progress]);
 }
 
+void test("key events lose the icon tags the game puts on names", () => {
+  const builder = new Builder("r");
+  builder.add({ t: "2026-10-19T17:00:00Z" }, "chest", "地图 203:<IC_BAG>眼药", "本作已开 1 个");
+  assert.equal(builder.entries[0]?.text, "地图 203:眼药");
+});
+
 void test("build extracts key events", () => {
   const builder = new Builder("20261020-0100");
   for (const record of [

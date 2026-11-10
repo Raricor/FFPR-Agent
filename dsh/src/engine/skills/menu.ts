@@ -4,11 +4,10 @@
  */
 
 import type { Pilot, Reply } from "../pilot.ts";
+import { cleanName } from "../icons.ts";
 import { isRecord, list, num, records, record, text, truthy } from "../values.ts";
 import { pick, steer } from "./cursor.ts";
 import { statuses } from "./gambit.ts";
-
-export const ICON = /^<[^>]+>/; // 「<IC_ITEM>眼药」 → 「眼药」
 
 /** Python's str() for a value the messages embed, so None does not become "undefined". */
 function show(value: unknown): string {
@@ -25,7 +24,7 @@ function show(value: unknown): string {
 }
 
 function iconName(value: unknown): string {
-  return (text(value) ?? "").replace(ICON, "");
+  return cleanName(value);
 }
 
 /** How many of an item the bag holds, and what it does hold (names without icon tags). */
@@ -355,12 +354,12 @@ async function useFromMenu(
   if (targets.length === 0) return [false, `没有出现选择对象:${show(use)}`];
   if (use.targetMode !== "All") {
     const row = pick(
-      targets.map((entry) => text(entry.name)),
+      targets.map((entry) => cleanName(entry.name)),
       name,
     );
     if (row === null) {
       const can = targets
-        .map((entry) => text(entry.name))
+        .map((entry) => cleanName(entry.name))
         .filter(Boolean)
         .join("、");
       return [false, `「${item}」不能对 ${name} 用(能选:${can})`];
@@ -463,15 +462,9 @@ async function castFromMenu(
       menu = await waitMenu(pilot, inList);
     }
     const entries = records(record(menu.magic).abilities);
-    seen.push(
-      ...entries
-        .map((entry) => text(entry.name))
-        .filter((name): name is string => name !== undefined),
-    );
-    found = pick(
-      entries.map((entry) => text(entry.name)),
-      spell,
-    );
+    const names = entries.map((entry) => cleanName(entry.name));
+    seen.push(...names.filter((name) => name !== ""));
+    found = pick(names, spell);
     if (found !== null) break;
     if (inList(menu)) {
       await press("Backspace");
@@ -508,7 +501,7 @@ async function castFromMenu(
   const slots = list(record(menu.magic).contentIds);
   const goal = slots.length > 0 && slots.includes(entry.id) ? slots.indexOf(entry.id) : found;
   if (!(await steer(cursor("magic", "abilityCursor"), press, goal))) {
-    return [false, `光标没能移到「${show(entry.name)}」`];
+    return [false, `光标没能移到「${spellName}」`];
   }
   await press("Enter");
   menu = await waitMenu(pilot, (m) => Boolean(record(m.magic).targets));
@@ -516,8 +509,8 @@ async function castFromMenu(
   if (targets.length === 0) return [false, `没有出现选择对象:${show(menu.magic)}`];
   if (record(menu.magic).targetMode !== "All") {
     const row = pick(
-      targets.map((target) => text(target.name)),
-      show(patient.name),
+      targets.map((target) => cleanName(target.name)),
+      cleanName(patient.name),
     );
     if (row === null || !(await steer(cursor("magic", "targetCursor"), press, row))) {
       return [false, `没能选中 ${show(patient.name)}`];
@@ -537,7 +530,7 @@ async function castFromMenu(
   ) {
     return [
       true,
-      `${show(caster.name)} 用了「${show(entry.name)}」:` +
+      `${show(caster.name)} 用了「${spellName}」:` +
         `${show(patient.name)} HP ${show(hp[0])}→${show(hp[1])},MP ${show(mp[0])}→${show(mp[1])}`,
     ];
   }
@@ -770,7 +763,7 @@ async function optimizeFromMenu(pilot: Pilot): Promise<[boolean, string]> {
     for (let k = 0; k < Math.min(before.length, after.length); k++) {
       const a = before[k];
       const b = after[k];
-      if (a !== b) changed.push(`${show(a || "空")}→${show(b || "空")}`);
+      if (a !== b) changed.push(`${cleanName(a) || "空"}→${cleanName(b) || "空"}`);
     }
     changes.push(`${show(member.name)}:${changed.length > 0 ? changed.join("、") : "没有更好的"}`);
     await press("Backspace"); // back to choosing a member

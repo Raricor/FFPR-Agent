@@ -12,6 +12,7 @@
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { describeError, isMissingFile } from "./errors.ts";
+import { cleanIconTags, cleanName } from "./icons.ts";
 import * as gambit from "./skills/gambit.ts";
 import {
   isRecord,
@@ -296,15 +297,17 @@ export class BattleSession {
     ];
     this.turns.push({
       at: Math.max(0, pyRound((nowMs - this.startedMs) / 1000, 1)),
-      actor: input.actor,
+      actor: cleanIconTags(input.actor),
       rule: input.rule,
       condition: input.condition,
       ...(input.basis === undefined ? {} : { basis: input.basis }),
       ...(input.text === undefined ? {} : { text: input.text }),
-      action: input.command + (input.ability !== "" ? `:${input.ability}` : ""),
-      target: input.targetName,
-      item: input.item,
-      done: input.done,
+      action:
+        cleanIconTags(input.command) +
+        (input.ability !== "" ? `:${cleanIconTags(input.ability)}` : ""),
+      target: cleanIconTags(input.targetName),
+      item: input.item === null ? null : cleanIconTags(input.item),
+      done: cleanIconTags(input.done),
       skipped: [...input.skipped],
       changes,
     });
@@ -514,7 +517,7 @@ export function battleUnits(rows: readonly Json[]): BattleUnit[] {
 }
 
 function battleUnit(row: Json): BattleUnit | null {
-  const name = text(row.name) ?? "";
+  const name = cleanName(row.name);
   if (name === "") return null;
   const maxHp = num(row.maxHp) ?? num(row.hp) ?? 0;
   return {
@@ -616,16 +619,16 @@ function parseBattleEvent(raw: Json, fallbackAt: number): BattleEvent | null {
   if (type !== "battle.act" && type !== "battle.hit") return null;
   const act = record(raw.act);
   const actorRow = record(type === "battle.hit" ? act.actor : raw.actor);
-  const actor = text(actorRow.name) ?? "";
+  const actor = cleanName(actorRow.name);
   if (actor === "") return null;
-  const command = text(record(type === "battle.hit" ? act.command : raw.command).name) ?? "";
+  const command = cleanName(record(type === "battle.hit" ? act.command : raw.command).name);
   const abilities = list(type === "battle.hit" ? act.abilities : raw.abilities)
-    .map((item) => text(record(item).name) ?? "")
+    .map((item) => cleanName(record(item).name))
     .filter((name) => name !== "");
   const action = abilities[0] ?? command;
   const targets = type === "battle.hit" ? [raw.target] : list(raw.targets);
   const target = targets
-    .map((item) => text(record(item).name) ?? "")
+    .map((item) => cleanName(record(item).name))
     .filter((name) => name !== "")
     .join("、");
   const counter = truthy(type === "battle.hit" ? act.counter : raw.counter);
@@ -653,7 +656,7 @@ function parseBattleEvent(raw: Json, fallbackAt: number): BattleEvent | null {
   const heal = truthy(raw.heal) || hit === "Recovery";
   const miss = truthy(raw.miss) || hit === "Miss";
   const conditions = list(raw.conditions)
-    .map((item) => text(record(item).name) ?? "")
+    .map((item) => cleanName(record(item).name))
     .filter((name) => name !== "");
   const detail = [miss ? "落空" : "", hit, ...conditions].filter((part) => part !== "").join("·");
   return {

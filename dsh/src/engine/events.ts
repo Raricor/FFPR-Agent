@@ -14,6 +14,7 @@
  */
 
 import { describeError } from "./errors.ts";
+import { cleanIconTags } from "./icons.ts";
 import { Builder, LABEL, formatLocalTime, load, localTime, type KeyEntry } from "./keylog.ts";
 import { isRecord, list, num, text, truthy, type Json } from "./values.ts";
 
@@ -331,7 +332,7 @@ export class KeyEvents {
       run: "",
       key: true,
       type: kind,
-      text: entryText,
+      text: cleanIconTags(entryText),
       progress: "—",
     });
   }

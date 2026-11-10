@@ -263,6 +263,8 @@ void test("purchases told by the tools stay in the windows", () => {
   events.note("buy", "买了「催眠」×1,花了 300");
   assert.ok(events.window(1).includes("20:30 购买 买了「催眠」×1,花了 300"));
   assert.ok(events.window(2).includes("购买"));
+  events.note("buy", "买了「<IC_BMGC>冰冻」×1");
+  assert.ok(events.window(1).includes("买了「冰冻」×1"));
 });
 
 void test("monsters met are kept per map", () => {

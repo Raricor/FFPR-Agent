@@ -10,6 +10,7 @@
  */
 
 import type { Pilot, Reply } from "../pilot.ts";
+import { cleanName } from "../icons.ts";
 import { describeError } from "../errors.ts";
 import { placeName, sceneStatus } from "../status.ts";
 import { isRecord, list, num, pyRound, records, record, text, truthy } from "../values.ts";
@@ -44,7 +45,6 @@ import type { BattleSnapshot, SnapshotUnit, Strategy } from "../strategy/types.t
 
 type Say = (line: string) => void;
 
-export const ICON = /^<[^>]+>/; // 「<IC_WMGC>治疗」 → 「治疗」
 export const HIDDEN: ReadonlyMap<string, readonly [string, string]> = new Map([
   ["防御", ["Right", "Defence"]],
   ["换列", ["Left", "Change"]],
@@ -107,7 +107,7 @@ function show(value: unknown): string {
 }
 
 function iconName(value: unknown): string {
-  return (text(value) ?? "").replace(ICON, "");
+  return cleanName(value);
 }
 
 export async function battleMenu(pilot: Pilot): Promise<Reply> {
@@ -155,7 +155,7 @@ async function battlePlayers(pilot: Pilot, menu: Reply): Promise<Reply[]> {
 export function enemyNames(enemies: readonly Reply[]): string {
   return [
     ...new Set(
-      enemies.map((enemy) => text(enemy.name)).filter((name): name is string => name !== undefined),
+      enemies.map((enemy) => cleanName(enemy.name)).filter((name): name is string => name !== ""),
     ),
   ].join("、");
 }
@@ -534,9 +534,9 @@ export async function fight(
           ? ""
           : (action.whom ??
             (action.enemy !== null
-              ? (text(living[action.enemy]?.name) ?? "")
+              ? cleanName(living[action.enemy]?.name)
               : action.target === gambit.ENEMY
-                ? (text(living[0]?.name) ?? "")
+                ? cleanName(living[0]?.name)
                 : ""));
       const payload: FightTurn = {
         actor,
@@ -611,12 +611,12 @@ async function sampleInfo(pilot: Pilot): Promise<SampleInfo> {
 /** Add the sample party's current job and learned spells to the battle rows, by name. */
 function withPartyInfo(units: readonly SnapshotUnit[], party: readonly Reply[]): SnapshotUnit[] {
   return units.map((unit) => {
-    const row = party.find((member) => text(member.name) === unit.name);
+    const row = party.find((member) => cleanName(member.name) === unit.name);
     if (row === undefined) return unit;
     const jobName = text(row.jobName);
     const abilities = records(row.abilities)
       .map((ability) => {
-        const name = text(ability.name) ?? "";
+        const name = cleanName(ability.name);
         const mp = num(ability.mp);
         const type = num(ability.type);
         return {
@@ -638,7 +638,7 @@ function withPartyInfo(units: readonly SnapshotUnit[], party: readonly Reply[]):
 function snapshotUnits(rows: readonly Reply[]): SnapshotUnit[] {
   const out: SnapshotUnit[] = [];
   for (const row of rows) {
-    const name = text(row.name) ?? "";
+    const name = cleanName(row.name);
     if (name === "") continue;
     out.push({
       name,
@@ -1039,9 +1039,7 @@ async function attempt(
   if (hidden === undefined) await pressUntil(pilot, "Enter", (m) => !targetOpen(m));
   if (casts.length > 0) onCast(casts);
   const enemyName =
-    action.enemy === null
-      ? ""
-      : (text(aliveEnemyRows(situation.enemies)[action.enemy]?.name) ?? "");
+    action.enemy === null ? "" : cleanName(aliveEnemyRows(situation.enemies)[action.enemy]?.name);
   return used + (truthy(action.whom) ? `→${action.whom}` : enemyName !== "" ? `→${enemyName}` : "");
 }
 
@@ -1076,7 +1074,7 @@ function castsFrom(menu: Reply, situation: gambit.Situation, spell: string): Ele
     if (enemy === undefined) continue;
     out.push({
       element,
-      name: text(enemy.name) ?? "",
+      name: cleanName(enemy.name),
       book: num(enemy.book) ?? null,
       // The cursor counts living enemies only; the bridge keeps dead ones in place, so the
       // index in the whole list follows this one enemy even when others die before it.

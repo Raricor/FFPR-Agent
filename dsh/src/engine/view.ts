@@ -5,6 +5,7 @@
  */
 
 import { isRecord, list, num, record, text, truthy } from "./values.ts";
+import { cleanIconTags, cleanName } from "./icons.ts";
 import type { Cell, ObservedMove } from "./nav.ts";
 import { statuses } from "./skills/gambit.ts";
 import type { Json } from "./skills/gambit.ts";
@@ -21,7 +22,6 @@ export const EVENT_NOTES: ReadonlyMap<string, string> = new Map([
 ]);
 
 const CIRCLED_DIGITS = /[①-⑳]/g;
-const ICON_TAG = /<IC_[A-Z_]+>/g;
 
 /** The event name without its circled number, for the EVENT_NOTES lookup. */
 export function eventBaseName(name: string): string {
@@ -44,7 +44,7 @@ export function describeEvents(found: unknown): string {
   const scripts = new Map<string, Set<number>>();
   for (const item of entities) {
     const entity = record(item);
-    const name = pyText(truthy(entity.name) ? entity.name : "").trim();
+    const name = cleanName(truthy(entity.name) ? entity.name : "");
     const cellValue = truthy(entity.cell) ? entity.cell : entity.tile;
     const cell = Array.isArray(cellValue) ? cellOf(cellValue) : null;
     if (name === "" || cell === null) continue;
@@ -356,9 +356,7 @@ export function describeItems(items: unknown): string {
     const names: string[] = [];
     for (const item of list(found[kind])) {
       const entry = record(item);
-      const name = pyText(entry.name ?? "")
-        .replace(ICON_TAG, "")
-        .trim();
+      const name = cleanName(entry.name);
       if (name && !PLACEHOLDER_ITEMS.has(name)) names.push(`${name}×${pyText(entry.count)}`);
     }
     lines.push(`${label}:${names.join("、") || "无"}`);
@@ -377,12 +375,12 @@ export function describeEntities(found: unknown): string {
     const extra: string[] = [];
     if (Object.hasOwn(entity, "toMap")) extra.push(`通往地图 ${pyText(entity.toMap)}`);
     if (Object.hasOwn(entity, "content")) {
-      extra.push(`内容 ${pyText(entity.content)}×${pyText(entity.num)}`);
+      extra.push(`内容 ${cleanIconTags(pyText(entity.content))}×${pyText(entity.num)}`);
     }
     if (Object.hasOwn(entity, "npc")) extra.push(`NPC ${pyText(entity.npc)}`);
     const active = Object.hasOwn(entity, "active") ? truthy(entity.active) : true;
     if (!active) extra.push("未激活");
-    const name = pyText(truthy(entity.name) ? entity.name : "");
+    const name = cleanName(truthy(entity.name) ? entity.name : "");
     const line = `  ${pyText(entity.kind)} @ ${pyText(cell)} ${name} ${extra.join(" ")}`;
     lines.push(line.trimEnd());
   }
@@ -527,5 +525,5 @@ export function summarize(sample: unknown, events: readonly unknown[]): string {
       out.push(`  + ${type} ${pythonJson(body)}`);
     }
   }
-  return out.join("\n");
+  return cleanIconTags(out.join("\n"));
 }
