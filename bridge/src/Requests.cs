@@ -30,6 +30,10 @@ namespace FfprBridge;
 ///   {"op": "encountgrid", "cells": [[x, y], ...]}    encounter grid number per cell (0.13.8)
 ///   {"op": "walk"}                     current or last walkpath route and progress (0.14.0)
 ///   {"op": "config"}                   saved game settings and the current auto-battle switch (0.14.2)
+///   {"op": "gameover"}                 FF5: game-over / return-to-title prompt and autosave row (0.14.3)
+///   {"op": "bluemagic"}                FF5: learned blue magic and every blue spell (0.14.4)
+///   {"op": "monstermoves", "ids": [...]}  FF5: each monster's moves, blue magic and statuses (0.14.4)
+///   {"op": "export", "table": "monsters", "offset": 0, "limit": 200}  FF5: whole-game static tables (0.14.5)
 /// </summary>
 internal static class Requests
 {
@@ -124,12 +128,43 @@ internal static class Requests
                     reply["config"] = null;
                     reply["config"] = GameState.Config();
                     break;
+                case "gameover":
+#if FF5
+                    reply["gameover"] = GameState.GameOver();
+                    break;
+#else
+                    throw new ArgumentException("gameover 目前只在 FF5 里有");
+#endif
                 case "monsterai":
 #if FF5
                     reply["monsterai"] = GameState.MonsterAi(MonsterIds(query));
                     break;
 #else
                     throw new ArgumentException("monsterai 目前只在 FF5 里有");
+#endif
+                case "bluemagic":
+#if FF5
+                    reply["bluemagic"] = GameState.BlueMagic();
+                    break;
+#else
+                    throw new ArgumentException("bluemagic 目前只在 FF5 里有");
+#endif
+                case "monstermoves":
+#if FF5
+                    reply["monstermoves"] = GameState.MonsterMoves(MonsterIds(query));
+                    break;
+#else
+                    throw new ArgumentException("monstermoves 目前只在 FF5 里有");
+#endif
+                case "export":
+#if FF5
+                    reply["export"] = GameState.Export(
+                        query["table"]?.GetValue<string>(),
+                        query["offset"]?.GetValue<int>() ?? 0,
+                        query["limit"]?.GetValue<int>() ?? 200);
+                    break;
+#else
+                    throw new ArgumentException("export 目前只在 FF5 里有");
 #endif
                 case "collision":
                     reply["collision"] = GameState.Collision();

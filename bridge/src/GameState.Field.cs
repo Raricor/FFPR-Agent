@@ -827,6 +827,9 @@ internal static partial class GameState
         o["dialog"] = dialog != null && dialog.IsOpen();
         o["battle"] = BattlePlugManager.instance?.isBattle ?? false;
         o["saves"] = UserDataManager.instance?.SaveCompleteCount;
+#if FF5
+        o["timer"] = Countdown();
+#endif
         return o;
     }
 }

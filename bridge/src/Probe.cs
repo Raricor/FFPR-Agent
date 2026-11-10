@@ -68,6 +68,9 @@ public sealed class Probe : MonoBehaviour
         {
             MapWatch.Update();
             PosWatch.Update();
+#if FF5
+            TimerWatch.Update();
+#endif
             Requests.Drain();
             // Before Drain: the direction key switched this frame reaches the game this frame.
             Walker.Update();

@@ -29,6 +29,11 @@ internal static partial class GameState
         Section(o, "dialog", Dialog);
         Section(o, "choice", Choice);
         Section(o, "battle", Battle);
+#if FF5
+        // 0.14.3: the on-screen countdown and the game-over / return-to-title prompts.
+        Section(o, "timer", Countdown);
+        Section(o, "gameover", GameOver);
+#endif
     }
 
     private static void Section(JsonObject o, string key, Func<JsonNode> read)
