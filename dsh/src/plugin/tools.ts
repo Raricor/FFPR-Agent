@@ -41,6 +41,7 @@ export const TOOL_TIMEOUTS: Readonly<Record<string, number>> = {
   fight: 900_000,
   grind: 3_600_000,
   go: 900_000,
+  route: 1_000_000,
   explore: 900_000,
   interact: 600_000,
   land: 600_000,

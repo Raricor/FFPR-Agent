@@ -25,6 +25,16 @@ export interface Waypoint {
   readonly after?: readonly string[];
   /** Minutes spent at this waypoint (a grind budget), default 0. */
   readonly minutes?: number;
+  /**
+   * Task 89: a countdown may skip this waypoint (a chest) to reach the end in time. The route
+   * tool defaults `do: open` to optional; the end is never optional.
+   */
+  readonly optional?: boolean;
+  /**
+   * Task 89: how close `goTo` has to get before `act` runs. "map" leaves the walk to the action
+   * (interact walks beside a chest or NPC itself); the default is the exact cell.
+   */
+  readonly reach?: "cell" | "map";
 }
 
 export interface RouteInput {

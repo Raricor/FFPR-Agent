@@ -130,6 +130,8 @@ const SYSTEM_PROMPT_FF5 = `你在玩《最终幻想5 像素重制版》(中文�
 - 坐标是格子坐标:x 向右增大,y 向下增大。
 - 移动只说去哪:去别的地图写地图名或地图号,如 go(to="图尔村")、go(to="地图 62");
   代码会自己排路线,经过世界地图也行。
+- 一段路上要去的地方已经清楚时(比如一张图里的几个宝箱再加出口),用一次 route 把它们都交给代码,
+  不要一格一格地 go;go 只留给单个目的地。
 - 在迷宫里找没去过的地方用 explore:它按图内能走到的路程挑最近的、去向是本档没去过的地图的出口走过去。
 - 宝箱、NPC、调查用 interact,它会自己走过去。
 - 坐标只用在没有名字的地方,比如隐藏道具格、剧情触发格:go(to=[12, 8]) 或 go(to="12,8")。
@@ -395,6 +397,59 @@ const TOOLS_BASE = [
           },
         },
         required: ["to"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "route",
+      description:
+        "一段路一次走完:按 stops 里给的地方排好顺序,走路、途中的普通战斗和剧情都由代码处理,不再一步一步问你。" +
+        "stops 每项写 {to, do?, optional?}:to 和 go 的写法一样(地图号、地图名、坐标或「地图号:x,y」);" +
+        "do 写 open(开宝箱、拿隐藏道具)、save(到存档点存 20 号位)、talk(调查/对话),省略就只是走到;" +
+        "optional 是可选路标(倒计时不够可以跳过),默认只有 do: open 的算可选。" +
+        "end 是终点(比如出口地图),不写就把最后一个 stops 当终点。" +
+        "不带 stops 和 end 调用时,从上次的路线进度接着走。" +
+        "一段路上要去的地方已经清楚时就用 route,不要一格一格地 go。" +
+        "结果每个路标一行(到了、开了什么、跳过、用时),最后写停下原因;倒计时还开着时写剩余秒数。",
+      parameters: {
+        type: "object",
+        properties: {
+          stops: {
+            type: "array",
+            description: "按想去的顺序给路标;代码会重新排成最省时的顺序",
+            items: {
+              type: "object",
+              properties: {
+                to: {
+                  type: ["integer", "string", "array"],
+                  items: { type: "integer" },
+                  description: '地图号、地图名的一部分、坐标 [x, y] / "x,y",或 "地图号:x,y"',
+                },
+                do: {
+                  type: "string",
+                  enum: ["open", "save", "talk"],
+                  description: "open 开宝箱/拿隐藏道具;save 到存档点存 20 号位;talk 调查/对话",
+                },
+                optional: {
+                  type: "boolean",
+                  description: "可选路标(倒计时不够可以跳过);do: open 默认可选,终点不可选",
+                },
+              },
+              required: ["to"],
+            },
+          },
+          end: {
+            type: ["integer", "string", "array"],
+            items: { type: "integer" },
+            description: "终点,写法同 to(如出口地图号或出口坐标);不写就用最后一个 stops",
+          },
+          flee: {
+            type: "boolean",
+            description: "路上的普通战斗先逃跑,逃不了才按策略表打",
+          },
+        },
       },
     },
   },
