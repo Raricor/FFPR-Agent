@@ -141,6 +141,21 @@ export class AtlasSave {
     this.saves = saves;
   }
 
+  /**
+   * Re-read the file after a scout restored it (task 105). The atlas itself is map structure and
+   * is deliberately left alone; only this save's visited set and snapshots are replaced.
+   */
+  async reload(signal?: AbortSignal): Promise<void> {
+    const fresh = await AtlasSave.load(this.game, this.path, this.atlas, signal);
+    this.snapshots.clear();
+    for (const [saves, snapshot] of fresh.snapshots) this.snapshots.set(saves, snapshot);
+    this.saves = fresh.saves;
+    this.live = fresh.live;
+    this.atlas.onNewVisit = async () => {
+      await this.recordVisit();
+    };
+  }
+
   /** Snapshot the live visited set at a successful save's count; also writes the file. */
   async snapshot(saves: number, at = new Date().toISOString()): Promise<void> {
     const maps = this.mapsNow();

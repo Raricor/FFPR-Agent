@@ -117,6 +117,20 @@ export class BestiarySave {
     return store;
   }
 
+  /**
+   * Re-read the snapshots after a scout restored the file (task 105). The live number set is
+   * cleared and its save count forgotten, so the caller's `restore()` rebuilds it from the
+   * restored snapshots and the battle records outside the scout window.
+   */
+  async reload(signal?: AbortSignal): Promise<void> {
+    const fresh = await BestiarySave.load(this.game, this.path, signal);
+    this.snapshots.clear();
+    for (const [saves, snapshot] of fresh.snapshots) this.snapshots.set(saves, snapshot);
+    this.numbers.clear();
+    this.saves = null;
+    this.backfill = null;
+  }
+
   /** The snapshot whose save count is exactly this one, if any. */
   snapshotFor(saves: number | null): BestiarySnapshot | null {
     if (saves === null) return null;

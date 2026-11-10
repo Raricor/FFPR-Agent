@@ -539,6 +539,14 @@ export class Backlog {
     return store;
   }
 
+  /** Re-read the append-only file after a scout restored it (task 105). */
+  async reload(signal?: AbortSignal): Promise<void> {
+    const fresh = await Backlog.load(this.path, signal);
+    this.entries.clear();
+    for (const [id, entry] of fresh.entries) this.entries.set(id, entry);
+    this.next = fresh.next;
+  }
+
   pending(): BacklogEntry[] {
     return [...this.entries.values()]
       .filter((entry) => entry.resolvedAt === null)
@@ -724,6 +732,16 @@ export class Incidents {
       }
     }
     return store;
+  }
+
+  /** Re-read the incident log and state after a scout restored them (task 105). */
+  async reload(signal?: AbortSignal): Promise<void> {
+    const fresh = await Incidents.load(this.path, this.statePath, signal);
+    this.entries.length = 0;
+    this.entries.push(...fresh.entries);
+    this.areas = fresh.areas;
+    this.initialized = fresh.initialized;
+    this.next = fresh.next;
   }
 
   /** Record any place whose missed count grew; the first run adds Walse Tower as 补记. */
