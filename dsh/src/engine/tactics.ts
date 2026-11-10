@@ -83,6 +83,14 @@ export interface TacticsEntry {
   /** The jobs and commands the table was written with (task 42 party-changed). */
   party?: PartySnapshotMember[];
   boss?: BossRecord;
+  /**
+   * Task 110: "player" when the table came from the player's own set_tactics, not the
+   * tactician. The mark lasts until the party leaves the map (Game retires it on a map change).
+   */
+  source?: "player";
+  /** Task 110: when and for which map the player wrote the table. */
+  sourceAt?: string;
+  sourceMap?: number;
 }
 
 /** What the tactician said about a map; separate from the tables so a boss-only call fits. */
@@ -154,6 +162,11 @@ export class Tactics {
       if (party !== null) entry.party = party;
       const boss = bossRecord(raw.boss);
       if (boss !== null) entry.boss = boss;
+      if (raw.source === "player") {
+        entry.source = "player";
+        if (typeof raw.sourceAt === "string") entry.sourceAt = raw.sourceAt;
+        if (typeof raw.sourceMap === "number") entry.sourceMap = raw.sourceMap;
+      }
       tactics.maps.set(mapId, entry);
     }
     return tactics;
@@ -183,6 +196,45 @@ export class Tactics {
     if (previous?.boss !== undefined) entry.boss = previous.boss;
     this.maps.set(String(mapId), entry);
     await this.save();
+  }
+
+  /**
+   * Task 110: a table the player wrote by hand. It carries the source mark and is not replaced
+   * by the tactician while the party stays on that map. `set` (the tactician's path) rebuilds
+   * the entry and so clears the mark when a tactician table finally takes over.
+   */
+  async setPlayer(
+    mapId: unknown,
+    tables: readonly Json[],
+    monsters?: readonly string[],
+    party?: readonly PartySnapshotMember[],
+  ): Promise<void> {
+    await this.set(mapId, tables, monsters, undefined, party);
+    const entry = this.maps.get(String(mapId));
+    if (entry === undefined) return;
+    entry.source = "player";
+    entry.sourceAt = new Date().toISOString();
+    entry.sourceMap = Number(mapId);
+    await this.save();
+  }
+
+  /** Task 110: true while the map's tables came from the player's own set_tactics. */
+  isPlayerTable(mapId: unknown): boolean {
+    return this.maps.get(String(mapId))?.source === "player";
+  }
+
+  /**
+   * Task 110: leaving a map retires the hand-written mark there, so the next tactician call
+   * on that map (after coming back) may install its table again. The table itself stays.
+   */
+  async retirePlayerSource(mapId: unknown): Promise<boolean> {
+    const entry = this.maps.get(String(mapId));
+    if (entry?.source !== "player") return false;
+    delete entry.source;
+    delete entry.sourceAt;
+    delete entry.sourceMap;
+    await this.save();
+    return true;
   }
 
   /** Keep the tactician's words even for a boss-only call with no new regular table. */

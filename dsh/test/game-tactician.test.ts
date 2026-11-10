@@ -12,6 +12,7 @@ import { FakePilot } from "./fake-pilot.ts";
 
 const LAPTOP: Laptop = { host: "laptop", user: "player", key: "/tmp/key", root: "C:/ffpr" };
 const TABLE: Json = { 巴兹: [{ do: "攻击" }] };
+const OTHER_TABLE: Json = { 巴兹: [{ do: "防御" }] };
 
 function deferred<T>(): { readonly promise: Promise<T>; resolve(value: T): void } {
   let resolve: (value: T) => void = () => undefined;
@@ -249,6 +250,130 @@ void test("a new monster on a map that has tables does not call again", async ()
     assert.equal(h.calls(), 0);
     assert.doesNotMatch(result, /战术官/);
     assert.deepEqual(h.game.tactics.monstersSeen(30), ["哥布林"]);
+  } finally {
+    await h.close();
+  }
+});
+
+void test("the player's own table keeps a new boss monster from calling the tactician", async () => {
+  // Task 110: the player wrote the table by hand; no road trigger may overwrite it.
+  const h = await harness(
+    sample(),
+    () => ({ tables: [OTHER_TABLE], walkerNotes: "不该叫", askUp: "不该叫" }),
+    { monsters: ["哥布林"] },
+  );
+  try {
+    const set = await h.game.run("set_tactics", { tables: [TABLE] }, h.pilot);
+    assert.match(set, /在离开这张图之前，战术官不会覆盖这张表/);
+    assert.equal(h.game.tactics.isPlayerTable(30), true);
+    h.game.events?.enemies.set(30, new Set(["哥布林", "首领 新怪"]));
+    const result = await h.game.run("inventory", {}, h.pilot);
+    assert.equal(h.calls(), 0);
+    assert.deepEqual(h.game.tactics.current(30), TABLE);
+    assert.doesNotMatch(result, /战术官在后台写/);
+  } finally {
+    await h.close();
+  }
+});
+
+void test("a hard battle with the player's table advises but does not install", async () => {
+  // Task 110: hard/lost may still call the tactician; its table must not replace the player's.
+  const h = await harness(
+    sample(),
+    () => ({ tables: [OTHER_TABLE], walkerNotes: "换个打法", askUp: "带眼药" }),
+    { monsters: ["哥布林"] },
+  );
+  try {
+    await h.game.run("set_tactics", { tables: [TABLE] }, h.pilot);
+    const before = h.game.tactics.current(30);
+    h.game.settle = async () => {
+      await h.game.hooks.report?.(30, "hard", "巴兹倒下");
+      return "";
+    };
+    const result = await h.game.run("inventory", {}, h.pilot);
+    assert.equal(h.calls(), 1);
+    assert.match(result, /战术官在后台写地图 30 的规则表/);
+    await h.game.whenTacticianIdle();
+    assert.deepEqual(h.game.tactics.current(30), before);
+    assert.equal(h.game.tactics.isPlayerTable(30), true);
+    const next = await h.game.run("inventory", {}, h.pilot);
+    assert.match(next, /你手写的表还在用/);
+    assert.match(next, /战术官建议:带眼药/);
+    assert.match(next, /要换就自己 set_tactics/);
+  } finally {
+    await h.close();
+  }
+});
+
+void test("a background table finishing while still on the map is not installed", async () => {
+  // Task 110: the player may write set_tactics while a road call is already in flight.
+  const pending = deferred<TacticianPlan>();
+  const h = await harness(sample(), () => pending.promise);
+  try {
+    const first = await h.game.run("inventory", {}, h.pilot);
+    assert.equal(h.calls(), 1);
+    assert.match(first, /战术官在后台写地图 30 的规则表/);
+    await h.game.run("set_tactics", { tables: [TABLE] }, h.pilot);
+    pending.resolve({ tables: [OTHER_TABLE], walkerNotes: "后台写的", askUp: "换防御" });
+    await h.game.whenTacticianIdle();
+    assert.deepEqual(h.game.tactics.current(30), TABLE);
+    assert.equal(h.game.tactics.isPlayerTable(30), true);
+    const next = await h.game.run("inventory", {}, h.pilot);
+    assert.match(next, /你手写的表还在用/);
+    assert.match(next, /战术官建议:换防御/);
+    assert.equal(h.calls(), 1);
+  } finally {
+    await h.close();
+  }
+});
+
+void test("leaving the map retires the player's mark and the next trigger installs again", async () => {
+  // Task 110: after leaving, the tactician takes over again on the next trigger.
+  const h = await harness(
+    sample(),
+    () => ({ tables: [OTHER_TABLE], walkerNotes: "回来接管", askUp: "" }),
+    { monsters: ["哥布林"] },
+  );
+  try {
+    await h.game.run("set_tactics", { tables: [TABLE] }, h.pilot);
+    assert.equal(h.game.tactics.isPlayerTable(30), true);
+    h.pilot.on("pos", { pos: { state: "Player", map: 1, cell: [1, 2], battle: false } });
+    await h.game.run("inventory", {}, h.pilot);
+    assert.equal(h.game.mapId, 1);
+    assert.equal(h.game.tactics.isPlayerTable(30), false);
+    h.pilot.on("pos", { pos: { state: "Player", map: 30, cell: [1, 2], battle: false } });
+    h.game.settle = async () => {
+      await h.game.hooks.report?.(30, "hard", "巴兹倒下");
+      return "";
+    };
+    const back = await h.game.run("inventory", {}, h.pilot);
+    assert.equal(h.calls(), 1);
+    assert.match(back, /战术官在后台写地图 30 的规则表/);
+    await h.game.whenTacticianIdle();
+    assert.deepEqual(h.game.tactics.current(30), OTHER_TABLE);
+    assert.equal(h.game.tactics.isPlayerTable(30), false);
+  } finally {
+    await h.close();
+  }
+});
+
+void test("the boss table and the player's table do not overwrite each other", async () => {
+  // Task 110: boss-prep still writes the boss table; set_tactics keeps it, and vice versa.
+  const h = await harness(sample(), () => ({
+    tables: [OTHER_TABLE],
+    walkerNotes: "首领表说明",
+    askUp: "",
+  }));
+  try {
+    await h.game.run("set_tactics", { tables: [TABLE] }, h.pilot);
+    bossHere(h.pilot);
+    await h.game.run("inventory", {}, h.pilot);
+    assert.equal(h.calls(), 1);
+    assert.deepEqual(h.game.tactics.current(30), TABLE);
+    assert.deepEqual(h.game.tactics.boss(30)?.table, OTHER_TABLE);
+    await h.game.run("set_tactics", { tables: [TABLE] }, h.pilot);
+    assert.deepEqual(h.game.tactics.current(30), TABLE);
+    assert.deepEqual(h.game.tactics.boss(30)?.table, OTHER_TABLE);
   } finally {
     await h.close();
   }

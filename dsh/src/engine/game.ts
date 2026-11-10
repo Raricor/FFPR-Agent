@@ -69,8 +69,10 @@ import {
   type TacticianCall,
   type TacticianPlan,
   type TacticianRunner,
+  type TriggerReason,
 } from "./facts.ts";
 import { describeError, isMissingFile } from "./errors.ts";
+import { cleanName } from "./icons.ts";
 import { KeyEvents } from "./events.ts";
 import { Guide } from "./guide/kb.ts";
 import { MAX_NOTES, loadNotes } from "./notes.ts";
@@ -108,6 +110,7 @@ import * as travel from "./skills/travel.ts";
 import { cursorPath, stateScript, parseState } from "./state-script.ts";
 import { analyzeRoute } from "./route/analyze.ts";
 import { executeRoute, resumeRoute, type RoutePorts, type RouteWatch } from "./route/execute.ts";
+import { readProgress } from "./route/state.ts";
 import {
   DEFAULT_ROUTE_BATTLE_SECONDS,
   ROUTE_ENCOUNTER_CELLS,
@@ -158,7 +161,7 @@ import {
 import { purchaseList, type ShopHere } from "./stage/purchase.ts";
 import { describeStagePlan } from "./stage/report.ts";
 import type { StageOfficerRunner } from "./stage/runner.ts";
-import { StagePlanStore, type StagePlanRecord } from "./stage/store.ts";
+import { StagePlanStore, type StagePlanRecord, type StageStats } from "./stage/store.ts";
 import type { StageBossPartyMember, StageBossTable, StageFacts, StagePlan } from "./stage/types.ts";
 import {
   bossMapIds,
@@ -282,6 +285,10 @@ export interface GameOptions {
   readonly stageAutoPlan?: boolean;
   /** Task 101: refuse a coordinate `go` inside an active stage plan (Config, default on). */
   readonly stageGoGate?: boolean;
+  /** Task 113: turn a refused coordinate `go` into following the plan (Config, default on). */
+  readonly stageGoFollowPlan?: boolean;
+  /** Task 113: after arriving, keep following the plan in the same go (Config, default on). */
+  readonly stageContinueAfterTravel?: boolean;
   /** Task 97: how close a recovery point must be to keep walking (Config). */
   readonly stageTurnBackDistance?: number;
   /** Task 106: this many levels of change at a checkpoint rewrites the boss table (Config). */
@@ -577,6 +584,10 @@ export class Game {
   readonly stageAutoPlan: boolean;
   /** Task 101: refuse a coordinate `go` while a stage plan is in progress (default on). */
   readonly stageGoGate: boolean;
+  /** Task 113: a refused coordinate `go` follows the plan instead (default on). */
+  readonly stageGoFollowPlan: boolean;
+  /** Task 113: a go that arrives at the plan's map keeps following it (default on). */
+  readonly stageContinueAfterTravel: boolean;
   readonly stageTurnBackDistance: number;
   /** Task 106: levels moved this much or a job changed before the boss rewrites its table. */
   readonly stageBossLevelGap: number;
@@ -585,6 +596,8 @@ export class Game {
   private knowledgeLoading: Promise<Knowledge> | null = null;
   private stageBossWon = false;
   private stageNotice = "";
+  /** Task 113: the tool whose handler is running, so a departure counts that call. */
+  private stageCallName: string | null = null;
   /** Task 97: the map of the previous tool result, so a map entry runs the turn-back check. */
   private stageLastMap: number | null = null;
   /** Task 105: scout limits, the running flag and the cached scout-window file. */
@@ -637,6 +650,8 @@ export class Game {
     stageOfficer: StageOfficerRunner | undefined,
     stageAutoPlan: boolean,
     stageGoGate: boolean,
+    stageGoFollowPlan: boolean,
+    stageContinueAfterTravel: boolean,
     stageTurnBackDistance: number,
     stageBossLevelGap: number,
     knowledge: Knowledge | undefined,
@@ -680,6 +695,8 @@ export class Game {
     this.stageOfficer = stageOfficer;
     this.stageAutoPlan = stageAutoPlan;
     this.stageGoGate = stageGoGate;
+    this.stageGoFollowPlan = stageGoFollowPlan;
+    this.stageContinueAfterTravel = stageContinueAfterTravel;
     this.stageTurnBackDistance = stageTurnBackDistance;
     this.stageBossLevelGap = stageBossLevelGap;
     this.knowledgeOption = knowledge;
@@ -866,6 +883,8 @@ export class Game {
       options.stageOfficer,
       options.stageAutoPlan ?? true,
       options.stageGoGate ?? true,
+      options.stageGoFollowPlan ?? true,
+      options.stageContinueAfterTravel ?? true,
       options.stageTurnBackDistance ?? MAX_RECOVERY_DISTANCE,
       options.stageBossLevelGap ?? 3,
       options.knowledge,
@@ -1448,6 +1467,10 @@ export class Game {
     const good = plan.tables
       .filter((table) => tablePasses(table, this.game, prepared.party))
       .slice(0, 3);
+    // Task 110: a road call may finish while the party is still on the map where the player's
+    // own table is in use (possibly written while this call was already running). Keep the
+    // player's table and only attach the tactician's words; leaving the map lifts this.
+    const heldByPlayer = install && this.playerTableHolds(trigger.mapId);
     const note = {
       walkerNotes: plan.walkerNotes,
       askUp: plan.askUp,
@@ -1462,9 +1485,13 @@ export class Game {
     if (problems.length > 0) {
       text +=
         `\n战术官的规则表有问题:${problems.join(";")}` +
-        (good.length > 0 ? `;先装上能通过的 ${good.length} 套` : ";这次没有可用的规则表");
+        (good.length > 0
+          ? heldByPlayer
+            ? ";这次先不换上"
+            : `;先装上能通过的 ${good.length} 套`
+          : ";这次没有可用的规则表");
     }
-    if (install && good.length > 0) {
+    if (install && good.length > 0 && !heldByPlayer) {
       await this.tactics.set(
         trigger.mapId,
         good,
@@ -1476,6 +1503,11 @@ export class Game {
       // A boss rewrite has no new regular table, but its walker notes still belong to the map.
       // Creating an empty table entry here would change the boss flow's own bookkeeping.
       await this.tactics.setNote(trigger.mapId, note);
+    }
+    if (heldByPlayer) {
+      text +=
+        `\n你手写的表还在用;战术官这次写的表没有装上,建议仅供参考,` +
+        `要换就自己 set_tactics(地图 ${trigger.mapId})。`;
     }
     await this.recordTacticianCall(trigger, good.length, problems, plan.walkerNotes);
     return { text, tables: good, facts: prepared.facts };
@@ -1683,6 +1715,32 @@ export class Game {
     return healed.length === 0 ? "" : `首领前整备:${healed.join(";")}`;
   }
 
+  /**
+   * Task 110: the player's own table holds while the party is still on the map it was written
+   * for. A background call that finishes after they left is free to install (tactician takes
+   * over again); a call that finishes while they are still there must not replace it.
+   */
+  private playerTableHolds(mapId: number | null = this.mapId): boolean {
+    if (mapId === null || mapId <= 0 || this.mapId !== mapId) return false;
+    return this.tactics.isPlayerTable(mapId);
+  }
+
+  /**
+   * Task 110: with a player table in use, only a hard/lost battle may still start a tactician
+   * call. chooseTrigger may report that battle as `new-monster` when a fresh boss appeared at
+   * the same time, so the last battle's verdict counts too.
+   */
+  private playerTableAllowsCall(trigger: Pick<TriggerReason, "kind" | "mapId">): boolean {
+    if (trigger.kind === "bad-battle") return true;
+    const last = this.lastBattle;
+    return (
+      trigger.kind === "new-monster" &&
+      last !== null &&
+      last.mapId === trigger.mapId &&
+      (last.verdict === "hard" || last.verdict === "lost")
+    );
+  }
+
   private async afterTool(pilot: Pilot): Promise<string> {
     // The previous background call may have finished while this tool was running.
     const lines = this.backgroundNotices.splice(0);
@@ -1707,8 +1765,10 @@ export class Game {
     const mapId = this.mapId;
     if (mapId !== null) {
       // Task 42: before the map's next battle, check the table against the party as it is now.
+      // Task 110: a table the player wrote by hand is not rewritten behind their back, so the
+      // party-changed check waits until they leave the map and the mark is retired.
       const table = this.tactics.current(mapId);
-      if (table !== null) {
+      if (table !== null && !this.playerTableHolds(mapId)) {
         const sample = await this.sampleNow(pilot);
         const changed = partyChangedProblem(table, readParty(sample), this.tactics.party(mapId));
         if (changed.length > 0) {
@@ -1776,6 +1836,9 @@ export class Game {
       bossNames: this.guide?.bossNames(area) ?? [],
     });
     if (reason === null) return finish();
+    // Task 110: on a map where the player's own table is in use, no road trigger writes a new
+    // table except a hard/lost battle. That call runs, but applyPlan only attaches its advice.
+    if (this.playerTableHolds(this.mapId) && !this.playerTableAllowsCall(reason)) return finish();
     if (reason.kind === "new-map" && isTown(area)) this.townsCovered.add(area);
     const last = this.recentRecord(this.mapId);
     const trigger: FactsTrigger = {
@@ -1814,6 +1877,11 @@ export class Game {
   ): Promise<{ readonly text: string; readonly attempted: boolean }> {
     const runner = this.tactician;
     if (runner === undefined) return { text: "", attempted: false };
+    // Task 110: the player's hand-written table holds until they leave the map; only a
+    // hard/lost battle may still start a call (its table is not installed, only its advice).
+    if (this.playerTableHolds(trigger.mapId) && !this.playerTableAllowsCall(trigger)) {
+      return { text: "", attempted: false };
+    }
     if (!this.roadGap(trigger.pilot, trigger.mapId)) return { text: "", attempted: false };
     if (this.background !== null) {
       if (this.background.mapId === trigger.mapId) {
@@ -1893,6 +1961,9 @@ export class Game {
       // Same two retries as the synchronous path, but each child starts in the background so
       // the tool call that queued it has long returned (task 86).
       for (let attempt = 0; attempt < 2 && problems.length > 0; attempt++) {
+        // Task 110: the player wrote a table while this call was running; retrying for a table
+        // that will not be installed only spends another child.
+        if (this.playerTableHolds(trigger.mapId)) break;
         const runner = this.tactician;
         if (runner === undefined) break;
         facts +=
@@ -1924,6 +1995,14 @@ export class Game {
     this.pending = null;
     const runner = this.tactician;
     if (runner === undefined) return;
+    // Task 110: the player wrote a table for that map while this trigger waited; a non-bad
+    // road trigger is pointless now, and its result would not be installed anyway.
+    if (
+      this.playerTableHolds(pending.trigger.mapId) &&
+      !this.playerTableAllowsCall(pending.trigger)
+    ) {
+      return;
+    }
     let call: TacticianCall;
     try {
       call = asTacticianCall(runner(pending.prepared.facts, { background: true }));
@@ -2030,6 +2109,20 @@ export class Game {
     this.titleScene =
       pos.state === "GotoTitle" || pos.state === "Init" || text(record(pos.scene).name) === "Title";
     const mapId = num(pos.map) ?? null;
+    // Task 110: the player's hand-written table lasts only until they leave that map. Retire
+    // the mark on the map being left; map 0/title is not "another map", so it does not count,
+    // and a scout walks through other maps only to come back to this save, so it does not.
+    const previous = this.mapId;
+    if (
+      !this.scouting &&
+      mapId !== null &&
+      mapId > 0 &&
+      previous !== null &&
+      previous > 0 &&
+      previous !== mapId
+    ) {
+      await this.tactics.retirePlayerSource(previous);
+    }
     if (mapId === null || pos.state === "ChangeMap" || pos.state === "FieldReady") return mapId;
     // Task 75: keep the collision data of every indoor map as it is entered, not on every
     // tool (chart runs after each one). A re-entry has a different previous map id; the story
@@ -2077,10 +2170,18 @@ export class Game {
       if (!truthy(entity.cell) || !(text(entity.name) ?? "").includes(WORLD_EXIT)) continue;
       exits.push({ cell: entity.cell, to: 1, name: text(entity.name) ?? "" });
     }
-    const chests = (found.get("TresureBox") ?? []).map((entity) => ({
-      cell: entity.cell,
-      name: text(entity.name) ?? "",
-    }));
+    const chests = (found.get("TresureBox") ?? []).map((entity) => {
+      // 11-11 (task 116): bridge 0.13.6 gives what a chest holds, so the route book can pair
+      // it with the guide instead of the truncated Japanese entity name. Copy only what the
+      // bridge sent, so an older bridge still records just cell and name. `opened` is this
+      // save's progress, not part of the map record.
+      const chest: Json = { cell: entity.cell, name: text(entity.name) ?? "" };
+      for (const key of ["content", "num", "flag", "hidden", "contentName"] as const) {
+        const value = entity[key];
+        if (value !== undefined && value !== null) chest[key] = value;
+      }
+      return chest;
+    });
     await this.atlas.visit(mapId, name, exits, chests);
     const savePoint = (found.get("Event") ?? []).find((entity) =>
       (text(entity.name) ?? "").includes("SavePoint"),
@@ -2132,8 +2233,8 @@ export class Game {
     for (const item of held) {
       const entry = record(item);
       const type = text(entry.type);
-      const name = text(entry.name);
-      if (type === undefined || !GEAR.has(type) || name === undefined || name === "") continue;
+      const name = cleanName(entry.name);
+      if (type === undefined || !GEAR.has(type) || name === "") continue;
       bag[name] = num(entry.count) ?? 0;
     }
     return bag;
@@ -2440,6 +2541,10 @@ export class Game {
     this.lastBattle = null;
     this.stageBossWon = false;
     this.stageNotice = "";
+    // Task 113: the model's own calls are the denominator of the stage report; internal calls
+    // made by the route executor do not pass through `run`.
+    this.stageCallName = name;
+    await this.stageTrackTool(name);
     const outcome = await handler(args, pilot, signal);
     // Task 91: a wait can stop on a game-over popup; recover before the usual settle/hints.
     const ended = await this.recoverGameover(pilot);
@@ -3406,7 +3511,12 @@ export class Game {
       ...(prepared.boss === null ? {} : { boss: prepared.boss }),
       ...(prepared.error === "" ? {} : { bossError: prepared.error }),
     };
-    if (problems.length === 0) await this.stagePlans.save(record);
+    if (problems.length === 0) {
+      // Task 113: a new plan replaces the old one; the old stage's numbers go to the log.
+      const previous = this.stagePlans.current;
+      if (previous !== null && previous.status === "departed") this.stageLogStats(previous);
+      await this.stagePlans.save(record);
+    }
     return {
       record: problems.length === 0 ? record : null,
       text: [answer.text, prepared.text, prepared.error].filter((line) => line !== "").join("\n"),
@@ -4031,13 +4141,113 @@ export class Game {
       record.bossError === undefined ? "" : `首领表没有写成：${record.bossError}`,
       purchase,
       departure,
+      this.stageStatsLine(record, new Date(), true),
     ]
       .filter((line) => line !== "")
       .join("\n");
   }
 
+  /** Task 113: a fresh counter block, started when the plan leaves the town. */
+  private stageNewStats(): StageStats {
+    return {
+      departedAt: new Date().toISOString(),
+      tools: 0,
+      go: 0,
+      route: 0,
+      planStage: 0,
+      stops: 0,
+    };
+  }
+
+  /** Task 113: count one model tool call while the active plan is on the road. */
+  private async stageTrackTool(name: string): Promise<void> {
+    const record = this.stagePlans.current;
+    if (record?.status !== "departed") return;
+    const stats = record.stats ?? this.stageNewStats();
+    const next: StageStats = {
+      ...stats,
+      tools: stats.tools + 1,
+      go: stats.go + (name === "go" ? 1 : 0),
+      route: stats.route + (name === "route" ? 1 : 0),
+      planStage: stats.planStage + (name === "plan_stage" ? 1 : 0),
+    };
+    try {
+      await this.stagePlans.save({ ...record, stats: next });
+    } catch (error) {
+      this.onIncident?.(`阶段统计没写成:${describeError(error)}`);
+    }
+  }
+
+  /** Task 113: departure starts the clock and counts the tool call that set out. */
+  private stageDepartureStats(): StageStats {
+    const name = this.stageCallName;
+    return {
+      departedAt: new Date().toISOString(),
+      tools: name === null ? 0 : 1,
+      go: name === "go" ? 1 : 0,
+      route: name === "route" ? 1 : 0,
+      planStage: name === "plan_stage" ? 1 : 0,
+      stops: 0,
+    };
+  }
+
+  /** Task 113: departure starts the clock; a plan loaded as departed keeps its own or starts now. */
+  private async stageMarkDeparted(): Promise<void> {
+    const record = this.stagePlans.current;
+    if (record === null) return;
+    const stats = record.stats ?? this.stageDepartureStats();
+    await this.stagePlans.save({ ...record, status: "departed", stats });
+  }
+
+  /** Task 113: waypoints the route executor finished while following the stage plan. */
+  private async stageAddStops(count: number): Promise<void> {
+    if (count <= 0) return;
+    const record = this.stagePlans.current;
+    if (record?.status !== "departed") return;
+    const stats = record.stats ?? this.stageNewStats();
+    try {
+      await this.stagePlans.save({ ...record, stats: { ...stats, stops: stats.stops + count } });
+    } catch (error) {
+      this.onIncident?.(`阶段统计没写成:${describeError(error)}`);
+    }
+  }
+
   /**
-   * Task 97: auto-plan and both hard gates, before go/route walks.
+   * Task 113's one line: the activity log uses the exact acceptance wording; the plan_stage
+   * result adds plan_stage's own count so the model sees what it did during the stage.
+   */
+  private stageStatsLine(record: StagePlanRecord, end = new Date(), withPlanStage = false): string {
+    const stats = record.stats;
+    const zero = withPlanStage ? "go 0、route 0、plan_stage 0" : "go 0、route 0";
+    if (stats === undefined) {
+      return (
+        `阶段统计「${record.target.label}」:工具 0 次(${zero}),` +
+        "按计划走了 0 站，用时 0 分(还没出发)"
+      );
+    }
+    const finished = stats.finishedAt ?? end.toISOString();
+    const started = Date.parse(stats.departedAt);
+    const ended = Date.parse(finished);
+    const minutes =
+      Number.isFinite(started) && Number.isFinite(ended)
+        ? Math.max(0, Math.round((ended - started) / 60_000))
+        : 0;
+    const calls = withPlanStage
+      ? `go ${stats.go}、route ${stats.route}、plan_stage ${stats.planStage}`
+      : `go ${stats.go}、route ${stats.route}`;
+    return (
+      `阶段统计「${record.target.label}」:工具 ${stats.tools} 次(${calls}),` +
+      `按计划走了 ${stats.stops} 站，用时 ${minutes} 分`
+    );
+  }
+
+  /** Task 113: one activity line when the plan completes or is replaced by a new one. */
+  private stageLogStats(record: StagePlanRecord): void {
+    if (record.stats === undefined) return;
+    this.onActivity?.(this.stageStatsLine(record));
+  }
+
+  /**
    *
    * Auto trigger is inference: the party is in a town (or on the world map), the destination
    * is not a town, and the destination's area differs from the current area. Nothing in the
@@ -4107,7 +4317,7 @@ export class Game {
         destination?.world === true;
       if (!toward) return null;
       if (await this.stageTimerRunning(pilot)) {
-        await this.stagePlans.setStatus("departed");
+        await this.stageMarkDeparted();
         this.stageNotice = "倒计时期间出发检查不拦，阶段计划记为已出发。";
         return null;
       }
@@ -4130,7 +4340,7 @@ export class Game {
         }
         await this.stageRecordDebt(pilot, active, check.unmet, reason);
       }
-      await this.stagePlans.setStatus("departed");
+      await this.stageMarkDeparted();
       this.stageNotice =
         this.stageNotice === "" ? "阶段计划：出发。" : `${this.stageNotice}阶段计划：出发。`;
       return null;
@@ -4162,14 +4372,16 @@ export class Game {
 
   /**
    * Task 101: a coordinate `go` inside the active stage's maps is refused unless the cell is a
-   * plan waypoint, a nameless hidden-item/event cell, or the model gives a reason. The gate is
-   * deliberately before any key press: the countdown rule neither loosens nor tightens it.
+   * plan waypoint, a nameless hidden-item/event cell, or the model gives a reason. Task 113
+   * turns that refusal into walking the plan, unless its switch is off. The gate is deliberately
+   * before any key press: the countdown rule neither loosens nor tightens it.
    */
   private async stageBeforeGoCell(
     pilot: Pilot,
     args: Json,
     cell: Cell,
     targetMap: number | null = null,
+    signal?: AbortSignal,
   ): Promise<HandlerResult | null> {
     // Task 105: a scout walks its own target cells; the plan gate must not stop it.
     if (this.scouting) return null;
@@ -4180,7 +4392,7 @@ export class Game {
     if (currentMap === null) return null;
     let knowledge: Knowledge;
     try {
-      knowledge = await this.ensureStageKnowledge();
+      knowledge = await this.ensureStageKnowledge(signal);
     } catch {
       // A broken knowledge module must not make movement impossible; the gate fails open.
       return null;
@@ -4208,6 +4420,20 @@ export class Game {
       this.stageNotice = `阶段计划放行：带理由走坐标 ${where}（${reason}）；没有记欠账。`;
       return null;
     }
+    // Task 113: the refusal becomes the walk itself. A plan with no executable stop still
+    // answers with the old explanation instead of pretending to have moved.
+    if (this.stageGoFollowPlan) {
+      const followed = await this.stageFollowPlan(pilot, args, signal);
+      if (followed !== null) {
+        return {
+          early: followed.early,
+          text:
+            "这个坐标不在阶段计划里，代码按计划接着走了。\n" +
+            "要离开计划就带 leave_incomplete 写理由再 go。\n" +
+            followed.text,
+        };
+      }
+    }
     return {
       early: true,
       text: this.stageGoCellRefusal(
@@ -4220,6 +4446,120 @@ export class Game {
         knowledge,
       ),
     };
+  }
+
+  /**
+   * Task 113: a target cell exactly on a known exit/entrance is that map's arrival, so a
+   * coordinate `go` can trigger the same stage planning and departure check as a named `go`.
+   * Only the exact cell counts: an adjacent exit must not change what a normal walk means.
+   */
+  private async stageEntranceDestination(
+    pilot: Pilot,
+    cell: Cell,
+    currentMap: number,
+  ): Promise<number | null> {
+    const best: { map: number | null; distance: number } = {
+      map: null,
+      distance: Number.POSITIVE_INFINITY,
+    };
+    const consider = (target: Cell, to: number): void => {
+      if (to === currentMap) return;
+      const distance = Math.abs(target[0] - cell[0]) + Math.abs(target[1] - cell[1]);
+      if (distance !== 0 || distance >= best.distance) return;
+      best.map = to;
+      best.distance = distance;
+    };
+    const entry = this.atlas.maps.get(String(currentMap));
+    if (entry !== undefined) {
+      for (const exit of records(entry.exits)) {
+        const target = cellOf(exit.cell);
+        const to = num(exit.to);
+        if (target !== null && to !== undefined) consider(target, Math.trunc(to));
+      }
+    }
+    try {
+      const found = record((await pilot.send("entities", { kind: "GotoMap", max: 300 })).entities);
+      for (const entity of records(found.entities)) {
+        if (entity.active === false) continue;
+        const target = cellOf(entity.cell);
+        const to = num(entity.toMap);
+        if (target !== null && to !== undefined) consider(target, Math.trunc(to));
+      }
+    } catch {
+      // An older bridge or a failed read still leaves the atlas exits usable.
+    }
+    return best.map;
+  }
+
+  /**
+   * Task 113: after a go reached the plan's map, keep following it in this same tool call.
+   * The route executor's `early` rule still returns for a story choice, a boss or a game over.
+   */
+  private async stageContinuePlanAfterTravel(
+    pilot: Pilot,
+    args: Json,
+    destinationMap: number | null,
+    signal?: AbortSignal,
+  ): Promise<HandlerResult | null> {
+    if (!this.stageContinueAfterTravel) return null;
+    if (this.scouting) return null;
+    const record = this.stagePlans.current;
+    if (record?.status !== "departed") return null;
+    const { map: currentMap } = await this.stagePosition(pilot);
+    if (currentMap === null) return null;
+    if (destinationMap !== null && currentMap !== destinationMap) return null;
+    let knowledge: Knowledge;
+    try {
+      knowledge = await this.ensureStageKnowledge(signal);
+    } catch {
+      return null;
+    }
+    const current = mapPlace(knowledge, this.atlas, currentMap);
+    if (!this.stagePlanCovers(record, current, knowledge)) return null;
+    const followed = await this.stageFollowPlan(pilot, args, signal);
+    if (followed === null) return null;
+    return {
+      early: followed.early,
+      text: `阶段计划：到了「${stagePlaceName(knowledge, this.atlas, currentMap)}」，代码接着按计划走。\n${followed.text}`,
+    };
+  }
+
+  /**
+   * Task 113: the same path as `route()` without stops: saved progress first, then the stage
+   * plan's own stops. Returns null when the plan has no executable stop.
+   */
+  private async stageFollowPlan(
+    pilot: Pilot,
+    args: Json,
+    signal?: AbortSignal,
+  ): Promise<HandlerResult | null> {
+    if (this.routeFile !== undefined) {
+      try {
+        let completedBefore = 0;
+        try {
+          completedBefore = (await readProgress(this.routeFile)).completed.length;
+        } catch {
+          // No readable progress: resumeRoute will report the real reason below.
+        }
+        const result = await resumeRoute(this.routeFile, this.routePorts(pilot, args), { signal });
+        await this.stageAddStops(Math.max(0, result.completed.length - completedBefore));
+        return {
+          text: result.text,
+          early: result.reason === "gameover" || result.reason === "decision",
+        };
+      } catch (error) {
+        const body = describeError(error);
+        if (!body.startsWith("没有路线进度文件")) {
+          return { text: `没有可接着走的路线：${body}`, early: true };
+        }
+      }
+    }
+    const record = this.stagePlans.current;
+    if (record !== null && record.status !== "completed" && record.plan.route.length > 0) {
+      const stops = this.stagePlanRouteStops(record);
+      if (stops.length > 0) return await this.runRouteStops(pilot, args, stops, null, signal, true);
+    }
+    return null;
   }
 
   /** Is this map the stage's destination area or one the plan route passes through? */
@@ -4592,8 +4932,19 @@ export class Game {
     }
     if (reason === "") return "";
     this.stageBossWon = false;
-    await this.stagePlans.setStatus("completed");
-    return `阶段计划：已完成（${reason}）。`;
+    const finishedAt = new Date().toISOString();
+    const stats = record.stats === undefined ? undefined : { ...record.stats, finishedAt };
+    const completed: StagePlanRecord = {
+      ...record,
+      status: "completed",
+      ...(stats === undefined ? {} : { stats }),
+    };
+    await this.stagePlans.save(completed);
+    if (stats !== undefined) this.stageLogStats(completed);
+    return (
+      `阶段计划：已完成（${reason}）。` +
+      (stats === undefined ? "" : `\n${this.stageStatsLine(completed)}`)
+    );
   }
 
   /**
@@ -4605,27 +4956,50 @@ export class Game {
     const coordinate = goCellTarget(args.to);
     if (coordinate !== null) {
       const cell = coordinate.cell;
+      const leaveReason = text(args.leave_incomplete)?.trim() ?? "";
       let current: number | null = null;
-      if (coordinate.map !== null) {
-        try {
-          [current] = await travel.currentMapAndCell(pilot);
-        } catch {
-          current = null;
-        }
-        if (current === null) {
-          return {
-            text: "go 读不到当前位置，没法走「地图号:x,y」",
-            early: true,
-          };
-        }
+      try {
+        [current] = await travel.currentMapAndCell(pilot);
+      } catch {
+        current = null;
       }
-      const refusal = await this.stageBeforeGoCell(pilot, args, cell, coordinate.map);
+      if (coordinate.map !== null && current === null) {
+        return {
+          text: "go 读不到当前位置，没法走「地图号:x,y」",
+          early: true,
+        };
+      }
+      // Task 113: a cell on an exit/entrance is this go's destination map, so the auto plan
+      // and departure check run exactly as they do for a named map.
+      const entranceMap =
+        current !== null && (coordinate.map === null || coordinate.map === current)
+          ? await this.stageEntranceDestination(pilot, cell, current)
+          : null;
+      if (entranceMap !== null) {
+        const refusal = await this.stageBeforeTravel(pilot, args, entranceMap, signal);
+        if (refusal !== null) return refusal;
+      }
+      const refusal = await this.stageBeforeGoCell(pilot, args, cell, coordinate.map, signal);
       if (refusal !== null) return refusal;
       const targetMap = coordinate.map ?? current;
       const label =
         targetMap === null || targetMap === current
           ? `go → (${cell[0]}, ${cell[1]})`
           : `go → 地图 ${targetMap} (${cell[0]}, ${cell[1]})`;
+      // 11-10: the exact entrance cell is still walked by goCell; stepping onto it changes the
+      // map, and that map is the arrival. Only continue the plan after the map really changed.
+      if (entranceMap !== null) {
+        return await this.withWalkLabel(label, async () => {
+          const walked = await this.goCell(args, pilot, cell);
+          const arrived = (await this.stagePosition(pilot)).map === entranceMap;
+          const followed =
+            arrived && leaveReason === ""
+              ? await this.stageContinuePlanAfterTravel(pilot, args, entranceMap, signal)
+              : null;
+          if (followed === null) return walked;
+          return { text: [walked.text, followed.text].join("\n"), early: followed.early };
+        });
+      }
       return await this.withWalkLabel(label, async () => {
         if (targetMap === null || current === null || targetMap === current) {
           return await this.goCell(args, pilot, cell);
@@ -4668,7 +5042,10 @@ export class Game {
           () => undefined,
           this.travelOptions(args),
         );
-        return { text: result.text };
+        if (!result.reached) return { text: result.text };
+        const followed = await this.stageContinuePlanAfterTravel(pilot, args, choice.mapId, signal);
+        if (followed === null) return { text: result.text };
+        return { text: [result.text, followed.text].join("\n"), early: followed.early };
       }),
     );
   }
@@ -4701,6 +5078,7 @@ export class Game {
     stops: readonly RouteStopInput[],
     endInput: RouteStopInput | null,
     signal?: AbortSignal,
+    followPlan = false,
   ): Promise<HandlerResult> {
     const destination = await this.routeDestinationMap(pilot, stops, endInput);
     const refusal = await this.stageBeforeTravel(pilot, args, destination, signal);
@@ -4716,6 +5094,9 @@ export class Game {
           end: built.end,
           signal,
         });
+        // Task 113: only a code-driven plan walk counts toward the stage's stop total; an
+        // explicit `route` from the model is its own plan.
+        if (followPlan) await this.stageAddStops(result.completed.length);
         return {
           text: result.text,
           early: result.reason === "gameover" || result.reason === "decision",
@@ -4730,29 +5111,8 @@ export class Game {
    * so a fresh plan must not leave `route()` with nothing to walk.
    */
   private async resumeRouteTool(pilot: Pilot, signal?: AbortSignal): Promise<HandlerResult> {
-    if (this.routeFile !== undefined) {
-      try {
-        const result = await resumeRoute(this.routeFile, this.routePorts(pilot, {}), {
-          signal,
-        });
-        return {
-          text: result.text,
-          early: result.reason === "gameover" || result.reason === "decision",
-        };
-      } catch (error) {
-        const body = describeError(error);
-        if (!body.startsWith("没有路线进度文件")) {
-          return { text: `没有可接着走的路线：${body}`, early: true };
-        }
-      }
-    }
-    const record = this.stagePlans.current;
-    if (record !== null && record.status !== "completed" && record.plan.route.length > 0) {
-      const stops = this.stagePlanRouteStops(record);
-      if (stops.length > 0) {
-        return await this.runRouteStops(pilot, {}, stops, null, signal);
-      }
-    }
+    const followed = await this.stageFollowPlan(pilot, {}, signal);
+    if (followed !== null) return followed;
     return {
       text: "没有可接着走的路线：没有路线进度，也没有进行中的阶段计划",
       early: true,
@@ -5585,7 +5945,9 @@ export class Game {
       const names = readParty(sample).flatMap((member) =>
         member.abilities.map((ability) => ability.name),
       );
-      return new Set(names.filter((name) => name.trim() !== "").map((name) => normalizeName(name)));
+      return new Set(
+        names.filter((name) => name.trim() !== "").map((name) => normalizeName(cleanName(name))),
+      );
     } catch {
       // An old bridge without abilities: "learned" is unreadable, so the stop list falls
       // back to battles/minutes as task 100 says.
@@ -5924,11 +6286,12 @@ export class Game {
       // Older bridges or tests without a sample still store the table; the party-changed
       // check then has no snapshot and simply waits for the next tactician call.
     }
-    await this.tactics.set(id, tables, met, undefined, roster);
+    await this.tactics.setPlayer(id, tables, met, roster);
     return {
       text:
         `已为地图 ${id} 设好 ${tables.length} 套战斗策略;` +
-        "普通战斗先用第 1 套,打得不好会自动换下一套。",
+        "普通战斗先用第 1 套,打得不好会自动换下一套;" +
+        "在离开这张图之前，战术官不会覆盖这张表。",
     };
   }
 

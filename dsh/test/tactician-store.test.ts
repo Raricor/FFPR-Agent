@@ -55,3 +55,23 @@ void test("an old tactics file without the new fields still loads", async () => 
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+void test("a player-written table keeps its source mark across reloads until retired", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-tactics-store-"));
+  const path = join(directory, "tactics-ff5.json");
+  try {
+    const tactics = await Tactics.load(path);
+    await tactics.setPlayer(64, [TABLE], ["哥布林"]);
+    assert.equal(tactics.isPlayerTable(64), true);
+    assert.equal(tactics.maps.get("64")?.sourceMap, 64);
+    assert.equal(Number.isNaN(Date.parse(tactics.maps.get("64")?.sourceAt ?? "")), false);
+    const reloaded = await Tactics.load(path);
+    assert.equal(reloaded.isPlayerTable(64), true);
+    assert.equal(reloaded.maps.get("64")?.source, "player");
+    assert.equal(await reloaded.retirePlayerSource(64), true);
+    assert.equal(reloaded.isPlayerTable(64), false);
+    assert.equal((await Tactics.load(path)).isPlayerTable(64), false);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

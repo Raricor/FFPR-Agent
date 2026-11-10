@@ -79,8 +79,10 @@ void test("the FF5 prompts and tool definitions keep the ported text", () => {
   // 10-29 (task 26): FF5 now starts a new game in slot 20 instead of reading its old slot 3.
   // 11-10 (task 105): the scout paragraph was added.
   // 11-10 (task 107): the old "call done" line became the goal-mode paragraph.
+  // 11-10 (task 110): the set_tactics sentence says the player's table holds until they leave.
   // Only these places differ from the ported constant: the new-game/save-slot sentence before
-  // {hint}, save_game's description naming slot 20, the scout rule and the goal-mode paragraph.
+  // {hint}, save_game's description naming slot 20, the scout rule, the goal-mode paragraph
+  // and the set_tactics sentence.
   assert.equal(systemPrompt("ff5"), ff5System);
   assert.ok(ff5System.includes("存档只写 20 号存档位"));
   assert.equal(tacticianPrompt("ff5"), ff5Tactician);
@@ -94,14 +96,19 @@ void test("the prompt describes goal mode instead of calling done", () => {
   const text = systemPrompt("ff5");
   assert.equal(text.includes("调用 done"), false);
   assert.ok(text.includes("这个会话有一个长期目标"));
+  assert.ok(text.includes("没有目标时 get_goal 返回 null"));
+  assert.ok(text.includes("create_goal(objective)"));
+  assert.ok(text.includes("get_goal 拿到 goal_id 和 revision"));
+  assert.ok(text.includes("再 update_goal"));
   assert.ok(text.includes("每一轮推进一段"));
   assert.ok(text.includes("轮末用两三句写这一次的进展"));
   assert.ok(text.includes("只有真正达成才标完成"));
   assert.ok(text.includes("同一个阻塞条件连续 3 轮才算阻塞"));
+  assert.ok(text.includes("blocked_reason"));
   const done = TOOLS.find((tool) => tool.function.name === "done");
   assert.ok(done, "旧会话仍要能看到 done 的定义");
   assert.match(done.function.description, /目标模式下不用 done/);
-  assert.match(done.function.description, /整个目标真的完成时用目标工具标完成/);
+  assert.match(done.function.description, /整个目标真的完成时用 update_goal 标完成/);
 });
 
 void test("save_game names the slot passed to toolSchemas", () => {
