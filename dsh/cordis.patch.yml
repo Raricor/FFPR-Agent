@@ -20,6 +20,12 @@
             name: "@local/ffpr-dsh"
             config:
               game: ff5
+          # 11-10 todo 76: the player keeps going on its own through dsh's goal rounds;
+          # the standard preset mounts these two the same way.
+          - id: command-goal
+            name: "@deepseek-ai/dsh-command-goal"
+          - id: tool-goal
+            name: "@deepseek-ai/dsh-tool-goal"
           - id: compaction
             name: cordis:group
             group: true
@@ -70,6 +76,12 @@
             name: "@local/ffpr-dsh"
             config:
               game: ff1
+          # 11-10 todo 76: the player keeps going on its own through dsh's goal rounds;
+          # the standard preset mounts these two the same way.
+          - id: command-goal
+            name: "@deepseek-ai/dsh-command-goal"
+          - id: tool-goal
+            name: "@deepseek-ai/dsh-tool-goal"
           - id: compaction
             name: cordis:group
             group: true
@@ -120,6 +132,12 @@
             name: "@local/ffpr-dsh"
             config:
               game: ff2
+          # 11-10 todo 76: the player keeps going on its own through dsh's goal rounds;
+          # the standard preset mounts these two the same way.
+          - id: command-goal
+            name: "@deepseek-ai/dsh-command-goal"
+          - id: tool-goal
+            name: "@deepseek-ai/dsh-tool-goal"
           - id: compaction
             name: cordis:group
             group: true
@@ -170,6 +188,12 @@
             name: "@local/ffpr-dsh"
             config:
               game: ff3
+          # 11-10 todo 76: the player keeps going on its own through dsh's goal rounds;
+          # the standard preset mounts these two the same way.
+          - id: command-goal
+            name: "@deepseek-ai/dsh-command-goal"
+          - id: tool-goal
+            name: "@deepseek-ai/dsh-tool-goal"
           - id: compaction
             name: cordis:group
             group: true
@@ -220,6 +244,12 @@
             name: "@local/ffpr-dsh"
             config:
               game: ff4
+          # 11-10 todo 76: the player keeps going on its own through dsh's goal rounds;
+          # the standard preset mounts these two the same way.
+          - id: command-goal
+            name: "@deepseek-ai/dsh-command-goal"
+          - id: tool-goal
+            name: "@deepseek-ai/dsh-tool-goal"
           - id: compaction
             name: cordis:group
             group: true
@@ -270,6 +300,12 @@
             name: "@local/ffpr-dsh"
             config:
               game: ff6
+          # 11-10 todo 76: the player keeps going on its own through dsh's goal rounds;
+          # the standard preset mounts these two the same way.
+          - id: command-goal
+            name: "@deepseek-ai/dsh-command-goal"
+          - id: tool-goal
+            name: "@deepseek-ai/dsh-tool-goal"
           - id: compaction
             name: cordis:group
             group: true
