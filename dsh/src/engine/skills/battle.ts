@@ -83,6 +83,8 @@ export interface BattleHooks {
   /** Task 82: the activity log sink for a refused item-cursor move after battle. */
   onIncident?: (message: string) => void;
   elements?: ElementLearner;
+  /** Task 91: the after-battle HP/MP thresholds and reserve from Config. */
+  heal?: PatchUpOptions;
 }
 
 function show(value: unknown): string {
@@ -1431,7 +1433,7 @@ export async function regular(
     const where = await wipeReport(pilot, names, slot);
     return where + (note ? `;${note}` : "");
   }
-  const healed = await patchUp(pilot, say, 4, hooks.onIncident);
+  const healed = await patchUp(pilot, say, 4, hooks.onIncident, hooks.heal);
   let message = `按${which}打完 ${show(pyRound((pilot.now() - started) / 1000, 0))} 秒(敌人:${names};${detail})`;
   if (!truthy(result.ok)) message = `战斗没打完:${show(result.error)}`;
   if (fleeNote !== "") message = `${fleeNote},${message}`;
@@ -1467,32 +1469,96 @@ export function judgePlayers(party: readonly Reply[]): [string, string] {
   return ["ok", `全队 HP ${percent}%`];
 }
 
+/** Task 91: how much HP a spell is expected to restore per MP, for choosing 治疗 or 救疗. */
+const HEAL_PER_MP = 12;
+const DEFAULT_HEAL_COST: Readonly<Record<string, number>> = { 治疗: 4, 救疗: 8 };
+const HEAL_SPELLS: readonly string[] = ["治疗", "救疗"];
+const HEAL_ITEMS: readonly string[] = ["恢复药", "高级恢复药", "Potion", "Hi-Potion"];
+const TENT_ITEMS: readonly string[] = ["帐篷", "小屋", "Tent", "Cottage"];
+
+/** Task 91's after-battle and pre-boss healing knobs (Config; the defaults are the request's). */
+export interface PatchUpOptions {
+  /** Heal anyone below this HP percentage (70 by default). */
+  readonly hpTarget?: number;
+  /** Keep at least this share of a caster's max MP (30 by default); 0 before a boss/save point. */
+  readonly mpReservePercent?: number;
+  /** Use a healing item only below this HP percentage (40 by default). */
+  readonly itemHpPercent?: number;
+  /** At a save point a tent/cottage may restore everyone, MP included. */
+  readonly allowTent?: boolean;
+}
+
+interface HealChoice {
+  readonly caster: string;
+  readonly spell: string;
+  readonly cost: number;
+}
+
 /**
- * After a battle (the table's after_battle, §4.6): a white mage casts 治疗 on whoever is
- * under half HP, the lowest first, then 解毒 on whoever is poisoned, while MP lasts.
- * Returns what was cast.
+ * Task 91: after a battle (the table's after_battle, §4.6) bring the party back over the HP
+ * threshold with the cheapest white magic that covers the gap, keeping a share of the caster's
+ * MP. When no spell can be used (or only the reserve is left) a healing item is used below the
+ * lower threshold. Ailments are cured as before.
  */
 export async function patchUp(
   pilot: Pilot,
   say: Say = () => undefined,
   casts = 4,
   report?: (message: string) => void,
+  options: PatchUpOptions = {},
 ): Promise<string[]> {
   await pilot.send("wait", { timeout: 30000 }, 40_000);
   const done: string[] = [];
+  const hpTarget = options.hpTarget ?? 70;
   for (let i = 0; i < casts; i++) {
     const party = await partyState(pilot);
-    const hurt = party.filter((member) => (num(member.hp) ?? 0) > 0 && pct(member) < 50);
-    const healers = party.filter(
-      (member) =>
-        member.jobName === "白魔法师" && (num(member.hp) ?? 0) > 0 && (num(member.mp) ?? 0) >= 4,
-    );
-    if (hurt.length === 0 || healers.length === 0) break;
-    let weakest = hurt[0];
-    for (const member of hurt.slice(1)) {
-      if (weakest !== undefined && pct(member) < pct(weakest)) weakest = member;
+    const hurt = party.filter((member) => (num(member.hp) ?? 0) > 0 && pct(member) < hpTarget);
+    if (hurt.length === 0) break;
+    const weakest = lowestOf(hurt);
+    const choice = chooseHeal(party, weakest, options);
+    if (choice === null) break;
+    const [ok, message] = await cast(pilot, choice.caster, choice.spell, show(weakest?.name));
+    done.push(message);
+    say(`  ${message}`);
+    if (!ok) break;
+  }
+  // Task 91: at a save point a tent/cottage is the one item that also restores MP. Use it when
+  // the magic above could not reach the target or the party's MP is low.
+  if (options.allowTent === true) {
+    const party = await partyState(pilot);
+    const lowHp = party.some((member) => (num(member.hp) ?? 0) > 0 && pct(member) < hpTarget);
+    const lowMp = party.some((member) => {
+      const max = num(member.maxMp) ?? 0;
+      return max > 0 && (num(member.mp) ?? 0) < max * 0.3;
+    });
+    if (lowHp || lowMp) {
+      const held = await heldItems(pilot);
+      const tent = TENT_ITEMS.find((name) =>
+        Object.entries(held).some(([item, count]) => count > 0 && holds(item, name)),
+      );
+      const patient = show(party[0]?.name);
+      if (tent !== undefined) {
+        const [ok, message] = await useItem(pilot, tent, patient, report);
+        done.push(message);
+        say(`  ${message}`);
+        if (!ok) return done;
+      }
     }
-    const [ok, message] = await cast(pilot, show(healers[0]?.name), "治疗", show(weakest?.name));
+  }
+  // Task 91: no magic (or only the reserved MP) left: a healing item is spent only under the
+  // lower threshold, so potions are not burned on a scratch.
+  const itemTarget = options.itemHpPercent ?? 40;
+  for (let i = 0; i < casts; i++) {
+    const party = await partyState(pilot);
+    const hurt = party.filter((member) => (num(member.hp) ?? 0) > 0 && pct(member) < itemTarget);
+    if (hurt.length === 0) break;
+    const weakest = lowestOf(hurt);
+    const held = await heldItems(pilot);
+    const item = HEAL_ITEMS.find((name) =>
+      Object.entries(held).some(([item, count]) => count > 0 && holds(item, name)),
+    );
+    if (item === undefined) break;
+    const [ok, message] = await useItem(pilot, item, show(weakest?.name), report);
     done.push(message);
     say(`  ${message}`);
     if (!ok) break;
@@ -1532,6 +1598,76 @@ export async function patchUp(
     }
   }
   return done;
+}
+
+/** The lowest-HP member, the one to heal first. */
+function lowestOf(members: readonly Reply[]): Reply | undefined {
+  let weakest = members[0];
+  for (const member of members.slice(1)) {
+    if (weakest !== undefined && pct(member) < pct(weakest)) weakest = member;
+  }
+  return weakest;
+}
+
+/** What one caster can cast from the 治疗 family, with the MP the bridge reports when known. */
+function healSpellsOf(member: Reply): { spell: string; cost: number }[] {
+  const found: { spell: string; cost: number }[] = [];
+  for (const ability of records(member.abilities)) {
+    const name = iconName(ability.name);
+    if (!HEAL_SPELLS.includes(name)) continue;
+    found.push({ spell: name, cost: num(ability.mp) ?? DEFAULT_HEAL_COST[name] ?? 0 });
+  }
+  for (const value of list(member.spells)) {
+    const name = iconName(value);
+    if (!HEAL_SPELLS.includes(name) || found.some((entry) => entry.spell === name)) continue;
+    found.push({ spell: name, cost: DEFAULT_HEAL_COST[name] ?? 0 });
+  }
+  // An older bridge has no spell list at all. A white mage is assumed to know only 治疗, the
+  // spell the old patchUp always tried; guessing 救疗 would cast at a menu that lacks it.
+  if (found.length === 0 && member.jobName === "白魔法师") {
+    found.push({ spell: "治疗", cost: DEFAULT_HEAL_COST["治疗"] ?? 4 });
+  }
+  return found;
+}
+
+/**
+ * The cheapest spell whose expected healing covers the gap, else the cheapest one left. A
+ * caster must still hold the reserve afterwards, so a nearly empty white mage does not cast.
+ */
+function chooseHeal(
+  party: readonly Reply[],
+  patient: Reply | undefined,
+  options: PatchUpOptions,
+): HealChoice | null {
+  if (patient === undefined) return null;
+  const gap = Math.max(0, (num(patient.maxHp) ?? 0) - (num(patient.hp) ?? 0));
+  const reservePercent = options.mpReservePercent ?? 30;
+  const choices: (HealChoice & { heal: number; mp: number })[] = [];
+  for (const member of party) {
+    if ((num(member.hp) ?? 0) <= 0) continue;
+    const mp = num(member.mp) ?? 0;
+    const maxMp = num(member.maxMp) ?? 0;
+    const reserve = maxMp * (reservePercent / 100);
+    for (const spell of healSpellsOf(member)) {
+      if (mp - spell.cost < reserve) continue;
+      choices.push({
+        caster: show(member.name),
+        spell: spell.spell,
+        cost: spell.cost,
+        heal: spell.cost * HEAL_PER_MP,
+        mp,
+      });
+    }
+  }
+  if (choices.length === 0) return null;
+  const covering = choices.filter((choice) => choice.heal >= gap);
+  const pool = covering.length > 0 ? covering : choices;
+  pool.sort(
+    (left, right) =>
+      left.cost - right.cost || right.mp - left.mp || left.spell.localeCompare(right.spell),
+  );
+  const best = pool[0];
+  return best === undefined ? null : { caster: best.caster, spell: best.spell, cost: best.cost };
 }
 
 /** Whether a bag name and the wanted item name mean the same item (icon tags already gone). */

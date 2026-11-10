@@ -514,7 +514,8 @@ void test("grind refuses a call with no stopping condition", async () => {
     const pilot = new FakePilot();
     const text = await game.run("grind", {}, pilot);
     assert.match(text, /^grind 没有执行:至少给一个停止条件/);
-    assert.equal(pilot.calls.length, 0);
+    // Task 91 adds one sample read after every tool (the game-over check), but no game op.
+    assert.equal(pilot.calls.filter((call) => call.kind === "send").length, 0);
     assert.ok(game.handledTools().includes("grind"));
   } finally {
     await rm(directory, { recursive: true, force: true });

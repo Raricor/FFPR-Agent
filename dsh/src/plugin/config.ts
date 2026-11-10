@@ -16,6 +16,8 @@ import {
 } from "../engine/skills/grind.ts";
 import {
   BLOCKED_TRUST_COUNT,
+  CARRY_REPEAT_LIMIT,
+  CARRY_TOTAL_LIMIT,
   WALKPATH_BLOCKED_MS,
   WALKPATH_EVENT_POLL_MS,
   WALKPATH_EVENT_WAIT_MS,
@@ -23,6 +25,7 @@ import {
   WALKPATH_TURN_LEAD,
 } from "../engine/skills/move.ts";
 import { DEFAULT_TRAVEL_MAX_HOPS, DEFAULT_TRAVEL_MAX_MINUTES } from "../engine/skills/travel.ts";
+import { DEFAULT_ROUTE_BATTLE_SECONDS } from "../engine/route/tool.ts";
 
 /**
  * All six games start from a new game and write slot 20 only (10-29: the user made FF5 use the
@@ -54,6 +57,8 @@ export interface GameDefaults {
   readonly incidentsFile: string;
   readonly incidentsStateFile: string;
   readonly bestiarySaveFile: string;
+  /** Task 89: resumable route progress, one JSON file per game. */
+  readonly routeFile: string;
 }
 
 /** Per-game defaults shared by the schema, the plugin and the tests. Unknown keys throw. */
@@ -76,6 +81,7 @@ export function gameDefaults(key: string): GameDefaults {
     incidentsFile: join(DEPS, "ds", `incidents-${game.key}.jsonl`),
     incidentsStateFile: join(DEPS, "ds", `incidents-state-${game.key}.json`),
     bestiarySaveFile: join(DEPS, "ds", `bestiary-save-${game.key}.json`),
+    routeFile: join(DEPS, "ds", `route-${game.key}.json`),
   };
 }
 
@@ -87,6 +93,8 @@ const DEFAULT_DETECT_CACHE_MS = 10_000;
 const DEFAULT_AUTO_PRESET_WAIT_MS = 3_000;
 /** Task 67: keep this many finished tactician child sessions visible per game. */
 const DEFAULT_TACTICIAN_KEEP_VISIBLE = 2;
+/** Task 86: two road triggers on one map are at least this many minutes apart. */
+const DEFAULT_TACTICIAN_INTERVAL_MINUTES = 10;
 
 const RawConfig = Schema.object({
   /**
@@ -132,6 +140,22 @@ const RawConfig = Schema.object({
   incidentsStateFile: Schema.string(),
   /** Task 45: save-count snapshots of this save's bestiary numbers. */
   bestiarySaveFile: Schema.string(),
+  /** Task 89: resumable route progress. */
+  routeFile: Schema.string(),
+  /** Task 89: estimated seconds of one road battle in the countdown check. */
+  routeBattleSeconds: Schema.number().default(DEFAULT_ROUTE_BATTLE_SECONDS),
+  /** Task 91: heal after battle when HP is below this percentage. */
+  healHpPercent: Schema.number().default(70),
+  /** Task 91: a caster keeps at least this share of max MP, except at a save point/boss. */
+  healMpReservePercent: Schema.number().default(30),
+  /** Task 91: spend a healing item only below this HP percentage. */
+  healItemHpPercent: Schema.number().default(40),
+  /** Task 91: top the party up to this percentage at a save point or before a boss. */
+  healFullPercent: Schema.number().default(95),
+  /** Task 91: refuse save_game under a running countdown with fewer seconds left. */
+  saveTimerMinSeconds: Schema.number().default(300),
+  /** Task 91: stop waiting when the screen has not changed for this many seconds. */
+  storyStuckSeconds: Schema.number().default(60),
   /** How often to retry the bridge while it is down. */
   checkEveryMs: Schema.number().default(DEFAULT_CHECK_EVERY_MS),
   /** Task 78: while a command waits, how often to check the pilot agent's pid is still alive. */
@@ -157,8 +181,13 @@ const RawConfig = Schema.object({
   walkpathEventWaitMs: Schema.number().default(WALKPATH_EVENT_WAIT_MS),
   /** Task 73: blocks before a "走不过去" record is trusted instead of re-walked. */
   blockedTrustCount: Schema.number().default(BLOCKED_TRUST_COUNT),
+  /** Task 84: one go stops after the same carry twice, or this many carries in all. */
+  carryRepeatLimit: Schema.number().default(CARRY_REPEAT_LIMIT),
+  carryTotalLimit: Schema.number().default(CARRY_TOTAL_LIMIT),
   /** Task 67: finished tactician child sessions left visible; older ones are archived. */
   tacticianKeepVisible: Schema.number().default(DEFAULT_TACTICIAN_KEEP_VISIBLE),
+  /** Task 86: the least gap between two road triggers on one map, in minutes. */
+  tacticianIntervalMinutes: Schema.number().default(DEFAULT_TACTICIAN_INTERVAL_MINUTES),
 });
 
 /**
@@ -186,6 +215,14 @@ export const Config = Schema.transform(RawConfig, (config) => {
     incidentsFile: config.incidentsFile ?? defaults.incidentsFile,
     incidentsStateFile: config.incidentsStateFile ?? defaults.incidentsStateFile,
     bestiarySaveFile: config.bestiarySaveFile ?? defaults.bestiarySaveFile,
+    routeFile: config.routeFile ?? defaults.routeFile,
+    routeBattleSeconds: config.routeBattleSeconds ?? DEFAULT_ROUTE_BATTLE_SECONDS,
+    healHpPercent: config.healHpPercent ?? 70,
+    healMpReservePercent: config.healMpReservePercent ?? 30,
+    healItemHpPercent: config.healItemHpPercent ?? 40,
+    healFullPercent: config.healFullPercent ?? 95,
+    saveTimerMinSeconds: config.saveTimerMinSeconds ?? 300,
+    storyStuckSeconds: config.storyStuckSeconds ?? 60,
     checkEveryMs: config.checkEveryMs ?? DEFAULT_CHECK_EVERY_MS,
     agentCheckMs: config.agentCheckMs ?? DEFAULT_AGENT_CHECK_MS,
     detectCacheMs: config.detectCacheMs ?? DEFAULT_DETECT_CACHE_MS,
@@ -200,7 +237,10 @@ export const Config = Schema.transform(RawConfig, (config) => {
     walkpathEventPollMs: config.walkpathEventPollMs ?? WALKPATH_EVENT_POLL_MS,
     walkpathEventWaitMs: config.walkpathEventWaitMs ?? WALKPATH_EVENT_WAIT_MS,
     blockedTrustCount: config.blockedTrustCount ?? BLOCKED_TRUST_COUNT,
+    carryRepeatLimit: config.carryRepeatLimit ?? CARRY_REPEAT_LIMIT,
+    carryTotalLimit: config.carryTotalLimit ?? CARRY_TOTAL_LIMIT,
     tacticianKeepVisible: config.tacticianKeepVisible ?? DEFAULT_TACTICIAN_KEEP_VISIBLE,
+    tacticianIntervalMinutes: config.tacticianIntervalMinutes ?? DEFAULT_TACTICIAN_INTERVAL_MINUTES,
   };
 });
 

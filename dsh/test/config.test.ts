@@ -19,6 +19,8 @@ void test("Config defaults point at FF5's deployment paths and slot", () => {
   assert.equal(config.tacticsFile, join(DEPS, "ds", "tactics-ff5.json"));
   assert.equal(config.elementsFile, join(DEPS, "ds", "elements-ff5.json"));
   assert.equal(config.battlesFile, join(DEPS, "ds", "battles-ff5.jsonl"));
+  assert.equal(config.routeFile, join(DEPS, "ds", "route-ff5.json"));
+  assert.equal(config.routeBattleSeconds, 45);
   assert.equal(config.checkEveryMs, 60000);
   assert.equal(config.agentCheckMs, 5000);
   assert.equal(config.detectCacheMs, 10000);
@@ -33,7 +35,10 @@ void test("Config defaults point at FF5's deployment paths and slot", () => {
   assert.equal(config.walkpathEventPollMs, 200);
   assert.equal(config.walkpathEventWaitMs, 2500);
   assert.equal(config.blockedTrustCount, 3);
+  assert.equal(config.carryRepeatLimit, 2);
+  assert.equal(config.carryTotalLimit, 4);
   assert.equal(config.tacticianKeepVisible, 2);
+  assert.equal(config.tacticianIntervalMinutes, 10);
   assert.equal(config.bridgeUrl, undefined);
 });
 
@@ -57,6 +62,7 @@ void test("all six games write save slot 20 but keep their own port and files", 
     assert.equal(defaults.tacticsFile, join(DEPS, "ds", `tactics-${key}.json`));
     assert.equal(defaults.elementsFile, join(DEPS, "ds", `elements-${key}.json`));
     assert.equal(defaults.battlesFile, join(DEPS, "ds", `battles-${key}.jsonl`));
+    assert.equal(defaults.routeFile, join(DEPS, "ds", `route-${key}.json`));
   }
 });
 
@@ -110,7 +116,10 @@ void test("Config keeps explicit values", () => {
     walkpathEventPollMs: 50,
     walkpathEventWaitMs: 900,
     blockedTrustCount: 5,
+    carryRepeatLimit: 3,
+    carryTotalLimit: 7,
     tacticianKeepVisible: 5,
+    tacticianIntervalMinutes: 3,
   });
   assert.equal(config.role, "tactician");
   assert.equal(config.tacticianBoss, false);
@@ -138,5 +147,8 @@ void test("Config keeps explicit values", () => {
   assert.equal(config.walkpathEventPollMs, 50);
   assert.equal(config.walkpathEventWaitMs, 900);
   assert.equal(config.blockedTrustCount, 5);
+  assert.equal(config.carryRepeatLimit, 3);
+  assert.equal(config.carryTotalLimit, 7);
   assert.equal(config.tacticianKeepVisible, 5);
+  assert.equal(config.tacticianIntervalMinutes, 3);
 });

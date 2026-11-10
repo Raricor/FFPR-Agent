@@ -16,7 +16,8 @@ export interface FakeMember {
   readonly name: string;
   hp: number;
   readonly maxHp: number;
-  readonly mp?: number;
+  mp?: number;
+  maxMp?: number;
   status?: string[];
   readonly jobName?: string;
 }
@@ -176,6 +177,17 @@ export class FakeItemMenu {
     const member = this.members.find((entry) => entry.name === this.target);
     if (member !== undefined && this.targetStatus !== undefined) {
       member.status = (member.status ?? []).filter((status) => status !== this.targetStatus);
+    }
+    if (item !== undefined && /恢复药|Potion/i.test(item.name)) {
+      for (const target of this.members) {
+        target.hp = Math.min(target.maxHp, target.hp + 50);
+      }
+    }
+    if (item !== undefined && /帐篷|小屋|Tent|Cottage/i.test(item.name)) {
+      for (const target of this.members) {
+        target.hp = target.maxHp;
+        if (target.maxMp !== undefined) target.mp = target.maxMp;
+      }
     }
     this.stage = "done";
   }

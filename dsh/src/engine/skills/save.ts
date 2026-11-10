@@ -5,8 +5,12 @@
 
 import type { Pilot, Reply } from "../pilot.ts";
 import { isRecord, list, num, records, record, text, truthy } from "../values.ts";
+import { parseRouteTimer } from "../route/tool.ts";
 import { steer } from "./cursor.ts";
 import { leaveMenu, menuState, waitMenu } from "./menu.ts";
+
+/** Task 91: under a running countdown this close to zero, saving would trap that time in 20. */
+export const DEFAULT_SAVE_TIMER_MIN_SECONDS = 300;
 
 /** Python's str() for a value the messages embed, so None does not become "undefined". */
 function show(value: unknown): string {
@@ -68,10 +72,26 @@ export async function saveUi(
  * (0.3.0+), and the save counter afterwards. Waits for each screen to open: on the LAN link
  * the readings come faster than the menus open (10-20: a world-map save read as greyed).
  */
-export async function saveGame(pilot: Pilot, slot = 3): Promise<[boolean, string]> {
+export async function saveGame(
+  pilot: Pilot,
+  slot = 3,
+  timerMinSeconds = DEFAULT_SAVE_TIMER_MIN_SECONDS,
+): Promise<[boolean, string]> {
   const before = record((await pilot.send("pos")).pos);
   if (before.state !== "Player") {
     return [false, `现在不能打开菜单(状态 ${show(before.state)})`];
+  }
+  // Task 91: 11-10's Karnak escape saved at 18/19 and each save froze half a minute into slot
+  // 20; with a minute left that save is a dead end. An older bridge has no timer field at all,
+  // so this guard does nothing there.
+  const timer = parseRouteTimer(before.timer);
+  if (timer?.active === true && timer.seconds !== null && timer.seconds < timerMinSeconds) {
+    const left = Math.max(0, Math.floor(timer.seconds));
+    return [
+      false,
+      `倒计时只剩 ${left} 秒，存档会把这段时间固定在 ${slot} 号位;` +
+        `剩不到 ${timerMinSeconds} 秒不存`,
+    ];
   }
   try {
     return await saveFromMenu(pilot, slot, num(before.saves) ?? 0);

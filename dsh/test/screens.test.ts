@@ -183,7 +183,7 @@ void test("an old bridge without textinput is skipped without an error", async (
   assert.equal(pilot.keys().length, 0);
 });
 
-void test("advance_story stops when eight Enter presses leave the screen alone", async () => {
+void test("advance_story stops after 60 seconds with the same screen", async () => {
   const pilot = new FakePilot();
   pilot.on("pos", { pos: { state: "Field", map: 3 } });
   pilot.onQuery("textinput", { textinput: { open: false, fields: [] } });
@@ -194,11 +194,11 @@ void test("advance_story stops when eight Enter presses leave the screen alone",
 
   const outcome = await advanceStory(pilot);
   assert.equal(outcome.stop, "stuck");
-  assert.equal(outcome.pages, 8);
-  assert.match(outcome.detail, /主状态 Field/);
+  assert.equal(outcome.pages, 20);
+  assert.match(outcome.detail, /画面 60 秒没有变化：状态 Field/);
   assert.deepEqual(
     pilot.keys(),
-    Array.from({ length: 8 }, () => ["Enter"]),
+    Array.from({ length: 20 }, () => ["Enter"]),
   );
 });
 
@@ -210,12 +210,12 @@ void test("advance_story waits out a cutscene instead of pressing Enter", async 
 
   const outcome = await advanceStory(pilot);
   assert.equal(outcome.stop, "stuck");
-  assert.match(outcome.detail, /主状态 Event/);
+  assert.match(outcome.detail, /状态 Event/);
   assert.equal(pilot.keys().length, 0);
   assert.ok(pilot.now() >= 60_000);
 });
 
-void test("a cutscene with a dialog still pages after the normal eight presses", async () => {
+void test("a cutscene with a dialog still pages until the stall limit", async () => {
   const pilot = new FakePilot();
   pilot.on("pos", { pos: { state: "Event", map: 3 } });
   pilot.onQuery("textinput", { textinput: { open: false, fields: [] } });
@@ -226,8 +226,8 @@ void test("a cutscene with a dialog still pages after the normal eight presses",
 
   const outcome = await advanceStory(pilot);
   assert.equal(outcome.stop, "stuck");
-  assert.equal(outcome.pages, 8);
-  assert.equal(pilot.keys().length, 8);
+  assert.equal(outcome.pages, 20);
+  assert.equal(pilot.keys().length, 20);
 });
 
 void test("press accepts one to six keys from the gamepad list", () => {
@@ -322,7 +322,7 @@ void test("advance_story says so when the screen does not change", async () => {
 
     const text = await game.run("advance_story", {}, pilot);
     assert.match(text, /画面没有变化，可能是工具认不出的界面/);
-    assert.match(text, /当前状态:主状态 Field · 地图 3/);
+    assert.match(text, /画面 60 秒没有变化：状态 Field,对话「\?\?\?」/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

@@ -69,17 +69,14 @@ export interface StoryOutcome {
 export interface StoryOptions {
   readonly pageMs?: number;
   readonly timeoutMs?: number;
+  /** Task 91: give up after this long with no change of state/map/dialog (Config, 60 s). */
+  readonly stuckMs?: number;
 }
 
 const DEFAULT_PAGE_MS = 3000;
 const DEFAULT_TIMEOUT_MS = 600_000;
-/** Presses with an unchanged screen before advance_story gives up (task 22). */
-const STUCK_PRESSES = 8;
-/**
- * A cutscene (`Event`) has no dialog to page and must not be pressed through; wait this long
- * for it to change on its own before reporting that it is stuck.
- */
-const EVENT_STUCK_MS = 60_000;
+/** Task 91: the user's default; a wait tool must not sit on a frozen screen for ten minutes. */
+const DEFAULT_STUCK_MS = 60_000;
 const EVENT_POLL_MS = 1000;
 
 /**
@@ -93,11 +90,12 @@ export async function advanceStory(
   options: StoryOptions = {},
 ): Promise<StoryOutcome> {
   const pageMs = options.pageMs ?? DEFAULT_PAGE_MS;
+  const stuckMs = options.stuckMs ?? DEFAULT_STUCK_MS;
   const deadline = pilot.now() + (options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   const notes: string[] = [];
   let pages = 0;
   let previous: string | null = null;
-  let unchanged = 0;
+  let previousAt = pilot.now();
   let eventKey: string | null = null;
   let eventSince = 0;
   for (;;) {
@@ -124,6 +122,11 @@ export async function advanceStory(
     const choice = choiceSummary(sample);
     const dialog = dialogSummary(sample);
     const detail = describeScreen(pos, choice, dialog);
+    if (record(sample.gameover).open === true) {
+      // Task 91: the wait is over even though pos.state is still Event; Game.run then follows
+      // the 11-10 game-over route (否 → 是 → 标题 → 20 号位).
+      return { pages, notes, stop: "gameover", detail };
+    }
     if (choice.open) return { pages, notes, stop: "choice", detail };
     if (truthy(pos.battle) || truthy(record(sample.battle).active)) {
       return { pages, notes, stop: "battle", detail };
@@ -139,21 +142,21 @@ export async function advanceStory(
         eventKey = key;
         eventSince = pilot.now();
       }
-      if (pilot.now() - eventSince >= EVENT_STUCK_MS) {
-        return { pages, notes, stop: "stuck", detail };
+      if (pilot.now() - eventSince >= stuckMs) {
+        return { pages, notes, stop: "stuck", detail: stuckText(stuckMs, pos, dialog) };
       }
       await pilot.sleep(EVENT_POLL_MS);
       continue;
     }
     eventKey = null;
-    await pilot.sleep(pageMs);
     const key = screenKey(pos, choice, dialog);
-    if (key === previous) unchanged += 1;
-    else {
+    if (key !== previous) {
       previous = key;
-      unchanged = 0;
+      previousAt = pilot.now();
+    } else if (pilot.now() - previousAt >= stuckMs) {
+      return { pages, notes, stop: "stuck", detail: stuckText(stuckMs, pos, dialog) };
     }
-    if (unchanged >= STUCK_PRESSES) return { pages, notes, stop: "stuck", detail };
+    await pilot.sleep(pageMs);
     const result = await pilot.send("keys", { keys: ["Enter"], gap: 250, via: "game" }, 10_000);
     if (!truthy(result.ok)) {
       return { pages, notes, stop: `keys:${show(result.error)}`, detail };
@@ -232,6 +235,12 @@ function describeScreen(pos: Json, choice: ChoiceSummary, dialog: DialogSummary)
   if (dialog.open) parts.push(`对话 ${dialog.line}`);
   if (choice.open) parts.push(choice.line);
   return parts.join(" · ");
+}
+
+/** Task 91's stopped-wait line; the state and dialog are the last reading. */
+function stuckText(stuckMs: number, pos: Reply, dialog: DialogSummary): string {
+  const spoken = dialog.open && dialog.line !== "" ? `,对话「${dialog.line}」` : "";
+  return `画面 ${Math.round(stuckMs / 1000)} 秒没有变化：状态 ${show(pos.state)}${spoken}`;
 }
 
 /** The screen as the tool result shows it after a stuck FieldHelp (the state may have moved). */
