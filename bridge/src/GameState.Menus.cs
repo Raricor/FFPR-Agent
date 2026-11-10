@@ -506,13 +506,11 @@ internal static partial class GameState
     /// <summary>The save/load slot list when it is open: the highlighted slot and all slot ids.</summary>
     public static JsonObject SaveUi()
     {
-        if (_saveList == null)
-        {
-            _saveList = UnityEngine.Object.FindObjectOfType(Il2CppType.Of<Last.UI.KeyInput.SaveListController>())
-                ?.TryCast<Last.UI.KeyInput.SaveListController>();
-        }
-        var list = _saveList;
-        if (list == null || !list.gameObject.activeInHierarchy)
+        // 11-10: this kept the first list found for good. After loading from the title screen
+        // the field menu's save list is another instance, so saveui read the hidden title list
+        // ({"open": false}) while the save screen was up, and save_game failed four times.
+        var list = Active(ref _saveList);
+        if (list == null)
         {
             return new JsonObject { ["open"] = false };
         }

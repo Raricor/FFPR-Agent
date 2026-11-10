@@ -1,6 +1,6 @@
 # 桥插件(FfprBridge)
 
-BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（设计方案 §5），从不改游戏数据和存档。当前版本 0.14.6。
+BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（设计方案 §5），从不改游戏数据和存档。当前版本 0.14.7。
 
 - 所有挂钩都是 postfix，只读参数和返回值，不改参数、不改返回值，也不改任何游戏对象。
 - 调用游戏的地方只有取值函数和纯查询。
@@ -14,6 +14,7 @@ BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（�
 - 把以上内容写进 `BepInEx/ffpr/probe-<启动时间>.jsonl`，同时推送给 WebSocket 客户端。
 - 在查询通道上回答查询(见「查询通道」)。
 - 0.5.0 起，在局域网连接上替开发机按键(见「局域网连接」)。0.9.0 起按键走虚拟手柄，游戏在后台、最小化时也能玩。
+- 0.14.7:`saveui` 每次重找正在显示的存档列表(从标题画面读档后，野外菜单的存档列表是另一个实例，旧版一直读标题那份、回 `open: false`)。
 - 0.14.6(实验性，仅 FF5):新增三个只读地图数据查询 `mapinfo` / `mappackage` / `mapasset`。`mapinfo` 只读 `MapManager` 的包名和已载入列表、当前 `Map` 主数据行；`mappackage` 用 `MapPackageLoader` 异步加载一张图的资源清单；`mapasset` 再用 `ResourceManager` 读其中一个文本资源并分页返回。全程不调 `RequestLoadMap`、不切换地图、不实例化 `MapModel`/实体。
 - 0.14.5:新增仅 FF5 的 `export` 整作静态数据查询：`maps` / `monsters` / `encounters` / `treasures` / `shops` / `items` / `magic`，按 `offset` / `limit` 分页，只读 `MasterManager`；`treasures` 的 `mapId` / `cell` / `contentId` / `contentName` 和部分数值字段读不到时为 null。
 - 0.14.4:新增仅 FF5 的 `bluemagic`(已学会的青魔法 + 主数据里的全部青魔法和学法)和 `monstermoves`(`ids` 里每只怪的 AI 招式、能否学成青魔法、附带状态);`battle.hit` 的状态名为空时改用 `ConditionType` 枚举名，不再丢状态；`gameover.autosave` 改从 `SaveContentController`/`SaveContentView` 的实际行读取，并在必要时退回 `SaveSlotData`。
