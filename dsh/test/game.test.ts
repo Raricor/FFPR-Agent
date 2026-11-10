@@ -70,10 +70,19 @@ void test("notes persist and can be forgotten", async () => {
   }
 });
 
+void test("done tells old sessions to write progress instead of ending the goal", async () => {
+  const game = await temporaryGame();
+  const text = await game.run("done", {}, new FakePilot());
+  assert.match(text, /目标模式下不用 done/);
+  assert.match(text, /这一轮写进展即可/);
+  assert.match(text, /系统会自动开始下一轮/);
+  assert.match(text, /整个目标真的完成时用目标工具标完成/);
+});
+
 void test("every tool has a handler", async () => {
   const game = await temporaryGame();
   const handled = new Set(game.handledTools());
-  // Tools run in engine/game.ts, except `done`, which ends the turn in dsh itself.
+  // Tools run in engine/game.ts; `done` is kept for old sessions but not offered by the plugin.
   for (const tool of TOOLS) {
     if (tool.function.name === "done") continue;
     assert.ok(handled.has(tool.function.name), `${tool.function.name} 没有处理函数`);

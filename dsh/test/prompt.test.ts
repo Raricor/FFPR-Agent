@@ -77,9 +77,10 @@ const ff5Tactician = await readFile(
 
 void test("the FF5 prompts and tool definitions keep the ported text", () => {
   // 10-29 (task 26): FF5 now starts a new game in slot 20 instead of reading its old slot 3.
-  // 11-10 (task 105): the scout paragraph was added. Only these three places differ from the
-  // ported constant: the new-game/save-slot sentence before {hint}, save_game's description
-  // naming slot 20, and the scout rule. Everything else is unchanged.
+  // 11-10 (task 105): the scout paragraph was added.
+  // 11-10 (task 107): the old "call done" line became the goal-mode paragraph.
+  // Only these places differ from the ported constant: the new-game/save-slot sentence before
+  // {hint}, save_game's description naming slot 20, the scout rule and the goal-mode paragraph.
   assert.equal(systemPrompt("ff5"), ff5System);
   assert.ok(ff5System.includes("存档只写 20 号存档位"));
   assert.equal(tacticianPrompt("ff5"), ff5Tactician);
@@ -87,6 +88,20 @@ void test("the FF5 prompts and tool definitions keep the ported text", () => {
   assert.ok(ff5System.includes("敌人:hp最低"));
   assert.ok(ff5System.includes("目标:{goal}") && ff5System.endsWith("{hint}"));
   assert.deepEqual(TOOLS, fixture.tools);
+});
+
+void test("the prompt describes goal mode instead of calling done", () => {
+  const text = systemPrompt("ff5");
+  assert.equal(text.includes("调用 done"), false);
+  assert.ok(text.includes("这个会话有一个长期目标"));
+  assert.ok(text.includes("每一轮推进一段"));
+  assert.ok(text.includes("轮末用两三句写这一次的进展"));
+  assert.ok(text.includes("只有真正达成才标完成"));
+  assert.ok(text.includes("同一个阻塞条件连续 3 轮才算阻塞"));
+  const done = TOOLS.find((tool) => tool.function.name === "done");
+  assert.ok(done, "旧会话仍要能看到 done 的定义");
+  assert.match(done.function.description, /目标模式下不用 done/);
+  assert.match(done.function.description, /整个目标真的完成时用目标工具标完成/);
 });
 
 void test("save_game names the slot passed to toolSchemas", () => {

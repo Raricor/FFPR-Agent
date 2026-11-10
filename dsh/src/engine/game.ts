@@ -779,6 +779,16 @@ export class Game {
       ["inventory", (_args, pilot) => this.toolInventory(pilot)],
       ["remember", (args) => this.toolRemember(args)],
       ["forget", (args) => this.toolForget(args)],
+      // Task 107: kept for sessions that still carry the old tool list; in goal mode the turn
+      // ends by answering, not by calling done.
+      [
+        "done",
+        () =>
+          Promise.resolve({
+            text: "目标模式下不用 done:这一轮写进展即可，系统会自动开始下一轮;整个目标真的完成时用目标工具标完成",
+            early: true,
+          }),
+      ],
     ]);
   }
 

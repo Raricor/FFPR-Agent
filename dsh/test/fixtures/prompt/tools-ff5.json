@@ -495,7 +495,7 @@
     "type": "function",
     "function": {
       "name": "done",
-      "description": "结束这次游玩。",
+      "description": "目标模式下不用 done:这一轮写进展即可,系统会自动开始下一轮;整个目标真的完成时用目标工具标完成。",
       "parameters": {
         "type": "object",
         "properties": {

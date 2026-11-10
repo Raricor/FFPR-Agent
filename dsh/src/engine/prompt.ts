@@ -207,7 +207,10 @@ const SYSTEM_PROMPT_FF5 = `你在玩《最终幻想5 像素重制版》(中文�
 - 迷宫里用 atlas 看地图记录和本档去过哪些:look_around 也会给出口标「去过/没去过」(按本档算),
   优先走没去过的。
 - 发现重要的东西(入口位置、走不通的路、地标)用 remember 记下来。
-- 完成目标或者确定做不到时调用 done。
+- 这个会话有一个长期目标:人会在对话里让你用目标工具创建(比如「通关 FF5」),它跨轮次保留。
+  每一轮推进一段(一个阶段、一段路、一场首领战),轮末用两三句写这一次的进展,系统会自动开始下一轮;
+  不要因为一段告一段落就把整个目标标成完成,只有真正达成才标完成。
+  确定做不到时也照目标工具的要求:同一个阻塞条件连续 3 轮才算阻塞,并写清具体是什么。
 {hint}`;
 
 /** Titles as the games name themselves in Chinese; FF5's prompt keeps its old wording. */
@@ -925,7 +928,8 @@ const TOOLS_BASE = [
     type: "function",
     function: {
       name: "done",
-      description: "结束这次游玩。",
+      description:
+        "目标模式下不用 done:这一轮写进展即可,系统会自动开始下一轮;整个目标真的完成时用目标工具标完成。",
       parameters: {
         type: "object",
         properties: {
