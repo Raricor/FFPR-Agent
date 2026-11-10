@@ -28,6 +28,11 @@
             config:
               - id: compaction-basic
                 name: "@deepseek-ai/dsh-compaction-basic"
+                # 11-10 todo 75: compact at ~367k of deepseek-flash's 1,048,576-token window
+                # (the default trigger is 727,040), keeping ~95k of recent turns verbatim.
+                config:
+                  thresholdRatio: 0.35
+                  retainRatio: 0.12
               - id: command-compact
                 name: "@deepseek-ai/dsh-command-compact"
     - id: preset-ffpr-tactician
@@ -73,6 +78,11 @@
             config:
               - id: compaction-basic
                 name: "@deepseek-ai/dsh-compaction-basic"
+                # 11-10 todo 75: compact at ~367k of deepseek-flash's 1,048,576-token window
+                # (the default trigger is 727,040), keeping ~95k of recent turns verbatim.
+                config:
+                  thresholdRatio: 0.35
+                  retainRatio: 0.12
               - id: command-compact
                 name: "@deepseek-ai/dsh-command-compact"
     - id: preset-ffpr-tactician-ff1
@@ -118,6 +128,11 @@
             config:
               - id: compaction-basic
                 name: "@deepseek-ai/dsh-compaction-basic"
+                # 11-10 todo 75: compact at ~367k of deepseek-flash's 1,048,576-token window
+                # (the default trigger is 727,040), keeping ~95k of recent turns verbatim.
+                config:
+                  thresholdRatio: 0.35
+                  retainRatio: 0.12
               - id: command-compact
                 name: "@deepseek-ai/dsh-command-compact"
     - id: preset-ffpr-tactician-ff2
@@ -163,6 +178,11 @@
             config:
               - id: compaction-basic
                 name: "@deepseek-ai/dsh-compaction-basic"
+                # 11-10 todo 75: compact at ~367k of deepseek-flash's 1,048,576-token window
+                # (the default trigger is 727,040), keeping ~95k of recent turns verbatim.
+                config:
+                  thresholdRatio: 0.35
+                  retainRatio: 0.12
               - id: command-compact
                 name: "@deepseek-ai/dsh-command-compact"
     - id: preset-ffpr-tactician-ff3
@@ -208,6 +228,11 @@
             config:
               - id: compaction-basic
                 name: "@deepseek-ai/dsh-compaction-basic"
+                # 11-10 todo 75: compact at ~367k of deepseek-flash's 1,048,576-token window
+                # (the default trigger is 727,040), keeping ~95k of recent turns verbatim.
+                config:
+                  thresholdRatio: 0.35
+                  retainRatio: 0.12
               - id: command-compact
                 name: "@deepseek-ai/dsh-command-compact"
     - id: preset-ffpr-tactician-ff4
@@ -253,6 +278,11 @@
             config:
               - id: compaction-basic
                 name: "@deepseek-ai/dsh-compaction-basic"
+                # 11-10 todo 75: compact at ~367k of deepseek-flash's 1,048,576-token window
+                # (the default trigger is 727,040), keeping ~95k of recent turns verbatim.
+                config:
+                  thresholdRatio: 0.35
+                  retainRatio: 0.12
               - id: command-compact
                 name: "@deepseek-ai/dsh-command-compact"
     - id: preset-ffpr-tactician-ff6
