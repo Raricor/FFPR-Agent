@@ -13,7 +13,7 @@
  * condition, so the next rule takes over. This module decides; skills/battle.ts presses keys.
  */
 
-import { isRecord, num, pyRound, truthy } from "../values.ts";
+import { isRecord, num, pyRound, records, truthy } from "../values.ts";
 import { byKey } from "../games.ts";
 import {
   ELEMENTS,
@@ -574,12 +574,28 @@ export const FAMILY_ELEMENTS: Readonly<Record<string, Element>> = {
   闪雷: "雷",
 };
 
+// Summons that deal elemental damage, by the game's Chinese names. Non-elemental summons
+// (陆行鸟, 奥丁, 巴哈姆特 …) are absent on purpose: 「最强」 then keeps them as neutral options.
+export const SUMMON_ELEMENTS: Readonly<Record<string, Element>> = {
+  希瓦: "冰",
+  湿婆: "冰",
+  伊弗利特: "火",
+  伊夫里特: "火",
+  泰坦: "土",
+  利维坦: "水",
+  雷莫拉: "雷",
+  西尔芙: "风",
+  希儿芙: "风",
+  希露芙: "风",
+  凤凰: "火",
+};
+
 /** The element a spell name casts, or null for anything without one (治疗, 解毒, ...). */
 export function elementOf(spell: string): Element | null {
   for (const [family, element] of Object.entries(FAMILY_ELEMENTS)) {
     if ((FAMILIES[family] ?? []).includes(spell)) return element;
   }
-  return null;
+  return SUMMON_ELEMENTS[spell] ?? null;
 }
 
 // Ailments: what cures each, white magic first, then items (names matched by containment,
@@ -613,25 +629,113 @@ export const REVIVE_ITEM: Json = {
   target: "倒下的同伴",
 };
 
+/** Task 104: the in-battle HP share below which anyone uses a healing item (Config). */
+export const DEFAULT_ITEM_HEAL_PERCENT = 30;
+
+/** Healing items, strongest first; matched by containment, as the bag may tag icons on names. */
+export const HEAL_ITEMS: readonly string[] = ["高级恢复药", "恢复药", "药"];
+
+// White magic's healing family. A job without the white-magic command cannot cast its learned
+// spells, so the job is checked too; blue-magic healing is left for a later task.
+const HEAL_SPELL = /^(治疗|救疗|回复)/u;
+const HEALER_JOBS: ReadonlySet<string> = new Set(["白魔法师", "红魔法师", "赤魔法师"]);
+
+/** The shared opening of the magic/other tables: revive the fallen and cure with items. */
+const COMMON_RULES: readonly Json[] = [REVIVE_ITEM, ...cureRules()];
+
+const WHITE_MAGE_RULES: readonly Json[] = [
+  { if: "ally.dead >= 1", do: "白魔法:复活", target: "倒下的同伴" },
+  REVIVE_ITEM,
+  { if: "ally.hp_pct < 35", do: "白魔法:治疗+", target: "hp最低的同伴" },
+  { if: "ally.hp_pct < 60", do: "白魔法:治疗", target: "hp最低的同伴" },
+  { if: "ally.status.毒 >= 1", do: "白魔法:解毒", target: "状态:毒" },
+  ...cureRules(),
+  { do: "攻击" },
+];
+
+// 11-10: before the tactician's first table arrives, road battles must not wait for a white
+// mage. These jobs spend MP the way the game's own command lists allow; a spell not learned
+// or short of MP is skipped by the executor and the next rule fights (task 104).
+const BLACK_MAGE_RULES: readonly Json[] = [
+  ...COMMON_RULES,
+  { if: "self.mp >= 4", do: `黑魔法:${BEST}` },
+  { do: "攻击" },
+];
+
+// 「召唤:最强」 is read against the summon list the game opens, strongest last (task 104).
+const SUMMONER_RULES: readonly Json[] = [
+  ...COMMON_RULES,
+  { if: "self.mp > 0", do: "召唤:最强" },
+  { do: "攻击" },
+];
+
+// FF5's Haste is single-target; the time mage hastes itself on its first turn, then fights.
+const TIME_MAGE_RULES: readonly Json[] = [
+  ...COMMON_RULES,
+  { if: "turn == 1 and self.mp > 0", do: "时魔法:加速", target: "自己" },
+  { do: "攻击" },
+];
+
+const RED_MAGE_RULES: readonly Json[] = [
+  ...COMMON_RULES,
+  { if: "ally.hp_pct < 50", do: "白魔法:治疗+", target: "hp最低的同伴" },
+  { if: "self.mp >= 4", do: `黑魔法:${BEST}` },
+  { do: "攻击" },
+];
+
 export const DEFAULT_RULES: Readonly<Record<string, readonly Json[]>> = {
-  白魔法师: [
-    { if: "ally.dead >= 1", do: "白魔法:复活", target: "倒下的同伴" },
-    REVIVE_ITEM,
-    { if: "ally.hp_pct < 35", do: "白魔法:治疗+", target: "hp最低的同伴" },
-    { if: "ally.hp_pct < 60", do: "白魔法:治疗", target: "hp最低的同伴" },
-    { if: "ally.status.毒 >= 1", do: "白魔法:解毒", target: "状态:毒" },
-    ...cureRules(),
-    { do: "攻击" },
-  ],
-  黑魔法师: [
-    REVIVE_ITEM,
-    ...cureRules(),
-    { if: "self.mp >= 4", do: `黑魔法:${BEST}` },
-    { do: "攻击" },
-  ],
+  白魔法师: WHITE_MAGE_RULES,
+  黑魔法师: BLACK_MAGE_RULES,
+  // The game's job list says 召唤师/赤魔法师; task 104 wrote 召唤士/红魔法师. Accept both so the
+  // table is used whichever spelling the bridge reports.
+  召唤师: SUMMONER_RULES,
+  召唤士: SUMMONER_RULES,
+  时魔法师: TIME_MAGE_RULES,
+  红魔法师: RED_MAGE_RULES,
+  赤魔法师: RED_MAGE_RULES,
 };
 
-export const OTHERS: readonly Json[] = [REVIVE_ITEM, ...cureRules(), { do: "攻击" }];
+export const OTHERS: readonly Json[] = [...COMMON_RULES, { do: "攻击" }];
+
+/** Rules that spend a healing item on the lowest-HP ally when no healer is left (task 104). */
+export function itemHealRules(): Json[] {
+  return HEAL_ITEMS.map((item) => ({
+    if: `ally.hp_pct < ${DEFAULT_ITEM_HEAL_PERCENT} and item.${item} > 0`,
+    do: `道具:${item}`,
+    target: "hp最低的同伴",
+  }));
+}
+
+/** Whether a party member's current job and MP let it cast a healing spell right now. */
+export function canHealMember(member: unknown): boolean {
+  if (!isRecord(member)) return false;
+  if ((num(member.hp) ?? 0) <= 0) return false;
+  const job = typeof member.jobName === "string" ? member.jobName : "";
+  if (!HEALER_JOBS.has(job)) return false;
+  const mp = num(member.mp) ?? 0;
+  if (mp <= 0) return false;
+  // An older bridge (or the boss table's battle rows) has no learned-ability list at all: a
+  // white or red mage with MP is the best guess, and the executor still skips a spell it
+  // cannot cast. An empty list means the bridge said there is nothing learned.
+  if (!Array.isArray(member.abilities)) return mp >= 4;
+  return records(member.abilities).some((ability) => {
+    const name = typeof ability.name === "string" ? ability.name : "";
+    return HEAL_SPELL.test(name) && (num(ability.mp) ?? 0) <= mp;
+  });
+}
+
+export function partyHasHealer(party: readonly unknown[]): boolean {
+  return party.some(canHealMember);
+}
+
+// Inserted right after the revive item, so a low party drinks before an attack spell or a cure.
+function withItemHeal(rules: readonly Json[]): readonly Json[] {
+  const revive = rules.findIndex(
+    (rule) => isRecord(rule) && pyString(rule.do) === "道具:不死鸟之尾",
+  );
+  const cut = revive < 0 ? 0 : revive + 1;
+  return [...rules.slice(0, cut), ...itemHealRules(), ...rules.slice(cut)];
+}
 
 /**
  * The spells a rule's ability may be, best first: 「治疗+」 the family strongest first,
@@ -641,8 +745,9 @@ export const OTHERS: readonly Json[] = [REVIVE_ITEM, ...cureRules(), { do: "攻�
 export function abilityCandidates(
   wanted: string,
   target: EnemyResistances | null = null,
+  command = "",
 ): string[] {
-  const out = candidates(wanted);
+  const out = candidates(wanted, command);
   if (target === null) return out;
   const usable = out.filter((spell) => {
     const element = elementOf(spell);
@@ -657,8 +762,11 @@ export function abilityCandidates(
   return [...weak, ...rest];
 }
 
-function candidates(wanted: string): string[] {
+function candidates(wanted: string, command = ""): string[] {
   if (wanted === BEST) {
+    // The summon command's own list names its spells; battle.ts reads that list, so 最强
+    // there means the strongest learned summon rather than a black-magic spell (task 104).
+    if (command === "召唤") return [];
     const tiers = Math.max(...ATTACKS.map((family) => FAMILIES[family]?.length ?? 0));
     const out: string[] = [];
     for (let tier = tiers - 1; tier >= 0; tier--) {
@@ -683,11 +791,15 @@ function candidates(wanted: string): string[] {
 /** The rules used when nobody wrote any (regular battles): healers heal, others attack. */
 export function defaultTable(party: readonly unknown[]): Record<string, readonly Json[]> {
   const table: Record<string, readonly Json[]> = {};
+  const healer = partyHasHealer(party);
   for (const member of party) {
     if (!isRecord(member) || !truthy(member.name)) continue;
     const name = pyString(member.name);
     const job = typeof member.jobName === "string" ? member.jobName : "";
-    table[name] = DEFAULT_RULES[job] ?? OTHERS;
+    const base = DEFAULT_RULES[job] ?? OTHERS;
+    // Task 104: with no healer in the party, everybody gets the potion rule, including the
+    // magic jobs; the executor also inserts it when a healer's MP runs out mid-battle.
+    table[name] = healer ? base : withItemHeal(base);
   }
   return table;
 }

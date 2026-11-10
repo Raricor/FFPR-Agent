@@ -12,6 +12,12 @@ import type { Fields, Reply } from "../src/engine/pilot.ts";
 import { battleUnits } from "../src/engine/battle-record.ts";
 import { FakePilot } from "./fake-pilot.ts";
 
+export interface BattleAbility {
+  readonly name: string;
+  readonly mp?: number;
+  readonly type?: number;
+}
+
 export interface BattleMember {
   readonly name: string;
   hp: number;
@@ -19,6 +25,9 @@ export interface BattleMember {
   mp: number;
   status: string[];
   readonly spells?: readonly string[];
+  /** Task 104: the sample party reports the current job and learned spells. */
+  readonly jobName?: string;
+  readonly abilities?: readonly BattleAbility[];
 }
 
 export interface BattleEnemy {
@@ -50,6 +59,9 @@ export interface FakeBattleOptions {
   readonly notEscape?: boolean;
   /** 11-05: L1+R1 ends the battle after this many fake milliseconds; 0 never escapes. */
   readonly fleeAfterMs?: number;
+  /** Task 104: sample.timer.active; absent models a bridge older than 0.14.3. */
+  readonly timerActive?: boolean;
+  readonly timerSeconds?: number;
 }
 
 type Phase = "command" | "items" | "ability" | "enemy" | "ally";
@@ -66,6 +78,8 @@ export class FakeBattle {
   private readonly reviveOnUse: boolean;
   readonly notEscape: boolean;
   private readonly fleeAfterMs: number;
+  private readonly timerActive: boolean;
+  private readonly timerSeconds: number;
   private fleeStartedAt: number | null = null;
   private readonly fleeHeld = new Set<string>();
   private phase: Phase = "command";
@@ -92,7 +106,23 @@ export class FakeBattle {
     this.reviveOnUse = options.reviveOnUse ?? true;
     this.notEscape = options.notEscape ?? false;
     this.fleeAfterMs = options.fleeAfterMs ?? 0;
+    this.timerActive = options.timerActive ?? false;
+    this.timerSeconds = options.timerSeconds ?? 0;
     this.pilot.onQuery("battlemenu", () => ({ battlemenu: this.menu() }));
+    // Task 104: the sample carries the countdown and the party's jobs/abilities.
+    this.pilot.onQuery("sample", () => ({
+      sample: {
+        party: this.party.map((member) => ({
+          name: member.name,
+          hp: member.hp,
+          maxHp: member.maxHp,
+          mp: member.mp,
+          ...(member.jobName === undefined ? {} : { jobName: member.jobName }),
+          ...(member.abilities === undefined ? {} : { abilities: member.abilities }),
+        })),
+        ...(this.timerActive ? { timer: { active: true, seconds: this.timerSeconds } } : {}),
+      },
+    }));
     this.pilot.onQuery("items", () => ({
       items: {
         normal: this.bag.map((item) => ({ name: item.name, count: item.count })),

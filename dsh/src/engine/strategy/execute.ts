@@ -34,6 +34,30 @@ import type {
 /** What an action does to its target; only these three are queued one at a time per target. */
 export type EffectKind = "heal" | "revive" | "cure";
 
+/** Task 104: the instinct layer's knobs, from Config; the defaults are the task's numbers. */
+export interface InstinctOptions {
+  /** Use a healing item below this HP percentage when nobody can heal (default 30). */
+  readonly itemHealHpPercent?: number;
+  /** Try to flee an ordinary battle while sample.timer is running (default true). */
+  readonly fleeOnTimer?: boolean;
+}
+
+export const DEFAULT_FLEE_ON_TIMER = true;
+
+// The plugin sets these once per engine. Fights called directly (fight, the boss path) carry no
+// per-call options, but the Config switch must still reach them (task 104).
+let instinctDefaults: Required<InstinctOptions> = {
+  itemHealHpPercent: gambit.DEFAULT_ITEM_HEAL_PERCENT,
+  fleeOnTimer: DEFAULT_FLEE_ON_TIMER,
+};
+
+export function configureInstinct(options: InstinctOptions): void {
+  instinctDefaults = {
+    itemHealHpPercent: options.itemHealHpPercent ?? instinctDefaults.itemHealHpPercent,
+    fleeOnTimer: options.fleeOnTimer ?? instinctDefaults.fleeOnTimer,
+  };
+}
+
 export interface StrategyStep {
   readonly action: ParsedAction;
   readonly target: Target;
@@ -48,7 +72,8 @@ export interface StrategyStep {
   readonly text: string;
   /** The condition in Chinese, or "". */
   readonly condition: string;
-  readonly source: "reaction" | "phase" | "rules" | "fallback";
+  /** `instinct` is the layer above the table: timer flee and emergency potion (task 104). */
+  readonly source: "reaction" | "phase" | "rules" | "fallback" | "instinct";
   readonly once: boolean;
   /** What the action does, when it is one of the queued effects. */
   readonly effect: EffectKind | null;
@@ -175,18 +200,97 @@ function firstAiling(snapshot: BattleSnapshot, ailment: string): SnapshotUnit | 
   );
 }
 
+function pctOf(unit: SnapshotUnit): number {
+  const top = unit.maxHp ?? 0;
+  return top > 0 ? (100 * unit.hp) / top : 100;
+}
+
 function lowestAlly(snapshot: BattleSnapshot): SnapshotUnit | null {
   let best: SnapshotUnit | null = null;
   let bestPct = Number.POSITIVE_INFINITY;
   for (const unit of living(snapshot)) {
-    const top = unit.maxHp ?? 0;
-    const value = top > 0 ? (100 * unit.hp) / top : 100;
+    const value = pctOf(unit);
     if (best === null || value < bestPct) {
       best = unit;
       bestPct = value;
     }
   }
   return best;
+}
+
+function partyHasHealer(snapshot: BattleSnapshot): boolean {
+  return living(snapshot).some((unit) => gambit.canHealMember(unit));
+}
+
+/**
+ * The strongest healing item held, or null. Match by containment only in this direction, so
+ * 「高级恢复药」 does not count as the weaker 「恢复药」 (task 104).
+ */
+function healingItem(snapshot: BattleSnapshot): string | null {
+  for (const item of gambit.HEAL_ITEMS) {
+    let held = 0;
+    for (const [name, count] of Object.entries(snapshot.items ?? {})) {
+      if (name === item || name.includes(item)) held += count;
+    }
+    if (held > 0) return item;
+  }
+  return null;
+}
+
+/** Task 104: with no affordable healer, a potion on the lowest-HP ally below the threshold. */
+function emergencyItemStep(
+  snapshot: BattleSnapshot,
+  options: InstinctOptions,
+): StrategyStep | null {
+  const percent = options.itemHealHpPercent ?? instinctDefaults.itemHealHpPercent;
+  const weakest = lowestAlly(snapshot);
+  if (weakest === null || pctOf(weakest) >= percent) return null;
+  if (partyHasHealer(snapshot)) return null;
+  const item = healingItem(snapshot);
+  if (item === null) return null;
+  return {
+    action: { command: "道具", ability: item },
+    target: unitTarget("ally", weakest),
+    rule: null,
+    ruleIndex: 0,
+    key: `instinct:item:${item}`,
+    basis: "本能",
+    text: `本能:同伴 HP 低于 ${percent}%,用${item}`,
+    condition: "",
+    source: "instinct",
+    once: false,
+    effect: "heal",
+  };
+}
+
+/** Task 104: a running countdown makes ordinary road battles run before the table fights. */
+function timerFleeStep(snapshot: BattleSnapshot, options: InstinctOptions): StrategyStep | null {
+  const fleeOnTimer = options.fleeOnTimer ?? instinctDefaults.fleeOnTimer;
+  if (!fleeOnTimer) return null;
+  if (snapshot.timerActive !== true) return null;
+  if (snapshot.boss === true || snapshot.notEscape === true) return null;
+  return {
+    action: { command: "逃跑", ability: "" },
+    target: null,
+    rule: null,
+    ruleIndex: 0,
+    key: "instinct:flee",
+    basis: "倒计时",
+    text: "倒计时:普通战斗先逃跑",
+    condition: "",
+    source: "instinct",
+    once: false,
+    effect: null,
+  };
+}
+
+function instinctSteps(snapshot: BattleSnapshot, options: InstinctOptions): StrategyStep[] {
+  const steps: StrategyStep[] = [];
+  const flee = timerFleeStep(snapshot, options);
+  if (flee !== null) steps.push(flee);
+  const item = emergencyItemStep(snapshot, options);
+  if (item !== null) steps.push(item);
+  return steps;
 }
 
 function unitTarget(side: "ally" | "enemy", unit: SnapshotUnit): Target {
@@ -375,10 +479,17 @@ export class StrategyRuntime {
     return null;
   }
 
-  /** Reactions first, then the first open phase's rules, then the fallback (task 41). */
-  choices(strategy: Strategy, snapshot: BattleSnapshot): StrategyChoice {
+  /** The instinct layer first, then reactions/phases/rules, then the fallback (tasks 41, 104). */
+  choices(
+    strategy: Strategy,
+    snapshot: BattleSnapshot,
+    options: InstinctOptions = {},
+  ): StrategyChoice {
     const steps: StrategyStep[] = [];
     const skipped: StrategySkip[] = [];
+    // Tasks 104: while a countdown runs, flee an ordinary encounter; with no affordable
+    // healer, drink before the table's attack spells.
+    steps.push(...instinctSteps(snapshot, options));
     const add = (
       rule: StrategyRule,
       index: number,
@@ -482,7 +593,7 @@ export class StrategyRuntime {
       });
     }
 
-    steps.push(...fallbackSteps(strategy, snapshot));
+    steps.push(...fallbackSteps(strategy, snapshot, options));
     return { steps, skipped };
   }
 
@@ -511,7 +622,11 @@ export class StrategyRuntime {
   }
 }
 
-export function fallbackSteps(strategy: Strategy, snapshot: BattleSnapshot): StrategyStep[] {
+export function fallbackSteps(
+  strategy: Strategy,
+  snapshot: BattleSnapshot,
+  options: InstinctOptions = {},
+): StrategyStep[] {
   const actor = snapshot.actor ?? "";
   const role = strategy.roles[actor] ?? "";
   const weakest = lowestAlly(snapshot);
@@ -541,7 +656,13 @@ export function fallbackSteps(strategy: Strategy, snapshot: BattleSnapshot): Str
     once: false,
     effect: null,
   };
-  return role.includes("治疗") ? [heal, attack] : [attack];
+  const steps: StrategyStep[] = [];
+  if (role.includes("治疗")) steps.push(heal);
+  // Task 104: whether or not the role says healer, a party with no affordable healer drinks.
+  const item = emergencyItemStep(snapshot, options);
+  if (item !== null) steps.push(item);
+  steps.push(attack);
+  return steps;
 }
 
 function itemCount(snapshot: BattleSnapshot, wanted: string): number {

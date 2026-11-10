@@ -8,6 +8,13 @@
 
 export type Side = "ally" | "enemy";
 
+/** One learned spell, as the sample party reports it (name, MP cost, command type). */
+export interface SnapshotAbility {
+  readonly name: string;
+  readonly mp?: number;
+  readonly type?: number;
+}
+
 /** One battle unit; `hp <= 0` means fallen. Names and statuses are the game's Chinese words. */
 export interface SnapshotUnit {
   readonly name: string;
@@ -26,6 +33,9 @@ export interface SnapshotUnit {
   /** Elements and statuses the unit is immune to. */
   readonly immune?: readonly string[];
   readonly boss?: boolean;
+  /** Current job and learned spells, from the sample party (task 104); absent on old bridges. */
+  readonly jobName?: string;
+  readonly abilities?: readonly SnapshotAbility[];
 }
 
 /**
@@ -58,6 +68,8 @@ export interface BattleSnapshot {
   readonly boss?: boolean;
   /** The game's MonsterParty.NotEscape: the party cannot run from this encounter. */
   readonly notEscape?: boolean;
+  /** Bridge 0.14.3's sample.timer.active; false/absent on older bridges (task 104). */
+  readonly timerActive?: boolean;
   readonly events?: readonly BattleEvent[];
 }
 

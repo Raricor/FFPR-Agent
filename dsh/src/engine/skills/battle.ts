@@ -35,6 +35,7 @@ import {
   snapshotEvents,
   strategyFor,
   StrategyRuntime,
+  type InstinctOptions,
   type StrategyChoice,
   type StrategyStep,
 } from "../strategy/execute.ts";
@@ -85,6 +86,11 @@ export interface BattleHooks {
   elements?: ElementLearner;
   /** Task 91: the after-battle HP/MP thresholds and reserve from Config. */
   heal?: PatchUpOptions;
+  /**
+   * Task 104: the in-battle instinct knobs. game.ts cannot change in this task, so the plugin
+   * sets this on the same hooks object Game keeps in moveState (see plugin/player.ts).
+   */
+  instinct?: InstinctOptions;
 }
 
 function show(value: unknown): string {
@@ -348,6 +354,8 @@ export interface FightOptions {
   record?: BattleSession;
   /** Bridge battle.act / battle.hit pushes for the strategy snapshot; the record supplies them. */
   events?: () => readonly RecordedEvent[];
+  /** Task 104: timer flee and the emergency potion, from Config. */
+  instinct?: InstinctOptions;
 }
 
 /** One elemental spell about to land on an enemy, remembered until the next menu reading. */
@@ -452,10 +460,13 @@ export async function fight(
       Object.fromEntries(ordered),
       elements,
     );
+    // Task 104: the sample carries the countdown and the party's jobs/spells, which the battle
+    // menu does not. Read it each turn so a countdown that starts mid-battle also counts.
+    const info = await sampleInfo(pilot);
     // Read the table each turn: a rewrite may have replaced it (task 34). While the tactician
     // writes, everyone defends instead of following the table that is not working.
     const snapshot: BattleSnapshot = {
-      allies: snapshotUnits(records(situation.players)),
+      allies: withPartyInfo(snapshotUnits(records(situation.players)), info.party),
       enemies: snapshotUnits(records(situation.enemies)),
       items: situation.items,
       actor,
@@ -463,6 +474,7 @@ export async function fight(
       seconds: Math.max(0, (pilot.now() - battleStarted) / 1000),
       boss: situation.boss,
       notEscape: situation.notEscape,
+      timerActive: info.timerActive,
       events: snapshotEvents(eventsOf(options)),
     };
     const table = options.hold?.() === true ? HOLD_STRATEGY : (options.table?.() ?? plan);
@@ -482,7 +494,7 @@ export async function fight(
       (made) => {
         decided.value = made;
       },
-      { runtime, snapshot },
+      { runtime, snapshot, instinct: options.instinct },
     );
     if (decided.value?.fled === true) {
       // 11-05: the escape animation is over and the battle menu is gone. Stop here rather than
@@ -571,6 +583,55 @@ export async function heldItems(pilot: Pilot): Promise<Record<string, number>> {
     out[iconName(item.name)] = num(item.count) ?? 0;
   }
   return out;
+}
+
+/** What one sample adds to the battle snapshot: the countdown and the party's jobs/spells. */
+interface SampleInfo {
+  readonly timerActive: boolean;
+  readonly party: readonly Reply[];
+}
+
+/**
+ * The sample's timer (bridge 0.14.3+) and party abilities (task 104). A test pilot or an old
+ * bridge may not answer `sample`; then there is no countdown to flee and no job data, which is
+ * exactly the old behaviour.
+ */
+async function sampleInfo(pilot: Pilot): Promise<SampleInfo> {
+  try {
+    const sample = record((await pilot.query("sample")).sample);
+    return {
+      timerActive: truthy(record(sample.timer).active),
+      party: records(sample.party),
+    };
+  } catch {
+    return { timerActive: false, party: [] };
+  }
+}
+
+/** Add the sample party's current job and learned spells to the battle rows, by name. */
+function withPartyInfo(units: readonly SnapshotUnit[], party: readonly Reply[]): SnapshotUnit[] {
+  return units.map((unit) => {
+    const row = party.find((member) => text(member.name) === unit.name);
+    if (row === undefined) return unit;
+    const jobName = text(row.jobName);
+    const abilities = records(row.abilities)
+      .map((ability) => {
+        const name = text(ability.name) ?? "";
+        const mp = num(ability.mp);
+        const type = num(ability.type);
+        return {
+          name,
+          ...(mp === undefined ? {} : { mp }),
+          ...(type === undefined ? {} : { type }),
+        };
+      })
+      .filter((ability) => ability.name !== "");
+    return {
+      ...unit,
+      ...(jobName === undefined || jobName === "" ? {} : { jobName }),
+      ...(Array.isArray(row.abilities) ? { abilities } : {}),
+    };
+  });
 }
 
 /** Battle-menu rows as snapshot units; statuses are the game's Chinese words. */
@@ -665,10 +726,11 @@ export class CannotDo extends Error {
   }
 }
 
-/** Extra data one turn hands act(): the shared runtime and the snapshot already built. */
+/** Extra data one turn hands act(): the shared runtime, the snapshot and instinct options. */
 export interface ActContext {
   readonly runtime?: StrategyRuntime;
   readonly snapshot?: BattleSnapshot;
+  readonly instinct?: InstinctOptions;
 }
 
 /**
@@ -703,12 +765,12 @@ export async function act(
   runtime.observe(snapshot, pilot.now());
   let choice: StrategyChoice;
   try {
-    choice = runtime.choices(strategy, snapshot);
+    choice = runtime.choices(strategy, snapshot, context.instinct);
   } catch (error) {
     // Task 53: never let a broken expression escape the executor; fall back to an attack.
     if (!(error instanceof StrategyFailure)) throw error;
     runtime.noteProblem("策略执行", error.message);
-    choice = { steps: fallbackSteps(strategy, snapshot), skipped: [] };
+    choice = { steps: fallbackSteps(strategy, snapshot, context.instinct), skipped: [] };
   }
   const { steps, skipped } = choice;
   const passed: string[] = [];
@@ -957,7 +1019,13 @@ async function attempt(
   if (action.ability && action.command === "道具") {
     used = `${used}:${await chooseItem(pilot, action.ability)}`;
   } else if (action.ability) {
-    castSpell = await chooseAbility(pilot, action.ability, num(situation.me().mp), target);
+    castSpell = await chooseAbility(
+      pilot,
+      action.ability,
+      num(situation.me().mp),
+      target,
+      action.command,
+    );
     used = `${used}:${castSpell}`;
   }
   // With the target cursor open the game has picked the enemy the spell will hit; remember
@@ -1056,6 +1124,21 @@ function sameEnemy(enemy: Reply, cast: ElementalCast): boolean {
   return (text(enemy.name) ?? "") === cast.name;
 }
 
+/** Drop what the target absorbs or is immune to, and put its elemental weaknesses first. */
+function preferWeak(names: readonly string[], target: EnemyResistances | null): string[] {
+  if (target === null) return [...names];
+  const usable = names.filter((name) => {
+    const element = gambit.elementOf(name);
+    if (element === null) return true;
+    return !target.absorb.includes(element) && !target.immune.includes(element);
+  });
+  const weak = usable.filter((name) => {
+    const element = gambit.elementOf(name);
+    return element !== null && target.weak.includes(element);
+  });
+  return [...weak, ...usable.filter((name) => !weak.includes(name))];
+}
+
 /**
  * Highlight `wanted` in the open magic list and press Enter; returns its name. The list is
  * a grid of every slot of the magic type, three to a row, unlearned ones blank (10-20);
@@ -1067,6 +1150,7 @@ export async function chooseAbility(
   wanted: string,
   mp: number | undefined,
   target: EnemyResistances | null = null,
+  command = "",
 ): Promise<string> {
   const menu = await waitFor(
     pilot,
@@ -1083,12 +1167,19 @@ export async function chooseAbility(
   const names = shown.map((entry) => iconName(entry.name));
   // 「治疗+」「最强」 (gambit.abilityCandidates): the best one known and affordable. With a
   // target, elements it absorbs or is immune to are gone and its weaknesses come first.
-  const allKnown = gambit
-    .abilityCandidates(wanted)
-    .filter((candidate) => names.includes(candidate));
-  const known = gambit
-    .abilityCandidates(wanted, target)
-    .filter((candidate) => names.includes(candidate));
+  // Task 104: on the summon command the opened list is itself the summon list, so 最强 takes
+  // its top entry (the game lists spells weakest first) whatever the Chinese names are.
+  const bestSummon = command === "召唤" && wanted === gambit.BEST;
+  const allKnown = bestSummon
+    ? [...new Set(names)].reverse()
+    : gambit
+        .abilityCandidates(wanted, null, command)
+        .filter((candidate) => names.includes(candidate));
+  const known = bestSummon
+    ? preferWeak([...new Set(names)].reverse(), target)
+    : gambit
+        .abilityCandidates(wanted, target, command)
+        .filter((candidate) => names.includes(candidate));
   if (known.length === 0) {
     if (allKnown.length > 0 && target !== null) {
       throw new CannotDo(`目标${resistReason(allKnown, target)},不放这个属性`);
@@ -1401,7 +1492,7 @@ export async function regular(
     300,
     () => undefined,
     hooks.elements ?? null,
-    { record: session },
+    { record: session, instinct: hooks.instinct },
   );
   const foughtAt = pilot.now();
   if (result.fled === true) {
