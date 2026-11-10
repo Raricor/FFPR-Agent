@@ -20,6 +20,7 @@ import { readEnvFile } from "../engine/env.ts";
 import { describeError, isMissingFile } from "../engine/errors.ts";
 import { KeyEvents, WINDOWS, Watcher } from "../engine/events.ts";
 import { Game } from "../engine/game.ts";
+import { cleanIconTags } from "../engine/icons.ts";
 import { messageText, PlayerJournal } from "../engine/player-log.ts";
 import { HealthWaiter } from "../engine/gate.ts";
 import { byKey } from "../engine/games.ts";
@@ -61,6 +62,13 @@ const SEED_FILES = 3; // probe files read for the events before this run (a few 
 const OPENING_SECTION = "ffpr:opening";
 const NOTICE_SECTION = "ffpr:notice";
 
+/**
+ * The model-facing goal tools from `@deepseek-ai/dsh-tool-goal` (its README.zh.md「工具」table).
+ * A `restrict` mask only filters inherited tools, and task 107's `allow: []` hid all three, so
+ * the model saw no goal tool and never entered goal mode (task 111).
+ */
+const GOAL_TOOL_NAMES: readonly string[] = ["get_goal", "create_goal", "update_goal"];
+
 /** The pieces one plugin instance shares between every agent it serves. */
 export interface PlayerEngine {
   readonly laptop: Laptop;
@@ -84,6 +92,49 @@ export interface PlayerEngine {
 export interface PlayerLog {
   info(message: string): void;
   warn(message: string): void;
+  /** Write warnings logged before an engine (and its activity log) existed. */
+  flush?(activity: ActivityLog): void;
+}
+
+/**
+ * The plugin's logger: dsh's `ctx.logger` keeps messages only in cordis's in-memory buffer
+ * (LoggerService, cordis logger.d.ts) unless a host exporter is registered; the web profile
+ * registers one only during startup, so a warning never reaches ~/.dsh/logs/web-ffpr.log
+ * (task 46). Keep using the dsh logger, and mirror warn/error-level lines into the running
+ * game's activity log, which is what the overview page reads. ActivityLog redacts secrets
+ * before writing.
+ */
+export function createPlayerLog(
+  logger: PlayerLog,
+  activities: () => Iterable<ActivityLog | undefined>,
+): PlayerLog {
+  const pending: string[] = [];
+  const record = (activity: ActivityLog, message: string): void => {
+    try {
+      activity.record("warn", message);
+    } catch {
+      // A logging sink must never break the plugin or an agent listener.
+    }
+  };
+  return {
+    info: (message) => {
+      logger.info(message);
+    },
+    warn: (message) => {
+      logger.warn(message);
+      let written = false;
+      for (const activity of activities()) {
+        if (activity === undefined) continue;
+        record(activity, message);
+        written = true;
+      }
+      // The engine may start later (or not at all); keep the line for its activity log.
+      if (!written) pending.push(message);
+    },
+    flush: (activity) => {
+      for (const message of pending.splice(0)) record(activity, message);
+    },
+  };
 }
 
 /** The system prompt text, with the Python placeholders filled for dsh. */
@@ -234,6 +285,7 @@ export async function startEngine(
       log.warn(message);
     },
   });
+  log.flush?.(activity);
   try {
     const followed = bridge
       ? await followEvents(laptop, config.game, bridge, stop.signal, log, activity)
@@ -262,6 +314,8 @@ export async function startEngine(
       scoutMaxTargets: config.scoutMaxTargets,
       stageAutoPlan: config.stageAutoPlan,
       stageGoGate: config.stageGoGate,
+      stageGoFollowPlan: config.stageGoFollowPlan,
+      stageContinueAfterTravel: config.stageContinueAfterTravel,
       stageTurnBackDistance: config.stageTurnBackDistance,
       stageBossLevelGap: config.stageBossLevelGap,
       healHpPercent: config.healHpPercent,
@@ -609,7 +663,8 @@ export function gameToolHost(
         engine.activity.beginTool(name);
         bind({ agent, signal });
         try {
-          return await engine.game.run(name, args, pilot, signal);
+          // The tool result is the model-facing boundary: no game icon tag leaves the engine.
+          return cleanIconTags(await engine.game.run(name, args, pilot, signal));
         } finally {
           bind(null);
           engine.activity.endTool();
@@ -669,7 +724,8 @@ export function recordSessionEvent(journal: PlayerJournal, event: SessionEvent):
  * tactician text are empty until the engine starts, then their provider reads the live Game.
  *
  * Tools and the persona belong to each agent's own layer: a restriction only filters inherited
- * tools, so `allow: []` there hides the global surface and keeps ours (dsh-tools `view()`).
+ * tools, so the player keeps the three goal tools and hides the rest, while our own game tools
+ * stay visible (dsh-tools `view()`). Tactician and stage officer still mask everything.
  * Registrations live on `agent.ctx`, with a copy of the disposer on this plugin's ctx so plugin
  * unload clears them even before agent disposal.
  */
@@ -855,24 +911,33 @@ export function installPlayer(
   // 11-02 (task 32): `select` only rebinds the agent. The old preset's per-agent tools and
   // persona stay on the agent, and the new preset's agent/created never runs. React to the
   // committed change instead: drop our set, or add the set for this preset.
-  ctx.on("agent-preset/selected", (sessionId, agentPreset) => {
-    try {
-      if (agentPreset !== ownPreset) {
-        unmountAgent(sessionId);
-        return;
+  // 11-10 (task 109): the registry emits this on the host context, while this listener lives
+  // in a preset scope; dsh-scope's filter dropped it, so a manual web preset switch missed
+  // this event and only pre-step caught up from round two. `global` is cordis EventOptions
+  // (@deepseek-ai/cordis events.d.ts): the listener bypasses scope filtering. `select` emits
+  // before the first prompt, so the target plugin mounts in time.
+  ctx.on(
+    "agent-preset/selected",
+    (sessionId, agentPreset) => {
+      try {
+        if (agentPreset !== ownPreset) {
+          unmountAgent(sessionId);
+          return;
+        }
+        if (disposers.has(sessionId)) return;
+        const agent = ctx.agents.get(sessionId);
+        if (agent === undefined) {
+          log.warn(`会话 ${sessionId} 换到 ${agentPreset},但找不到它的 Agent,没有挂上工具`);
+          return;
+        }
+        if (agent.session.header.origin === "subagent") return;
+        mountAgent(agent);
+      } catch (error) {
+        log.warn(`处理会话 ${sessionId} 的预设切换失败:${describeError(error)}`);
       }
-      if (disposers.has(sessionId)) return;
-      const agent = ctx.agents.get(sessionId);
-      if (agent === undefined) {
-        log.warn(`会话 ${sessionId} 换到 ${agentPreset},但找不到它的 Agent,没有挂上工具`);
-        return;
-      }
-      if (agent.session.header.origin === "subagent") return;
-      mountAgent(agent);
-    } catch (error) {
-      log.warn(`处理会话 ${sessionId} 的预设切换失败:${describeError(error)}`);
-    }
-  });
+    },
+    { global: true },
+  );
 
   // Publish this instance's per-session mount so another player preset can mount us inside the
   // same agent/created dispatch that selects us. The disposer removes only this object.
@@ -983,7 +1048,11 @@ export function installPlayer(
   });
 }
 
-function registerAgent(
+/**
+ * Mount the game tools, the inherited-tool mask and the complete persona on one agent.
+ * Exported so the visibility test can use dsh's real ToolRuntime (task 111).
+ */
+export function registerAgent(
   agent: Agent,
   tools: ReturnType<typeof gameToolDefinitions>,
   personaText: string,
@@ -991,7 +1060,13 @@ function registerAgent(
   return agent.ctx.effect(() => {
     const owned: (() => void)[] = [];
     for (const tool of tools) owned.push(agent.ctx.tools.register(tool));
-    owned.push(agent.ctx.tools.restrict({ allow: [] }));
+    // The goal tools are inherited from the preset's dsh-tool-goal; keep exactly those and hide
+    // every other inherited tool (task 111). A preset without dsh-tool-goal has none of these
+    // names, and restrict() rejects unknown names, so filter against what this agent can see.
+    const visible = new Set(agent.ctx.tools.schemas(agent).map((tool) => tool.name));
+    owned.push(
+      agent.ctx.tools.restrict({ allow: GOAL_TOOL_NAMES.filter((name) => visible.has(name)) }),
+    );
     // dsh-persona's own registration, inlined: the preset's complete persona is the system
     // prompt, and optional runtime facts stay out of it (10-27: the model called
     // working_directory from the base composition).
