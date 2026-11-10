@@ -488,3 +488,50 @@ void test("a new monster that is a boss still calls on a map with tables", async
     await h.close();
   }
 });
+
+void test("a boss fight uses the stage's prepared table by enemy name and calls no one", async () => {
+  const battle = {
+    active: true,
+    boss: true,
+    enemies: [{ name: "首领", book: 39, hp: 100, maxHp: 100 }],
+    players: [],
+  };
+  const h = await harness(sample(battle), () => {
+    throw new Error("出发前写好的首领表不该再叫战术官");
+  });
+  h.pilot.on("pos", { pos: { state: "Battle", map: 30, cell: [1, 2], battle: true } });
+  h.pilot.on("items", { items: { normal: [] } });
+  try {
+    await h.game.stagePlans.save({
+      target: { mapId: 30, areaName: "图尔村", label: "图尔村" },
+      plan: {
+        threats: [],
+        supplies: [],
+        spells: [],
+        gear: [],
+        jobs: [],
+        minLevel: null,
+        route: [],
+        turnBack: [],
+        notes: "",
+      },
+      createdAt: "2026-11-10T00:00:00.000Z",
+      status: "departed",
+      boss: {
+        names: ["首领"],
+        bookIds: [39],
+        monsterIds: [],
+        mapId: null,
+        table: TABLE,
+        at: "2026-11-10T00:00:00.000Z",
+        result: "出发前阶段计划的首领表",
+      },
+    });
+    const result = await h.game.settle(h.pilot);
+    assert.equal(h.calls(), 0);
+    assert.match(result, /用的是出发前写好的首领表/);
+    assert.deepEqual(h.game.tactics.boss(30)?.table, TABLE);
+  } finally {
+    await h.close();
+  }
+});

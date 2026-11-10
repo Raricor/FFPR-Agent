@@ -162,6 +162,61 @@ function resolveAreaName(knowledge: Knowledge, filter: MonsterFilter): MonsterFi
   return { mapIds: [...mapIds], areaIds: [...areaIds] };
 }
 
+/** Which monster a boss lookup is for; a name or the bestiary number is enough. */
+export interface BossMapQuery {
+  readonly name?: string;
+  readonly bookId?: number | null;
+}
+
+function matchesBoss(monster: MonsterKnowledge, query: BossMapQuery): boolean {
+  if (query.bookId !== undefined && query.bookId !== null && monster.bookId !== null) {
+    if (monster.bookId === query.bookId) return true;
+  }
+  const wanted = normalizeName(query.name ?? "");
+  return wanted !== "" && normalizeName(monster.name) === wanted;
+}
+
+/**
+ * Maps where a boss can be met (task 106). The export does not store a boss's room, so this
+ * reads the three places that can name one: the boss's encounter rows (a few bosses are in a
+ * map's random table), their area ids, and the guide's area names for the monster. An empty list
+ * means "only the name is known"; the caller then keeps the table for the whole stage and
+ * matches it when the fight starts.
+ */
+export function bossMapIds(knowledge: Knowledge, query: BossMapQuery): number[] {
+  const monster = knowledge.monsters.find((row) => matchesBoss(row, query));
+  if (monster === undefined) return [];
+  const ids = new Set<number>();
+  for (const encounter of monster.encounters) {
+    if (encounter.mapId !== null) {
+      // A map-scoped row is the precise answer; expanding it to the whole area would put the
+      // table on every floor of a dungeon.
+      ids.add(encounter.mapId);
+      continue;
+    }
+    if (encounter.areaId === null) continue;
+    for (const map of knowledge.maps) {
+      if (map.id !== null && map.areaId === encounter.areaId) ids.add(map.id);
+    }
+  }
+  const keys = new Set<string>();
+  for (const area of monster.guideAreas) {
+    for (const key of areaKeys(knowledge.guide, area)) keys.add(key);
+  }
+  if (keys.size > 0) {
+    for (const map of knowledge.maps) {
+      if (map.id === null) continue;
+      const names = [map.name ?? "", map.areaName ?? ""]
+        .map(normalizeName)
+        .filter((name) => name !== "");
+      if (names.some((name) => [...keys].some((key) => name.includes(key) || key.includes(name)))) {
+        ids.add(map.id);
+      }
+    }
+  }
+  return [...ids].sort((left, right) => left - right);
+}
+
 /**
  * Monsters that can appear in the encounter tables of these maps or areas (all tables when
  * neither is given), each with weaknesses, moves, inflicted statuses and its encounter chance.

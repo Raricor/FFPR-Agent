@@ -3,6 +3,7 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   blueMagicSources,
+  bossMapIds,
   chestsIn,
   itemsThatCure,
   loadKnowledge,
@@ -227,4 +228,12 @@ void test("chest content comes from the last find/containing/for phrase, never t
     guideContent("Open it for Mythril Gloves (with a red arrow).", ["Mythril Gloves"]),
     "Mythril Gloves",
   );
+});
+
+void test("a boss's maps come from its encounter rows and the areas those rows name", async () => {
+  const knowledge = await loaded();
+  // Water Spirit has one area-scoped row (area 10 = 图尔村) and one map-scoped row (map 2).
+  assert.deepEqual(bossMapIds(knowledge, { name: "水精灵" }), [1, 2]);
+  assert.deepEqual(bossMapIds(knowledge, { bookId: 8 }), [1, 2]);
+  assert.deepEqual(bossMapIds(knowledge, { name: "没有这个首领" }), []);
 });

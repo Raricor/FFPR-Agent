@@ -71,6 +71,7 @@ export { areaKeys, buildKnowledge, mergeSources, normalizeName } from "./merge.t
 
 export {
   blueMagicSources,
+  bossMapIds,
   chestsIn,
   itemsThatCure,
   missablesAfter,
@@ -78,6 +79,7 @@ export {
   shopsNear,
   statusThreats,
   type BlueMagicOptions,
+  type BossMapQuery,
   type ChestFilter,
   type MonsterFilter,
 } from "./query.ts";
