@@ -101,6 +101,8 @@ const DEFAULT_AUTO_PRESET_WAIT_MS = 3_000;
 const DEFAULT_TACTICIAN_KEEP_VISIBLE = 2;
 /** Task 86: two road triggers on one map are at least this many minutes apart. */
 const DEFAULT_TACTICIAN_INTERVAL_MINUTES = 10;
+/** Task 107: pause the goal after this many consecutive rounds without a progress signal. */
+const DEFAULT_GOAL_STALL_ROUNDS = 3;
 
 const RawConfig = Schema.object({
   /**
@@ -214,6 +216,8 @@ const RawConfig = Schema.object({
   tacticianKeepVisible: Schema.number().default(DEFAULT_TACTICIAN_KEEP_VISIBLE),
   /** Task 86: the least gap between two road triggers on one map, in minutes. */
   tacticianIntervalMinutes: Schema.number().default(DEFAULT_TACTICIAN_INTERVAL_MINUTES),
+  /** Task 107: pause the goal after this many consecutive rounds without progress. */
+  goalStallRounds: Schema.number().default(DEFAULT_GOAL_STALL_ROUNDS),
 });
 
 /**
@@ -277,6 +281,7 @@ export const Config = Schema.transform(RawConfig, (config) => {
     carryTotalLimit: config.carryTotalLimit ?? CARRY_TOTAL_LIMIT,
     tacticianKeepVisible: config.tacticianKeepVisible ?? DEFAULT_TACTICIAN_KEEP_VISIBLE,
     tacticianIntervalMinutes: config.tacticianIntervalMinutes ?? DEFAULT_TACTICIAN_INTERVAL_MINUTES,
+    goalStallRounds: config.goalStallRounds ?? DEFAULT_GOAL_STALL_ROUNDS,
   };
 });
 

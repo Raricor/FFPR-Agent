@@ -38,6 +38,11 @@ import { Redactor } from "../engine/redact.ts";
 import { gameDefaults, type Config } from "./config.ts";
 import { detectRunning, type DetectionResult, type RunningDetector } from "./detect.ts";
 import { formatNotes, formatTactician, notesContext, tacticianContext } from "./notes-prompt.ts";
+import {
+  ProgressWatchdog,
+  type GoalServiceLike,
+  type ProgressBuffer,
+} from "./progress-watchdog.ts";
 import { registerPresetMount } from "./preset-hooks.ts";
 import { installPresetSwitch, playerPresetId, type PresetSelector } from "./preset-switch.ts";
 import type { EngineSlot } from "./registry.ts";
@@ -736,6 +741,32 @@ export function installPlayer(
     binding = call;
     if (call?.agent !== undefined) lastAgent = call.agent;
   });
+  // Task 107: the round's new activity-log and key-event lines feed the no-progress watchdog.
+  const progressBuffer = (): ProgressBuffer | undefined => {
+    const engine = slot.current();
+    if (engine === undefined) return undefined;
+    const lines = (): string[] => [
+      ...engine.activity.entries.map((entry) => entry.text),
+      ...(engine.events?.entries ?? []).map(
+        (entry) => `${LABEL[entry.type] ?? entry.type} ${entry.text}`,
+      ),
+    ];
+    const current = lines();
+    return { size: current.length, since: (start) => lines().slice(start) };
+  };
+  const watchdog = new ProgressWatchdog({
+    stallRounds: config.goalStallRounds,
+    // The goal service is optional: a host without dsh-goal simply has no goal to pause.
+    goals: (): GoalServiceLike | undefined => {
+      if (typeof ctx.get !== "function") return undefined;
+      return ctx.get("goals") as GoalServiceLike | undefined;
+    },
+    buffer: progressBuffer,
+    activity: () => slot.current()?.activity,
+    warn: (message) => {
+      log.warn(message);
+    },
+  });
   const tools: ToolDefinition[] = [
     ...gameToolDefinitions(host, config.game, config.saveSlot, () => slot.current()?.activity),
     // Task 105: the scout is FF5-only, like the stage officer. Its timeout must cover the whole
@@ -866,7 +897,18 @@ export function installPlayer(
     await Promise.all(pending);
   });
 
+  ctx.on("agent/turn-stopping", ({ agent }) => {
+    // Task 107: a round just ended; pause the goal when the configured miss streak is reached.
+    try {
+      watchdog.end(agent);
+    } catch (error) {
+      log.warn(`检查目标进展失败:${describeError(error)}`);
+    }
+  });
+
   ctx.on("agent/pre-step", async ({ agent, step, signal }, next) => {
+    // Task 107: capture this round's starting point before the model acts.
+    if (step === 1) watchdog.begin(agent);
     // 11-02 real machine: after select, the new preset's plugin did not receive
     // agent-preset/selected (the registry emits on the host layer and dsh-scope filters it out
     // of the preset composition). This is only a fallback: the step's prompt and tool list are
