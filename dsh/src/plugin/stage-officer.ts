@@ -155,7 +155,7 @@ export const STAGE_OFFICER_OUTPUT_SCHEMA: ObjectJsonSchema = {
           {
             type: "object",
             properties: {
-              kind: { const: "item-below" },
+              kind: { type: "string", const: "item-below" },
               item: { type: "string" },
               count: { type: "integer" },
             },
@@ -165,7 +165,7 @@ export const STAGE_OFFICER_OUTPUT_SCHEMA: ObjectJsonSchema = {
           {
             type: "object",
             properties: {
-              kind: { const: "status-uncurable" },
+              kind: { type: "string", const: "status-uncurable" },
               status: { type: "string" },
             },
             required: ["kind", "status"],
@@ -173,14 +173,14 @@ export const STAGE_OFFICER_OUTPUT_SCHEMA: ObjectJsonSchema = {
           },
           {
             type: "object",
-            properties: { kind: { const: "no-revive" } },
+            properties: { kind: { type: "string", const: "no-revive" } },
             required: ["kind"],
             additionalProperties: false,
           },
           {
             type: "object",
             properties: {
-              kind: { const: "hp-below" },
+              kind: { type: "string", const: "hp-below" },
               percent: { type: "integer" },
             },
             required: ["kind", "percent"],
