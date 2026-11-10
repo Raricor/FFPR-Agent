@@ -154,6 +154,10 @@ function movementSplit(metrics: SessionMetrics): string {
   return `地图 ${count(walking.mapCalls)} / 坐标 ${count(walking.cellCalls)}`;
 }
 
+function planGoSummary(metrics: SessionMetrics, field: "blocked" | "allowed"): string {
+  return count(metrics.planGo?.[field]);
+}
+
 function walkTiming(metrics: SessionMetrics): string {
   const walking = metrics.walking;
   if (walking === null) return "无";
@@ -207,6 +211,8 @@ function baseRows(metrics: SessionMetrics): [string, string][] {
     ["插手", interventionSummary(metrics)],
     ["移动调用", movementCalls(metrics)],
     ["地图/坐标", movementSplit(metrics)],
+    ["计划拦 go", planGoSummary(metrics, "blocked")],
+    ["计划放行 go", planGoSummary(metrics, "allowed")],
     ["walk 计时", walkTiming(metrics)],
     ["walk 格数", count(walking?.cells)],
     ["每格秒", seconds(walking?.secondsPerCell, "three")],

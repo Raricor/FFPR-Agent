@@ -298,8 +298,8 @@ void test("tool rows align by tool name across sessions with different tools", a
     assert.ok(found);
     return found[1];
   };
-  assert.equal(valueOf(rowsA, "工具 go"), "1 次 / 失败 0");
-  assert.equal(valueOf(rowsB, "工具 go"), "无");
+  assert.equal(valueOf(rowsA, "工具 go(坐标)"), "1 次 / 失败 0");
+  assert.equal(valueOf(rowsB, "工具 go(坐标)"), "无");
   assert.equal(valueOf(rowsA, "工具 walk_to"), "无");
   assert.equal(valueOf(rowsB, "工具 walk_to"), "1 次 / 失败 0");
 });
@@ -495,4 +495,34 @@ void test("an eight-character prefix resolves a session directory", async (t) =>
   const totals = metrics.totals;
   assert.ok(totals);
   assert.equal(totals.turns, 0);
+});
+
+void test("coordinate/map go, route and the stage plan gate are counted separately", async (t) => {
+  const dir = await tempDir(t);
+  const log = await writeSession(dir, "session-1010aaaa", [
+    user(1, at(0), "目标", "user"),
+    call(2, at(1), "c1", "go", { to: [1, 2] }),
+    result(3, at(2), "c1", "阶段计划拦下：这一段还在进行"),
+    call(4, at(3), "c2", "go", { to: [3, 4], leave_incomplete: "要先踩触发格" }),
+    result(5, at(4), "c2", "到了 (3, 4)\n阶段计划放行：带理由走坐标"),
+    call(6, at(5), "c3", "go", { to: "风之神殿" }),
+    result(7, at(6), "c3", "走了 1 跳"),
+    call(8, at(7), "c4", "route", { stops: [{ to: [5, 6] }] }),
+    result(9, at(8), "c4", "route 完成"),
+    call(10, at(9), "c5", "go", { to: "62:7,8" }),
+    result(11, at(10), "c5", "阶段计划拦下：坐标"),
+    event("turn/end", 12, at(20), { turn: 1, reason: { kind: "done" } }),
+  ]);
+  const metrics = await metricsForLog({ id: "session-1010aaaa", log });
+  assert.deepEqual(metrics.planGo, { blocked: 2, allowed: 1 });
+  const tools = metrics.tools;
+  assert.ok(tools);
+  const byName = (name: string): number => tools.find((tool) => tool.name === name)?.calls ?? 0;
+  assert.equal(byName("go(坐标)"), 3);
+  assert.equal(byName("go(地图)"), 1);
+  assert.equal(byName("route"), 1);
+  const rows = comparisonRows([metrics])[0];
+  assert.ok(rows);
+  assert.equal(rows.find(([name]) => name === "计划拦 go")?.[1], "2");
+  assert.equal(rows.find(([name]) => name === "计划放行 go")?.[1], "1");
 });

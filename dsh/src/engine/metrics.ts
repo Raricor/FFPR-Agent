@@ -115,6 +115,12 @@ export interface ToolStat {
   readonly failures: number;
 }
 
+/** Task 101: coordinate `go` calls the stage plan stopped, and ones let through with a reason. */
+export interface PlanGoStats {
+  readonly blocked: number;
+  readonly allowed: number;
+}
+
 export interface Walking {
   readonly tool: "go" | "walk_to" | "mixed" | "none";
   readonly calls: number;
@@ -147,6 +153,7 @@ export interface SessionMetrics {
   readonly interventions: readonly Intervention[] | null;
   readonly walking: Walking | null;
   readonly tools: readonly ToolStat[] | null;
+  readonly planGo: PlanGoStats | null;
   readonly tactician: TacticianStats | null;
   readonly notes: readonly string[];
 }
@@ -364,7 +371,36 @@ function coordinateTarget(value: unknown): boolean {
   if (Array.isArray(value))
     return value.length === 2 && value.every((item) => typeof item === "number");
   if (typeof value !== "string") return false;
+  if (/^(?:地图\s*)?\d+\s*:\s*.+$/u.test(value.trim())) return true;
   return /^\s*\[?\s*-?\d+\s*,\s*-?\d+\s*\]?\s*$/u.test(value);
+}
+
+/**
+ * Task 101: the tool table separates coordinate and map `go`s, so the gate's effect on each is
+ * visible. The marker wording is the first line of the game's refusal/allowed notice.
+ */
+const PLAN_GO_BLOCKED = "阶段计划拦下";
+const PLAN_GO_ALLOWED = "阶段计划放行";
+
+function toolKey(call: ToolCall): string {
+  if (call.name !== "go") return call.name;
+  return coordinateTarget(parseArguments(call.args).to) ? "go(坐标)" : "go(地图)";
+}
+
+function planGoStats(
+  calls: readonly ToolCall[],
+  results: ReadonlyMap<string, ToolResult>,
+): PlanGoStats {
+  let blocked = 0;
+  let allowed = 0;
+  for (const call of calls) {
+    if (call.name !== "go") continue;
+    if (!coordinateTarget(parseArguments(call.args).to)) continue;
+    const body = results.get(call.callId)?.text ?? "";
+    if (body.includes(PLAN_GO_BLOCKED)) blocked += 1;
+    if (body.includes(PLAN_GO_ALLOWED)) allowed += 1;
+  }
+  return { blocked, allowed };
 }
 
 function movementCounts(
@@ -407,6 +443,7 @@ function summarizeEvents(parsed: ParsedSession): {
   repetition: Repetition;
   tools: ToolStat[];
   movement: MovementCounts;
+  planGo: PlanGoStats;
 } {
   const events = parsed.events;
   const times = events
@@ -470,12 +507,13 @@ function summarizeEvents(parsed: ParsedSession): {
   let streakKey = "";
   let streakLength = 0;
   for (const call of calls) {
-    const stat = toolMap.get(call.name) ?? { calls: 0, failures: 0 };
+    const key = toolKey(call);
+    const stat = toolMap.get(key) ?? { calls: 0, failures: 0 };
     stat.calls += 1;
     const result = results.get(call.callId);
     const failed = result !== undefined && failedResult(result);
     if (failed) stat.failures += 1;
-    toolMap.set(call.name, stat);
+    toolMap.set(key, stat);
 
     if (call.name === "guide") {
       guideCalls += 1;
@@ -544,6 +582,7 @@ function summarizeEvents(parsed: ParsedSession): {
     },
     tools,
     movement: movementCounts(calls, results),
+    planGo: planGoStats(calls, results),
   };
 }
 
@@ -850,6 +889,7 @@ function emptyMetrics(
     interventions: null,
     walking: null,
     tools: null,
+    planGo: null,
     tactician: null,
     notes,
   };
@@ -915,6 +955,7 @@ export async function metricsForLog(sources: SessionLogSources): Promise<Session
     interventions: summary.interventionList,
     walking,
     tools: summary.tools,
+    planGo: summary.planGo,
     tactician,
     notes,
   };
