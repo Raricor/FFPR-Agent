@@ -14,6 +14,8 @@ import type { Laptop } from "../src/engine/laptop.ts";
 import type { Cell } from "../src/engine/nav.ts";
 import type { Reply } from "../src/engine/pilot.ts";
 import { readProgress } from "../src/engine/route/state.ts";
+import type { StagePlanRecord } from "../src/engine/stage/store.ts";
+import type { StagePlan } from "../src/engine/stage/types.ts";
 import { record, truthy } from "../src/engine/values.ts";
 import { FakeBattle } from "./fake-battle.ts";
 import { FakePilot } from "./fake-pilot.ts";
@@ -495,5 +497,64 @@ void test("the progress file resumes the rest of the route in a new engine", asy
     assert.match(resumed, /完成/);
     assert.deepEqual([...world.opened].sort(), ["2,5", "4,5"]);
     assert.equal(world.map, 72);
+  });
+});
+
+function stageRecord(route: StagePlan["route"]): StagePlanRecord {
+  return {
+    target: { mapId: 71, areaName: "卡纳克", label: "卡纳克城" },
+    plan: {
+      threats: [],
+      supplies: [],
+      spells: [],
+      gear: [],
+      jobs: [],
+      minLevel: null,
+      route,
+      turnBack: [],
+      notes: "",
+    },
+    createdAt: "2026-11-10T00:00:00.000Z",
+    status: "departed",
+    startMapId: 71,
+    startLabel: "卡纳克城",
+  };
+}
+
+void test("route() without progress starts from the active stage plan's route", async () => {
+  await inTemp(async (dir) => {
+    const base = routeWorld();
+    const world: World = {
+      ...base,
+      chests: base.chests.filter((chest) => keyOf(chest.cell) === "4,5"),
+    };
+    const game = await makeGame(dir);
+    await game.stagePlans.save(stageRecord([{ to: "4,5", do: "open" }, { to: "72" }]));
+    const result = await game.run("route", {}, pilotFor(world));
+    assert.match(result, /完成/);
+    assert.deepEqual(world.openedOrder, ["4,5"]);
+    assert.equal(world.map, 72);
+    const progress = await readProgress(join(dir, "route-ff5.json"));
+    assert.ok(progress.completed.includes("s1"));
+  });
+});
+
+void test("a cross-map map:cell go is allowed only at an exact plan waypoint", async () => {
+  await inTemp(async (dir) => {
+    const game = await makeGame(dir);
+    await game.stagePlans.save(stageRecord([{ to: "72:2,2" }]));
+    const world: World = { ...routeWorld(), chests: [] };
+    const result = await game.run("go", { to: "72:2,2" }, pilotFor(world));
+    assert.doesNotMatch(result, /阶段计划拦下/);
+    assert.equal(world.map, 72);
+    assert.deepEqual(world.cell, [2, 2]);
+  });
+  await inTemp(async (dir) => {
+    const game = await makeGame(dir);
+    await game.stagePlans.save(stageRecord([{ to: "72:2,2" }]));
+    const world: World = { ...routeWorld(), chests: [] };
+    const result = await game.run("go", { to: "72:9,9" }, pilotFor(world));
+    assert.match(result, /阶段计划拦下/);
+    assert.equal(world.map, 71);
   });
 });
