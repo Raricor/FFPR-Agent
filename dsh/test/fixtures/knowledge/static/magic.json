@@ -1,0 +1,11 @@
+{
+  "game": "ff5",
+  "build": "1.0.0",
+  "bridge": "0.14.5",
+  "exportedAt": "2026-11-10T00:00:00Z",
+  "table": "magic",
+  "rows": [
+    { "id": 1, "name": "Cure", "school": "White", "mp": 4, "cures": ["中毒"] },
+    { "id": 2, "name": "Fire", "school": "Black", "mp": 4, "cures": [] }
+  ]
+}

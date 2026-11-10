@@ -1,0 +1,11 @@
+{
+  "game": "ff5",
+  "build": "1.0.0",
+  "bridge": "0.14.5",
+  "exportedAt": "2026-11-10T00:00:00Z",
+  "table": "maps",
+  "rows": [
+    { "id": 1, "name": "图尔村", "areaId": 10, "areaName": "图尔村", "areaType": "town" },
+    { "id": 2, "name": "风之神殿", "areaId": 20, "areaName": "风之神殿", "areaType": "dungeon" }
+  ]
+}

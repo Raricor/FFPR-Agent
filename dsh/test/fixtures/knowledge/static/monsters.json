@@ -1,0 +1,48 @@
+{
+  "game": "ff5",
+  "build": "1.0.0",
+  "bridge": "0.14.5",
+  "exportedAt": "2026-11-10T00:00:00Z",
+  "table": "monsters",
+  "rows": [
+    {
+      "id": 7,
+      "name": "哥布林",
+      "bookId": 7,
+      "level": 5,
+      "hp": 100,
+      "mp": 10,
+      "weak": ["冰"],
+      "absorb": [],
+      "nullify": ["毒"],
+      "statusImmune": ["睡眠"],
+      "drops": [{ "itemId": 1, "name": "Potion", "rate": 0.5 }],
+      "steal": [],
+      "boss": false,
+      "scriptId": "sc_7",
+      "moves": [
+        { "abilityId": 1, "name": "火", "blueMagic": false, "conditions": [], "rate": 0.5 },
+        { "abilityId": 2, "name": "毒针", "blueMagic": true, "conditions": ["中毒"], "rate": 0.25 }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "水精灵",
+      "bookId": 8,
+      "level": 6,
+      "hp": 120,
+      "mp": 20,
+      "weak": ["雷"],
+      "absorb": ["水"],
+      "nullify": [],
+      "statusImmune": [],
+      "drops": [],
+      "steal": [],
+      "boss": true,
+      "scriptId": null,
+      "moves": [
+        { "abilityId": 3, "name": "水波", "blueMagic": true, "conditions": ["沉默"], "rate": null }
+      ]
+    }
+  ]
+}

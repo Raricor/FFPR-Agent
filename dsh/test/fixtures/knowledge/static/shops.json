@@ -1,0 +1,19 @@
+{
+  "game": "ff5",
+  "build": "1.0.0",
+  "bridge": "0.14.5",
+  "exportedAt": "2026-11-10T00:00:00Z",
+  "table": "shops",
+  "rows": [
+    {
+      "id": 1,
+      "mapId": 1,
+      "areaName": "图尔村",
+      "kind": "Items",
+      "products": [
+        { "itemId": 1, "name": "Potion", "price": 100 },
+        { "itemId": 2, "name": "Antidote", "price": 30 }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,131 @@
+{
+  "fetched": "2026-11-10",
+  "sources": {
+    "walkthrough": "https://example.test/ff5/walkthrough",
+    "ludo": "https://example.test/ff5/ludo"
+  },
+  "walkthrough": [
+    {
+      "title": "Tule",
+      "text": "Goblin's Poison Needle poisons the party.\nBESTIARY: TULE\nID\nMONSTER\nHP\nMP\nGIL\nEXP\n007\nGoblin\n100\n10\n20\n15\nBM: 毒针",
+      "shops": [
+        {
+          "where": "Tule Item Shop",
+          "kind": "Items",
+          "goods": [
+            {
+              "name": "Potion",
+              "cost": 120,
+              "note": ""
+            },
+            {
+              "name": "Antidote",
+              "cost": 30,
+              "note": "cures poison"
+            }
+          ]
+        }
+      ],
+      "treasures": [
+        {
+          "kind": "chest",
+          "n": 1,
+          "where": "Tule Inn",
+          "text": "Potion"
+        }
+      ]
+    },
+    {
+      "title": "Wind Shrine",
+      "text": "Water Spirit uses Silence on the party.\nBESTIARY: WIND SHRINE\nID\nMONSTER\nHP\nMP\nGIL\nEXP\n008\nWater Spirit\n120\n20\n30\n25\nBM: Water Wave\n009\nMoldwynd\n20\n5\n27\n20\nBM: Aero",
+      "shops": [],
+      "treasures": [
+        {
+          "kind": "chest",
+          "n": 2,
+          "where": "Wind Shrine 1F",
+          "text": "Ether"
+        },
+        {
+          "kind": "hidden",
+          "n": 3,
+          "where": "Wind Shrine 2F",
+          "text": "Elixir"
+        }
+      ]
+    }
+  ],
+  "missables": [
+    {
+      "title": "Tule",
+      "text": "The Tule Inn chest is gone after the water crystal."
+    }
+  ],
+  "bestiary": {
+    "7": "Goblin",
+    "8": "Water Spirit",
+    "9": "Moldwynd"
+  },
+  "ludo": [
+    {
+      "slug": "tule",
+      "title": "Tule",
+      "url": "https://example.test/ff5/ludo/tule",
+      "summary": "The first town.",
+      "prerequisites": [],
+      "steps": [],
+      "tips": ["Goblin's Poison Needle poisons the party."],
+      "monsters": [
+        {
+          "book": 7,
+          "name": "Goblin",
+          "area": "Tule",
+          "level": 5,
+          "hp": 90,
+          "weak": ["Fire"],
+          "absorb": [],
+          "immune": ["Poison"],
+          "steal": "Potion",
+          "drop": "Potion",
+          "blue": "",
+          "notes": "",
+          "row": "007 Goblin (Level 5, HP 90, Drop: Potion)."
+        }
+      ],
+      "bosses": {},
+      "items": {},
+      "previous": "",
+      "next": "wind-shrine"
+    },
+    {
+      "slug": "wind-shrine",
+      "title": "Wind Shrine",
+      "url": "https://example.test/ff5/ludo/wind-shrine",
+      "summary": "The first crystal.",
+      "prerequisites": [],
+      "steps": [],
+      "tips": ["Water Spirit can silence the party."],
+      "monsters": [
+        {
+          "book": 8,
+          "name": "Water Spirit",
+          "area": "Wind Shrine",
+          "level": 6,
+          "hp": 120,
+          "weak": ["Lightning"],
+          "absorb": ["Water"],
+          "immune": [],
+          "steal": "",
+          "drop": "",
+          "blue": "Water Wave",
+          "notes": "",
+          "row": "008 Water Spirit (Level 6, HP 120, Blue Magic: Water Wave)."
+        }
+      ],
+      "bosses": {},
+      "items": {},
+      "previous": "tule",
+      "next": ""
+    }
+  ]
+}

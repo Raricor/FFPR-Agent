@@ -1,0 +1,42 @@
+{
+  "game": "ff5",
+  "build": "1.0.0",
+  "bridge": "0.14.5",
+  "exportedAt": "2026-11-10T00:00:00Z",
+  "table": "treasures",
+  "rows": [
+    {
+      "id": 1,
+      "areaId": 10,
+      "mapId": 1,
+      "cell": [3, 4],
+      "hidden": false,
+      "contentId": 1,
+      "contentName": "Potion",
+      "count": 1,
+      "flag": "chest_1"
+    },
+    {
+      "id": 2,
+      "areaId": 20,
+      "mapId": 2,
+      "cell": [5, 6],
+      "hidden": false,
+      "contentId": 2,
+      "contentName": "Ether",
+      "count": 1,
+      "flag": "chest_2"
+    },
+    {
+      "id": 3,
+      "areaId": 20,
+      "mapId": 2,
+      "cell": [7, 8],
+      "hidden": true,
+      "contentId": 3,
+      "contentName": "Elixir",
+      "count": 1,
+      "flag": "hidden_3"
+    }
+  ]
+}
