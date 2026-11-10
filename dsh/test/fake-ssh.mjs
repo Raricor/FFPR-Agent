@@ -4,6 +4,25 @@
 
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 
+// Optional start/done markers let a test wait for every child it launched, including one killed
+// by an aborted call, before deleting the directory the wrapper lives in.
+const trackPath = process.env.FAKE_SSH_TRACK;
+const track = (marker) => {
+  if (!trackPath) return;
+  try {
+    appendFileSync(trackPath, `${marker}\n`, "utf8");
+  } catch {
+    // The test may already be gone; a missing marker only makes its wait time out.
+  }
+};
+if (trackPath) {
+  track("start");
+  process.on("exit", () => track("done"));
+  // The pilot kills the ssh child when a call is cancelled; exit normally so 'exit' runs.
+  process.on("SIGTERM", () => process.exit(143));
+  process.on("SIGINT", () => process.exit(130));
+}
+
 const configPath = process.env.FAKE_SSH_CONFIG;
 if (!configPath) {
   process.stderr.write("FAKE_SSH_CONFIG is not set\n");

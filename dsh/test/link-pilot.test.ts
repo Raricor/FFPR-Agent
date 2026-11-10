@@ -497,10 +497,19 @@ void test("a send waits no longer when the pilot agent process exits mid-command
 
 void test("two calls that find the agent gone share one restart", async () => {
   const directory = await mkdtemp(join(tmpdir(), "ffpr-pilot-"));
+  const controller = new AbortController();
+  // A fresh timeout, so a slow earlier test in this file cannot leave this one already aborted.
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, 15_000);
+  const signal = controller.signal;
+  const pending: Promise<unknown>[] = [];
+  let first: FakeSsh | undefined;
+  let second: FakeSsh | undefined;
   try {
     // The first caller's status check stays in flight (delayMs) long enough for the second
     // caller to fail and join its restart.
-    const first = await fakeSsh(directory, "first", [
+    first = await fakeSsh(directory, "first", [
       AGENT_GONE,
       { stdout: "absent", delayMs: 1000 }, // agentProcess stays in flight for the second caller
       { stdout: "" },
@@ -509,32 +518,53 @@ void test("two calls that find the agent gone share one restart", async () => {
       { stdout: '{"ok":true,"focused":true}' },
       { stdout: '{"ok":true,"pos":{"map":1}}' },
     ]);
-    const second = await fakeSsh(directory, "second", [
+    second = await fakeSsh(directory, "second", [
       AGENT_GONE,
       { stdout: '{"ok":true,"pos":{"map":2}}' },
     ]);
     const messages: string[] = [];
     const record = (message: string): number => messages.push(message);
-    const one = createPilot(first.laptop, undefined, SIGNAL, {
+    const one = createPilot(first.laptop, undefined, signal, {
       timingFile: "/dev/null",
       game: "ff2",
       log: record,
     });
-    const two = createPilot(second.laptop, undefined, SIGNAL, {
+    const two = createPilot(second.laptop, undefined, signal, {
       timingFile: "/dev/null",
       game: "ff2",
       log: record,
     });
-    const pending = one.send("pos");
+    const firstCall = one.send("pos");
+    pending.push(firstCall);
     await waitForSshCalls(first.log, 2);
     const other = two.send("pos");
-    assert.deepEqual(await pending, { ok: true, pos: { map: 1 } });
+    pending.push(other);
+    assert.deepEqual(await firstCall, { ok: true, pos: { map: 1 } });
     assert.deepEqual(await other, { ok: true, pos: { map: 2 } });
     assert.deepEqual(messages, ["试玩助手不在，已重新启动"]);
     assert.equal(countStarts(await readSshLog(first.log)), 1);
     // The waiting caller never ran ensureAgent or startAgent of its own.
     assert.equal(countStarts(await readSshLog(second.log)), 0);
     assert.equal((await readSshLog(second.log)).length, 2);
+  } finally {
+    // Abort anything still in flight (including a failing wait above), wait for those promises
+    // and every fake-ssh child to land, then delete the directory they run from.
+    clearTimeout(timer);
+    controller.abort();
+    await Promise.allSettled(pending);
+    await waitForFakeSshSettled([first, second]);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("an ssh log line still being written is ignored until it is complete", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-pilot-"));
+  try {
+    const log = join(directory, "ssh.log");
+    await writeFile(log, '{"args":["-o"],"stdin":""}\n{"args":');
+    assert.deepEqual(await readSshLog(log), [{ args: ["-o"], stdin: "" }]);
+    await writeFile(log, '{"args":["-o"],"stdin":""}\n{"args":["-p"],"stdin":""}\n');
+    assert.equal((await readSshLog(log)).length, 2);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -746,6 +776,8 @@ interface SshResponse {
 interface FakeSsh {
   readonly laptop: Laptop;
   readonly log: string;
+  /** start/done lines, so a test can wait for every child it launched to exit. */
+  readonly track: string;
 }
 
 /**
@@ -759,19 +791,22 @@ async function fakeSsh(
 ): Promise<FakeSsh> {
   const config = join(directory, `${name}.json`);
   const log = join(directory, `${name}.log`);
+  const track = join(directory, `${name}.track`);
   const wrapper = join(directory, `ssh-${name}.sh`);
   await writeFile(config, JSON.stringify({ responses }), "utf8");
   await writeFile(log, "", "utf8");
+  await writeFile(track, "", "utf8");
   await writeFile(
     wrapper,
     "#!/bin/sh\n" +
       `FAKE_SSH_CONFIG=${shellQuote(config)} FAKE_SSH_LOG=${shellQuote(log)} ` +
+      `FAKE_SSH_TRACK=${shellQuote(track)} ` +
       `exec ${shellQuote(process.execPath)} ${shellQuote(FAKE_SSH)} "$@"\n`,
     "utf8",
   );
   await chmod(config, 0o600);
   await chmod(wrapper, 0o755);
-  return { laptop: { ...LAPTOP, sshCommand: wrapper }, log };
+  return { laptop: { ...LAPTOP, sshCommand: wrapper }, log, track };
 }
 
 function shellQuote(value: string): string {
@@ -797,12 +832,48 @@ function scriptOf(call: { args: string[] }): string {
   return encoded === undefined ? "" : Buffer.from(encoded, "base64").toString("utf16le");
 }
 
+/**
+ * Wait until every fake-ssh child launched by these laptops has exited. The track file gets a
+ * start line before the child does any work and a done line on the way out; a partial last line
+ * is ignored until it is complete.
+ */
+async function waitForFakeSshSettled(laptops: readonly (FakeSsh | undefined)[]): Promise<void> {
+  const deadline = Date.now() + 5000;
+  const all = laptops.filter((laptop): laptop is FakeSsh => laptop !== undefined);
+  while (!(await allFakeSshSettled(all))) {
+    if (Date.now() > deadline) throw new Error("假 ssh 子进程没有退出");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
+async function allFakeSshSettled(laptops: readonly FakeSsh[]): Promise<boolean> {
+  for (const laptop of laptops) {
+    const markers = completeLines(await readOptional(laptop.track));
+    const starts = markers.filter((line) => line === "start").length;
+    const dones = markers.filter((line) => line === "done").length;
+    if (dones < starts) return false;
+  }
+  return true;
+}
+
+async function readOptional(path: string): Promise<string> {
+  try {
+    return await readFile(path, "utf8");
+  } catch {
+    return "";
+  }
+}
+
 async function readSshLog(path: string): Promise<{ args: string[]; stdin: string }[]> {
   const text = await readFile(path, "utf8");
-  return text
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => JSON.parse(line) as { args: string[]; stdin: string });
+  return completeLines(text).map((line) => JSON.parse(line) as { args: string[]; stdin: string });
+}
+
+/** Ignore the last line while a writer is still appending it; the next poll sees it whole. */
+function completeLines(text: string): string[] {
+  const lines = text.split("\n");
+  lines.pop();
+  return lines.filter(Boolean);
 }
 
 async function readTiming(path: string): Promise<{ op: string; via: string; ms: number }[]> {
