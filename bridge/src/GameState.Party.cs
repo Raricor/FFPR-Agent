@@ -111,17 +111,44 @@ internal static partial class GameState
         var names = new JsonArray();
         for (var k = 0; k < list.Count; k++)
         {
-            var c = list[k];
-            if (c != null)
+            var name = ConditionName(list[k]);
+            if (!string.IsNullOrEmpty(name))
             {
-                // The condition masters' names read empty (10-20: poison showed as ""), so the
-                // type's name (Poison, Mineralization ...) is sent; the dev box translates it.
-                var text = Text(c.MesIdName);
-                var type = Enum.GetName(typeof(Last.Defaine.ConditionType), c.ConditionType);
-                names.Add(!string.IsNullOrEmpty(text) ? text : type ?? $"#{c.ConditionType}");
+                names.Add(name);
             }
         }
         return names;
+    }
+
+    /// <summary>
+    /// 0.14.4: the condition master's MesIdName is often empty (10-20: poison showed as ""), so
+    /// fall back to the ConditionType enum name (Poison, Mineralization ...). A literal name that
+    /// is not a message key is also kept instead of dropping the state.
+    /// </summary>
+    private static string ConditionName(Last.Data.Master.Condition c)
+    {
+        if (c == null)
+        {
+            return null;
+        }
+        var key = c.MesIdName;
+        var text = Text(key);
+        if (string.IsNullOrEmpty(text) && !string.IsNullOrEmpty(key) &&
+            key.IndexOf("MSG_", StringComparison.Ordinal) < 0 && key != "None")
+        {
+            text = key;
+        }
+        if (!string.IsNullOrEmpty(text))
+        {
+            // Match battle.hit's old Clean() behavior: drop <IC_...> icon tags, then use the text.
+            var plain = IconTag.Replace(text, "").Trim();
+            if (plain.Length > 0)
+            {
+                return plain;
+            }
+        }
+        var type = Enum.GetName(typeof(Last.Defaine.ConditionType), c.ConditionType);
+        return type ?? $"#{c.ConditionType}";
     }
 
     private static readonly Dictionary<int, string> JobNames = new();

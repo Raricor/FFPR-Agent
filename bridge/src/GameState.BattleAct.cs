@@ -215,7 +215,9 @@ internal static partial class GameState
                 var seen = new HashSet<string>();
                 for (var i = 0; list != null && i < list.Count; i++)
                 {
-                    var name = Clean(list[i]?.MesIdName);
+                    // 0.14.4: MesIdName is often empty; fall back to the ConditionType name
+                    // instead of dropping the state (task 81).
+                    var name = ConditionName(list[i]);
                     if (string.IsNullOrEmpty(name) || !seen.Add(name))
                     {
                         continue;
