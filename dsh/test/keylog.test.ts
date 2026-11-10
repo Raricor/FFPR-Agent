@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
-import { Builder, type KeyEntry } from "../src/engine/keylog.ts";
+import { Builder, LABEL, type KeyEntry } from "../src/engine/keylog.ts";
 import type { Json } from "../src/engine/values.ts";
 
 interface KeylogFixture {
@@ -40,23 +40,31 @@ function sample(
     lv?: number;
     battle?: Json;
     area?: string;
+    wins?: number;
+    escapes?: number;
+    hp?: readonly number[];
+    gameover?: Json;
   },
 ): Json {
   const party = [
-    { name: "巴兹", lv: options.lv ?? 5, hp: 50 },
-    { name: "蕾娜", lv: 5, hp: 40 },
+    { name: "巴兹", lv: options.lv ?? 5, hp: options.hp?.[0] ?? 50 },
+    { name: "蕾娜", lv: 5, hp: options.hp?.[1] ?? 40 },
   ];
-  const user = {
+  const user: Json = {
     mapId: 203,
     areaText: options.area ?? "风之神殿",
     gil: options.gil,
     chests: options.chests ?? 0,
   };
-  return rec(seq, sec, "sample", {
+  if (options.wins !== undefined) user.wins = options.wins;
+  if (options.escapes !== undefined) user.escapes = options.escapes;
+  const record = rec(seq, sec, "sample", {
     user,
     party,
     battle: options.battle ?? { active: false },
   });
+  if (options.gameover !== undefined) record.gameover = options.gameover;
+  return record;
 }
 
 function kinds(builder: Builder): [string, string, string][] {
@@ -144,5 +152,105 @@ void test("boss flag beats the gil guess", () => {
   assert.deepEqual(
     builder.entries.filter((entry) => entry.type === "boss").map((entry) => entry.text),
     ["击败「卡拉波斯」"],
+  );
+});
+
+/** The entries one fight leaves, from a start sample to the result sample. */
+function battleEntries(
+  start: { wins: number; escapes: number; gil?: number },
+  enemy: string,
+  end: {
+    wins: number;
+    escapes: number;
+    gil?: number;
+    hp?: readonly number[];
+    gameover?: Json;
+    boss?: boolean;
+  },
+): KeyEntry[] {
+  const builder = new Builder("r");
+  builder.feed(
+    sample(0, 1, {
+      gil: start.gil ?? 100,
+      wins: start.wins,
+      escapes: start.escapes,
+      battle: {
+        active: true,
+        enemies: [{ name: enemy }],
+        ...(end.boss === undefined ? {} : { boss: end.boss }),
+      },
+    }),
+  );
+  builder.feed(
+    sample(1, 2, {
+      gil: end.gil ?? 100,
+      wins: end.wins,
+      escapes: end.escapes,
+      hp: end.hp,
+      gameover: end.gameover,
+    }),
+  );
+  return builder.entries.filter(
+    (entry) =>
+      entry.type !== "place" && !(entry.type === "bossfight" && entry.text.startsWith("开始:")),
+  );
+}
+
+void test("a battle the story ends is not a defeat", () => {
+  const entries = battleEntries({ wins: 0, escapes: 0 }, "中士", { wins: 0, escapes: 0 });
+  assert.deepEqual(
+    entries.map((entry) => [entry.type, entry.text]),
+    [["battle-ended", "战斗被剧情结束：「中士」(没算胜也没算逃)"]],
+  );
+  assert.equal(LABEL["battle-ended"], "战斗结束");
+});
+
+void test("a game over from a wipe or the escape timer is not a plain defeat", () => {
+  const entries = battleEntries({ wins: 0, escapes: 0 }, "中士", {
+    wins: 0,
+    escapes: 0,
+    hp: [0, 0],
+    gameover: { open: true, prompt: "to-title", cursor: 0 },
+  });
+  assert.deepEqual(
+    entries.map((entry) => [entry.type, entry.text]),
+    [["defeat", "游戏结束(全灭或倒计时到点):「中士」"]],
+  );
+});
+
+void test("a wipe without the game-over field is still 全灭", () => {
+  const entries = battleEntries({ wins: 0, escapes: 0 }, "首领", {
+    wins: 0,
+    escapes: 0,
+    hp: [0, 0],
+  });
+  assert.deepEqual(
+    entries.map((entry) => [entry.type, entry.text]),
+    [["defeat", "全灭:「首领」"]],
+  );
+});
+
+void test("a normal win is still a win", () => {
+  const entries = battleEntries({ wins: 1, escapes: 0, gil: 100 }, "卡拉波斯", {
+    wins: 2,
+    escapes: 0,
+    gil: 400,
+    boss: true,
+  });
+  assert.deepEqual(
+    entries.map((entry) => [entry.type, entry.text]),
+    [["boss", "击败「卡拉波斯」"]],
+  );
+});
+
+void test("a flee is still a flee", () => {
+  const entries = battleEntries({ wins: 1, escapes: 0 }, "卡拉波斯", {
+    wins: 1,
+    escapes: 1,
+    boss: true,
+  });
+  assert.deepEqual(
+    entries.map((entry) => [entry.type, entry.text]),
+    [["bossfight", "从「卡拉波斯」逃跑"]],
   );
 });

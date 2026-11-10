@@ -33,6 +33,7 @@ export const LABEL: Readonly<Record<string, string>> = {
   bossfight: "首领战",
   boss: "首领",
   defeat: "战败",
+  "battle-ended": "战斗结束",
   bestiary: "图鉴",
   save: "存档",
   buy: "购买",
@@ -349,6 +350,10 @@ export class Builder {
     const party = records(record.party);
     const alive = party.every((member) => (num(member.hp) ?? 0) > 0);
     const wiped = party.length > 0 && party.every((member) => (num(member.hp) ?? 0) <= 0);
+    const someoneAlive = party.some((member) => (num(member.hp) ?? 0) > 0);
+    // Bridge 0.14.3+ reports the game-over popup; a malformed or missing field is an older
+    // bridge, where "no win and no flee" with someone alive is a story ending (11-10).
+    const gameover = isRecord(record.gameover) && record.gameover.open === true;
     const down = party
       .filter((member) => (num(member.hp) ?? 0) <= 0)
       .map((member) => text(member.name))
@@ -360,12 +365,30 @@ export class Builder {
     if (wins !== null && escapes !== null && winsNow !== null && escapesNow !== null) {
       outcome = winsNow > wins ? "win" : escapesNow > escapes ? "fled" : "lost";
     }
-    if (outcome === "lost" || (outcome === null && wiped)) {
-      const what = wiped ? `全灭:「${enemies}」` : `没有打赢「${enemies}」(战斗中止)`;
-      this.add(record, "defeat", what, "—", {
-        boss: Boolean(start.boss),
-        enemies: start.enemies,
-      });
+    if (outcome === "lost" || (outcome === null && (wiped || gameover))) {
+      // 11-10, Karnak Castle escape: the sergeant's fight was ended by the story (the party at
+      // 78% HP) and the old "lost" line called that a defeat. The timer running out opens the
+      // same game-over popup; neither was a loss the player should learn from.
+      if (gameover) {
+        this.add(record, "defeat", `游戏结束(全灭或倒计时到点):「${enemies}」`, "—", {
+          boss: Boolean(start.boss),
+          enemies: start.enemies,
+        });
+        return;
+      }
+      if (wiped) {
+        this.add(record, "defeat", `全灭:「${enemies}」`, "—", {
+          boss: Boolean(start.boss),
+          enemies: start.enemies,
+        });
+        return;
+      }
+      if (someoneAlive) {
+        this.add(record, "battle-ended", `战斗被剧情结束：「${enemies}」(没算胜也没算逃)`, "—", {
+          boss: Boolean(start.boss),
+          enemies: start.enemies,
+        });
+      }
       return;
     }
     if (outcome === "fled") {
