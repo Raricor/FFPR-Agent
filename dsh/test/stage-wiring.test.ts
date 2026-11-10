@@ -129,6 +129,9 @@ async function temporaryGame(
     readonly recovery?: boolean;
     readonly boss?: boolean;
     readonly knowledge?: Knowledge;
+    /** Task 113: the two new switches, default on. */
+    readonly goFollowPlan?: boolean;
+    readonly continueAfterTravel?: boolean;
   } = {},
 ): Promise<{ readonly game: Game; readonly directory: string }> {
   const directory = await mkdtemp(join(tmpdir(), "ffpr-stage-wiring-"));
@@ -158,6 +161,8 @@ async function temporaryGame(
     stagePlanFile: options.planFile ?? join(directory, "stage.json"),
     knowledge,
     stageOfficer: officer,
+    stageGoFollowPlan: options.goFollowPlan ?? true,
+    stageContinueAfterTravel: options.continueAfterTravel ?? true,
   });
   return { game, directory };
 }
@@ -254,6 +259,7 @@ void test("plan_stage plans, saves, and reads the plan back after a restart", as
     assert.match(text, /恢复药 ×3/);
     assert.match(text, /60 gil/);
     assert.match(text, /出发检查：还不行/);
+    assert.match(text, /阶段统计「火力船」:工具 0 次\(go 0、route 0、plan_stage 0\)/);
     assert.equal(calls.length, 1);
     assert.equal(first.game.stagePlan()?.status, "planned");
     await rm(first.directory, { recursive: true, force: true });
@@ -319,6 +325,8 @@ void test("leave_incomplete lets an incomplete departure go and records a debt",
       .run("go", { to: 252, leave_incomplete: "药不够，路上小心" }, pilotFor())
       .catch(() => undefined);
     assert.equal(game.stagePlan()?.status, "departed");
+    assert.equal(game.stagePlan()?.stats?.tools, 1);
+    assert.equal(game.stagePlan()?.stats?.go, 1);
     const pending = game.backlog.pending();
     assert.equal(pending.length, 1);
     const first = pending[0];
@@ -469,7 +477,7 @@ function goGate(game: Game): GoGate {
 }
 
 void test("a coordinate go inside a departed plan is refused with the next waypoint and route()", async () => {
-  const { game, directory } = await temporaryGame(officer());
+  const { game, directory } = await temporaryGame(officer(), { goFollowPlan: false });
   try {
     await game.stagePlans.save(record("departed"));
     const text = await game.run("go", { to: [3, 3] }, pilotFor({ map: 253, cell: [1, 1] }));
@@ -486,7 +494,7 @@ void test("a coordinate go inside a departed plan is refused with the next waypo
 });
 
 void test("a plan waypoint, an event cell and an unopened hidden item cell are allowed", async () => {
-  const { game, directory } = await temporaryGame(officer());
+  const { game, directory } = await temporaryGame(officer(), { goFollowPlan: false });
   try {
     await game.stagePlans.save(record("departed"));
     const pilot = pilotFor({ map: 253, cell: [1, 1] });
@@ -666,4 +674,83 @@ void test("a saved stage plan reads its boss table and party back", () => {
   assert.deepEqual(boss.names, ["液态火焰"]);
   assert.equal(boss.mapId, 252);
   assert.deepEqual(boss.party, [{ name: "巴兹", job: "骑士", level: 10 }]);
+});
+
+void test("a coordinate go on an atlas exit triggers the stage officer and departure check", async () => {
+  const calls: StageFacts[] = [];
+  const { game, directory } = await temporaryGame(officer(PLAN, calls));
+  try {
+    game.atlas.maps.set("30", { name: "卡纳克镇", exits: [{ cell: [5, 5], to: 252 }] });
+    const text = await game.run("go", { to: [5, 5] }, pilotFor({ map: 30, cell: [4, 5] }));
+    assert.equal(calls.length, 1);
+    assert.match(text, /还没备齐/);
+    assert.equal(game.stagePlan()?.target.mapId, 252);
+    // A normal cell is not an entrance: the officer is not called again.
+    await game
+      .run("go", { to: [9, 9] }, pilotFor({ map: 30, cell: [4, 5] }))
+      .catch(() => undefined);
+    assert.equal(calls.length, 1);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("a coordinate go on a bridge GotoMap entity also names its destination map", async () => {
+  const calls: StageFacts[] = [];
+  const { game, directory } = await temporaryGame(officer(PLAN, calls));
+  try {
+    const pilot = pilotFor({ map: 30, cell: [4, 5] });
+    pilot.on("entities", (fields) => ({
+      entities: {
+        entities:
+          fields.kind === "GotoMap"
+            ? [{ kind: "GotoMap", cell: [5, 5], toMap: 252, active: true }]
+            : [],
+      },
+    }));
+    const text = await game.run("go", { to: [5, 5] }, pilot);
+    assert.equal(calls.length, 1);
+    assert.match(text, /还没备齐/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("scouting keeps bypassing the coordinate gate", async () => {
+  const { game, directory } = await temporaryGame(officer());
+  try {
+    await game.stagePlans.save(record("departed"));
+    (game as unknown as { scouting: boolean }).scouting = true;
+    assert.equal(
+      await goGate(game)(pilotFor({ map: 253, cell: [1, 1] }), { to: [9, 9] }, [9, 9]),
+      null,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("plan_stage shows the current plan's tool, stop and time numbers", async () => {
+  const { game, directory } = await temporaryGame(officer());
+  try {
+    await game.stagePlans.save({
+      ...record("departed"),
+      stats: {
+        departedAt: new Date().toISOString(),
+        tools: 3,
+        go: 2,
+        route: 0,
+        planStage: 1,
+        stops: 4,
+      },
+    });
+    const text = await game.run("plan_stage", { to: 252 }, pilotFor());
+    // This plan_stage call is itself counted before the result is rendered.
+    assert.match(
+      text,
+      /阶段统计「火力船」:工具 4 次\(go 2、route 0、plan_stage 2\),按计划走了 4 站，用时 0 分/,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

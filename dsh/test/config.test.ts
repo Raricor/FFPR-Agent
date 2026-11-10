@@ -25,6 +25,8 @@ void test("Config defaults point at FF5's deployment paths and slot", () => {
   assert.equal(config.scoutMaxTargets, 200);
   assert.equal(config.routeBattleSeconds, 45);
   assert.equal(config.stageGoGate, true);
+  assert.equal(config.stageGoFollowPlan, true);
+  assert.equal(config.stageContinueAfterTravel, true);
   assert.equal(config.checkEveryMs, 60000);
   assert.equal(config.agentCheckMs, 5000);
   assert.equal(config.detectCacheMs, 10000);
@@ -129,6 +131,8 @@ void test("Config keeps explicit values", () => {
     tacticianIntervalMinutes: 3,
     goalStallRounds: 5,
     stageGoGate: false,
+    stageGoFollowPlan: false,
+    stageContinueAfterTravel: false,
     scoutDir: "/tmp/scout",
     scoutMinutes: 7,
     scoutMaxTargets: 12,
@@ -170,6 +174,8 @@ void test("Config keeps explicit values", () => {
   assert.equal(config.scoutMinutes, 7);
   assert.equal(config.scoutMaxTargets, 12);
   assert.equal(config.stageGoGate, false);
+  assert.equal(config.stageGoFollowPlan, false);
+  assert.equal(config.stageContinueAfterTravel, false);
   assert.equal(config.battleItemHealPercent, 25);
   assert.equal(config.battleFleeOnTimer, false);
 });

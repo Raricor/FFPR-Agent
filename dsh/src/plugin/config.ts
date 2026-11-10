@@ -162,6 +162,10 @@ const RawConfig = Schema.object({
   stageAutoPlan: Schema.boolean().default(true),
   /** Task 101: refuse a coordinate `go` inside an active stage plan (default on). */
   stageGoGate: Schema.boolean().default(true),
+  /** Task 113: turn that refusal into following the plan (default on). */
+  stageGoFollowPlan: Schema.boolean().default(true),
+  /** Task 113: after a go arrives, keep following the plan in the same call (default on). */
+  stageContinueAfterTravel: Schema.boolean().default(true),
   /** Task 97: how close a recovery point must be to keep walking. */
   stageTurnBackDistance: Schema.number().default(MAX_RECOVERY_DISTANCE),
   /** Task 106: levels moved at the last checkpoint before a boss rewrite its table. */
@@ -252,6 +256,8 @@ export const Config = Schema.transform(RawConfig, (config) => {
     scoutMaxTargets: config.scoutMaxTargets ?? 200,
     stageAutoPlan: config.stageAutoPlan ?? true,
     stageGoGate: config.stageGoGate ?? true,
+    stageGoFollowPlan: config.stageGoFollowPlan ?? true,
+    stageContinueAfterTravel: config.stageContinueAfterTravel ?? true,
     stageTurnBackDistance: config.stageTurnBackDistance ?? MAX_RECOVERY_DISTANCE,
     stageBossLevelGap: config.stageBossLevelGap ?? 3,
     routeBattleSeconds: config.routeBattleSeconds ?? DEFAULT_ROUTE_BATTLE_SECONDS,

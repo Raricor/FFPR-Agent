@@ -17,11 +17,27 @@ import type { StageBossTable, StagePlan, StageTarget } from "./types.ts";
 
 export type StageStatus = "planned" | "departed" | "completed";
 
+/**
+ * Task 113: what the plan cost from departure to completion. The model's own game-tool calls
+ * are counted by name; `stops` counts the waypoints code followed from the plan's route.
+ */
+export interface StageStats {
+  readonly departedAt: string;
+  readonly tools: number;
+  readonly go: number;
+  readonly route: number;
+  readonly planStage: number;
+  readonly stops: number;
+  readonly finishedAt?: string;
+}
+
 export interface StagePlanRecord {
   readonly target: StageTarget;
   readonly plan: StagePlan;
   readonly createdAt: string;
   readonly status: StageStatus;
+  /** Task 113: present once the plan departed; kept after completion for the report. */
+  readonly stats?: StageStats;
   /**
    * Where the plan was written (a town map and its name). The turn-back refusal lists a way
    * back to it; older files may omit both.
@@ -32,6 +48,8 @@ export interface StagePlanRecord {
   readonly boss?: StageBossTable;
   /** Task 106: why no boss table was written; the plan still exists and can be walked. */
   readonly bossError?: string;
+  /** Task 117: this plan's route came from the route book's section, not the officer. */
+  readonly book?: { readonly section: string; readonly order: number };
 }
 
 function targetOf(value: unknown): StageTarget {
@@ -97,6 +115,24 @@ export function readStageBoss(value: unknown): StageBossTable | null {
   };
 }
 
+/** Task 113: a malformed stats block is dropped, so an old plan still gates movement. */
+function statsOf(value: unknown): StageStats | undefined {
+  if (!isRecord(value)) return undefined;
+  const departedAt = text(value.departedAt);
+  if (departedAt === undefined) return undefined;
+  const finishedAt = text(value.finishedAt);
+  const count = (raw: unknown): number => Math.max(0, Math.trunc(num(raw) ?? 0));
+  return {
+    departedAt,
+    tools: count(value.tools),
+    go: count(value.go),
+    route: count(value.route),
+    planStage: count(value.planStage),
+    stops: count(value.stops),
+    ...(finishedAt === undefined || finishedAt === "" ? {} : { finishedAt }),
+  };
+}
+
 /** Read the saved plan; a missing file is null, a malformed one is a Chinese error. */
 export function readStageRecord(value: unknown): StagePlanRecord {
   if (!isRecord(value)) throw new Error("阶段计划文件不是 JSON 对象");
@@ -105,6 +141,9 @@ export function readStageRecord(value: unknown): StagePlanRecord {
   const startLabel = text(value.startLabel);
   const boss = readStageBoss(value.boss);
   const bossError = text(value.bossError);
+  const stats = statsOf(value.stats);
+  const bookSection = isRecord(value.book) ? text(value.book.section) : undefined;
+  const bookOrder = isRecord(value.book) ? num(value.book.order) : undefined;
   return {
     target: targetOf(value.target),
     plan: readStagePlan(value.plan),
@@ -114,6 +153,10 @@ export function readStageRecord(value: unknown): StagePlanRecord {
     ...(startLabel === undefined || startLabel.trim() === "" ? {} : { startLabel }),
     ...(boss === null ? {} : { boss }),
     ...(bossError === undefined || bossError === "" ? {} : { bossError }),
+    ...(bookSection === undefined || bookSection.trim() === ""
+      ? {}
+      : { book: { section: bookSection, order: Math.trunc(bookOrder ?? 0) } }),
+    ...(stats === undefined ? {} : { stats }),
   };
 }
 

@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { Game } from "../src/engine/game.ts";
+import { loadKnowledge } from "../src/engine/knowledge/index.ts";
 import type { Laptop } from "../src/engine/laptop.ts";
 import type { Cell } from "../src/engine/nav.ts";
 import type { Reply } from "../src/engine/pilot.ts";
@@ -250,7 +251,13 @@ function pilotFor(world: World): FakePilot {
   return pilot;
 }
 
-async function makeGame(directory: string): Promise<Game> {
+async function makeGame(
+  directory: string,
+  options: {
+    readonly stageGoFollowPlan?: boolean;
+    readonly stageContinueAfterTravel?: boolean;
+  } = {},
+): Promise<Game> {
   const game = await Game.create({
     laptop: LAPTOP,
     game: "ff5",
@@ -263,6 +270,18 @@ async function makeGame(directory: string): Promise<Game> {
     incidentsStateFile: join(directory, "incidents-state-ff5.json"),
     bestiarySaveFile: join(directory, "bestiary-save-ff5.json"),
     routeFile: join(directory, "route-ff5.json"),
+    // An empty knowledge home in the temp dir: without it the stage layer loads the dev box's
+    // real .deps/knowledge, where maps 71/72 are real places and the plan checks change.
+    knowledge: await loadKnowledge({
+      game: "ff5",
+      home: join(directory, "knowledge"),
+      atlas: null,
+      collisions: null,
+      bestiarySave: null,
+      atlasSave: null,
+    }),
+    stageGoFollowPlan: options.stageGoFollowPlan ?? true,
+    stageContinueAfterTravel: options.stageContinueAfterTravel ?? true,
   });
   game.atlas.maps.clear();
   for (const [key, map] of Object.entries(MAPS)) {
@@ -550,11 +569,140 @@ void test("a cross-map map:cell go is allowed only at an exact plan waypoint", a
     assert.deepEqual(world.cell, [2, 2]);
   });
   await inTemp(async (dir) => {
-    const game = await makeGame(dir);
+    const game = await makeGame(dir, { stageGoFollowPlan: false });
     await game.stagePlans.save(stageRecord([{ to: "72:2,2" }]));
     const world: World = { ...routeWorld(), chests: [] };
     const result = await game.run("go", { to: "72:9,9" }, pilotFor(world));
     assert.match(result, /阶段计划拦下/);
     assert.equal(world.map, 71);
+  });
+});
+
+void test("a refused coordinate go follows the stage plan and records its stats", async () => {
+  await inTemp(async (dir) => {
+    const world = routeWorld();
+    const game = await makeGame(dir);
+    await game.stagePlans.save(stageRecord([{ to: "71:2,5", do: "open" }]));
+    const lines: string[] = [];
+    game.onActivity = (message) => lines.push(message);
+    const result = await game.run("go", { to: [9, 9] }, pilotFor(world));
+    assert.match(result, /^这个坐标不在阶段计划里，代码按计划接着走了/);
+    assert.match(result, /leave_incomplete/);
+    assert.deepEqual(world.openedOrder, ["2,5"]);
+    assert.equal(game.stagePlan()?.status, "completed");
+    assert.equal(game.stagePlan()?.stats?.go, 1);
+    assert.equal(game.stagePlan()?.stats?.stops, 1);
+    assert.ok(
+      lines.some((line) =>
+        line.includes("阶段统计「卡纳克城」:工具 1 次(go 1、route 0),按计划走了 1 站，用时 0 分"),
+      ),
+      lines.join("\n"),
+    );
+  });
+});
+
+void test("the coordinate gate keeps its old refusal when following the plan is off", async () => {
+  await inTemp(async (dir) => {
+    const world = routeWorld();
+    const game = await makeGame(dir, { stageGoFollowPlan: false });
+    await game.stagePlans.save(stageRecord([{ to: "71:2,5", do: "open" }]));
+    const result = await game.run("go", { to: [9, 9] }, pilotFor(world));
+    assert.match(result, /阶段计划拦下/);
+    assert.equal(world.openedOrder.length, 0);
+    assert.deepEqual(world.cell, [1, 5]);
+  });
+});
+
+void test("leave_incomplete still walks the coordinate instead of the plan", async () => {
+  await inTemp(async (dir) => {
+    const world = routeWorld();
+    const game = await makeGame(dir);
+    await game.stagePlans.save(stageRecord([{ to: "71:2,5", do: "open" }]));
+    const result = await game.run(
+      "go",
+      { to: [9, 9], leave_incomplete: "要先踩这个触发格" },
+      pilotFor(world),
+    );
+    assert.doesNotMatch(result, /代码按计划接着走了/);
+    assert.deepEqual(world.cell, [9, 9]);
+    assert.equal(world.openedOrder.length, 0);
+  });
+});
+
+void test("a named go that reaches the plan's map keeps walking the plan in the same call", async () => {
+  await inTemp(async (dir) => {
+    const world: World = { ...routeWorld(), chests: [], opened: new Set(), openedOrder: [] };
+    const game = await makeGame(dir);
+    await game.stagePlans.save({
+      ...stageRecord([{ to: "72:2,2" }, { to: "72:3,3" }]),
+      target: { mapId: 72, areaName: "出口", label: "出口" },
+    });
+    const result = await game.run("go", { to: 72 }, pilotFor(world));
+    assert.match(result, /代码接着按计划走/);
+    assert.deepEqual(world.cell, [3, 3]);
+    assert.equal(world.map, 72);
+    assert.equal(game.stagePlan()?.stats?.stops, 1);
+  });
+});
+
+void test("arriving with the continue switch off returns at the destination", async () => {
+  await inTemp(async (dir) => {
+    const world: World = { ...routeWorld(), chests: [], opened: new Set(), openedOrder: [] };
+    const game = await makeGame(dir, { stageContinueAfterTravel: false });
+    await game.stagePlans.save({
+      ...stageRecord([{ to: "72:2,2" }, { to: "72:3,3" }]),
+      target: { mapId: 72, areaName: "出口", label: "出口" },
+    });
+    const result = await game.run("go", { to: 72 }, pilotFor(world));
+    assert.doesNotMatch(result, /代码接着按计划走/);
+    assert.equal(world.map, 72);
+    assert.deepEqual(world.cell, [1, 1]);
+  });
+});
+
+void test("a story choice after the arrival makes the plan walk return early", async () => {
+  await inTemp(async (dir) => {
+    const world: World = { ...routeWorld(), chests: [], choiceOpen: true };
+    const game = await makeGame(dir);
+    await game.stagePlans.save({
+      ...stageRecord([{ to: "72:8,8", do: "talk" }]),
+      target: { mapId: 72, areaName: "出口", label: "出口" },
+    });
+    const result = await game.run("go", { to: 72 }, pilotFor(world));
+    assert.match(result, /剧情选项/);
+    assert.match(result, /停下/);
+    assert.equal(world.map, 72);
+    assert.notDeepEqual(world.cell, [8, 8]);
+  });
+});
+
+void test("a coordinate go on an entrance arrives there and keeps walking the plan", async () => {
+  await inTemp(async (dir) => {
+    const world: World = { ...routeWorld(), chests: [], opened: new Set(), openedOrder: [] };
+    const game = await makeGame(dir);
+    await game.stagePlans.save({
+      ...stageRecord([{ to: "72:2,2" }, { to: "72:3,3" }]),
+      target: { mapId: 72, areaName: "出口", label: "出口" },
+    });
+    const internal = game as unknown as {
+      goCell: (args: unknown, pilot: unknown, cell: Cell) => Promise<{ text: string }>;
+    };
+    const original = internal.goCell.bind(game);
+    let stepped: Cell | null = null;
+    internal.goCell = async (args, pilot, cell) => {
+      if (world.map === 71 && cell[0] === 5 && cell[1] === 5) {
+        stepped = cell;
+        world.map = 72;
+        world.cell = [1, 1];
+        return { text: "踩进入口" };
+      }
+      return await original(args, pilot, cell);
+    };
+    const result = await game.run("go", { to: [5, 5] }, pilotFor(world));
+    assert.deepEqual(stepped, [5, 5]);
+    assert.equal(world.map, 72);
+    assert.deepEqual(world.cell, [3, 3]);
+    assert.match(result, /踩进入口/);
+    assert.match(result, /代码接着按计划走/);
   });
 });
