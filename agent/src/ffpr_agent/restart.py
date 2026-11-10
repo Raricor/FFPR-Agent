@@ -16,8 +16,13 @@ from ffpr_common.games import Game
 
 
 def bridge_version() -> str:
-    text = (REPO / "bridge" / "src" / "Plugin.cs").read_text(encoding="utf-8")
-    return re.search(r'Version = "([0-9.]+)"', text).group(1)
+    # The version moved to Version.cs (BridgeVersion.Value); Plugin.cs only refers to it now.
+    for name in ("Version.cs", "Plugin.cs"):
+        text = (REPO / "bridge" / "src" / name).read_text(encoding="utf-8")
+        found = re.search(r'(?:Value|Version) = "([0-9.]+)"', text)
+        if found:
+            return found.group(1)
+    raise RuntimeError("bridge/src 里找不到桥插件的版本号")
 
 
 def newest_probe(laptop: lp.Laptop, game: Game) -> str:
