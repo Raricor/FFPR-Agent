@@ -3,7 +3,7 @@ import test from "node:test";
 import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
 import { ActivityLog } from "../src/engine/activity.ts";
 import { KeyEvents } from "../src/engine/events.ts";
-import { TOOLS } from "../src/engine/prompt.ts";
+import { PLAN_STAGE_TOOL, TOOLS } from "../src/engine/prompt.ts";
 import { FakePilot } from "./fake-pilot.ts";
 import { activityEntryRecorder } from "../src/plugin/player.ts";
 import {
@@ -28,12 +28,12 @@ function exec(signal: AbortSignal): ToolRunContext {
 
 void test("the game tools are the Python tools without done, with raw JSON Schema", () => {
   const definitions = gameToolDefinitions(host());
-  const expected = TOOLS.filter((tool) => tool.function.name !== "done");
+  const expected = [...TOOLS.filter((tool) => tool.function.name !== "done"), PLAN_STAGE_TOOL];
   assert.deepEqual(
     definitions.map((tool) => tool.name),
     expected.map((tool) => tool.function.name),
   );
-  assert.equal(definitions.length, 28);
+  assert.equal(definitions.length, 29);
   assert.equal(
     definitions.some((tool) => tool.name === "done"),
     false,
@@ -52,7 +52,7 @@ void test("the five new games do not get FF5's game operations", () => {
     assert.ok(names(ff5).includes(gone), `FF5 应该有 ${gone}`);
     assert.equal(names(ff6).includes(gone), false, `FF6 不该有 ${gone}`);
   }
-  assert.equal(ff5.length, 28);
+  assert.equal(ff5.length, 29);
   assert.equal(ff6.length, 24);
   assert.match(
     String(ff6.find((tool) => tool.name === "save_game")?.description),
@@ -140,7 +140,7 @@ void test("the prompt has the dsh goal text and no placeholders", async () => {
     "开始。当前状态:\n地图 1 · 格子 140,99\n\n最近几小时的重要事件:\n20:25 队伍 法利斯 离队",
   );
   assert.equal(openingMessage("看图", ""), "开始。当前状态:\n看图");
-  assert.deepEqual(GAME_TOOL_SCHEMAS.length, 28);
+  assert.deepEqual(GAME_TOOL_SCHEMAS.length, 29);
 
   const decision = { kind: "enter" as const, messages: [] };
   const opened = withOpening(decision, 1, "开始。");

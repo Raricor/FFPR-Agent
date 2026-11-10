@@ -105,6 +105,7 @@ function fakeEngine(game: string, connected?: boolean): PlayerEngine {
       notes: [],
       tacticianInfo: () => null,
       setTactician: () => undefined,
+      setStageOfficer: () => undefined,
       window: () => "",
       observe: () => Promise.resolve("地图 1 · 格子 1,1"),
     },

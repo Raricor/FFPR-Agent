@@ -132,10 +132,23 @@ const SYSTEM_PROMPT_FF5 = `你在玩《最终幻想5 像素重制版》(中文�
   代码会自己排路线,经过世界地图也行。
 - 一段路上要去的地方已经清楚时(比如一张图里的几个宝箱再加出口),用一次 route 把它们都交给代码,
   不要一格一格地 go;go 只留给单个目的地。
+- 一段路(一个副本、出发城镇和路上的世界地图)开始前,用一次 plan_stage(to=目的地) 让阶段官
+  想清楚要带什么、学什么、怎么走、什么时候回头;计划会存盘,重启后还在。
+  从城镇或世界地图去另一个区域的副本时,代码也会自动叫它,不用你重复叫。
+- 出发检查不通过时会被拒绝,结果里写缺什么、在这个镇哪里能买;按采购单补齐再走。
+  确实要出发就带 leave_incomplete 写具体理由,会记一条欠账。
+- 进了目的地后,代码每场战斗后、每次进图时按计划的回头条件检查。治不了的状态或太低的 HP
+  在前面没有回复点时,会拒绝你继续往深处走并列出回城路线;前面的回复点能解决时只提示先去,
+  不拦你。确实要硬走也带 leave_incomplete 写理由。
+- 进一个还没走全的区域前,可以先用一次 scout(area=地图号/地图名) 让代码自动侦察:
+  它会先存档 20 号位,把没记落点的出口、没入口的连通块、只见过一次的走不过去和没试过的机关走一遍,
+  记进地图记录,结束时读回 20 号位并还原本档进度。侦察会花时间,期间不能存档,遇敌一律逃;
+  结果里写新记了多少落点/走法、验证掉多少条走不通的路。侦察过的区域之后再定计划更准。
 - 在迷宫里找没去过的地方用 explore:它按图内能走到的路程挑最近的、去向是本档没去过的地图的出口走过去。
 - 宝箱、NPC、调查用 interact,它会自己走过去。
 - 坐标只用在没有名字的地方,比如隐藏道具格、剧情触发格:go(to=[12, 8]) 或 go(to="12,8")。
   不要用坐标一段一段地挪;走不到时先看 look_around / terrain,不要换个相邻坐标再试。
+- 有阶段计划时,这一段里不要用 go 走坐标,用 route() 接着走计划;隐藏道具格、触发格这类没有名字的格子除外。
 - 要穿过打不过的区域时,给 go/explore 带 flee: true:路上遇敌先逃跑,
   逃不了(首领战、不能逃的遇敌组)才按策略表打。
 - 世界地图上用 terrain 看周围地形,用 entrances 找入口。
@@ -238,6 +251,7 @@ const FF5_ONLY_SYSTEM_LINES: readonly RegExp[] = [
   /^ {2}enemy\.name\.喧嚣鬼/u,
   /^ {2}目标可以写敌人/u,
   /^- 中文版的魔法名/u,
+  /^- 有阶段计划时/u,
   /^- 魔法要先在魔法店/u,
 ];
 
@@ -407,8 +421,9 @@ const TOOLS_BASE = [
       description:
         "一段路一次走完:按 stops 里给的地方排好顺序,走路、途中的普通战斗和剧情都由代码处理,不再一步一步问你。" +
         "stops 每项写 {to, do?, optional?}:to 和 go 的写法一样(地图号、地图名、坐标或「地图号:x,y」);" +
-        "do 写 open(开宝箱、拿隐藏道具)、save(到存档点存 20 号位)、talk(调查/对话),省略就只是走到;" +
-        "optional 是可选路标(倒计时不够可以跳过),默认只有 do: open 的算可选。" +
+        "do 写 open(开宝箱、拿隐藏道具)、save(到存档点存 20 号位)、talk(调查/对话)、grind(到 to 刷怪),省略就只是走到;" +
+        "grind 要带 until(至少一项):bestiary 怪名或图鉴号、blueMagic 青魔法名、battles 场数、minutes 分钟,到 to 后调现有刷怪循环,满足一项就停;" +
+        "倒计时期间所有 grind 路标都会跳过。optional 是可选路标(倒计时不够可以跳过),默认只有 do: open 的算可选。" +
         "end 是终点(比如出口地图),不写就把最后一个 stops 当终点。" +
         "不带 stops 和 end 调用时,从上次的路线进度接着走。" +
         "一段路上要去的地方已经清楚时就用 route,不要一格一格地 go。" +
@@ -429,8 +444,28 @@ const TOOLS_BASE = [
                 },
                 do: {
                   type: "string",
-                  enum: ["open", "save", "talk"],
-                  description: "open 开宝箱/拿隐藏道具;save 到存档点存 20 号位;talk 调查/对话",
+                  enum: ["open", "save", "talk", "grind"],
+                  description:
+                    "open 开宝箱/拿隐藏道具;save 到存档点存 20 号位;talk 调查/对话;grind 到 to 刷怪(要写 until)",
+                },
+                until: {
+                  type: "object",
+                  description: "do: grind 的停止条件,至少一项;到 to 后用现有刷怪循环,满足一项就停",
+                  properties: {
+                    bestiary: {
+                      type: "array",
+                      items: { type: ["string", "integer"] },
+                      description: "要登记进本档图鉴的怪名或图鉴号",
+                    },
+                    blueMagic: {
+                      type: "array",
+                      items: { type: "string" },
+                      description: "要学会的青魔法名",
+                    },
+                    battles: { type: "integer", description: "刷满多少场" },
+                    minutes: { type: "number", description: "最多刷多少分钟" },
+                  },
+                  additionalProperties: false,
                 },
                 optional: {
                   type: "boolean",
@@ -448,6 +483,10 @@ const TOOLS_BASE = [
           flee: {
             type: "boolean",
             description: "路上的普通战斗先逃跑,逃不了才按策略表打",
+          },
+          leave_incomplete: {
+            type: "string",
+            description: "阶段检查没通过却确实要走时的具体理由;不带就拒绝",
           },
         },
       },
@@ -918,6 +957,73 @@ export function toolSchemas(saveSlot: number): readonly GameToolSchema[] {
 
 /** FF5's tools with the shared default slot, for callers that already know the game. */
 export const TOOLS: readonly GameToolSchema[] = toolSchemas(20);
+
+/**
+ * Task 97: the stage layer's own tool. It is FF5-only (the knowledge module and the stage
+ * officer preset are FF5's), so it is appended in plugin/tools.ts rather than to TOOLS_BASE,
+ * which stays the ported Python tool list.
+ */
+export const PLAN_STAGE_TOOL: GameToolSchema = {
+  type: "function",
+  function: {
+    name: "plan_stage",
+    description:
+      "一段路开始前让阶段官把这一段想清楚：读当前队伍、背包、钱和知识库，" +
+      "交回威胁、要带的、魔法、职业、最低等级、路线和回头条件。计划存盘，重启后还在。" +
+      "从城镇或世界地图去另一个区域的副本时，代码也会自动叫它。" +
+      "to 写目的地（地图号、地图名或攻略里的区域名）；reason 写为什么现在去；" +
+      "已有同一目的地、还没完成的计划时直接给回它，要重做就带 replan: true。" +
+      "结果里有计划摘要、本店采购单（不在商店时写要去哪种店买什么）和出发检查。",
+    parameters: {
+      type: "object",
+      properties: {
+        to: {
+          type: ["integer", "string"],
+          description: "目的地：地图号、地图名的一部分，或攻略里的区域名",
+        },
+        reason: {
+          type: "string",
+          description: "为什么现在去这一段；可以不写",
+        },
+        replan: {
+          type: "boolean",
+          description: "同一目的地已有未完成的计划时，重做一份",
+        },
+      },
+      required: ["to"],
+    },
+  },
+};
+
+/**
+ * Task 105: the FF5-only scout tool. It is appended next to PLAN_STAGE_TOOL by plugin/player.ts
+ * rather than added to TOOLS, which stays the ported Python tool list.
+ */
+export const SCOUT_TOOL: GameToolSchema = {
+  type: "function",
+  function: {
+    name: "scout",
+    description:
+      "侦察一个区域(SL 大法):先存档 20 号位,把范围内没记落点的出口、没有入口记录的连通块、" +
+      "只见过一次的「走不过去」和没试过的机关走一遍,把地图结构记下来;" +
+      "结束时读回 20 号位并还原本档进度(图鉴、去过哪些图、笔记、阶段计划、路线进度、飞龙位置)。" +
+      "area 写地图号、地图名或区域名,不写就用当前地图;minutes 是时间预算(分钟),不写用配置的默认值。" +
+      "侦察期间不能存档,遇敌一律逃,逃不掉才按策略表打。会花时间,进一个没走全的区域前先用一次。",
+    parameters: {
+      type: "object",
+      properties: {
+        area: {
+          type: ["integer", "string"],
+          description: "侦察范围:地图号、地图名或区域名;不写就用当前地图",
+        },
+        minutes: {
+          type: "number",
+          description: "时间预算(分钟);不写用配置的默认值",
+        },
+      },
+    },
+  },
+};
 
 /**
  * The extra tool the five newly started games get (task 22): a menu no other tool understands,

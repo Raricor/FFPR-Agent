@@ -30,8 +30,10 @@ import { AsyncLock } from "../engine/lock.ts";
 import { DEPS } from "../engine/paths.ts";
 import { createPilot, ensureAgent } from "../engine/link-pilot.ts";
 import type { Pilot } from "../engine/pilot.ts";
-import { systemPrompt } from "../engine/prompt.ts";
-import { text } from "../engine/values.ts";
+import type { ToolDefinition } from "@deepseek-ai/dsh-tools";
+import { systemPrompt, SCOUT_TOOL } from "../engine/prompt.ts";
+import { configureInstinct } from "../engine/strategy/execute.ts";
+import { isRecord, text } from "../engine/values.ts";
 import { Redactor } from "../engine/redact.ts";
 import { gameDefaults, type Config } from "./config.ts";
 import { detectRunning, type DetectionResult, type RunningDetector } from "./detect.ts";
@@ -40,7 +42,8 @@ import { registerPresetMount } from "./preset-hooks.ts";
 import { installPresetSwitch, playerPresetId, type PresetSelector } from "./preset-switch.ts";
 import type { EngineSlot } from "./registry.ts";
 import { startTactician, TACTICIAN_TIMEOUT_MS, TacticianArchiveQueue } from "./tactician.ts";
-import { gameToolDefinitions, type GameToolHost } from "./tools.ts";
+import { callStageOfficer } from "./stage-officer.ts";
+import { gameToolDefinitions, type ActivitySource, type GameToolHost } from "./tools.ts";
 
 declare module "@deepseek-ai/dsh-llm" {
   interface MessageSourceMap {
@@ -248,6 +251,14 @@ export async function startEngine(
       bestiarySaveFile: config.bestiarySaveFile,
       routeFile: config.routeFile,
       routeBattleSeconds: config.routeBattleSeconds,
+      stagePlanFile: config.stagePlanFile,
+      scoutDir: config.scoutDir,
+      scoutMinutes: config.scoutMinutes,
+      scoutMaxTargets: config.scoutMaxTargets,
+      stageAutoPlan: config.stageAutoPlan,
+      stageGoGate: config.stageGoGate,
+      stageTurnBackDistance: config.stageTurnBackDistance,
+      stageBossLevelGap: config.stageBossLevelGap,
       healHpPercent: config.healHpPercent,
       healMpReservePercent: config.healMpReservePercent,
       healItemHpPercent: config.healItemHpPercent,
@@ -272,6 +283,25 @@ export async function startEngine(
     });
     game.onIncident = (message) => {
       activity.record("error", message);
+    };
+    // Task 104: the same knobs for fights called directly (fight, the boss path), which carry
+    // no per-call options because GameOptions cannot grow in this task.
+    configureInstinct({
+      itemHealHpPercent: config.battleItemHealPercent,
+      fleeOnTimer: config.battleFleeOnTimer,
+    });
+    // Task 104: Game builds the battle hooks but its GameOptions cannot grow in this task
+    // (task 100 is editing game.ts). moveState.battle is the same object Game keeps as
+    // this.hooks, so setting the instinct knobs here reaches every regular fight.
+    if (game.moveState.battle !== undefined) {
+      game.moveState.battle.instinct = {
+        itemHealHpPercent: config.battleItemHealPercent,
+        fleeOnTimer: config.battleFleeOnTimer,
+      };
+    }
+    // Task 101: a coordinate `go` allowed with a reason is a normal event, not an error.
+    game.onActivity = (message) => {
+      activity.record("event", message);
     };
     // Bridge 0.13's battle.act / battle.hit are not key events; fold them into the live battle.
     const savePilot =
@@ -460,13 +490,73 @@ async function seedFiles(game: string, signal?: AbortSignal): Promise<string[]> 
   } catch (error) {
     if (isMissingFile(error)) return [];
     signal?.throwIfAborted();
-    throw new Error(`读不了探针目录 ${directory}:${describeError(error)}`, { cause: error });
+    throw new Error(`读不了探针目录 ${directory}:${describeError(error)}`, {
+      cause: error,
+    });
   }
   return names
     .filter((name) => name.startsWith("probe-") && name.endsWith(".jsonl"))
     .sort()
     .slice(-SEED_FILES)
     .map((name) => join(directory, name));
+}
+
+/**
+ * Task 105: the FF5-only scout definition. It lives here rather than in tools.ts so the ported
+ * tool list (`TOOLS`) keeps matching the Python version, and the long timeout can follow Config.
+ */
+function scoutToolDefinition(
+  host: GameToolHost,
+  timeoutMs: number,
+  activity: ActivitySource | undefined,
+): ToolDefinition {
+  const schema = SCOUT_TOOL.function;
+  return {
+    name: schema.name,
+    description: schema.description,
+    parameters: schema.parameters,
+    timeoutMs,
+    output: {
+      schema: { type: "string" },
+      render: (_args, value) => [
+        {
+          type: "text",
+          text: typeof value === "string" ? value : JSON.stringify(value),
+        },
+      ],
+    },
+    async execute(args, exec) {
+      const fields = isRecord(args) ? args : {};
+      const started = Date.now();
+      const log = typeof activity === "function" ? activity() : activity;
+      try {
+        const result = await host.run(
+          "scout",
+          fields,
+          host.pilot(exec.signal),
+          exec.signal,
+          exec.agent,
+        );
+        const seconds = ((Date.now() - started) / 1000).toFixed(1);
+        const summary = (result.split(/\r\n|\r|\n/, 1)[0] ?? "").trim();
+        log?.record(
+          "tool",
+          `scout ${firstChars(JSON.stringify(fields), 120)} → ${summary}(${seconds} 秒)`,
+        );
+        return result;
+      } catch (error) {
+        exec.signal.throwIfAborted();
+        const message = describeError(error);
+        log?.record("error", `scout 出错:${message}`);
+        return `工具出错:${message}`;
+      }
+    },
+  };
+}
+
+function firstChars(value: string, max: number): string {
+  const points = Array.from(value);
+  return points.length <= max ? value : points.slice(0, max).join("");
 }
 
 /** The calling agent and signal, for the tactician started from inside a tool call. */
@@ -629,17 +719,37 @@ export function installPlayer(
         tacticianSessions,
       );
     });
+    // Task 97: the stage officer only exists for FF5 (its preset and knowledge are FF5's).
+    if (byKey(config.game).key !== "ff5") {
+      engine.game.setStageOfficer(undefined);
+      return;
+    }
+    engine.game.setStageOfficer(async (facts, factsText, signal) => {
+      const agent = binding?.agent ?? lastAgent;
+      if (agent === undefined) {
+        throw new Error("这次工具调用没有主智能体，叫不了阶段官");
+      }
+      return await callStageOfficer(ctx.subagents, agent, signal, facts, factsText);
+    });
   };
   const host = gameToolHost(slot, prepare, (call) => {
     binding = call;
     if (call?.agent !== undefined) lastAgent = call.agent;
   });
-  const tools = gameToolDefinitions(
-    host,
-    config.game,
-    config.saveSlot,
-    () => slot.current()?.activity,
-  );
+  const tools: ToolDefinition[] = [
+    ...gameToolDefinitions(host, config.game, config.saveSlot, () => slot.current()?.activity),
+    // Task 105: the scout is FF5-only, like the stage officer. Its timeout must cover the whole
+    // configured time budget plus the load/restore at the end.
+    ...(byKey(config.game).key === "ff5"
+      ? [
+          scoutToolDefinition(
+            host,
+            config.scoutMinutes * 60_000 + 120_000,
+            () => slot.current()?.activity,
+          ),
+        ]
+      : []),
+  ];
   const personaText = buildSystemPrompt(config.game, config.saveSlot);
   const disposers = new Map<string, () => Promise<void>>();
 
@@ -735,12 +845,19 @@ export function installPlayer(
 
   // Publish this instance's per-session mount so another player preset can mount us inside the
   // same agent/created dispatch that selects us. The disposer removes only this object.
-  ctx.effect(() => registerPresetMount(config.game, { mount: mountAgent, unmount: unmountAgent }));
+  ctx.effect(() =>
+    registerPresetMount(config.game, {
+      mount: mountAgent,
+      unmount: unmountAgent,
+    }),
+  );
 
   // 11-02 (task 32): the service comes from @deepseek-ai/dsh-agent-preset-registry (index.ts's
   // inject). Tests that build a bare fake context pass it explicitly; a real context resolves it.
   if (presetService !== undefined || typeof ctx.get === "function") {
-    installPresetSwitch(ctx, presetService, config, log, detect, { unmount: unmountAgent });
+    installPresetSwitch(ctx, presetService, config, log, detect, {
+      unmount: unmountAgent,
+    });
   }
 
   ctx.effect(() => async () => {

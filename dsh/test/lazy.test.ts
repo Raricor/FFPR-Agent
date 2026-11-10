@@ -152,6 +152,7 @@ function fakeEngine(game: string): PlayerEngine {
       notes: [],
       tacticianInfo: () => null,
       setTactician: () => undefined,
+      setStageOfficer: () => undefined,
       window: () => "",
       observe: () => Promise.resolve("地图 1"),
     },

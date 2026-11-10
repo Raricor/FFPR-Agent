@@ -77,8 +77,9 @@ const ff5Tactician = await readFile(
 
 void test("the FF5 prompts and tool definitions keep the ported text", () => {
   // 10-29 (task 26): FF5 now starts a new game in slot 20 instead of reading its old slot 3.
-  // Only two places differ from the ported constant: the new-game/save-slot sentence before
-  // {hint}, and save_game's description naming slot 20. Everything else is unchanged.
+  // 11-10 (task 105): the scout paragraph was added. Only these three places differ from the
+  // ported constant: the new-game/save-slot sentence before {hint}, save_game's description
+  // naming slot 20, and the scout rule. Everything else is unchanged.
   assert.equal(systemPrompt("ff5"), ff5System);
   assert.ok(ff5System.includes("存档只写 20 号存档位"));
   assert.equal(tacticianPrompt("ff5"), ff5Tactician);

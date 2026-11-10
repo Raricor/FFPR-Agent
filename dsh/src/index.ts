@@ -17,6 +17,7 @@ import { installOverview } from "./plugin/overview.ts";
 import { installPanel } from "./plugin/panel.ts";
 import { createEngineSlot, installPlayer } from "./plugin/player.ts";
 import { engineFor, registerSlot, slotFor, slots } from "./plugin/registry.ts";
+import { installStageOfficer } from "./plugin/stage-officer.ts";
 import { installTactician } from "./plugin/tactician.ts";
 
 export { Config } from "./plugin/config.ts";
@@ -39,6 +40,7 @@ export async function apply(ctx: Context, config: ConfigValue): Promise<void> {
       logger.warn(message);
     },
   };
+  await installStageOfficer(ctx, config, log);
   // The root entry only makes dsh serve lib/client.js (dsh-client-modules scans root loader
   // entries by exact package name). 10-29 (task 24): it also registers the routes once, keyed by
   // ?game=, because dsh refuses a second route of the same path from each of the six presets.

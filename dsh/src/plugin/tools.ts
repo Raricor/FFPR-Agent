@@ -15,7 +15,7 @@ import type { ActivityLog } from "../engine/activity.ts";
 import { describeError } from "../engine/errors.ts";
 import { byKey } from "../engine/games.ts";
 import type { Pilot } from "../engine/pilot.ts";
-import { PRESS_TOOL, toolSchemas, type GameToolSchema } from "../engine/prompt.ts";
+import { PLAN_STAGE_TOOL, PRESS_TOOL, toolSchemas, type GameToolSchema } from "../engine/prompt.ts";
 import { isRecord } from "../engine/values.ts";
 
 /** One tool call's engine side: a Pilot bound to its signal, and the serialized Game. */
@@ -42,6 +42,7 @@ export const TOOL_TIMEOUTS: Readonly<Record<string, number>> = {
   grind: 3_600_000,
   go: 900_000,
   route: 1_000_000,
+  plan_stage: 600_000,
   explore: 900_000,
   interact: 600_000,
   land: 600_000,
@@ -57,6 +58,7 @@ const FF5_ONLY_TOOLS: ReadonlySet<string> = new Set([
   "land",
   "cast",
   "guide",
+  "plan_stage",
 ]);
 
 /** The shape `engine/prompt.ts` keeps for each OpenAI function definition. */
@@ -71,7 +73,7 @@ export function timeoutFor(name: string): number {
 export function gameToolSchemas(game: string, saveSlot = 20): GameToolSchema[] {
   const ff5 = byKey(game).key === "ff5";
   const schemas: readonly GameToolSchema[] = ff5
-    ? toolSchemas(saveSlot)
+    ? [...toolSchemas(saveSlot), PLAN_STAGE_TOOL]
     : [...toolSchemas(saveSlot), PRESS_TOOL];
   return schemas
     .filter((tool) => {
