@@ -71,6 +71,7 @@ function fakeAgent(): Agent {
     tools: {
       register: () => () => undefined,
       restrict: () => () => undefined,
+      schemas: () => [],
     },
     systemPrompt: {
       section: () => () => undefined,

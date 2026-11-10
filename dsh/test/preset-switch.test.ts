@@ -59,6 +59,7 @@ function fakeAgentWithRegistration(): Agent {
     tools: {
       register: () => () => undefined,
       restrict: () => () => undefined,
+      schemas: () => [],
     },
     systemPrompt: {
       section: () => () => undefined,
@@ -313,6 +314,7 @@ interface FakeTools {
   restrictions: number;
   register(definition: { readonly name: string }): () => void;
   restrict(filter: unknown): () => void;
+  schemas(): readonly { readonly name: string }[];
 }
 
 interface PreStepPayload {
@@ -379,6 +381,7 @@ function makeHarness(): Harness {
         service.restrictions += 1;
         return () => undefined;
       },
+      schemas: () => [...names].map((name) => ({ name })),
     };
     toolSets.set(preset, service);
     return service;
