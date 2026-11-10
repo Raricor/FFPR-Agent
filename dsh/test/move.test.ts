@@ -116,7 +116,12 @@ const EXTRA_EVENT_QUERY: Readonly<
 > = {
   "occupied cells keep props off": {
     reply: { entities: { total: 0, entities: [] } },
-    call: { kind: "send", op: "entities", fields: { kind: "Event", max: 200 }, wait: 30 },
+    call: {
+      kind: "send",
+      op: "entities",
+      fields: { kind: "Event", max: 200 },
+      wait: 30,
+    },
   },
 };
 
@@ -133,7 +138,12 @@ for (const item of fixture.cases) {
     noGimmicks(pilot);
     noWalkpath(pilot);
     assert.deepEqual(await run(pilot), item.out);
-    const settleCalls = settle.map(() => ({ kind: "send", op: "pos", fields: {}, wait: 30 }));
+    const settleCalls = settle.map(() => ({
+      kind: "send",
+      op: "pos",
+      fields: {},
+      wait: 30,
+    }));
     const extraCalls = extra ? [extra.call] : [];
     const calls = recordedCalls(pilot).filter(
       (call) => !isEntranceQuery(call) && !isGimmickQuery(call) && !isWalkpathCall(call),
@@ -162,12 +172,18 @@ function noGimmicks(pilot: FakePilot): void {
 }
 
 function isGimmickQuery(call: unknown): boolean {
-  const { op, fields } = call as { op?: string; fields?: { kind?: unknown; max?: unknown } };
+  const { op, fields } = call as {
+    op?: string;
+    fields?: { kind?: unknown; max?: unknown };
+  };
   return op === "entities" && fields?.kind === "All" && fields.max === MOVING_GIMMICK_QUERY_MAX;
 }
 
 function isEntranceQuery(call: unknown): boolean {
-  const { op, fields } = call as { op?: string; fields?: { kind?: unknown; max?: unknown } };
+  const { op, fields } = call as {
+    op?: string;
+    fields?: { kind?: unknown; max?: unknown };
+  };
   return op === "entities" && fields?.kind === "GotoMap" && fields.max === 300;
 }
 
@@ -197,8 +213,16 @@ void test("an entrance that swaps the map just after the last step is entering, 
   scriptReplies(pilot, [
     { kind: "send", op: "pos", reply: { pos: { map: 258, cell: [4, 8] } } },
     { kind: "send", op: "pos", reply: { pos: { map: 258, cell: [4, 8] } } },
-    { kind: "send", op: "cells", reply: { cells: { origin: [2, 6], center: [4, 8], attr: open } } },
-    { kind: "query", q: "sample", reply: { sample: { field: { moveState: null } } } },
+    {
+      kind: "send",
+      op: "cells",
+      reply: { cells: { origin: [2, 6], center: [4, 8], attr: open } },
+    },
+    {
+      kind: "query",
+      q: "sample",
+      reply: { sample: { field: { moveState: null } } },
+    },
     // The settle watch: the game swaps the map on the second poll.
     { kind: "send", op: "pos", reply: { pos: { map: 258, cell: [4, 8] } } },
     { kind: "send", op: "pos", reply: { pos: { map: 255, cell: [19, 21] } } },
@@ -491,7 +515,11 @@ void test("a clerk behind a counter is talked to through the counter, not from b
   const pilot = new FakePilot();
   pilot.on("pos", () => ({ pos: { map: 89, cell: [here[0], here[1]] } }));
   pilot.on("cells", () => ({
-    cells: { origin: [0, 0], center: [here[0], here[1]], attr: rows.map(() => [0, 0, 0, 0, 0]) },
+    cells: {
+      origin: [0, 0],
+      center: [here[0], here[1]],
+      attr: rows.map(() => [0, 0, 0, 0, 0]),
+    },
   }));
   pilot.on("collision", () => ({
     collision: {
@@ -503,7 +531,14 @@ void test("a clerk behind a counter is talked to through the counter, not from b
   pilot.on("entities", (fields) => {
     const byKind: Record<string, unknown[]> = {
       RelayInteraction: [{ kind: "RelayInteraction", cell: [2, 2], active: true }],
-      Npc: [{ kind: "Npc", cell: [2, 1], name: "帽子を被った男性（緑）", active: true }],
+      Npc: [
+        {
+          kind: "Npc",
+          cell: [2, 1],
+          name: "帽子を被った男性（緑）",
+          active: true,
+        },
+      ],
     };
     const list = byKind[String(fields.kind)] ?? [];
     return { entities: { total: list.length, entities: list } };
@@ -552,9 +587,15 @@ void test("indoors a 3/5 wall is not crossed even when it is the only way", asyn
   const pilot = new FakePilot();
   const rows = ["11111", "00300", "11111"];
   pilot.on("pos", { pos: { map: 261, cell: [0, 1] } });
-  pilot.on("cells", { cells: { origin: [0, 0], center: [0, 1], attr: [[0, 0, 0, 0, 0]] } });
+  pilot.on("cells", {
+    cells: { origin: [0, 0], center: [0, 1], attr: [[0, 0, 0, 0, 0]] },
+  });
   pilot.on("collision", {
-    collision: { searchLayer: 0, playerCell: [0, 1], layers: [{ name: "GroundCollision", rows }] },
+    collision: {
+      searchLayer: 0,
+      playerCell: [0, 1],
+      layers: [{ name: "GroundCollision", rows }],
+    },
   });
   pilot.on("entities", { entities: { total: 0, entities: [] } });
   const [, across] = await plan(pilot, [4, 1], false);
@@ -620,9 +661,21 @@ void test("a straight-line fallback route is not taken for the game's route", as
     [8, -8, 0],
   ];
   pilot.on("route", [
-    { route: { from: [16, 18], cells, tries: { theirs: 0, simple: 3, used: "simple" } } },
+    {
+      route: {
+        from: [16, 18],
+        cells,
+        tries: { theirs: 0, simple: 3, used: "simple" },
+      },
+    },
     { route: { from: [16, 18], cells, tries: { theirs: 3, used: "theirs" } } },
-    { route: { from: [16, 18], cells, tries: { "theirs@2": 3, used: "theirs@2" } } },
+    {
+      route: {
+        from: [16, 18],
+        cells,
+        tries: { "theirs@2": 3, used: "theirs@2" },
+      },
+    },
   ]);
   assert.deepEqual(await gameRoute(pilot, [14, 18]), []);
   assert.deepEqual((await gameRoute(pilot, [14, 18])).at(-1), [14, 18]);
@@ -645,7 +698,10 @@ function indoorPilot(here: () => Cell, size = 8): FakePilot {
       searchLayer: 1,
       playerCell: [here()[0], here()[1]],
       layers: [
-        { name: "GroundCollision", rows: Array.from({ length: size }, () => "0".repeat(size)) },
+        {
+          name: "GroundCollision",
+          rows: Array.from({ length: size }, () => "0".repeat(size)),
+        },
       ],
     },
   }));
@@ -738,6 +794,7 @@ void test("walkpath carries the tool label and goal, and the reply fills the wal
     game: "ff5",
     label: "go → 地图 260「图尔村」",
     hop: 2,
+    trace: null,
   };
   assert.deepEqual(await navigate(pilot, [5, 5], false, () => undefined, 8, state), [
     true,
@@ -1118,29 +1175,53 @@ void test("a map change reported by walkpath is entering a map", async () => {
   assert.deepEqual(await navigate(pilot, [4, 0], false), [true, "进入了地图 261,现在在 [4, 0]"]);
 });
 
-void test("a same-map go carried to another map stops when the record has no way back", async () => {
-  const pilot = indoorPilot(() => [0, 0], 8);
-  let map = 260;
-  pilot.on("pos", () => ({ pos: { map, cell: [5, 0] } }));
-  pilot.on("walkpath", () => {
-    map = 261;
-    return {
-      ok: false,
-      reason: "map_changed",
-      index: 2,
-      steps: 2,
-      pos: { map: 260, cell: [2, 0] },
-      next: null,
-      turns: [],
+void test("stepping onto a non-goal entrance that changes the map stops and names it", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-map-change-"));
+  const file = join(directory, "move-trace.jsonl");
+  try {
+    const pilot = indoorPilot(() => [0, 0], 8);
+    pilot.on("entities", (fields) =>
+      fields.kind === "GotoMap"
+        ? {
+            entities: {
+              total: 1,
+              entities: [{ kind: "GotoMap", cell: [2, 0], active: true }],
+            },
+          }
+        : { entities: { total: 0, entities: [] } },
+    );
+    let map = 260;
+    pilot.on("pos", () => ({
+      pos: { map, cell: [5, 0], areaText: map === 261 ? "运河" : "" },
+    }));
+    pilot.on("walkpath", () => {
+      map = 261;
+      return {
+        ok: false,
+        reason: "map_changed",
+        index: 2,
+        steps: 2,
+        pos: { map: 260, cell: [2, 0] },
+        next: null,
+        turns: [],
+      };
+    });
+    const state: MoveState = { drake: null, trace: file };
+    assert.deepEqual(await navigate(pilot, [5, 0], false, () => undefined, 8, state), [
+      false,
+      "从 (2, 0) 切到了 地图 261「运河」 (5, 0),没有走回原图" + "(原目标在地图 260 (5, 0))",
+    ]);
+    const entry = JSON.parse((await readFile(file, "utf8")).trim()) as {
+      end: { reason: string; reached: boolean };
     };
-  });
-  assert.deepEqual(await navigate(pilot, [5, 0], false), [
-    false,
-    "原目标在地图 260 (5, 0),中途在 (2, 0) 被带到地图 261 (5, 0),按地图记录回不去",
-  ]);
+    assert.equal(entry.end.reason, "map-changed");
+    assert.equal(entry.end.reached, false);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
-void test("a same-map go carried to another map walks back when the record has a way", async () => {
+void test("a passive map change walks back when the atlas has a way", async () => {
   const pilot = indoorPilot(() => [0, 0], 8);
   let map = 260;
   pilot.on("pos", () => ({ pos: { map, cell: [5, 0] } }));
@@ -1156,17 +1237,15 @@ void test("a same-map go carried to another map walks back when the record has a
       turns: [],
     };
   });
-  const asked: unknown[] = [];
+  let asked = 0;
   const state: MoveState = {
     drake: null,
-    routeBack: (from, to) => {
-      asked.push({ from, to });
+    routeBack: () => {
+      asked += 1;
       return true;
     },
-    returnToGoal: (runner, goalMap, goal) => {
-      assert.equal(runner, pilot);
-      assert.equal(goalMap, 260);
-      assert.deepEqual(goal, [5, 0]);
+    returnToGoal: () => {
+      asked += 1;
       return Promise.resolve([true, "到达 (5, 0)"]);
     },
   };
@@ -1174,7 +1253,39 @@ void test("a same-map go carried to another map walks back when the record has a
     true,
     "中途在 (2, 0) 被带到地图 261 (5, 0),地图记录里有回去的路,从这里走回去\n到达 (5, 0)",
   ]);
-  assert.deepEqual(asked, [{ from: 261, to: 260 }]);
+  assert.equal(asked, 2, "routeBack was asked, then returnToGoal walked back");
+});
+
+void test("the same crossing to another map stops on its second try", async () => {
+  const pilot = indoorPilot(() => [0, 0], 8);
+  let map = 260;
+  pilot.on("pos", () => ({ pos: { map, cell: map === 260 ? [0, 0] : [5, 0] } }));
+  pilot.on("walkpath", () => {
+    map = 261;
+    return {
+      ok: false,
+      reason: "map_changed",
+      index: 2,
+      steps: 2,
+      pos: { map: 260, cell: [2, 0] },
+      next: null,
+      turns: [],
+    };
+  });
+  let returned = 0;
+  const state: MoveState = {
+    drake: null,
+    routeBack: () => true,
+    returnToGoal: async (runner, _goalMap, target, say, budget) => {
+      returned += 1;
+      map = 260;
+      return await navigate(runner, target, false, say, 8, state, budget);
+    },
+  };
+  const [reached, text] = await navigate(pilot, [5, 0], false, () => undefined, 8, state);
+  assert.equal(reached, false);
+  assert.match(text, /同一处 \(2, 0\) 换到 地图 261 \(5, 0\) 已经 2 次,停下/);
+  assert.equal(returned, 1, "the second crossing is stopped before another walk back");
 });
 
 void test("a carry that falls onto another map reports both maps and stops", async () => {
@@ -1204,7 +1315,14 @@ void test("a state event that turns into a battle is fought as one", async () =>
       return { pos: { map: 260, cell: [here[0], here[1]], state: "Event" } };
     }
     if (polls === 2) {
-      return { pos: { map: 260, cell: [here[0], here[1]], state: "Battle", battle: true } };
+      return {
+        pos: {
+          map: 260,
+          cell: [here[0], here[1]],
+          state: "Battle",
+          battle: true,
+        },
+      };
     }
     return { pos: { map: 260, cell: [here[0], here[1]], state: "Player" } };
   });
@@ -1470,7 +1588,9 @@ void test("a jump in the route stops the walkpath just before it", async () => {
 /** A world map with grass everywhere, a mountain wall at x=30, and one gap at y=25. */
 function worldPilot(position: { cell: Cell }, withAt: boolean): FakePilot {
   const pilot = new FakePilot();
-  pilot.on("pos", () => ({ pos: { map: 1, cell: [position.cell[0], position.cell[1]] } }));
+  pilot.on("pos", () => ({
+    pos: { map: 1, cell: [position.cell[0], position.cell[1]] },
+  }));
   pilot.on("cells", (fields) => {
     const r = typeof fields.r === "number" ? fields.r : 24;
     const at = fields.at;
@@ -1547,6 +1667,86 @@ void test("an old bridge without cells.at keeps the one-window world walk", asyn
   assert.ok(atReads.length <= 1, "an old bridge is not asked for at again");
 });
 
+void test("a world-map goal that cannot be walked onto keeps off a nearby entrance", async () => {
+  // 11-10: the goal (175,140) was a meteor cell; the map 189 entrance at (175,144) was on
+  // the straight route, so every plan stepped onto it and changed the map. A same-map plan
+  // must treat another place's GotoMap cell as an obstacle for this call, not walk through it.
+  const position = { cell: [0, 0] as Cell };
+  const goal: Cell = [0, 4];
+  const entrance: Cell = [0, 2];
+  const pilot = new FakePilot();
+  pilot.on("pos", () => ({ pos: { map: 1, cell: [position.cell[0], position.cell[1]] } }));
+  pilot.on("cells", (fields) => {
+    const r = typeof fields.r === "number" ? fields.r : 24;
+    const at = fields.at;
+    const cx = Array.isArray(at) && typeof at[0] === "number" ? at[0] : position.cell[0];
+    const cy = Array.isArray(at) && typeof at[1] === "number" ? at[1] : position.cell[1];
+    const attr = Array.from({ length: 2 * r + 1 }, (_, j) =>
+      Array.from({ length: 2 * r + 1 }, (_, i) => {
+        const x = cx - r + i;
+        const y = cy - r + j;
+        return x === goal[0] && y === goal[1] ? 19 : 3;
+      }),
+    );
+    return {
+      cells: {
+        origin: [cx - r, cy - r],
+        center: [position.cell[0], position.cell[1]],
+        attr,
+        ...(at !== undefined ? { at: [cx, cy] } : {}),
+      },
+    };
+  });
+  pilot.onQuery("sample", { sample: { field: { moveState: null } } });
+  pilot.on("entities", (fields) =>
+    fields.kind === "GotoMap"
+      ? {
+          entities: {
+            total: 1,
+            entities: [{ kind: "GotoMap", cell: [entrance[0], entrance[1]], active: true }],
+          },
+        }
+      : { entities: { total: 0, entities: [] } },
+  );
+  pilot.on("wait", { ok: true });
+  let sent = 0;
+  pilot.on("walkpath", (fields) => {
+    sent += 1;
+    const path = fields.path as Cell[];
+    assert.ok(
+      !path.some(([x, y]) => x === entrance[0] && y === entrance[1]),
+      `the walk crossed the entrance: ${JSON.stringify(path)}`,
+    );
+    const atGoal = path.findIndex(([x, y]) => x === goal[0] && y === goal[1]);
+    const stopIndex = atGoal > 0 ? atGoal - 1 : path.length - 1;
+    const stop = path[stopIndex];
+    assert.ok(stop);
+    position.cell = [stop[0], stop[1]];
+    return {
+      ok: false,
+      reason: "blocked",
+      index: stopIndex,
+      steps: stopIndex,
+      pos: { map: 1, cell: [stop[0], stop[1]] },
+      next: atGoal > 0 ? [goal[0], goal[1]] : null,
+      turns: [],
+    };
+  });
+  const [reached, text] = await navigate(pilot, goal, false, () => undefined, 8, {
+    drake: null,
+    trace: null,
+  });
+  assert.equal(reached, false);
+  assert.match(text, /走不过去|更近/);
+  assert.ok(sent > 0);
+  for (const path of walkpathCalls(pilot)) {
+    assert.ok(
+      !path.some(([x, y]) => x === entrance[0] && y === entrance[1]),
+      "no plan ever crossed the entrance",
+    );
+  }
+});
+
 /** An indoor map whose entities name a moving gimmick, so refusals must stay temporary. */
 function movingGimmickPilot(here: () => Cell, size = 8): FakePilot {
   const pilot = indoorPilot(here, size);
@@ -1556,7 +1756,12 @@ function movingGimmickPilot(here: () => Cell, size = 8): FakePilot {
           entities: {
             total: 1,
             entities: [
-              { kind: "SlidingFloorGimmickArea", cell: [0, 0], name: "滑动地板", active: true },
+              {
+                kind: "SlidingFloorGimmickArea",
+                cell: [0, 0],
+                name: "滑动地板",
+                active: true,
+              },
             ],
           },
         }
@@ -1597,7 +1802,11 @@ void test("a moving gimmick makes a blocked step temporary and unrecorded", asyn
       turns: [],
     };
   });
-  const links: { readonly from: Cell; readonly to: Cell; readonly how: string }[] = [];
+  const links: {
+    readonly from: Cell;
+    readonly to: Cell;
+    readonly how: string;
+  }[] = [];
   const state: MoveState = {
     drake: null,
     link: (_map, from, to, how) => {
@@ -1695,4 +1904,211 @@ void test("moving gimmicks are recognised by name, type or a seen Gimmick state"
   assert.equal(hasMovingGimmick([{ kind: "DefaultEntity", name: "移动平台A" }]), true);
   assert.equal(hasMovingGimmick([{ kind: "Npc", name: "士兵" }]), false);
   assert.equal(hasMovingGimmick([], true), true, "a Gimmick state on the map is enough");
+});
+
+void test("an entrance goal that refuses the step stops at the replan limit instead of looping", async () => {
+  // 11-10: the goal is an entrance; stepping onto it did not change the map. Task 112 must
+  // stop once replanning stops getting closer, and must not cut the goal cell for the run.
+  let here: Cell = [0, 0];
+  let attempts = 0;
+  const pilot = indoorPilot(() => here, 8);
+  pilot.on("entities", (fields) =>
+    fields.kind === "GotoMap"
+      ? { entities: { total: 1, entities: [{ kind: "GotoMap", cell: [3, 0], active: true }] } }
+      : { entities: { total: 0, entities: [] } },
+  );
+  pilot.on("walkpath", (fields) => {
+    attempts += 1;
+    const path = fields.path as Cell[];
+    const index = path.findIndex((cell) => cell[0] === 2 && cell[1] === 0);
+    here = [2, 0];
+    return {
+      ok: false,
+      reason: "blocked",
+      index: Math.max(0, index),
+      steps: Math.max(0, index),
+      pos: { map: 260, cell: [2, 0] },
+      next: [3, 0],
+      turns: [],
+    };
+  });
+  const state: MoveState = { drake: null };
+  const [reached, message] = await navigate(pilot, [3, 0], false, () => undefined, 8, state);
+  assert.equal(reached, false);
+  assert.match(message, /最近到过 \(2, 0\)/);
+  assert.match(message, /剪掉了/);
+  assert.match(message, /连续 6 次重新规划/);
+  assert.equal(attempts, 8, "six replans without getting closer, then stop");
+  assert.equal(
+    state.cuts?.get("260")?.has("2,0>3,0") ?? false,
+    false,
+    "the goal cell itself stays open for the next call",
+  );
+});
+
+void test("six replans without getting closer stop the go", async () => {
+  let attempts = 0;
+  const pilot = indoorPilot(() => [0, 0], 8);
+  pilot.on("walkpath", () => {
+    attempts += 1;
+    return {
+      ok: false,
+      reason: "off_path",
+      index: -1,
+      steps: 0,
+      pos: { map: 260, cell: [0, 0] },
+      next: null,
+      turns: [],
+    };
+  });
+  const state: MoveState = { drake: null, goStallLimit: 3 };
+  const [reached, message] = await navigate(pilot, [5, 0], false, () => undefined, 8, state);
+  assert.equal(reached, false);
+  assert.match(message, /连续 3 次重新规划/);
+  assert.match(message, /最近到过 \(0, 0\)/);
+  assert.equal(attempts, 4, "one best plan and three replans that did not improve it");
+});
+
+void test("a go that keeps getting closer is not stopped by the stall limit", async () => {
+  let here: Cell = [0, 0];
+  const pilot = indoorPilot(() => here, 8);
+  pilot.on("walkpath", () => {
+    here = [Math.min(5, here[0] + 1), 0];
+    return {
+      ok: false,
+      reason: "off_path",
+      index: -1,
+      steps: 0,
+      pos: { map: 260, cell: [here[0], here[1]] },
+      next: null,
+      turns: [],
+    };
+  });
+  const state: MoveState = { drake: null, goStallLimit: 1 };
+  assert.deepEqual(await navigate(pilot, [5, 0], false, () => undefined, 8, state), [
+    true,
+    "到达 (5, 0)",
+  ]);
+});
+
+void test("the total time limit stops a go that is not converging", async () => {
+  const pilot = indoorPilot(() => [0, 0], 8);
+  pilot.on("walkpath", () => {
+    pilot.advance(10_000);
+    return {
+      ok: false,
+      reason: "off_path",
+      index: -1,
+      steps: 0,
+      pos: { map: 260, cell: [0, 0] },
+      next: null,
+      turns: [],
+    };
+  });
+  const state: MoveState = { drake: null, goTimeoutMs: 5_000 };
+  const [reached, message] = await navigate(pilot, [5, 0], false, () => undefined, 8, state);
+  assert.equal(reached, false);
+  assert.match(message, /超过这张地图的 5 秒上限/);
+  assert.match(message, /最近到过/);
+});
+
+void test("a go writes one compact trace line with its replans and end reason", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-move-trace-"));
+  const file = join(directory, "move-trace.jsonl");
+  try {
+    const pilot = indoorPilot(() => [0, 0], 8);
+    pilot.on("walkpath", () => ({
+      ok: false,
+      reason: "off_path",
+      index: -1,
+      steps: 0,
+      pos: { map: 260, cell: [0, 0] },
+      next: null,
+      turns: [],
+    }));
+    const state: MoveState = {
+      drake: null,
+      game: "ff5",
+      trace: file,
+      goStallLimit: 2,
+    };
+    assert.equal((await navigate(pilot, [4, 0], false, () => undefined, 8, state))[0], false);
+    const lines = (await readFile(file, "utf8")).trim().split("\n");
+    assert.equal(lines.length, 1);
+    const entry = JSON.parse(lines[0] ?? "") as {
+      game: string;
+      start: { map: number; cell: Cell };
+      goal: Cell;
+      byShip: boolean;
+      legs: number;
+      replans: {
+        at: string;
+        cell: Cell | null;
+        length: number;
+        reason: string;
+        cuts: string[];
+      }[];
+      end: {
+        reason: string;
+        reached: boolean;
+        elapsedMs: number;
+        cuts: string[];
+      };
+    };
+    assert.equal(entry.game, "ff5");
+    assert.deepEqual(entry.start, { map: 260, cell: [0, 0] });
+    assert.deepEqual(entry.goal, [4, 0]);
+    assert.equal(entry.byShip, false);
+    assert.equal(entry.legs, 8);
+    assert.equal(entry.replans.length, 3);
+    const firstReplan = entry.replans[0];
+    assert.ok(firstReplan);
+    assert.equal(typeof firstReplan.at, "string");
+    assert.deepEqual(firstReplan.cell, [0, 0]);
+    assert.ok(firstReplan.length > 0);
+    assert.match(firstReplan.reason, /偏离/);
+    assert.deepEqual(firstReplan.cuts, []);
+    assert.equal(entry.end.reason, "stalled");
+    assert.equal(entry.end.reached, false);
+    assert.ok(entry.end.elapsedMs >= 0);
+    assert.ok(Array.isArray(entry.end.cuts));
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("a trace file that cannot be written only warns and the walk still arrives", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-move-trace-fail-"));
+  const blocker = join(directory, "not-a-directory");
+  try {
+    await writeFile(blocker, "x", "utf8");
+    const pilot = indoorPilot(() => [0, 0], 6);
+    pilot.on("walkpath", (fields) => {
+      const path = fields.path as Cell[];
+      const last = path[path.length - 1];
+      assert.ok(last);
+      return {
+        ok: true,
+        reason: "arrived",
+        index: path.length - 1,
+        steps: path.length - 1,
+        pos: { map: 260, cell: [last[0], last[1]] },
+        next: null,
+        turns: [],
+      };
+    });
+    const said: string[] = [];
+    const state: MoveState = {
+      drake: null,
+      game: "ff5",
+      trace: join(blocker, "move-trace.jsonl"),
+    };
+    assert.deepEqual(await navigate(pilot, [3, 0], false, (line) => said.push(line), 8, state), [
+      true,
+      "到达 (3, 0)",
+    ]);
+    assert.ok(said.some((line) => line.includes("写不了移动轨迹")));
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
