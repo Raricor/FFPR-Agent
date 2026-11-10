@@ -26,6 +26,9 @@ import {
 } from "../engine/skills/move.ts";
 import { DEFAULT_TRAVEL_MAX_HOPS, DEFAULT_TRAVEL_MAX_MINUTES } from "../engine/skills/travel.ts";
 import { DEFAULT_ROUTE_BATTLE_SECONDS } from "../engine/route/tool.ts";
+import { DEFAULT_ITEM_HEAL_PERCENT } from "../engine/skills/gambit.ts";
+import { MAX_RECOVERY_DISTANCE } from "../engine/stage/gate.ts";
+import { DEFAULT_FLEE_ON_TIMER } from "../engine/strategy/execute.ts";
 
 /**
  * All six games start from a new game and write slot 20 only (10-29: the user made FF5 use the
@@ -59,6 +62,8 @@ export interface GameDefaults {
   readonly bestiarySaveFile: string;
   /** Task 89: resumable route progress, one JSON file per game. */
   readonly routeFile: string;
+  /** Task 97: the one stage plan per game. */
+  readonly stagePlanFile: string;
 }
 
 /** Per-game defaults shared by the schema, the plugin and the tests. Unknown keys throw. */
@@ -82,6 +87,7 @@ export function gameDefaults(key: string): GameDefaults {
     incidentsStateFile: join(DEPS, "ds", `incidents-state-${game.key}.json`),
     bestiarySaveFile: join(DEPS, "ds", `bestiary-save-${game.key}.json`),
     routeFile: join(DEPS, "ds", `route-${game.key}.json`),
+    stagePlanFile: join(DEPS, "ds", `stage-${game.key}.json`),
   };
 }
 
@@ -142,6 +148,22 @@ const RawConfig = Schema.object({
   bestiarySaveFile: Schema.string(),
   /** Task 89: resumable route progress. */
   routeFile: Schema.string(),
+  /** Task 97: where the one stage plan is kept. */
+  stagePlanFile: Schema.string(),
+  /** Task 105: snapshots and scout-window intervals live here (default .deps/ds). */
+  scoutDir: Schema.string(),
+  /** Task 105: scout()'s default time budget in minutes. */
+  scoutMinutes: Schema.number().default(20),
+  /** Task 105: never try more than this many scout targets in one run. */
+  scoutMaxTargets: Schema.number().default(200),
+  /** Task 97: let the code call the stage officer when leaving for another region. */
+  stageAutoPlan: Schema.boolean().default(true),
+  /** Task 101: refuse a coordinate `go` inside an active stage plan (default on). */
+  stageGoGate: Schema.boolean().default(true),
+  /** Task 97: how close a recovery point must be to keep walking. */
+  stageTurnBackDistance: Schema.number().default(MAX_RECOVERY_DISTANCE),
+  /** Task 106: levels moved at the last checkpoint before a boss rewrite its table. */
+  stageBossLevelGap: Schema.number().default(3),
   /** Task 89: estimated seconds of one road battle in the countdown check. */
   routeBattleSeconds: Schema.number().default(DEFAULT_ROUTE_BATTLE_SECONDS),
   /** Task 91: heal after battle when HP is below this percentage. */
@@ -150,6 +172,10 @@ const RawConfig = Schema.object({
   healMpReservePercent: Schema.number().default(30),
   /** Task 91: spend a healing item only below this HP percentage. */
   healItemHpPercent: Schema.number().default(40),
+  /** Task 104: in battle, drink a healing item below this HP share when nobody can heal. */
+  battleItemHealPercent: Schema.number().default(DEFAULT_ITEM_HEAL_PERCENT),
+  /** Task 104: try to flee ordinary battles while sample.timer is running (bridge 0.14.3+). */
+  battleFleeOnTimer: Schema.boolean().default(DEFAULT_FLEE_ON_TIMER),
   /** Task 91: top the party up to this percentage at a save point or before a boss. */
   healFullPercent: Schema.number().default(95),
   /** Task 91: refuse save_game under a running countdown with fewer seconds left. */
@@ -216,11 +242,21 @@ export const Config = Schema.transform(RawConfig, (config) => {
     incidentsStateFile: config.incidentsStateFile ?? defaults.incidentsStateFile,
     bestiarySaveFile: config.bestiarySaveFile ?? defaults.bestiarySaveFile,
     routeFile: config.routeFile ?? defaults.routeFile,
+    stagePlanFile: config.stagePlanFile ?? defaults.stagePlanFile,
+    scoutDir: config.scoutDir ?? join(DEPS, "ds"),
+    scoutMinutes: config.scoutMinutes ?? 20,
+    scoutMaxTargets: config.scoutMaxTargets ?? 200,
+    stageAutoPlan: config.stageAutoPlan ?? true,
+    stageGoGate: config.stageGoGate ?? true,
+    stageTurnBackDistance: config.stageTurnBackDistance ?? MAX_RECOVERY_DISTANCE,
+    stageBossLevelGap: config.stageBossLevelGap ?? 3,
     routeBattleSeconds: config.routeBattleSeconds ?? DEFAULT_ROUTE_BATTLE_SECONDS,
     healHpPercent: config.healHpPercent ?? 70,
     healMpReservePercent: config.healMpReservePercent ?? 30,
     healItemHpPercent: config.healItemHpPercent ?? 40,
     healFullPercent: config.healFullPercent ?? 95,
+    battleItemHealPercent: config.battleItemHealPercent ?? DEFAULT_ITEM_HEAL_PERCENT,
+    battleFleeOnTimer: config.battleFleeOnTimer ?? DEFAULT_FLEE_ON_TIMER,
     saveTimerMinSeconds: config.saveTimerMinSeconds ?? 300,
     storyStuckSeconds: config.storyStuckSeconds ?? 60,
     checkEveryMs: config.checkEveryMs ?? DEFAULT_CHECK_EVERY_MS,

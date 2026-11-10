@@ -20,7 +20,11 @@ void test("Config defaults point at FF5's deployment paths and slot", () => {
   assert.equal(config.elementsFile, join(DEPS, "ds", "elements-ff5.json"));
   assert.equal(config.battlesFile, join(DEPS, "ds", "battles-ff5.jsonl"));
   assert.equal(config.routeFile, join(DEPS, "ds", "route-ff5.json"));
+  assert.equal(config.scoutDir, join(DEPS, "ds"));
+  assert.equal(config.scoutMinutes, 20);
+  assert.equal(config.scoutMaxTargets, 200);
   assert.equal(config.routeBattleSeconds, 45);
+  assert.equal(config.stageGoGate, true);
   assert.equal(config.checkEveryMs, 60000);
   assert.equal(config.agentCheckMs, 5000);
   assert.equal(config.detectCacheMs, 10000);
@@ -39,6 +43,8 @@ void test("Config defaults point at FF5's deployment paths and slot", () => {
   assert.equal(config.carryTotalLimit, 4);
   assert.equal(config.tacticianKeepVisible, 2);
   assert.equal(config.tacticianIntervalMinutes, 10);
+  assert.equal(config.battleItemHealPercent, 30);
+  assert.equal(config.battleFleeOnTimer, true);
   assert.equal(config.bridgeUrl, undefined);
 });
 
@@ -120,6 +126,12 @@ void test("Config keeps explicit values", () => {
     carryTotalLimit: 7,
     tacticianKeepVisible: 5,
     tacticianIntervalMinutes: 3,
+    stageGoGate: false,
+    scoutDir: "/tmp/scout",
+    scoutMinutes: 7,
+    scoutMaxTargets: 12,
+    battleItemHealPercent: 25,
+    battleFleeOnTimer: false,
   });
   assert.equal(config.role, "tactician");
   assert.equal(config.tacticianBoss, false);
@@ -151,4 +163,10 @@ void test("Config keeps explicit values", () => {
   assert.equal(config.carryTotalLimit, 7);
   assert.equal(config.tacticianKeepVisible, 5);
   assert.equal(config.tacticianIntervalMinutes, 3);
+  assert.equal(config.scoutDir, "/tmp/scout");
+  assert.equal(config.scoutMinutes, 7);
+  assert.equal(config.scoutMaxTargets, 12);
+  assert.equal(config.stageGoGate, false);
+  assert.equal(config.battleItemHealPercent, 25);
+  assert.equal(config.battleFleeOnTimer, false);
 });
