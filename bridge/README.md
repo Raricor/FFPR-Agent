@@ -1,6 +1,6 @@
 # 桥插件(FfprBridge)
 
-BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（设计方案 §5），从不改游戏数据和存档。当前版本 0.14.5。
+BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（设计方案 §5），从不改游戏数据和存档。当前版本 0.14.6。
 
 - 所有挂钩都是 postfix，只读参数和返回值，不改参数、不改返回值，也不改任何游戏对象。
 - 调用游戏的地方只有取值函数和纯查询。
@@ -14,6 +14,7 @@ BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（�
 - 把以上内容写进 `BepInEx/ffpr/probe-<启动时间>.jsonl`，同时推送给 WebSocket 客户端。
 - 在查询通道上回答查询(见「查询通道」)。
 - 0.5.0 起，在局域网连接上替开发机按键(见「局域网连接」)。0.9.0 起按键走虚拟手柄，游戏在后台、最小化时也能玩。
+- 0.14.6(实验性，仅 FF5):新增三个只读地图数据查询 `mapinfo` / `mappackage` / `mapasset`。`mapinfo` 只读 `MapManager` 的包名和已载入列表、当前 `Map` 主数据行；`mappackage` 用 `MapPackageLoader` 异步加载一张图的资源清单；`mapasset` 再用 `ResourceManager` 读其中一个文本资源并分页返回。全程不调 `RequestLoadMap`、不切换地图、不实例化 `MapModel`/实体。
 - 0.14.5:新增仅 FF5 的 `export` 整作静态数据查询：`maps` / `monsters` / `encounters` / `treasures` / `shops` / `items` / `magic`，按 `offset` / `limit` 分页，只读 `MasterManager`；`treasures` 的 `mapId` / `cell` / `contentId` / `contentName` 和部分数值字段读不到时为 null。
 - 0.14.4:新增仅 FF5 的 `bluemagic`(已学会的青魔法 + 主数据里的全部青魔法和学法)和 `monstermoves`(`ids` 里每只怪的 AI 招式、能否学成青魔法、附带状态);`battle.hit` 的状态名为空时改用 `ConditionType` 枚举名，不再丢状态；`gameover.autosave` 改从 `SaveContentController`/`SaveContentView` 的实际行读取，并在必要时退回 `SaveSlotData`。
 - 0.14.3(仅 FF5):`sample` 和 `pos` 新增 `timer`(`active` / `seconds` / `paused`)，读卡纳克城逃脱那个画面上的倒计时；开始、重开和结束时推 `timer.start` / `timer.end`。`sample` 和新的 `gameover` 查询新增 `gameover`(`open` / `prompt` / `cursor` / `autosave`)，能认出「读取」自动保存的继续框和「返回标题画面」确认框；这时 `pos.state` 仍是 `Event`，要看 `gameover.open`。
@@ -73,6 +74,7 @@ BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（�
 | `GameState.MonsterMoves.cs` | FF5 怪物招式：AI 脚本里的能力、青魔法判定、`ConditionGroup` 状态(0.14.4) |
 | `GameState.BlueMagic.cs` | FF5 青魔法：主数据全部青魔法、已学会的、`Learning` 学法(0.14.4) |
 | `GameState.Export.cs` | FF5 整作静态数据导出：`export` 查询的七张表(0.14.5) |
+| `GameState.Maps.cs` | FF5 只读地图数据：`mapinfo` / `mappackage` / `mapasset` 的异步包清单和文本加载(0.14.6) |
 | `GameState.Menus.cs` | 带光标的界面：商店、地图菜单(魔法、道具、装备)、存档列表 |
 
 ## 编译与安装(0.11.0 起)
@@ -183,6 +185,9 @@ FfprBridge/
 | `monstermoves` (`ids`) | FF5 每只怪的 AI 招式：`abilityId`、名字、`blueMagic`、附带状态 `conditions`、招式的 `rate`；不给 `ids` 就是当前战斗的敌人 | 0.14.4 |
 | `bluemagic` | FF5 青魔法：`learned`(已学会)和 `all`(主数据全部青魔法 + `learnedBy` 学法) | 0.14.4 |
 | `export` (`table`, `offset`, `limit`) | FF5 整作静态数据的一页：`table` 是七张表之一，`limit` 默认 200、上限 500；回复 `export: {table, total, offset, rows, build}` | 0.14.5 |
+| `mapinfo` | FF5 实验性：`MapManager` 的 `AssetPackageName`、当前 `Map` 主数据行、已载入的包/模型列表；不启动加载 | 0.14.6 |
+| `mappackage` (`map`, `timeoutMs`) | FF5 实验性：只读加载这张图的包清单，回复资源名/类型和包内地图名；异步，默认 5 秒超时，超时带 `timeout: true` | 0.14.6 |
+| `mapasset` (`map`, `asset`, `offset`, `limit`, `timeoutMs`) | FF5 实验性：只读加载这张图的一个文本资源并按字符分页；`limit` 默认 20000、上限 60000，异步，超时带 `timeout: true` | 0.14.6 |
 
 ### `bridge` 查询(0.12.0)
 
@@ -413,6 +418,111 @@ FfprBridge/
 - **推断，待真机核对**:`monsters.drops[].rate` 用 `Monster.DropRate`(所有掉落槽共用)，每槽的 `DropContentIdNValue` 当作数量而没有导出；`steal[].rate` 没有对应字段所以是 null。`items[].restores.hp` 来自 `Item.StandardValue` + `Recovery`，`restores.mp` 来自 `RecoveryEx`，哪种道具走哪条函数是推断。`shops` 用 `ShopSign.Id == ProductGroup.Id` 关联地点和种类，`Product.Coefficient` 当作百分比折价，`mapId` 取同一 `AreaId` 的第一张地图；这些都要真机核对。`magic` 用 `Ability` 而不是较小的 `Magic` 主数据，是为了包含召唤和青魔法。
 - 字段来源：`Last.Data.Master.Map`、`Area`、`Monster`、`AttributeGroup`、`ConditionGroup`、`Condition`、`PictureBook`、`PictureBookGroup`、`MonsterSet`、`MonsterParty`、`EncountArea`、`TreasureBox`、`ProductGroup`、`Product`、`Content`、`ShopSign`、`Item`、`Weapon`、`Armor`、`FunctionGroup`、`Function`、`Ability`；`MasterManager.GetList<T>()` / `GetData<T>()`。
 
+### 地图数据查询(0.14.6,仅 FF5,实验性)
+
+这三个查询是任务 80 调查报告里“按需只读加载任意地图”的三步实验，**只读**：不切换地图、不改存档、不创建 `MapModel`、不实例化实体，也不调用 `MapManager.RequestLoadMap` / `ChangeMap` / `CreateMapModel` / `SetMapModelData` / `CreateMapEntity` / `MapColliderCreator.CreateMapColliders`。它们读取的是游戏自己的 `TextAsset`，所以格式和当前 build 一致；**但包组名、包名和 `GetMap` 的键仍是推断，必须先跑 `mapinfo` 再跑 `mappackage`，不要把它们当已核实的事实。**
+
+#### `mapinfo`(诊断，不加载)
+
+```json
+{"id": 1, "op": "mapinfo"}
+```
+
+回复（读不到的部分为 null，`loaded.error` 表示当前没有可读的 `MapManager`）：
+
+```json
+{"ok": true, "mapinfo": {
+  "assetPackageName": "…", "residentScriptGroupName": "…", "residentScriptCategoryName": "…",
+  "masterState": "Complete", "currentMapId": 23,
+  "map": {"id": 23, "mapName": "…", "mapNameText": "…", "assetName": "…", "mapTitle": "…",
+          "scriptId": 0, "bgmId": 0, "loopType": 0, "areaId": 0, "floor": 0,
+          "saveAvailability": 0, "movingAvailability": 0},
+  "loaded": {
+    "packageList": [{"key": "…", "assetGroupName": "…", "assetPackageName": "…",
+                     "name": "…", "packageGroupName": "…", "mapCount": 1,
+                     "maps": ["…"]}],
+    "packageLoadComplete": ["…"], "mapLoad": ["…"], "mapLoadComplete": ["…"],
+    "mapModels": [{"key": "…", "id": 23, "areaId": 0, "mapName": "…", "assetMapName": "…"}],
+    "currentModel": {"key": "current", "id": 23, "…": "…"}
+  }
+}}
+```
+
+`packageList` 是 `MapManager.packageList`，`packageLoadComplete` / `mapLoad` / `mapLoadComplete` 是另外三个字典的 key，`mapModels` 是 `mapModelList`。每个列表最多 200 项，地图名最多 200 个；这里只读已有缓存，**不会为了让列表完整而启动加载**。
+
+#### `mappackage`(第一步：包清单)
+
+```json
+{"id": 2, "op": "mappackage", "map": 23}
+```
+
+- `map`：`Last.Data.Master.Map` 的主键，必填。
+- `timeoutMs`：可选，默认 5000，范围 100–30000。到点还没加载完就回复已有部分，`timeout: true`。
+- 加载在游戏线程上每帧推进（`MapPackageLoader.UpdateLoad()`），**请求不会立刻回复**；客户端应该等这一条回复，不要重复发同一个请求。
+- 同一时间只允许一个 `mappackage` / `mapasset` 加载。第二个请求立即失败，`ok: false`、顶层 `error` 以 `忙:` 开头；客户端稍后重试。
+
+回复主体：
+
+```json
+{"ok": true, "mappackage": {
+  "map": {"id": 23, "mapName": "…", "assetName": "…", "mapTitle": "…"},
+  "group": "…", "packageName": "…", "source": "MapPackageLoader",
+  "timeout": false, "elapsedMs": 12,
+  "package": {"name": "…", "assetGroupName": "…", "mapCount": 1, "maps": ["…"], "textureCount": 3},
+  "mapNames": ["…"],
+  "mapData": {"name": "…", "tilemap": "…", "collision": "…", "attribute": "…",
+              "transportation": "…", "encount": "…", "hiddenPassage": "…", "damage": "…",
+              "subCollision": "…", "entityDefault": "…", "entityCount": 0,
+              "scriptCount": 0, "encountOthersCount": 0, "routeInstructionCount": 0},
+  "resources": [
+    {"name": "collision", "field": "collision", "kind": "text", "asset": "…", "present": true},
+    {"name": "entity", "field": "entity", "index": 0, "kind": "text",
+     "asset": "…", "inline": false},
+    {"name": "entity_default", "field": "entity_default", "kind": "text",
+     "asset": "…", "present": true}
+  ]
+}}
+```
+
+`resources[].name` 就是 `mapasset` 的 `asset` 参数。标量资源名是 `tilemap` / `collision` / `attribute` / `transportation` / `encount` / `hidden_passage` / `damage` / `sub_collision` / `entity_default`；数组资源（`entity` / `script` / `encount_others` / `route_instruction`）按元素给 `name`、`asset` 和 `inline`（不返回内联正文，只给 `inlineLength`）。如果 `timeout: true`，`package` / `resources` 可能为空或不完整，用 `elapsedMs` 判断。
+
+优先复用 `MapManager.packageList` 里已经加载的包（`source: "packageList"`，不创建加载器）；没有才新建 `MapPackageLoader`（`source: "MapPackageLoader"`）。包名先按 `Map.AssetName`，为空时退回 `Map.MapName`；如果真机上 `AssetName` 不是包名，`mapinfo` 的 `packageList.maps` 可以拿来对照，再按实际 key 调整。
+
+#### `mapasset`(第二步：单个文本资源)
+
+```json
+{"id": 3, "op": "mapasset", "map": 23, "asset": "collision", "offset": 0, "limit": 20000}
+```
+
+- `map` / `asset`：必填。`asset` 用 `mappackage.resources[].name`，例如 `collision`、`entity_default`、某个 `entity[]` 元素的名字，或清单给的 `entity[0]` 这种下标。
+- `offset`：可选，默认 0，负数按 0；按字符（不是字节）分页。
+- `limit`：可选，默认 20000，上限 60000；超过按 60000，小于 1 按 1。
+- `timeoutMs`：可选，默认 5000，范围 100–30000。
+- 异步，和 `mappackage` 一样排队/报忙；加载完才回复，超时返回已有部分和 `timeout: true`。
+
+回复主体：
+
+```json
+{"ok": true, "mapasset": {
+  "map": {"id": 23, "mapName": "…"},
+  "asset": "collision", "group": "…", "packageName": "…",
+  "assetName": "…", "source": "TextAsset", "loaded": true,
+  "timeout": false, "elapsedMs": 20,
+  "total": 123456, "offset": 0, "limit": 20000, "length": 20000,
+  "text": "…", "truncated": true, "nextOffset": 20000
+}}
+```
+
+`source` 是 `inline`（资源在包清单里内联，直接返回）、`TextAsset`（走 `ResourceManager` 请求）或 `cache`（请求前就已经加载）。`nextOffset` 为 null 表示读完；`total` 是完整正文长度。内联资源不需要 `ResourceManager`，也不会占用额外资源。
+
+#### 释放、内存和风险
+
+- 包清单加载器是本插件自己 new 的 `MapPackageLoader`，结束时调它的 `Dispose()`；复用 `MapManager.packageList` 时不拥有、不释放。
+- 文本 `TextAsset` 不调用 `ResourceManager.DestroyAsset`：它可能和当前地图共用同一份 Addressables 资源，销毁会把正在玩的地图弄坏（任务 80 报告也建议不要对共享资源调 `DestroyAsset`）。因此**读过的地图文本可能留在 `ResourceManager` 的缓存里**，直到游戏自己清理；这是本实验已知的内存代价。
+- 绝对不调用的方法：`RequestLoadMap`、`ChangeMap`、`CreateMapModel`、`SetMapModelData`、`CreateMapEntity`、`CreateGroupEntity`、`ResettingEntities`、`SetMapColliderEnabled`、`ClearMap*`、`DestroyInsitance`、`LoadFieldEntityAssets`、`MapColliderCreator.CreateMapColliders`。`GameState.Maps.cs` 只出现 `MapPackageLoader.LoadAsset` / `UpdateLoad` / `IsCompleted` / `Dispose`、`MapPackageData.Package`、`AssetMapPackage.GetMap`、`ResourceManager.RequestLoadAssetBundle` / `CheckLoadAssetCompleted` / `GetAssetData`。
+- 推断，待真机核对：`MapManager.AssetPackageName` 是包组名；`Map.AssetName` 是包名、`Map.MapName` 是包内键；`AssetPackageElement.asset` / `GetAssetName` 是资源地址；`inline` 非空时正文就在清单里。如果 `LoadAsset` 在非进图上下文不可用、或包名假设错了，`mappackage` 会给出 `error`，先回到 `mapinfo` 看 `packageList`。
+- 加载会和游戏自己的 Addressables 请求共用 `ResourceManager`，理论上可能竞争；三个查询都在游戏线程上推进，并有超时，异常只回 `ok: false`，不向游戏线程抛。建议先在已去过的室内图跑，再找没去过的图；每次只发一个加载请求，观察 `map.change` 不出现、玩家位置/战斗/对话不变。
+
 ### 脚本格式(0.13.2，按船员尘埃 sc_ai_041_CrewDust 的例子)
 
 `monsterai` 的 `script` 是 JSON。`Mnemonics` 是一条条指令，按顺序执行;`label` 是跳转目标(可能是日文，如「混乱時ジャンプ先」)。常见的：
@@ -550,4 +660,5 @@ FfprBridge/
 | 青魔法(0.14.4,仅 FF5) | `Last.Data.Master.Ability.TypeId == 504`、`Last.Data.User.OwnedCharacterData.OwnedAbilityList`、`Last.Management.UserDataManager.OwnedCharacterList`、`Last.Data.Master.Learning`、`Serial.FF5.Management.BlueMagicData.BlueMagicLearningAbilityIds`、`Serial.ProviderManager.instance.BlueMagicProvider` |
 | 怪物招式状态(0.14.4,仅 FF5) | `Last.Data.Master.Ability.ConditionGroupId`、`Last.Data.Master.ConditionGroup`、`Last.Data.Master.Condition`、`Last.Systems.GroupMasterUtility.GetConditionMasters` |
 | 整作导出(0.14.5,仅 FF5) | `Last.Data.Master.MasterManager.GetList<T>()` / `GetData<T>()`；`Map`、`Area`、`Monster`、`AttributeGroup`、`ConditionGroup`、`Condition`、`PictureBook`、`PictureBookGroup`、`MonsterSet`、`MonsterParty`、`EncountArea`、`TreasureBox`、`ProductGroup`、`Product`、`Content`、`ShopSign`、`Item`、`Weapon`、`Armor`、`FunctionGroup`、`Function`、`Ability`；`UnityEngine.Application.version` |
+| 地图数据(0.14.6,仅 FF5,实验性) | `Last.Map.MapManager`(`AssetPackageName`、`packageList`、`packageLoadCompleteList`、`mapLoadList`、`mapLoadCompleteList`、`mapModelList`、`currentMapModel`)、`MapPackageLoader`(`LoadAsset` / `UpdateLoad` / `IsCompleted` / `Dispose`)、`MapPackageData.Package`、`AssetMapPackage`(`name` / `asset_group_name` / `map` / `GetMap`)、`AssetMapPackageData`、`AssetPackageElement`；`Last.Management.ResourceManager.RequestLoadAssetBundle<TextAsset>` / `CheckLoadAssetCompleted` / `GetAssetData<TextAsset>`；`Last.Data.Master.Map` |
 | 地图菜单 | `Last.UI.KeyInput.MainMenuController`;魔法 `Serial.FF5.UI.KeyInput.AbilityWindowController`;道具 `ItemWindowController`;装备 `EquipmentWindowController` |

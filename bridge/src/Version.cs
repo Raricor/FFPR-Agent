@@ -4,5 +4,5 @@ namespace FfprBridge;
 // single FfprBridge.dll, so there is nowhere else for a version to live.
 internal static class BridgeVersion
 {
-    public const string Value = "0.14.5";
+    public const string Value = "0.14.6";
 }

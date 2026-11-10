@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Net.WebSockets;
 using BepInEx;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -34,20 +35,114 @@ namespace FfprBridge;
 ///   {"op": "bluemagic"}                FF5: learned blue magic and every blue spell (0.14.4)
 ///   {"op": "monstermoves", "ids": [...]}  FF5: each monster's moves, blue magic and statuses (0.14.4)
 ///   {"op": "export", "table": "monsters", "offset": 0, "limit": 200}  FF5: whole-game static tables (0.14.5)
+///   {"op": "mapinfo"}                  FF5: MapManager package state and the current Map row (0.14.6)
+///   {"op": "mappackage", "map": 23}    FF5: read-only map package manifest (0.14.6)
+///   {"op": "mapasset", "map": 23, "asset": "collision", "offset": 0, "limit": 20000}
+///                                      FF5: one map text asset, paginated (0.14.6)
 /// </summary>
 internal static class Requests
 {
     private const int PerFrame = 8;
 
+#if FF5
+    private sealed class Pending
+    {
+        public WebSocket From;
+        public string Op;
+        public JsonObject Base;
+        public MapJob Job;
+        public long Deadline;
+    }
+
+    // Only one package/asset load at a time: Addressables and the map loaders are not reentrant.
+    private static Pending _pending;
+#endif
+
     public static void Drain()
     {
         for (var i = 0; i < PerFrame && Plugin.Outbox.Requests.TryDequeue(out var request); i++)
         {
-            Plugin.Outbox.Reply(request.From, Answer(request.Text));
+            var answer = Answer(request.Text, request.From);
+            // A map load is deferred: Answer has stored the request and replies from Tick.
+            if (answer != null)
+            {
+                Plugin.Outbox.Reply(request.From, answer);
+            }
         }
     }
 
-    private static string Answer(string text)
+    /// <summary>
+    /// Runs one frame of a deferred map load. Called on the game thread before Drain. When the
+    /// loader finishes or the caller's timeout expires, the stored request is answered here.
+    /// </summary>
+    public static void Tick()
+    {
+#if FF5
+        var pending = _pending;
+        if (pending == null)
+        {
+            return;
+        }
+        var done = false;
+        try
+        {
+            done = pending.Job.Poll();
+        }
+        catch (Exception e)
+        {
+            var failed = pending.Base;
+            failed["frame"] = Probe.Frame;
+            failed["ok"] = false;
+            failed["error"] = $"{e.GetType().Name}: {e.Message}";
+            _pending = null;
+            try
+            {
+                pending.Job.Close();
+            }
+            catch (Exception)
+            {
+            }
+            Plugin.Outbox.Reply(pending.From, Emit.Serialize(failed));
+            return;
+        }
+        if (!done && Environment.TickCount64 < pending.Deadline)
+        {
+            return;
+        }
+        var reply = pending.Base;
+        reply["frame"] = Probe.Frame;
+        try
+        {
+            var result = pending.Job.Result(!done);
+            reply[pending.Op] = result;
+            var error = result["error"]?.GetValue<string>();
+            reply["ok"] = string.IsNullOrEmpty(error);
+            if (!string.IsNullOrEmpty(error))
+            {
+                reply["error"] = error;
+            }
+        }
+        catch (Exception e)
+        {
+            reply["ok"] = false;
+            reply["error"] = $"{e.GetType().Name}: {e.Message}";
+        }
+        finally
+        {
+            _pending = null;
+            try
+            {
+                pending.Job.Close();
+            }
+            catch (Exception)
+            {
+            }
+        }
+        Plugin.Outbox.Reply(pending.From, Emit.Serialize(reply));
+#endif
+    }
+
+    private static string Answer(string text, WebSocket from)
     {
         var reply = new JsonObject { ["type"] = "reply", ["frame"] = Probe.Frame };
         try
@@ -165,6 +260,34 @@ internal static class Requests
                     break;
 #else
                     throw new ArgumentException("export 目前只在 FF5 里有");
+#endif
+                case "mapinfo":
+#if FF5
+                    reply["mapinfo"] = GameState.MapInfo();
+                    break;
+#else
+                    throw new ArgumentException("mapinfo 目前只在 FF5 里有");
+#endif
+                case "mappackage":
+                case "mapasset":
+#if FF5
+                    if (_pending != null)
+                    {
+                        throw new InvalidOperationException($"忙:{_pending.Op} 还在加载，稍后再试");
+                    }
+                    var job = GameState.StartMapJob(op, query);
+                    _pending = new Pending
+                    {
+                        From = from,
+                        Op = op,
+                        Base = reply,
+                        Job = job,
+                        Deadline = Environment.TickCount64 + job.TimeoutMs,
+                    };
+                    // No reply this frame; Tick answers when the loader is done or times out.
+                    return null;
+#else
+                    throw new ArgumentException($"{op} 目前只在 FF5 里有");
 #endif
                 case "collision":
                     reply["collision"] = GameState.Collision();
