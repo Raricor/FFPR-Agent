@@ -102,7 +102,10 @@ export class Atlas {
 
   /**
    * Record what the player sees on a map: exits as {"cell", "to", "name"}, chests as
-   * {"cell", "name"}. Links found by walking (jumps) are kept.
+   * {"cell", "name"} plus whatever of {"content", "num", "flag", "hidden", "contentName"}
+   * bridge 0.13.6 sent (task 116): item id, content number, chest flag, hidden item, and the
+   * current language's name. `opened` is save progress and is deliberately not stored.
+   * Links found by walking (jumps) are kept.
    */
   async visit(
     mapId: unknown,

@@ -9,7 +9,7 @@ import { Guide } from "../src/engine/guide/kb.ts";
 import type { Laptop } from "../src/engine/laptop.ts";
 import { loadNotes } from "../src/engine/notes.ts";
 import { TOOLS } from "../src/engine/prompt.ts";
-import type { Json } from "../src/engine/values.ts";
+import { records, type Json } from "../src/engine/values.ts";
 import { FakePilot } from "./fake-pilot.ts";
 
 const LAPTOP: Laptop = { host: "laptop", user: "player", key: "/tmp/key", root: "C:/ffpr" };
@@ -25,6 +25,20 @@ async function temporaryGame(notesFile?: string): Promise<Game> {
     tacticsFile: join(directory, "tactics.json"),
     elementsFile: join(directory, "elements.json"),
   });
+}
+
+/** Chart map 30 through a fake bridge whose entities reply is `chests` for TresureBox. */
+async function chartChests(game: Game, chests: readonly Json[]): Promise<Json[]> {
+  const pilot = new FakePilot();
+  pilot.on("pos", { pos: { state: "Player", map: 30, cell: [4, 5] } });
+  pilot.onQuery("sample", { sample: { user: { areaText: "图尔村" } } });
+  pilot.on("entities", (fields) =>
+    fields.kind === "TresureBox"
+      ? { entities: { total: chests.length, entities: chests } }
+      : { entities: { total: 0, entities: [] } },
+  );
+  assert.equal(await game.chart(pilot), 30);
+  return records(game.atlas.maps.get("30")?.chests);
 }
 
 void test("the engine carries its configured save slot into saves and wipes", async () => {
@@ -377,6 +391,68 @@ void test("the simple tools answer through the pilot, one after another", async 
   assert.ok((await game.run("guide", { query: "图尔村" }, pilot)).length > 0);
   assert.match(await game.run("atlas", {}, pilot), /地图 30/);
   assert.match(await game.run("inventory", {}, pilot), /^道具:无\n贵重物品:无/);
+});
+
+void test("charting keeps the bridge's chest content, flag and localized name", async () => {
+  const game = await temporaryGame();
+  const chests = await chartChests(game, [
+    {
+      kind: "TresureBox",
+      cell: [9, 6],
+      name: "フェニックスのお",
+      content: 12,
+      num: 1,
+      flag: 34,
+      hidden: false,
+      contentName: "凤凰尾巴",
+      opened: true,
+      active: true,
+    },
+    {
+      kind: "TresureBox",
+      cell: [10, 7],
+      name: "150ギル",
+      content: 90,
+      num: 150,
+      flag: 35,
+      hidden: true,
+      contentName: "150 吉尔",
+      opened: false,
+      active: true,
+    },
+  ]);
+  assert.deepEqual(chests, [
+    {
+      cell: [9, 6],
+      name: "フェニックスのお",
+      content: 12,
+      num: 1,
+      flag: 34,
+      hidden: false,
+      contentName: "凤凰尾巴",
+    },
+    {
+      cell: [10, 7],
+      name: "150ギル",
+      content: 90,
+      num: 150,
+      flag: 35,
+      hidden: true,
+      contentName: "150 吉尔",
+    },
+  ]);
+});
+
+void test("an older bridge's chests keep only cell and name", async () => {
+  const game = await temporaryGame();
+  const chests = await chartChests(game, [
+    { kind: "TresureBox", cell: [9, 6], name: "フェニックスのお", active: true },
+    { kind: "TresureBox", cell: [10, 7], name: "150ギル", active: true },
+  ]);
+  assert.deepEqual(chests, [
+    { cell: [9, 6], name: "フェニックスのお" },
+    { cell: [10, 7], name: "150ギル" },
+  ]);
 });
 
 void test("the ailment hint appears once per group and again on a new map", async () => {
