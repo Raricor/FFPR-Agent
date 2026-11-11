@@ -46,6 +46,8 @@ void test("a battle is active when the sample names enemies or the boss flag", a
   });
   assert.equal(await portsFor(enemies).battleActive(), true);
 
-  const idle = new FakePilot().onQuery("sample", { sample: { battle: { active: false } } });
+  const idle = new FakePilot().onQuery("sample", {
+    sample: { battle: { active: false } },
+  });
   assert.equal(await portsFor(idle).battleActive(), false);
 });

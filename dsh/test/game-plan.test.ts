@@ -8,7 +8,12 @@ import type { Laptop } from "../src/engine/laptop.ts";
 import type { SegmentPlan, SegmentReport } from "../src/engine/plan/types.ts";
 import { FakePilot } from "./fake-pilot.ts";
 
-const LAPTOP: Laptop = { host: "laptop", user: "player", key: "/tmp/key", root: "C:/ffpr" };
+const LAPTOP: Laptop = {
+  host: "laptop",
+  user: "player",
+  key: "/tmp/key",
+  root: "C:/ffpr",
+};
 
 function plan(): SegmentPlan {
   return {
@@ -45,7 +50,12 @@ function report(): SegmentReport {
 async function temporaryGame(
   directory: string,
   executor?: SegmentExecutor,
-): Promise<{ game: Game; planFile: string; reportFile: string; progressFile: string }> {
+): Promise<{
+  game: Game;
+  planFile: string;
+  reportFile: string;
+  progressFile: string;
+}> {
   const planFile = join(directory, "segment-plan-ff5.json");
   const reportFile = join(directory, "segment-report-ff5.json");
   const progressFile = join(directory, "segment-progress-ff5.json");
@@ -149,13 +159,22 @@ void test("segment progress revision rises within a section and restarts at 1 in
       ...report(),
       section: "托纳运河",
       status: "exception",
-      exception: { kind: "stuck", map: 210, cell: [58, 37], station: 0, detail: "停在战斗里" },
+      exception: {
+        kind: "stuck",
+        map: 210,
+        cell: [58, 37],
+        station: 0,
+        detail: "停在战斗里",
+      },
     };
     await writeFile(reportFile, JSON.stringify(exceptionReport), "utf8");
     await game.planProgressStart("托纳运河", "走完托纳运河", ["第 1 站"]);
     const resumed = await readProgress(progressFile);
     assert.equal(resumed.revision, 2);
-    assert.deepEqual(resumed.previousException, { kind: "stuck", detail: "停在战斗里" });
+    assert.deepEqual(resumed.previousException, {
+      kind: "stuck",
+      detail: "停在战斗里",
+    });
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -225,11 +244,13 @@ interface ChestInternals {
   treasureFlags: Map<number, boolean>;
   toolInteract: (args: unknown, pilot: unknown, guard?: boolean) => Promise<{ text: string }>;
   syncTreasureFlags: () => Promise<void>;
+  planConfirmAgain: () => Promise<void>;
 }
 
 function chestPilot(): FakePilot {
   const pilot = new FakePilot();
   pilot.on("pos", { pos: { map: 211, cell: [37, 48], state: "Player" } });
+  pilot.on("keys", { ok: true });
   pilot.onQuery("sample", { sample: { choice: {} } });
   pilot.onQuery("items", { items: { normal: [] } });
   return pilot;
@@ -241,7 +262,9 @@ void test("a chest counts as opened only when the treasure flag says so", async 
     const game = await chestGame(directory);
     const internals = game as unknown as ChestInternals;
     internals.toolInteract = () =>
-      Promise.resolve({ text: "站在 (37,48) 面朝Down按了确认,之后翻了 0 页对话" });
+      Promise.resolve({
+        text: "站在 (37,48) 面朝Down按了确认,之后翻了 0 页对话",
+      });
     internals.syncTreasureFlags = () => Promise.resolve();
     internals.treasureFlags.set(5, true);
     const opened = await game.planInteract(chestPilot(), [37, 49]);
@@ -252,6 +275,142 @@ void test("a chest counts as opened only when the treasure flag says so", async 
     const notOpened = await game.planInteract(chestPilot(), [37, 49]);
     assert.equal(notOpened.ok, false);
     assert.match(notOpened.text, /宝箱没有打开/u);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+async function interactionGame(directory: string): Promise<Game> {
+  const knowledge = {
+    chests: [],
+  } as unknown as import("../src/engine/knowledge/index.ts").Knowledge;
+  return await Game.create({
+    laptop: LAPTOP,
+    game: "ff5",
+    saveSlot: 20,
+    atlasFile: join(directory, "atlas.json"),
+    tacticsFile: join(directory, "tactics.json"),
+    elementsFile: join(directory, "elements.json"),
+    segmentReportFile: join(directory, "segment-report-ff5.json"),
+    knowledge,
+  });
+}
+
+function entityReply(entities: readonly Record<string, unknown>[]): Record<string, unknown> {
+  return { entities: { entities } };
+}
+
+function interactionPilot(
+  before: readonly Record<string, unknown>[],
+  after: readonly Record<string, unknown>[],
+): FakePilot {
+  const pilot = new FakePilot();
+  pilot.on("pos", { pos: { map: 193, cell: [22, 8], state: "Player" } });
+  pilot.on("keys", { ok: true });
+  pilot.on("entities", [entityReply(before), entityReply(after), entityReply(after)]);
+  pilot.onQuery("sample", { sample: { choice: {} } });
+  pilot.onQuery("items", { items: { normal: [] } });
+  return pilot;
+}
+
+void test("a switch with no visible effect fails and names the nearby switch", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-plan-switch-"));
+  try {
+    const game = await interactionGame(directory);
+    const internals = game as unknown as ChestInternals;
+    internals.toolInteract = () =>
+      Promise.resolve({ text: "站在 (22,8) 面朝Up按了确认,之后翻了 0 页对话" });
+    const entities = [
+      {
+        kind: "DefaultEntity",
+        name: "sc_e_0206:扉が開く",
+        cell: [22, 6],
+        active: true,
+      },
+    ];
+    const result = await game.planInteract(interactionPilot(entities, entities), [22, 7]);
+    assert.equal(result.ok, false);
+    assert.match(result.text, /调查 \(22,7\) 后什么也没发生/u);
+    assert.match(result.text, /附近有 \(22,6\) sc_e_0206:扉が開く/u);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("a nearby door changing state makes the switch action a success", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-plan-switch-open-"));
+  try {
+    const game = await interactionGame(directory);
+    const internals = game as unknown as ChestInternals;
+    internals.toolInteract = () =>
+      Promise.resolve({ text: "站在 (22,8) 面朝Up按了确认,之后翻了 0 页对话" });
+    const before = [
+      {
+        kind: "DefaultEntity",
+        name: "扉のコリジョン",
+        cell: [22, 6],
+        active: true,
+      },
+    ];
+    const after = [
+      {
+        kind: "DefaultEntity",
+        name: "扉のコリジョン",
+        cell: [22, 6],
+        active: false,
+      },
+    ];
+    const result = await game.planInteract(interactionPilot(before, after), [22, 7]);
+    assert.equal(result.ok, true);
+    assert.match(result.text, /附近实体变化:扉のコリジョン/u);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("a chest that opens only on the second confirm says so", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-plan-chest-second-"));
+  try {
+    const game = await chestGame(directory);
+    const internals = game as unknown as ChestInternals;
+    internals.toolInteract = () =>
+      Promise.resolve({
+        text: "站在 (37,48) 面朝Down按了确认,之后翻了 0 页对话",
+      });
+    internals.syncTreasureFlags = () => Promise.resolve();
+    internals.treasureFlags.set(5, false);
+    internals.planConfirmAgain = () => {
+      internals.treasureFlags.set(5, true);
+      return Promise.resolve();
+    };
+    const result = await game.planInteract(chestPilot(), [37, 49]);
+    assert.equal(result.ok, true);
+    assert.match(result.text, /第 2 次按确认才有效果/u);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("plan keys turn first, wait for the direction, then confirm", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-plan-keys-"));
+  try {
+    const game = await chestGame(directory);
+    const pilot = new FakePilot();
+    pilot.on("keys", { ok: true });
+    pilot.on("pos", [{ pos: { dir: "Up" } }, { pos: { dir: "Down" } }]);
+    const proxy = (
+      game as unknown as {
+        planKeyPilot: (pilot: FakePilot) => import("../src/engine/pilot.ts").Pilot;
+      }
+    ).planKeyPilot(pilot);
+    const result = await proxy.send("keys", { keys: ["Down:60", "Enter"] });
+    assert.equal(result.ok, true);
+    const keyCalls = pilot.calls.filter((call) => call.kind === "send" && call.op === "keys");
+    assert.deepEqual(
+      keyCalls.map((call) => (call as unknown as { fields: { keys: string[] } }).fields.keys),
+      [["Down:60"], ["Enter"]],
+    );
+    assert.equal(pilot.calls.filter((call) => call.kind === "send" && call.op === "pos").length, 2);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

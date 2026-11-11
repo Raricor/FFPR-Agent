@@ -111,7 +111,12 @@ function saveFlow(
 void test("save under a countdown with 200 seconds left is refused before a key", async () => {
   const pilot = new FakePilot();
   pilot.on("pos", {
-    pos: { state: "Player", map: 1, saves: 0, timer: { active: true, seconds: 200 } },
+    pos: {
+      state: "Player",
+      map: 1,
+      saves: 0,
+      timer: { active: true, seconds: 200 },
+    },
   });
   assert.deepEqual(await saveGame(pilot, 20, 300), [
     false,

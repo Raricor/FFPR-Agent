@@ -5,9 +5,15 @@ import { join } from "node:path";
 import test from "node:test";
 import { Game } from "../src/engine/game.ts";
 import type { Laptop } from "../src/engine/laptop.ts";
+import { FakeItemMenu } from "./fake-item-menu.ts";
 import { FakePilot } from "./fake-pilot.ts";
 
-const LAPTOP: Laptop = { host: "laptop", user: "player", key: "/tmp/key", root: "C:/ffpr" };
+const LAPTOP: Laptop = {
+  host: "laptop",
+  user: "player",
+  key: "/tmp/key",
+  root: "C:/ffpr",
+};
 
 async function gameIn(directory: string): Promise<Game> {
   return await Game.create({
@@ -43,7 +49,9 @@ function pilotWith(
   pilot.on("wait", { ok: true });
   pilot.onQuery("sample", { sample: { party } });
   pilot.onQuery("items", {
-    items: { normal: Object.entries(items).map(([name, count]) => ({ name, count })) },
+    items: {
+      normal: Object.entries(items).map(([name, count]) => ({ name, count })),
+    },
   });
   return pilot;
 }
@@ -89,4 +97,27 @@ void test("planHeal explains the missing healing means below the threshold", asy
 void test("planHeal does not claim a healer when the only caster has no MP", async () => {
   const result = await healText([member("蕾娜", 50, 100, ["治疗"], 0)], {});
   assert.match(result.text, /没人会回复魔法/u);
+});
+
+void test("planHeal revives the fallen with a Phoenix Down before healing", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-plan-heal-"));
+  try {
+    const game = await gameIn(directory);
+    const pilot = new FakePilot();
+    const itemMenu = new FakeItemMenu({
+      items: [{ name: "不死鸟之尾", count: 2 }],
+      members: [
+        { name: "巴兹", hp: 0, maxHp: 100 },
+        { name: "蕾娜", hp: 100, maxHp: 100 },
+      ],
+      target: "巴兹",
+    });
+    itemMenu.install(pilot);
+    const result = await game.planHeal(pilot);
+    assert.equal(result.ok, true);
+    assert.match(result.text, /不死鸟之尾/u);
+    assert.equal(itemMenu.items[0]?.count, 1);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

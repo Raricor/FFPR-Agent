@@ -46,7 +46,10 @@ export async function moveToSlot(pilot: Pilot, ui: Reply, slot: number): Promise
     const target = slots.indexOf(slot);
     const at = num(ui.cursor) ?? 0;
     const key = target > at ? "Down" : "Up";
-    await pilot.send("keys", { keys: [`${key}*${Math.abs(target - at)}`], gap: 150 });
+    await pilot.send("keys", {
+      keys: [`${key}*${Math.abs(target - at)}`],
+      gap: 150,
+    });
     ui = record((await pilot.query("saveui")).saveui);
   }
   return null;

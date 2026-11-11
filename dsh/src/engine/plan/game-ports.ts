@@ -22,8 +22,10 @@ import type {
   PlanBuyResult,
   PlanExitTarget,
   PlanProgressStatus,
+  PlanRestorePoint,
   PlanScene,
   PlanStationResult,
+  PlanStoryTrigger,
 } from "./execute.ts";
 import type { PlanBattle, PlanBoss } from "./types.ts";
 
@@ -112,10 +114,26 @@ export function gamePlanPorts(game: Game, pilot: Pilot): ExecutePorts {
       return truthy(fight.active) || truthy(fight.boss) || records(fight.enemies).length > 0;
     },
     scene: async (): Promise<PlanScene> => await game.planScene(pilot),
+    restorePoints: async (): Promise<readonly PlanRestorePoint[]> => await game.planRestorePoints(),
     exitTarget: async (map, cell): Promise<PlanExitTarget | null> =>
       await game.planExitTarget(map, cell),
     mapKnown: async (map): Promise<boolean> => await game.planMapKnown(map),
+    eventAt: async (map, cell): Promise<boolean> => await game.planEventAt(pilot, map, cell),
+    storyTrigger: async (map, hint): Promise<PlanStoryTrigger> =>
+      await game.planStoryTrigger(pilot, map, hint),
+    exploreStoryStep: async (map, direction) => await game.planExploreStoryStep(pilot, map, direction),
+    choiceOptions: async (): Promise<readonly string[]> => await game.planChoiceOptions(pilot),
+    vehicleStatus: async (): Promise<string> => await game.planVehicleStatus(pilot),
+    pointAt: async (map, cell): Promise<"restore" | "save" | null> =>
+      await game.planPointAt(map, cell),
+    savePoints: async (map): Promise<readonly Cell[]> => await game.planSavePoints(map),
+    usePoint: async (cell, kind): Promise<PlanStationResult> =>
+      await game.planUsePoint(pilot, cell, kind),
+    chestAlreadyOpen: async (map, cell): Promise<boolean> =>
+      await game.planChestAlreadyOpen(pilot, map, cell),
     bossAliases: async (name): Promise<readonly string[]> => await game.planBossAliases(name),
+    bossTriggerCandidates: async (map, boss, hint): Promise<readonly Cell[]> =>
+      await game.planBossTriggerCandidates(pilot, map, boss, hint),
 
     routePorts: () => game.planRoutePorts(pilot),
     planRoute: (
@@ -125,9 +143,12 @@ export function gamePlanPorts(game: Game, pilot: Pilot): ExecutePorts {
     ): Promise<RoutePlan> => Promise.resolve(game.planRoute(from, waypoints, end)),
     interact: async (cell): Promise<PlanStationResult> => await game.planInteract(pilot, cell),
     story: async () => await game.planStory(pilot),
-    choose: async (option): Promise<PlanActionResult> => await game.planChoose(pilot, option),
+    choose: async (option, cell): Promise<PlanActionResult> =>
+      await game.planChoose(pilot, option, cell),
     save: async (): Promise<PlanActionResult> => await game.planSave(pilot),
-    heal: async (): Promise<PlanActionResult> => await game.planHeal(pilot),
+    heal: async (belowPct?: number): Promise<PlanActionResult> =>
+      await game.planHeal(pilot, belowPct),
+    restAt: async (point): Promise<PlanActionResult> => await game.planRestAt(pilot, point),
     grind: async (stop): Promise<PlanStationResult> => await game.planGrind(pilot, stop),
 
     beginBattles: (battles): Promise<void> => {

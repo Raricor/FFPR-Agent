@@ -7,6 +7,9 @@
 /* eslint-disable @typescript-eslint/require-await -- the fake ports mirror async engine methods */
 
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import type { Cell } from "../src/engine/nav.ts";
 import type { RoutePlan, Waypoint } from "../src/engine/route/types.ts";
@@ -15,7 +18,9 @@ import {
   evaluateTurnBack,
   executeSegmentPlan,
   turnBackStateOf,
+  bossNameKey,
   type ExecutePorts,
+  type PlanActionResult,
   type PlanBossResult,
   type PlanBuyResult,
   type PlanExitTarget,
@@ -24,8 +29,10 @@ import {
   type PlanProgressStatus,
   type PlanShop,
   type PlanStationResult,
+  type PlanStoryCandidate,
 } from "../src/engine/plan/execute.ts";
 import type { PlanBattle, PlanBoss, PlanStation, SegmentPlan } from "../src/engine/plan/types.ts";
+import { readRunEvents, RunLogger } from "../src/engine/run-log.ts";
 
 function member(
   name: string,
@@ -59,6 +66,7 @@ function observation(overrides: Partial<PlanObservation> = {}): PlanObservation 
 
 class FakePorts implements ExecutePorts {
   readonly calls: string[] = [];
+  readonly healPercents: number[] = [];
   positionAt: { map: number; cell: Cell } = { map: 10, cell: [5, 5] };
   current = observation();
   unreachable = new Set<string>();
@@ -99,13 +107,40 @@ class FakePorts implements ExecutePorts {
   readonly exits = new Map<string, PlanExitTarget>();
   readonly aliasTable = new Map<string, readonly string[]>();
   /** Set a battle when the next walk arrives, to test the station boundary. */
-  battleOnArrive: { readonly boss: boolean; readonly enemies: readonly string[] } | null = null;
+  battleOnArrive: {
+    readonly boss: boolean;
+    readonly enemies: readonly string[];
+  } | null = null;
   dialogOnArrive = false;
+  choiceOnGo: string | undefined;
+  vehicleText = "";
   readonly unknownMaps = new Set<number>();
+  readonly eventCells = new Set<string>();
+  readonly refreshedMaps: number[] = [];
+  refreshClearsUnreachable = false;
+  readonly openedChests = new Set<string>();
+  readonly storyTriggers = new Map<number, { cell: Cell | null; name: string; count: number }>();
+  readonly storyCandidates = new Map<number, readonly PlanStoryCandidate[]>();
+  readonly storyHints: string[] = [];
+  readonly grindQueue: PlanStationResult[] = [];
+  grindDefault: PlanStationResult = { ok: true, done: true, text: "刷完了" };
+  readonly exploreSteps = new Map<
+    string,
+    { readonly map: number; readonly cell: Cell; readonly reason: string; readonly scene?: PlanScene }[]
+  >();
+  readonly points = new Map<string, "restore" | "save">();
+  readonly usedPoints: string[] = [];
+  readonly savePointCells: Cell[] = [];
+  readonly saveQueue: PlanActionResult[] = [];
+  saveDefault: PlanActionResult = { ok: true, text: "存了" };
   modelCallCount = 0;
   normalFights = 0;
   normalTables: (readonly unknown[])[] = [];
-  normal: PlanBossResult = { won: true, text: "普通战斗打赢", summary: "普通战斗打赢" };
+  normal: PlanBossResult = {
+    won: true,
+    text: "普通战斗打赢",
+    summary: "普通战斗打赢",
+  };
   leave: string[] = [];
   private interrupted = new Map<string, number>();
 
@@ -193,6 +228,11 @@ class FakePorts implements ExecutePorts {
         ) {
           this.bossActiveFlag = true;
         }
+        if (this.choiceOnGo !== undefined) {
+          const decision = this.choiceOnGo;
+          this.choiceOnGo = undefined;
+          return { ok: true, text: "走到了", decision };
+        }
         return { ok: true, text: "走到了" };
       },
       act: async () => ({ ok: true, done: true, text: "占了位" }),
@@ -208,6 +248,12 @@ class FakePorts implements ExecutePorts {
       },
       watch: async () => ({ timer: null, gameover: null }),
     };
+  }
+  async refreshCollision(mapId: number): Promise<string | null> {
+    this.calls.push(`refresh:${mapId}`);
+    this.refreshedMaps.push(mapId);
+    if (this.refreshClearsUnreachable) this.unreachable.clear();
+    return `重读了地图 ${mapId} 的实时碰撞：变了 1 格`;
   }
   async planRoute(
     from: { map: number; cell: Cell },
@@ -266,7 +312,7 @@ class FakePorts implements ExecutePorts {
       }
       return { ok: true, done: true, text: "按了确认，没有反应" };
     }
-    return { ok: true, done: true, text: "打开了" };
+    return { ok: true, done: true, evidence: ["对话/剧情"], text: "打开了" };
   }
   async bossTarget(): Promise<"trigger" | "object"> {
     this.calls.push("bossTarget");
@@ -286,6 +332,56 @@ class FakePorts implements ExecutePorts {
   async mapKnown(map: number): Promise<boolean> {
     return !this.unknownMaps.has(map);
   }
+  async eventAt(map: number, cell: Cell): Promise<boolean> {
+    return this.eventCells.has(`${map}:${cell[0]},${cell[1]}`);
+  }
+  async chestAlreadyOpen(map: number, cell: Cell): Promise<boolean> {
+    return this.openedChests.has(`${map}:${cell[0]},${cell[1]}`);
+  }
+  async storyTrigger(map: number, hint = "") {
+    this.storyHints.push(hint);
+    const candidates = this.storyCandidates.get(map);
+    if (candidates !== undefined) {
+      return { cell: null, name: "", count: candidates.length, candidates };
+    }
+    return this.storyTriggers.get(map) ?? { cell: null, name: "", count: 0 };
+  }
+  async exploreStoryStep(map: number, direction: string) {
+    this.calls.push(`explore:${direction}`);
+    const next = this.exploreSteps.get(direction)?.shift();
+    if (next === undefined) {
+      return {
+        map: this.positionAt.map,
+        cell: this.positionAt.cell,
+        moved: false,
+        reason: "这个方向走不通",
+      };
+    }
+    this.positionAt = { map: next.map, cell: next.cell };
+    if (next.scene !== undefined) this.sceneValue = next.scene;
+    return { map: next.map, cell: next.cell, moved: true, reason: next.reason };
+  }
+  async choiceOptions(): Promise<readonly string[]> {
+    return ["是", "否"];
+  }
+  async pointAt(map: number, cell: Cell): Promise<"restore" | "save" | null> {
+    return this.points.get(`${map}:${cell[0]},${cell[1]}`) ?? null;
+  }
+  async savePoints(): Promise<readonly Cell[]> {
+    return this.savePointCells;
+  }
+  async usePoint(cell: Cell, kind: "restore" | "save"): Promise<PlanStationResult> {
+    this.usedPoints.push(`${kind}:${cell[0]},${cell[1]}`);
+    return {
+      ok: true,
+      done: true,
+      evidence: [kind === "save" ? "存档菜单打开" : "HP/MP 变化"],
+      text: `用了${kind}点`,
+    };
+  }
+  async vehicleStatus(): Promise<string> {
+    return this.vehicleText;
+  }
   modelCalls(): number {
     return this.modelCallCount;
   }
@@ -297,7 +393,12 @@ class FakePorts implements ExecutePorts {
     this.normalFights += 1;
     this.normalTables.push(tables);
     if (this.normal.won)
-      this.sceneValue = { ...this.sceneValue, battle: false, boss: false, enemies: [] };
+      this.sceneValue = {
+        ...this.sceneValue,
+        battle: false,
+        boss: false,
+        enemies: [],
+      };
     return this.normal;
   }
   async leaveNotes(): Promise<readonly string[]> {
@@ -316,19 +417,24 @@ class FakePorts implements ExecutePorts {
   async choose(option: number | string) {
     this.calls.push(`choose:${String(option)}`);
     this.chosen.push(option);
-    return { ok: true, text: `选了 ${String(option)}` };
+    return {
+      ok: true,
+      evidence: ["对话/剧情"],
+      text: `选了 ${String(option)}`,
+    };
   }
   async save() {
     this.calls.push("save");
-    return { ok: true, text: "存了" };
+    return this.saveQueue.shift() ?? this.saveDefault;
   }
-  async heal() {
+  async heal(belowPct = 30) {
     this.calls.push("heal");
+    this.healPercents.push(belowPct);
     return { ok: true, text: "补满了" };
   }
   async grind(stop: Waypoint) {
     this.calls.push(`grind:${stop.id}`);
-    return { ok: true, done: true, text: "刷完了" };
+    return this.grindQueue.shift() ?? this.grindDefault;
   }
   async beginBattles(battles: readonly PlanBattle[]): Promise<void> {
     this.calls.push("beginBattles");
@@ -341,7 +447,12 @@ class FakePorts implements ExecutePorts {
     this.calls.push(`boss:${boss.name}`);
     this.fought.push(boss.name);
     if (this.boss.won)
-      this.sceneValue = { ...this.sceneValue, battle: false, boss: false, enemies: [] };
+      this.sceneValue = {
+        ...this.sceneValue,
+        battle: false,
+        boss: false,
+        enemies: [],
+      };
     return this.boss;
   }
   async recoverGameover() {
@@ -387,6 +498,27 @@ function plan(stations: readonly PlanStation[], extra: Partial<SegmentPlan> = {}
   };
 }
 
+void test("a switch station refreshes the live collision once", async () => {
+  const ports = new FakePorts();
+  const logs: string[] = [];
+  const report = await executeSegmentPlan(plan([station("switch", "10:6,5")]), ports, {
+    log: (line) => logs.push(line),
+  });
+  assert.equal(report.status, "done");
+  assert.deepEqual(ports.refreshedMaps, [10]);
+  assert.ok(logs.some((line) => line.includes("重读了地图 10 的实时碰撞")));
+});
+
+void test("a blocked plan retries after refreshing the current map", async () => {
+  const ports = new FakePorts();
+  ports.unreachable.add("plan-0");
+  ports.refreshClearsUnreachable = true;
+  const report = await executeSegmentPlan(plan([station("move", "10:6,5")]), ports);
+  assert.equal(report.status, "done");
+  assert.deepEqual(ports.refreshedMaps, [10]);
+  assert.ok(ports.calls.some((call) => call === "refresh:10"));
+});
+
 void test("preparation runs in the plan's order and a shop miss is only a note", async () => {
   const ports = new FakePorts();
   ports.buys = { ok: false, atShop: false, bought: 0, text: "不在商店，没买" };
@@ -429,7 +561,11 @@ function shop(
   cell: Cell,
   area: string,
   kind: string,
-  products: readonly { name: string; names?: readonly string[]; price?: number }[],
+  products: readonly {
+    name: string;
+    names?: readonly string[];
+    price?: number;
+  }[],
 ): PlanShop {
   return {
     id,
@@ -518,7 +654,12 @@ void test("money running out stops shopping with a note, not an exception", asyn
   ports.shopRequired = true;
   ports.buyQueue.push(
     { ok: true, atShop: true, bought: 1, text: "买了火炎" },
-    { ok: false, atShop: true, bought: 0, text: "钱不够:Cure×1 要 180,只有 20" },
+    {
+      ok: false,
+      atShop: true,
+      bought: 0,
+      text: "钱不够:Cure×1 要 180,只有 20",
+    },
   );
   const lines: string[] = [];
   const report = await executeSegmentPlan(
@@ -656,16 +797,29 @@ void test("an unreachable optional save station is skipped, not an exception", a
   assert.ok(ports.calls.some((call) => call.includes(":skipped:")));
 });
 
-void test("the plan's choose station answers a dialog choice", async () => {
+void test("a later choose station never answers an option met on the road", async () => {
   const ports = new FakePorts();
   ports.decisions.set("interact:6,5", "路上出现了剧情选项，交给 AI 选");
   const report = await executeSegmentPlan(
     plan([station("talk", "10:6,5"), station("choose", "10:6,5", { choose: "是" })]),
     ports,
   );
+  assert.ok(report.exception);
+  assert.equal(report.status, "exception");
+  assert.equal(report.exception.kind, "story-choice");
+  assert.deepEqual(ports.chosen, []);
+  assert.match(report.exception.detail, /选项:是\/否/u);
+});
+
+void test("the current choose station may answer a dialog choice", async () => {
+  const ports = new FakePorts();
+  ports.choiceOnGo = "现在要选吗";
+  const report = await executeSegmentPlan(
+    plan([station("choose", "10:6,5", { choose: "是" })]),
+    ports,
+  );
   assert.equal(report.status, "done");
-  assert.deepEqual(ports.chosen, ["是"]);
-  assert.equal(report.done.stations, 2);
+  assert.ok(ports.chosen.includes("是"));
 });
 
 void test("a dialog choice the plan did not answer is a story-choice exception", async () => {
@@ -769,10 +923,18 @@ void test("a heal-and-continue turn-back heals and keeps walking", async () => {
       turnBack: [{ when: "party.lowest_hp_pct < 30", then: "heal-and-continue" }],
     }),
     ports,
+    { healFullPercent: 95 },
   );
   assert.equal(report.status, "done");
   assert.ok(ports.calls.includes("heal"));
+  assert.ok(ports.healPercents.length > 0);
+  assert.ok(ports.healPercents.every((pct) => pct === 95));
   assert.ok(ports.calls.includes("go:plan-0"));
+});
+
+void test("a boss name key ignores small kana, long vowels and middle dots", () => {
+  assert.equal(bossNameKey("ウィングラプター"), bossNameKey("ウイングラプター"));
+  assert.equal(bossNameKey("ヴィ・ヴィ"), bossNameKey("ヴイヴイ"));
 });
 
 void test("the report counts chests, new bestiary, blue magic and battles", async () => {
@@ -1105,4 +1267,376 @@ void test("an aborted execution says the web restart/cancel, not an executor err
   });
   assert.equal(report.status, "aborted");
   assert.ok(lines.includes("执行被打断(网页重启或取消)"));
+});
+
+void test("a chest already marked open is completed without walking to it", async () => {
+  const ports = new FakePorts();
+  ports.openedChests.add("211:52,31");
+  const lines: string[] = [];
+  const report = await executeSegmentPlan(plan([station("open", "211:52,31")]), ports, {
+    log: (line) => lines.push(line),
+  });
+  assert.equal(report.status, "done");
+  assert.equal(ports.calls.filter((call) => call.startsWith("go:")).length, 0);
+  assert.ok(lines.includes("第 1/1 站 完成:已开过"));
+});
+
+void test("a script move during an event-target station completes it and says where", async () => {
+  const ports = new FakePorts();
+  ports.eventCells.add("577:13,54");
+  const base = ports.routePorts();
+  let scripted = false;
+  ports.routePorts = () => ({
+    ...base,
+    goTo: async (stop) => {
+      ports.calls.push(`go:${stop.id}`);
+      if (!scripted) {
+        scripted = true;
+        ports.positionAt = { map: 577, cell: [14, 42] };
+        ports.sceneValue = {
+          state: "Event",
+          dialog: true,
+          battle: false,
+          boss: false,
+          enemies: [],
+        };
+        return { ok: false, text: "停在 (14,42):interrupted:state:Event" };
+      }
+      return { ok: true, text: "走到了" };
+    },
+  });
+  const lines: string[] = [];
+  const report = await executeSegmentPlan(plan([station("move", "577:13,54")]), ports, {
+    log: (line) => lines.push(line),
+  });
+  assert.equal(report.status, "done");
+  assert.ok(lines.some((line) => line.includes("剧情把人带到了 地图 577 (14,42)")));
+  assert.equal(
+    ports.calls.some((call) =>
+      call.startsWith("progress:0:done:第 1/1 站 完成:剧情把人带到了 地图 577 (14,42)"),
+    ),
+    true,
+  );
+});
+
+void test("a story station that played on the way does not press confirm again", async () => {
+  const ports = new FakePorts();
+  ports.dialogOnArrive = true;
+  const lines: string[] = [];
+  const report = await executeSegmentPlan(plan([station("story", "194:16,10")]), ports, {
+    log: (line) => lines.push(line),
+  });
+  assert.equal(report.status, "done");
+  assert.ok(lines.some((line) => line.startsWith("第 1/1 站 完成:路上播了剧情")));
+  assert.equal(ports.calls.includes("interact:16,10"), false);
+});
+
+void test("a story station with only a map steps the map's single trigger", async () => {
+  const ports = new FakePorts();
+  ports.storyTriggers.set(194, { cell: [16, 10], name: "船を見る", count: 1 });
+  const report = await executeSegmentPlan(plan([station("story", "194")]), ports);
+  assert.equal(report.status, "done");
+  assert.ok(ports.calls.includes("interact:16,10"));
+});
+
+void test("a story station with only a map and several triggers is handed back", async () => {
+  const ports = new FakePorts();
+  ports.storyTriggers.set(194, { cell: null, name: "", count: 2 });
+  const report = await executeSegmentPlan(plan([station("story", "194")]), ports);
+  assert.equal(report.status, "exception");
+  assert.match(report.exception?.detail ?? "", /探索也没拿到/u);
+});
+
+void test("a story station with several entities prefers the candidate whose name matches why", async () => {
+  const ports = new FakePorts();
+  ports.storyCandidates.set(194, [
+    { cell: [10, 20], name: "sc_e_0005:ボコ", script: 5, kind: "event", matched: false },
+    { cell: [10, 10], name: "sc_e_0004:ガラフ", script: 4, kind: "event", matched: true },
+  ]);
+  ports.interact = async () => {
+    ports.current = observation({
+      members: [member("巴兹", 10, 100), member("加拉夫", 10, 100)],
+    });
+    return { ok: true, done: true, text: "加拉夫入队", evidence: ["队伍入离队"] };
+  };
+  const report = await executeSegmentPlan(
+    plan([station("story", "194", { why: "加拉夫入队" })]),
+    ports,
+  );
+  assert.equal(report.status, "done", JSON.stringify({ error: report.exception, lines, calls: ports.calls }));
+  const storyCells = ports.routeCells.filter((cell) => cell[0] === 10);
+  assert.deepEqual(storyCells[0], [10, 10], JSON.stringify(ports.calls));
+  assert.ok(!storyCells.some((cell) => cell[1] === 20));
+  assert.match(ports.storyHints[0] ?? "", /加拉夫/u);
+});
+
+void test("without a name match the lowest scene number is tried first", async () => {
+  const ports = new FakePorts();
+  ports.storyCandidates.set(194, [
+    { cell: [10, 20], name: "sc_e_0005:ボコ", script: 5, kind: "event", matched: false },
+    { cell: [10, 10], name: "sc_e_0004:ガラフ", script: 4, kind: "event", matched: false },
+  ]);
+  ports.interact = async () => ({
+    ok: true,
+    done: true,
+    text: "剧情",
+    evidence: ["对话/剧情"],
+  });
+  const report = await executeSegmentPlan(plan([station("story", "194", { why: "剧情" })]), ports);
+  assert.equal(report.status, "done");
+  assert.deepEqual(
+    ports.routeCells.find((cell) => cell[0] === 10),
+    [10, 10],
+  );
+});
+
+void test("a story candidate without evidence falls through to the next one", async () => {
+  const ports = new FakePorts();
+  ports.storyCandidates.set(194, [
+    { cell: [10, 10], name: "sc_e_0004:ガラフ", script: 4, kind: "event", matched: true },
+    { cell: [10, 20], name: "sc_e_0005:ボコ", script: 5, kind: "event", matched: false },
+  ]);
+  ports.interact = async (cell) => {
+    if (cell[0] === 10 && cell[1] === 20) {
+      ports.current = observation({
+        members: [member("巴兹", 10, 100), member("加拉夫", 10, 100)],
+      });
+      return { ok: true, done: true, text: "加拉夫入队", evidence: ["队伍入离队"] };
+    }
+    return { ok: true, done: true, text: "什么也没发生" };
+  };
+  const report = await executeSegmentPlan(
+    plan([station("story", "194", { why: "加拉夫入队" })]),
+    ports,
+  );
+  assert.equal(report.status, "done");
+  assert.deepEqual(
+    ports.routeCells.filter((cell) => cell[0] === 10),
+    [
+      [10, 10],
+      [10, 20],
+    ],
+  );
+});
+
+void test("a story station with no candidate explores the why direction and completes on battle evidence", async () => {
+  const ports = new FakePorts();
+  ports.positionAt = { map: 194, cell: [0, 0] };
+  ports.storyTriggers.set(194, { cell: null, name: "", count: 0 });
+  ports.exploreSteps.set("北", [
+    { map: 194, cell: [0, -1], reason: "往北一步" },
+    {
+      map: 194,
+      cell: [0, -2],
+      reason: "往北一步，遇到哥布林",
+      scene: {
+        state: "Battle",
+        dialog: false,
+        battle: true,
+        boss: false,
+        enemies: ["哥布林"],
+      },
+    },
+  ]);
+  const lines: string[] = [];
+  const report = await executeSegmentPlan(
+    plan([station("story", "194", { why: "先往北走，遇到哥布林" })]),
+    ports,
+    { log: (line) => lines.push(line) },
+  );
+  assert.equal(
+    report.status,
+    "done",
+    JSON.stringify({ error: report.exception, lines, calls: ports.calls }),
+  );
+  assert.ok(ports.calls.includes("explore:北"));
+  assert.ok(lines.some((line) => line.includes("朝北探索到") && line.includes("(0,-2)")));
+});
+
+void test("a story trigger that only pushes the party two cells back is not evidence", async () => {
+  const ports = new FakePorts();
+  ports.positionAt = { map: 1, cell: [0, 0] };
+  ports.storyCandidates.set(1, [
+    { cell: [10, 10], name: "sc_e_0004:weak", script: 4, kind: "event", matched: true },
+  ]);
+  ports.interact = async () => {
+    ports.positionAt = { map: 1, cell: [2, 0] };
+    return { ok: true, done: true, text: "被推回两格" };
+  };
+  const report = await executeSegmentPlan(
+    plan([station("story", "1", { why: "往北" })]),
+    ports,
+  );
+  assert.equal(report.status, "exception");
+  assert.match(report.exception?.detail ?? "", /探索也没拿到/u);
+});
+
+void test("a story station that only arrived without any evidence fails", async () => {
+  const ports = new FakePorts();
+  ports.interact = async () => ({ ok: true, done: true, text: "打开了" });
+  const report = await executeSegmentPlan(plan([station("story", "198:20,11")]), ports);
+  assert.equal(report.status, "exception");
+  assert.match(report.exception?.detail ?? "", /剧情没有触发/u);
+});
+
+void test("a world-map route failure says what the vehicles are doing", async () => {
+  const ports = new FakePorts();
+  ports.unreachable.add("plan-1");
+  ports.vehicleText = "船 地图 1 (182,57) 不能用；陆行鸟 地图 1 (10,10) 可用";
+  const report = await executeSegmentPlan(
+    plan([station("move", "1:170,88"), station("move", "30:5,5")]),
+    ports,
+  );
+  assert.ok(report.exception);
+  assert.equal(report.status, "exception");
+  assert.equal(report.exception.kind, "unreachable");
+  assert.match(report.exception.detail, /交通工具:船 地图 1 \(182,57\) 不能用/u);
+});
+
+void test("a heal station on a non-walkable restore-point object stands beside it and presses", async () => {
+  const ports = new FakePorts();
+  ports.points.set("202:10,22", "restore");
+  const report = await executeSegmentPlan(plan([station("heal", "202:10,22")]), ports);
+  assert.equal(report.status, "done");
+  assert.deepEqual(ports.usedPoints, ["restore:10,22"]);
+  assert.equal(ports.calls.includes("heal"), false);
+});
+
+void test("a save station on a save-point object opens the menu before saving", async () => {
+  const ports = new FakePorts();
+  ports.points.set("202:10,22", "save");
+  const report = await executeSegmentPlan(plan([station("save", "202:10,22")]), ports);
+  assert.equal(report.status, "done");
+  assert.deepEqual(ports.usedPoints, ["save:10,22"]);
+  assert.equal(ports.calls.includes("save"), false);
+});
+
+void test("a failed save station is skipped with the game's reason and a run-log warning", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-save-skip-"));
+  try {
+    const file = join(directory, "run-ff5.jsonl");
+    const runLog = new RunLogger({ game: "ff5", file, run: "save-skip" });
+    const ports = new FakePorts();
+    ports.saveDefault = { ok: false, text: "这里不能存档(「保存」是灰的),要到世界地图或存档点" };
+    const report = await executeSegmentPlan(
+      plan([station("save", "204", { why: "首领前存档 20 号位" })]),
+      ports,
+      { runLog },
+    );
+    await runLog.flush();
+    assert.equal(report.status, "done");
+    assert.ok(ports.calls.some((call) => call.startsWith("progress:0:skipped")));
+    assert.ok(!ports.calls.some((call) => call.startsWith("progress:0:done")));
+    const events = await readRunEvents(file);
+    const end = events.find((event) => event.type === "station.end" && event.station === 0);
+    assert.ok(end);
+    assert.equal(end.result, "skipped");
+    assert.match(end.reason ?? "", /这里不能存档/u);
+    const warn = events.find((event) => event.type === "warn" && event.station === 0);
+    assert.equal(warn?.reason, "首领前没存上档");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("a save station in a dungeon walks to the map's save point and counts done with evidence", async () => {
+  const ports = new FakePorts();
+  ports.saveQueue.push({ ok: false, text: "这里不能存档(「保存」是灰的),要到世界地图或存档点" });
+  ports.savePointCells.push([5, 5]);
+  ports.points.set("10:5,5", "save");
+  const report = await executeSegmentPlan(
+    plan([station("save", "10", { why: "首领前存档 20 号位" })]),
+    ports,
+  );
+  assert.equal(report.status, "done");
+  assert.deepEqual(ports.usedPoints, ["save:5,5"]);
+  assert.equal(report.done.stations, 1);
+});
+
+void test("the structured run log records done, boss, skipped, failed and chest stations", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-run-log-"));
+  try {
+    const file = join(directory, "run-ff5.jsonl");
+    const runLog = new RunLogger({ game: "ff5", file, run: "run-test" });
+    const ports = new FakePorts();
+    ports.unreachable.add("plan-2");
+    ports.unreachable.add("plan-3");
+    const report = await executeSegmentPlan(
+      plan(
+        [
+          station("open", "10:2,2", { why: "宝箱 帐篷" }),
+          station("boss", "10:9,9", { why: "首领 风之水晶" }),
+          station("open", "10:7,7", { why: "宝箱 眼药", optional: true }),
+          station("move", "10:6,6"),
+        ],
+        {
+          bosses: [
+            {
+              name: "风之水晶",
+              map: 10,
+              healFirst: false,
+              saveFirst: false,
+              tables: [],
+            },
+          ],
+        },
+      ),
+      ports,
+      { runLog },
+    );
+    await runLog.flush();
+    assert.equal(report.status, "exception");
+    const events = await readRunEvents(file);
+    assert.ok(events.length > 0);
+    for (const event of events) {
+      assert.equal(event.run, "run-test");
+      assert.equal(event.chapter, null);
+      assert.equal(event.segment, 0);
+      assert.equal(event.section, "风之神殿");
+      assert.equal(typeof event.at, "string");
+      assert.ok("station" in event);
+    }
+    const types = new Set(events.map((event) => event.type));
+    for (const type of [
+      "run.start",
+      "run.end",
+      "station.start",
+      "station.end",
+      "battle",
+      "chest",
+      "fallback",
+    ]) {
+      assert.ok(types.has(type as never), `缺少 ${type}`);
+    }
+    const stationEnds = events.filter((event) => event.type === "station.end");
+    assert.deepEqual(
+      stationEnds.map((event) => event.result),
+      ["done", "done", "skipped", "failed"],
+    );
+    assert.ok(stationEnds.every((event) => typeof event.ms === "number"));
+    assert.ok(stationEnds.every((event) => event.attempt !== undefined));
+    assert.ok(
+      events.some((event) => event.type === "battle" && event.kind === "boss" && event.won),
+    );
+    assert.ok(
+      events.some(
+        (event) => event.type === "chest" && event.opened === true && event.item === "宝箱 帐篷",
+      ),
+    );
+    assert.ok(
+      events.some(
+        (event) =>
+          event.type === "fallback" &&
+          event.kind === "skip" &&
+          (event.reason ?? "").includes("走不到"),
+      ),
+    );
+    const end = events.find((event) => event.type === "run.end");
+    assert.ok(end !== undefined);
+    assert.equal(end.status, "exception");
+    assert.equal(end.modelCalls, 0);
+    assert.ok((end.fallbacks ?? 0) >= 1);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
