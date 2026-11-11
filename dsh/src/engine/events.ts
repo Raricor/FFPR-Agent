@@ -284,7 +284,11 @@ export class KeyEvents {
   }
 
   /** The newest sample even after it went stale; the card shows it as the last known state. */
-  lastSample(): { readonly sample: Json; readonly at: string; readonly live: boolean } | null {
+  lastSample(): {
+    readonly sample: Json;
+    readonly at: string;
+    readonly live: boolean;
+  } | null {
     return this.sample === null
       ? null
       : {

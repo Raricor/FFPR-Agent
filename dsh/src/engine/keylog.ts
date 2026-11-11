@@ -86,7 +86,9 @@ export async function load(path: string, signal?: AbortSignal): Promise<Json[]> 
     body = await readFile(path, { encoding: "utf8", signal });
   } catch (error) {
     signal?.throwIfAborted();
-    throw new Error(`读不了探针文件 ${path}:${describeError(error)}`, { cause: error });
+    throw new Error(`读不了探针文件 ${path}:${describeError(error)}`, {
+      cause: error,
+    });
   }
   const records_: Json[] = [];
   for (const line of body.split(/\r\n|\r|\n/)) {
@@ -235,7 +237,9 @@ export class Builder {
     const place = text(user.areaText);
     if (place && !this.places.has(place)) {
       this.places.add(place);
-      this.add(record, "place", `首次到达「${place}」`, "—", { map: user.mapId ?? null });
+      this.add(record, "place", `首次到达「${place}」`, "—", {
+        map: user.mapId ?? null,
+      });
     }
 
     const chests = num(user.chests);
@@ -298,12 +302,18 @@ export class Builder {
       const size = `队伍 ${names.length} 人`;
       for (const name of this.party) {
         if (!names.includes(name)) {
-          this.add(record, "party", `${name} 离队`, size, { name, change: "leave" });
+          this.add(record, "party", `${name} 离队`, size, {
+            name,
+            change: "leave",
+          });
         }
       }
       for (const name of names) {
         if (!this.party.includes(name)) {
-          this.add(record, "party", `${name} 入队`, size, { name, change: "join" });
+          this.add(record, "party", `${name} 入队`, size, {
+            name,
+            change: "join",
+          });
         }
       }
     }
@@ -394,14 +404,18 @@ export class Builder {
     }
     if (outcome === "fled") {
       if (start.boss) {
-        this.add(record, "bossfight", `从「${enemies}」逃跑`, "—", { enemies: start.enemies });
+        this.add(record, "bossfight", `从「${enemies}」逃跑`, "—", {
+          enemies: start.enemies,
+        });
       }
       return;
     }
     if (start.boss !== null) {
       if (start.boss && (outcome === "win" || alive)) {
         const fallen = down.length > 0 ? `,${down.join("、")} 倒下` : "";
-        this.add(record, "boss", `击败「${enemies}」${fallen}`, "—", { enemies: start.enemies });
+        this.add(record, "boss", `击败「${enemies}」${fallen}`, "—", {
+          enemies: start.enemies,
+        });
       }
       return;
     }

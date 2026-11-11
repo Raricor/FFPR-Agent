@@ -125,7 +125,10 @@ export class FakeBattle {
     }));
     this.pilot.onQuery("items", () => ({
       items: {
-        normal: this.bag.map((item) => ({ name: item.name, count: item.count })),
+        normal: this.bag.map((item) => ({
+          name: item.name,
+          count: item.count,
+        })),
         important: [],
       },
     }));
@@ -216,13 +219,20 @@ export class FakeBattle {
     }
     if (this.phase === "items") {
       common.itemState = "UseSelect";
-      common.items = this.bag.map((item) => ({ name: item.name, count: item.count }));
+      common.items = this.bag.map((item) => ({
+        name: item.name,
+        count: item.count,
+      }));
       common.itemCursor = this.itemCursor;
     }
     if (this.phase === "ability") {
       const spells = this.party[this.actorIndex]?.spells ?? [];
       common.abilityState = "AbilitySelecting";
-      common.abilities = spells.map((name, index) => ({ id: index + 1, name, mp: 2 }));
+      common.abilities = spells.map((name, index) => ({
+        id: index + 1,
+        name,
+        mp: 2,
+      }));
       common.shown = common.abilities;
       common.abilityCursor = this.abilityCursor;
     }
@@ -479,5 +489,8 @@ export function startRows(battle: FakeBattle): {
   readonly enemies: ReturnType<typeof battleUnits>;
 } {
   const rows = battleRows(battle);
-  return { party: battleUnits(rows.players), enemies: battleUnits(rows.enemies) };
+  return {
+    party: battleUnits(rows.players),
+    enemies: battleUnits(rows.enemies),
+  };
 }

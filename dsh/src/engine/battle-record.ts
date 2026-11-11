@@ -50,7 +50,11 @@ export interface BattleUnit {
 
 /** Which table fought the battle: a map's numbered table, the boss table, or a fallback. */
 export type BattleTable =
-  | { readonly kind: "map"; readonly mapId: number | null; readonly table: number | null }
+  | {
+      readonly kind: "map";
+      readonly mapId: number | null;
+      readonly table: number | null;
+    }
   | { readonly kind: "default"; readonly mapId: number | null }
   | { readonly kind: "boss"; readonly mapId: number | null }
   | { readonly kind: "manual"; readonly mapId: number | null };
@@ -95,7 +99,10 @@ export interface UnitChange {
   readonly id: number | null;
   readonly hp?: { readonly from: number; readonly to: number };
   readonly mp?: { readonly from: number; readonly to: number };
-  readonly status?: { readonly from: readonly string[]; readonly to: readonly string[] };
+  readonly status?: {
+    readonly from: readonly string[];
+    readonly to: readonly string[];
+  };
 }
 
 export interface BattleTurnRecord {
@@ -460,7 +467,9 @@ export class BattleLog {
     try {
       await appendFile(this.path, JSON.stringify(record) + "\n", "utf8");
     } catch (error) {
-      throw new Error(`写不了战斗记录 ${this.path}:${describeError(error)}`, { cause: error });
+      throw new Error(`写不了战斗记录 ${this.path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
   }
 
@@ -472,7 +481,9 @@ export class BattleLog {
     } catch (error) {
       if (isMissingFile(error)) return [];
       signal?.throwIfAborted();
-      throw new Error(`读不了战斗记录 ${this.path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不了战斗记录 ${this.path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     const out: BattleRecord[] = [];
     for (const line of body.split("\n")) {

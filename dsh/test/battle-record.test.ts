@@ -112,10 +112,36 @@ void test("a fight records every turn, the skipped rule and the HP changes into 
       mapId: 229,
       mapName: "北山",
       boss: false,
-      enemies: [{ name: "哥布林", id: 1, maxHp: 100, hp: 100, mp: null, status: [], boss: false }],
+      enemies: [
+        {
+          name: "哥布林",
+          id: 1,
+          maxHp: 100,
+          hp: 100,
+          mp: null,
+          status: [],
+          boss: false,
+        },
+      ],
       party: [
-        { name: "巴兹", id: null, maxHp: 100, hp: 50, mp: 10, status: [], boss: false },
-        { name: "蕾娜", id: null, maxHp: 100, hp: 80, mp: 20, status: [], boss: false },
+        {
+          name: "巴兹",
+          id: null,
+          maxHp: 100,
+          hp: 50,
+          mp: 10,
+          status: [],
+          boss: false,
+        },
+        {
+          name: "蕾娜",
+          id: null,
+          maxHp: 100,
+          hp: 80,
+          mp: 20,
+          status: [],
+          boss: false,
+        },
       ],
       table: { kind: "map", mapId: 229, table: 2 },
       startedAt: "2026-11-03T10:00:00.000Z",
@@ -125,7 +151,9 @@ void test("a fight records every turn, the skipped rule and the HP changes into 
       巴兹: [{ if: "ally.hp_pct < 90", do: "黑魔法:火炎" }, { do: "攻击" }],
       蕾娜: [{ if: "enemy.hp_pct < 100", do: "攻击" }, { do: "防御" }],
     };
-    const result = await fight(sim.pilot, plan, 300, () => undefined, null, { record: session });
+    const result = await fight(sim.pilot, plan, 300, () => undefined, null, {
+      record: session,
+    });
     assert.equal(result.ok, true);
     assert.equal(result.turns.length, 2);
 

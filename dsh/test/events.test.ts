@@ -14,16 +14,25 @@ interface EventsFixture {
     readonly stages: readonly {
       readonly feed: number;
       readonly now: string;
-      readonly calls: readonly { readonly op: "window" | "news"; readonly layer: 1 | 2 }[];
+      readonly calls: readonly {
+        readonly op: "window" | "news";
+        readonly layer: 1 | 2;
+      }[];
       readonly expected: readonly string[];
     }[];
     readonly late: {
       readonly now: string;
-      readonly calls: readonly { readonly op: "window" | "news"; readonly layer: 1 | 2 }[];
+      readonly calls: readonly {
+        readonly op: "window" | "news";
+        readonly layer: 1 | 2;
+      }[];
       readonly expected: readonly string[];
     };
     readonly entries: readonly KeyEntry[];
-    readonly enemies: readonly { readonly mapId: unknown; readonly names: readonly string[] }[];
+    readonly enemies: readonly {
+      readonly mapId: unknown;
+      readonly names: readonly string[];
+    }[];
     readonly books: readonly { readonly name: string; readonly book: number }[];
   }[];
 }
@@ -157,7 +166,11 @@ void test("story lines gather into one entry per scene", () => {
     line(3, 6, "E0001_00_071", "", "风停了！"),
     line(4, 9, "E0002_00_010", "巴兹", "那是？"),
     line(5, 300, "E0002_00_010", "巴兹", "那是？"), // the scene again, minutes later
-    rec(6, 301, "dialog.play", { ids: ["N0001_a_01"], speaker: "村民", lines: ["你好"] }),
+    rec(6, 301, "dialog.play", {
+      ids: ["N0001_a_01"],
+      speaker: "村民",
+      lines: ["你好"],
+    }),
   ]);
   assert.deepEqual(got, [
     ["story", "蕾娜:父王！ …… 风停了！", "3 句"],
@@ -209,7 +222,11 @@ void test("shorten keeps the first and last lines", () => {
 });
 
 void test("seed then stream without doubles and a restart starts a new run", () => {
-  const hello = rec(1, 0, "hello", { product: "FF5", gameVersion: "1.2.0", plugin: "0.5.2" });
+  const hello = rec(1, 0, "hello", {
+    product: "FF5",
+    gameVersion: "1.2.0",
+    plugin: "0.5.2",
+  });
   const events = new KeyEvents(() => at(30));
   for (const record of [hello, sample(2, 1), sample(3, 2, { names: ["巴兹", "蕾娜", "加拉夫"] })]) {
     events.feed(record, false);
@@ -222,7 +239,11 @@ void test("seed then stream without doubles and a restart starts a new run", () 
     events.entries.filter((entry) => entry.type === "party").map((entry) => entry.text),
     ["法利斯 离队", "法利斯 入队"],
   );
-  const restarted = rec(1, 600, "hello", { product: "FF5", gameVersion: "1.2.0", plugin: "0.5.2" });
+  const restarted = rec(1, 600, "hello", {
+    product: "FF5",
+    gameVersion: "1.2.0",
+    plugin: "0.5.2",
+  });
   events.feed(restarted);
   events.feed(sample(2, 601)); // seq starts again at 1 in the new run
   assert.equal(events.entries.filter((entry) => entry.type === "run").length, 2);
@@ -232,7 +253,13 @@ void test("seed then stream without doubles and a restart starts a new run", () 
 void test("windows per layer and news since the last read", () => {
   let now = at(30);
   const events = new KeyEvents(() => now);
-  events.feed(rec(1, 0, "hello", { product: "FF5", gameVersion: "1.2.0", plugin: "0.5.2" }));
+  events.feed(
+    rec(1, 0, "hello", {
+      product: "FF5",
+      gameVersion: "1.2.0",
+      plugin: "0.5.2",
+    }),
+  );
   events.feed(rec(2, 0, "save.write", { slot: 3, result: "Success" })); // 20:00 local
   events.feed(sample(3, 1500)); // 20:25
   events.feed(sample(4, 1501, { names: ["巴兹", "蕾娜", "加拉夫"] }));
@@ -252,7 +279,13 @@ void test("windows per layer and news since the last read", () => {
 
 void test("minutes since the last save", () => {
   const events = new KeyEvents(() => at(30));
-  events.feed(rec(1, 0, "hello", { product: "FF5", gameVersion: "1.2.0", plugin: "0.6.4" }));
+  events.feed(
+    rec(1, 0, "hello", {
+      product: "FF5",
+      gameVersion: "1.2.0",
+      plugin: "0.6.4",
+    }),
+  );
   assert.equal(events.lastSaveMinutes(), null);
   events.feed(rec(2, 600, "save.write", { slot: 3, result: "Success" })); // 20:10 local
   assert.equal(events.lastSaveMinutes(), 20);
@@ -269,7 +302,13 @@ void test("purchases told by the tools stay in the windows", () => {
 
 void test("monsters met are kept per map", () => {
   const events = new KeyEvents(() => at(30));
-  events.feed(rec(1, 0, "hello", { product: "FF5", gameVersion: "1.2.0", plugin: "0.6.8" }));
+  events.feed(
+    rec(1, 0, "hello", {
+      product: "FF5",
+      gameVersion: "1.2.0",
+      plugin: "0.6.8",
+    }),
+  );
   const fight = { active: true, enemies: [{ name: "小妖魔" }] };
   events.feed(sample(2, 1, { battle: fight, mapId: 64 }));
   assert.deepEqual(events.enemies.get(64), new Set(["小妖魔"]));
@@ -277,11 +316,27 @@ void test("monsters met are kept per map", () => {
 
 void test("bestiary numbers only from bridges that send the shown ones", () => {
   const events = new KeyEvents(() => at(30));
-  const fight: Json = { active: true, enemies: [{ name: "寒冰士兵", book: 30 }] };
-  events.feed(rec(1, 0, "hello", { product: "FF5", gameVersion: "1.2.0", plugin: "0.6.9" }), false);
+  const fight: Json = {
+    active: true,
+    enemies: [{ name: "寒冰士兵", book: 30 }],
+  };
+  events.feed(
+    rec(1, 0, "hello", {
+      product: "FF5",
+      gameVersion: "1.2.0",
+      plugin: "0.6.9",
+    }),
+    false,
+  );
   events.feed(sample(2, 1, { battle: fight, mapId: 238 }), false);
   assert.equal(events.books.size, 0); // an entry id from an old bridge
-  events.feed(rec(1, 60, "hello", { product: "FF5", gameVersion: "1.2.0", plugin: "0.7.2" }));
+  events.feed(
+    rec(1, 60, "hello", {
+      product: "FF5",
+      gameVersion: "1.2.0",
+      plugin: "0.7.2",
+    }),
+  );
   const enemies = fight.enemies as { book: number }[];
   const first = enemies[0];
   if (first) first.book = 26;
@@ -296,7 +351,11 @@ void test("version compares like a Python tuple", () => {
 });
 
 void test("watcher reconnects after a dropped stream until the signal aborts", async () => {
-  const hello = rec(1, 0, "hello", { product: "FF5", gameVersion: "1.2.0", plugin: "0.7.2" });
+  const hello = rec(1, 0, "hello", {
+    product: "FF5",
+    gameVersion: "1.2.0",
+    plugin: "0.7.2",
+  });
   const events = new KeyEvents(() => at(30));
   const controller = new AbortController();
   let attempts = 0;
@@ -342,7 +401,11 @@ void test("the activity listener sees new and grown entries without changing new
   const seen: string[] = [];
   listened.onEntry((entry) => seen.push(`${entry.type}:${entry.text}`));
   const records: Json[] = [
-    rec(1, 0, "hello", { product: "FF5", gameVersion: "1.2.0", plugin: "0.7.2" }),
+    rec(1, 0, "hello", {
+      product: "FF5",
+      gameVersion: "1.2.0",
+      plugin: "0.7.2",
+    }),
     sample(2, 1),
     sample(3, 2, { names: ["巴兹", "蕾娜", "加拉夫"] }),
     line(4, 1502, "E0003_00_001", "巴兹", "法利斯去哪了？"),
@@ -363,7 +426,11 @@ void test("the activity listener sees new and grown entries without changing new
 });
 
 void test("the watcher reports a link change once and never twice for the same state", async () => {
-  const hello = rec(1, 0, "hello", { product: "FF5", gameVersion: "1.2.0", plugin: "0.7.2" });
+  const hello = rec(1, 0, "hello", {
+    product: "FF5",
+    gameVersion: "1.2.0",
+    plugin: "0.7.2",
+  });
   const events = new KeyEvents(() => at(30));
   const controller = new AbortController();
   const statuses: boolean[] = [];

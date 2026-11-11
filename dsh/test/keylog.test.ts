@@ -28,7 +28,12 @@ for (const run of fixture.runs) {
 type Body = Record<string, unknown>;
 
 function rec(seq: number, sec: number, type: string, body: Body = {}): Json {
-  return { seq, t: `2026-10-19T17:00:${String(sec).padStart(2, "0")}Z`, type, ...body };
+  return {
+    seq,
+    t: `2026-10-19T17:00:${String(sec).padStart(2, "0")}Z`,
+    type,
+    ...body,
+  };
 }
 
 function sample(
@@ -103,7 +108,10 @@ void test("build extracts key events", () => {
       battle: { active: true, enemies: [{ name: "杀人蜂" }] },
     }),
     sample(7, 8, { gil: 260, chests: 5 }), // a normal battle: gil gained, no entry
-    rec(9, 8, "dialog.play", { ids: ["E0017_a"], lines: ["得到了【水晶碎片】！"] }),
+    rec(9, 8, "dialog.play", {
+      ids: ["E0017_a"],
+      lines: ["得到了【水晶碎片】！"],
+    }),
     rec(10, 9, "save.write", { slot: 3, result: "Success" }),
   ]) {
     builder.feed(record);
@@ -150,10 +158,19 @@ void test("level ups from separate battles stay separate", () => {
 void test("boss flag beats the gil guess", () => {
   const builder = new Builder("r");
   builder.feed(sample(0, 1, { gil: 100 }));
-  const fight = { active: true, boss: true, enemies: [{ name: "卡拉波斯", boss: 1 }] };
+  const fight = {
+    active: true,
+    boss: true,
+    enemies: [{ name: "卡拉波斯", boss: 1 }],
+  };
   builder.feed(sample(1, 2, { gil: 100, battle: fight }));
   builder.feed(sample(2, 3, { gil: 400 })); // this boss dropped gil: still a boss
-  builder.feed(sample(3, 4, { gil: 400, battle: { active: true, boss: false, enemies: [] } }));
+  builder.feed(
+    sample(3, 4, {
+      gil: 400,
+      battle: { active: true, boss: false, enemies: [] },
+    }),
+  );
   builder.feed(sample(4, 5, { gil: 400 })); // flagged as no boss: no entry
   assert.deepEqual(
     builder.entries.filter((entry) => entry.type === "boss").map((entry) => entry.text),
@@ -203,7 +220,10 @@ function battleEntries(
 }
 
 void test("a battle the story ends is not a defeat", () => {
-  const entries = battleEntries({ wins: 0, escapes: 0 }, "中士", { wins: 0, escapes: 0 });
+  const entries = battleEntries({ wins: 0, escapes: 0 }, "中士", {
+    wins: 0,
+    escapes: 0,
+  });
   assert.deepEqual(
     entries.map((entry) => [entry.type, entry.text]),
     [["battle-ended", "战斗被剧情结束：「中士」(没算胜也没算逃)"]],
