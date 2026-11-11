@@ -17,7 +17,12 @@ import type { Reply } from "../src/engine/pilot.ts";
 import { grind, parseGrindOptions, type GrindContext } from "../src/engine/skills/grind.ts";
 import { FakePilot } from "./fake-pilot.ts";
 
-const LAPTOP: Laptop = { host: "laptop", user: "player", key: "/tmp/key", root: "C:/ffpr" };
+const LAPTOP: Laptop = {
+  host: "laptop",
+  user: "player",
+  key: "/tmp/key",
+  root: "C:/ffpr",
+};
 
 interface World {
   map: number;
@@ -31,6 +36,8 @@ interface World {
   maxHp: number;
   maxMp: number;
   state: string;
+  /** Task 128: the live field move state (Chocobo, Ship, …). */
+  ride: string;
   choiceOpen: boolean;
   npc: Cell | null;
   known: Set<number>;
@@ -53,6 +60,7 @@ function makeWorld(patch: Partial<World> = {}): World {
     maxHp: 100,
     maxMp: 20,
     state: "Player",
+    ride: "",
     choiceOpen: false,
     npc: null,
     known: new Set(),
@@ -118,7 +126,9 @@ function cellsReply(world: World): Reply {
   const attr = Array.from({ length: 20 }, () =>
     Array.from({ length: 20 }, () => (world.world ? 3 : 0)),
   );
-  return { cells: { origin: [0, 0], center: [world.cell[0], world.cell[1]], attr } };
+  return {
+    cells: { origin: [0, 0], center: [world.cell[0], world.cell[1]], attr },
+  };
 }
 
 function pilotFor(world: World, monsters: readonly TestMonster[] = []): FakePilot {
@@ -141,6 +151,7 @@ function pilotFor(world: World, monsters: readonly TestMonster[] = []): FakePilo
   pilot.onQuery("sample", () => ({
     sample: {
       user: { gil: world.gold, mapId: world.map, areaText: world.mapName },
+      field: { moveState: world.ride },
       party: party(),
       choice: world.choiceOpen ? { c: { open: true, options: ["是", "否"], cursor: 0 } } : {},
     },
@@ -150,13 +161,25 @@ function pilotFor(world: World, monsters: readonly TestMonster[] = []): FakePilo
     collision: {
       searchLayer: 1,
       playerCell: [world.cell[0], world.cell[1]],
-      layers: [{ name: "GroundCollision", rows: Array.from({ length: 20 }, () => "0".repeat(20)) }],
+      layers: [
+        {
+          name: "GroundCollision",
+          rows: Array.from({ length: 20 }, () => "0".repeat(20)),
+        },
+      ],
     },
   }));
   pilot.on("entities", (fields) => {
     const entities: Reply[] =
       fields.kind === "Npc" && world.npc !== null
-        ? [{ kind: "Npc", cell: [world.npc[0], world.npc[1]], name: "宿屋の主人", active: true }]
+        ? [
+            {
+              kind: "Npc",
+              cell: [world.npc[0], world.npc[1]],
+              name: "宿屋の主人",
+              active: true,
+            },
+          ]
         : [];
     return { entities: { total: entities.length, entities } };
   });
@@ -177,15 +200,25 @@ function pilotFor(world: World, monsters: readonly TestMonster[] = []): FakePilo
       return {
         ok: false,
         error: "interrupted:battle",
-        pos: { state: "Battle", map: world.map, cell: [world.cell[0], world.cell[1]] },
+        pos: {
+          state: "Battle",
+          map: world.map,
+          cell: [world.cell[0], world.cell[1]],
+        },
       };
     }
     return {
       ok: true,
-      pos: { state: world.state, map: world.map, cell: [world.cell[0], world.cell[1]] },
+      pos: {
+        state: world.state,
+        map: world.map,
+        cell: [world.cell[0], world.cell[1]],
+      },
     };
   });
-  pilot.on("keys", () => {
+  pilot.on("keys", (fields) => {
+    const keys = Array.isArray(fields.keys) ? fields.keys : [];
+    if (keys.includes("Backspace")) world.ride = "";
     if (world.choiceOpen) {
       world.choiceOpen = false;
       world.hp = world.maxHp;
@@ -197,7 +230,10 @@ function pilotFor(world: World, monsters: readonly TestMonster[] = []): FakePilo
     }
     return { ok: true };
   });
-  pilot.on("story", () => ({ pages: 1, stop: world.choiceOpen ? "choice" : "free" }));
+  pilot.on("story", () => ({
+    pages: 1,
+    stop: world.choiceOpen ? "choice" : "free",
+  }));
   pilot.on("wait", { ok: true });
   pilot.onQuery("items", { items: { normal: [], important: [] } });
   pilot.onQuery("encounters", {
@@ -270,6 +306,61 @@ void test("grind stops at until_gold and reports the fights and money", async ()
   assert.match(report.text, /打了 2 场/);
   assert.match(report.text, /钱 100→2100\(\+2000\)/);
   assert.match(report.text, /停:钱够了/);
+});
+
+void test("grind dismounts a chocobo before walking, because a chocobo meets no enemies", async () => {
+  const world = makeWorld({ world: true, ride: "Chocobo", battleEvery: 1 });
+  const pilot = pilotFor(world);
+  world.fighter = () => {
+    world.gold += 1000;
+    world.state = "Player";
+    return "按这张地图的策略打完 1 秒";
+  };
+  const report = await grind(pilot, parseOptions({ until_gold: 200 }), contextFor(world, []));
+  assert.deepEqual(pilot.keys()[0], ["Backspace"]);
+  assert.equal(world.ride, "");
+  assert.equal(report.battles, 1);
+  assert.match(report.text, /打了 1 场/);
+});
+
+void test("grind on a ship with no encounters stops at once instead of walking to the cap", async () => {
+  const world = makeWorld({ world: true, ride: "Ship" });
+  const pilot = pilotFor(world, []);
+  // The sea around the ship is open, so only the empty encounter table can stop it.
+  pilot.on("cells", () => {
+    const attr = Array.from({ length: 20 }, () => Array.from({ length: 20 }, () => 16));
+    return {
+      cells: { origin: [0, 0], center: [world.cell[0], world.cell[1]], attr },
+    };
+  });
+  const before = pilot.calls.length;
+  const report = await grind(pilot, parseOptions({ until_gold: 2000 }), contextFor(world, []));
+  assert.equal(report.stop, "这里坐船遇不到敌人");
+  assert.equal(world.walks, 0);
+  assert.equal(
+    pilot.calls.slice(before).some((call) => call.kind === "send" && call.op === "walk"),
+    false,
+  );
+});
+
+void test("grind on a ship with sea encounters drives the ship on sea cells", async () => {
+  const monsters: TestMonster[] = [{ number: 10, name: "海蛇" }];
+  const world = makeWorld({ world: true, ride: "Ship", battleEvery: 1 });
+  const pilot = pilotFor(world, monsters);
+  pilot.on("cells", () => {
+    const attr = Array.from({ length: 20 }, () => Array.from({ length: 20 }, () => 16));
+    return {
+      cells: { origin: [0, 0], center: [world.cell[0], world.cell[1]], attr },
+    };
+  });
+  world.fighter = () => {
+    world.gold += 1000;
+    world.state = "Player";
+    return "按这张地图的策略打完 1 秒";
+  };
+  const report = await grind(pilot, parseOptions({ until_gold: 200 }), contextFor(world, monsters));
+  assert.equal(report.battles, 1);
+  assert.equal(world.targets.length > 0, true);
 });
 
 void test("grind stops when every monster of this map is registered", async () => {
@@ -444,7 +535,10 @@ void test("grind stops at max_minutes", async () => {
     if (Array.isArray(to) && typeof to[0] === "number" && typeof to[1] === "number") {
       world.cell = [to[0], to[1]];
     }
-    return { ok: true, pos: { state: "Player", map: 30, cell: [world.cell[0], world.cell[1]] } };
+    return {
+      ok: true,
+      pos: { state: "Player", map: 30, cell: [world.cell[0], world.cell[1]] },
+    };
   });
   const report = await grind(
     pilot,
@@ -489,7 +583,10 @@ void test("on the world map every step stays on the starting encounter grid", as
 void test("an old bridge without encountgrid makes grind stop and say why", async () => {
   const world = makeWorld({ map: 1, world: true });
   const pilot = pilotFor(world);
-  pilot.onQuery("encountgrid", { ok: false, error: "bridge_error:未知的 op:encountgrid" });
+  pilot.onQuery("encountgrid", {
+    ok: false,
+    error: "bridge_error:未知的 op:encountgrid",
+  });
   const report = await grind(pilot, parseOptions({ until_gold: 1000 }), contextFor(world, []));
   assert.equal(report.battles, 0);
   assert.deepEqual(world.targets, []);
@@ -551,7 +648,11 @@ void test("the grind's single step uses walkpath when the bridge has it", async 
       reason: "arrived",
       index: path.length - 1,
       steps: path.length - 1,
-      pos: { state: "Player", map: world.map, cell: [world.cell[0], world.cell[1]] },
+      pos: {
+        state: "Player",
+        map: world.map,
+        cell: [world.cell[0], world.cell[1]],
+      },
       next: null,
       turns: [],
     };
@@ -603,7 +704,14 @@ void test("a state event in a grind step becomes a battle, not a blocked step", 
         return { pos: { state: "Event", map: world.map, cell: world.cell } };
       }
       if (polls === 2) {
-        return { pos: { state: "Battle", battle: true, map: world.map, cell: world.cell } };
+        return {
+          pos: {
+            state: "Battle",
+            battle: true,
+            map: world.map,
+            cell: world.cell,
+          },
+        };
       }
     }
     return { pos: { state: world.state, map: world.map, cell: world.cell } };

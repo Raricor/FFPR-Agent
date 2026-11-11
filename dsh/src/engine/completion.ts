@@ -160,7 +160,12 @@ function section(
   const areaTotal = own.reduce((sum, row) => sum + (row.total ?? 0), 0);
   const areaOpen = own.reduce((sum, row) => sum + (row.open ?? 0), 0);
   const elsewhere = Math.max(0, areaTotal - areaOpen - missing.length);
-  return { total: chosen.length, open: chosen.length - missing.length, missing, elsewhere };
+  return {
+    total: chosen.length,
+    open: chosen.length - missing.length,
+    missing,
+    elsewhere,
+  };
 }
 
 function order(spot: TreasureSpot): number {
@@ -233,9 +238,10 @@ function exitCells(entities: readonly Json[]): readonly (readonly [number, numbe
   return cells;
 }
 
-function storyEvents(
-  entities: readonly Json[],
-): readonly { readonly cell: readonly [number, number]; readonly label: string }[] {
+function storyEvents(entities: readonly Json[]): readonly {
+  readonly cell: readonly [number, number];
+  readonly label: string;
+}[] {
   const out: { cell: readonly [number, number]; label: string }[] = [];
   for (const raw of entities) {
     const entity = record(raw);
@@ -339,6 +345,8 @@ export function completionWhere(state: CompletionState): string {
   if (state.mapId === null || state.mapId <= 0) {
     return "不在地图上(可能在标题画面或切图中)";
   }
+  // Task 128: the Game now decides `world` from the game files (11-11: Tycoon's meteor 189
+  // reported areaType 0), so this formatter can trust the flag and name the actual region.
   return state.world
     ? (state.region?.label ?? "世界地图")
     : state.mapName === ""
@@ -521,7 +529,9 @@ export class Backlog {
     } catch (error) {
       if (isMissingFile(error)) return store;
       signal?.throwIfAborted();
-      throw new Error(`读不了欠账 ${path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不了欠账 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     for (const line of body.split(/\r\n|\r|\n/u)) {
       if (line.trim() === "") continue;
@@ -614,7 +624,9 @@ export class Backlog {
     try {
       await appendFile(this.path, JSON.stringify(entry) + "\n", "utf8");
     } catch (error) {
-      throw new Error(`写不了欠账 ${this.path}:${describeError(error)}`, { cause: error });
+      throw new Error(`写不了欠账 ${this.path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
   }
 }
@@ -684,7 +696,9 @@ export class Incidents {
       } catch (error) {
         if (!isMissingFile(error)) {
           signal?.throwIfAborted();
-          throw new Error(`读不了事故 ${path}:${describeError(error)}`, { cause: error });
+          throw new Error(`读不了事故 ${path}:${describeError(error)}`, {
+            cause: error,
+          });
         }
         body = "";
       }
@@ -790,7 +804,9 @@ export class Incidents {
       try {
         await appendFile(this.path, JSON.stringify(entry) + "\n", "utf8");
       } catch (error) {
-        throw new Error(`写不了事故 ${this.path}:${describeError(error)}`, { cause: error });
+        throw new Error(`写不了事故 ${this.path}:${describeError(error)}`, {
+          cause: error,
+        });
       }
     }
     return entry;

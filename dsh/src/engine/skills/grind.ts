@@ -12,7 +12,12 @@
 import { Atlas } from "../atlas.ts";
 import type { CompletionMonster, CompletionState } from "../completion.ts";
 import type { EncounterRegion, EncounterTable } from "../encounters.ts";
-import { EncounterGridCache, parseEncounters } from "../encounters.ts";
+import {
+  EncounterGridCache,
+  activeParties,
+  encounterParties,
+  parseEncounters,
+} from "../encounters.ts";
 import { describeError } from "../errors.ts";
 import { cellKey, hasTerrain, terrainRule } from "../nav.ts";
 import type { Cell, CellGrid } from "../nav.ts";
@@ -37,6 +42,7 @@ import {
   currentMapAndCell,
   mapExits,
   mapName,
+  rideState,
   travelToCell,
   travelToMap,
   type MapExit,
@@ -49,13 +55,18 @@ const INN_WORDS: readonly string[] = ["宿屋", "旅店", "旅馆", "Inn"];
 const REVIVE_ITEMS: readonly string[] = ["不死鸟之尾", "凤凰尾"];
 const YES = /^(是|はい|yes)$/iu;
 /** The old grind walk had eight hops and no clock of its own; keep both for its callers. */
-const GRIND_TRAVEL = { maxHops: 8, maxMinutes: Number.POSITIVE_INFINITY } as const;
+const GRIND_TRAVEL = {
+  maxHops: 8,
+  maxMinutes: Number.POSITIVE_INFINITY,
+} as const;
 /** Task 68: a monster that comes back later gets at most this many battles before deferring. */
 export const DEFAULT_BESTIARY_DEFER_BATTLES = 15;
 /** Task 68: a missable monster's grind stops after this many minutes even if still missing. */
 export const DEFAULT_BESTIARY_MISSABLE_MINUTES = 40;
 /** Task 69: no grid number means the loop cannot promise to stay on this encounter area. */
 const UNKNOWN_REGION = "读不到当前所在的世界地图区域，不能保证留在本区域，先停下";
+/** Task 128: how long a chocobo dismount is watched for before giving up. */
+const CHOCOBO_DISMOUNT_MS = 4000;
 
 export interface GrindOptions {
   readonly untilGold?: number;
@@ -303,7 +314,7 @@ async function readWalkGrid(pilot: Pilot): Promise<WalkGrid> {
   return { cells: null, world: false, open };
 }
 
-function walkable(grid: WalkGrid, cell: Cell): boolean {
+function walkable(grid: WalkGrid, cell: Cell, ship = false): boolean {
   if (grid.world) {
     const cells = grid.cells;
     if (cells === null) return false;
@@ -312,7 +323,8 @@ function walkable(grid: WalkGrid, cell: Cell): boolean {
     if (row === undefined) return false;
     const value = row[cell[0] - x0];
     if (value === undefined) return false;
-    return terrainRule(false)(value);
+    // Task 128: on a ship only the sea is walkable; on foot the old land rule applies.
+    return terrainRule(ship)(value);
   }
   return grid.open.has(cellKey(cell[0], cell[1]));
 }
@@ -346,13 +358,14 @@ function stepCandidates(
   here: Cell,
   region: EncounterRegion | null,
   blocked: ReadonlySet<string>,
+  ship = false,
 ): Cell[] {
   const choices: Cell[] = [];
   for (const [dx, dy] of STEPS) {
     const cell: Cell = [here[0] + dx, here[1] + dy];
     if (!insideRegion(cell, region)) continue;
     if (blocked.has(cellKey(cell[0], cell[1]))) continue;
-    if (!walkable(grid, cell)) continue;
+    if (!walkable(grid, cell, ship)) continue;
     choices.push(cell);
   }
   return choices;
@@ -384,8 +397,9 @@ async function nextStep(
   mapId: number | null,
   blocked: ReadonlySet<string>,
   turn: number,
+  ship = false,
 ): Promise<Cell | null> {
-  const choices = stepCandidates(grid, here, startGrid === null ? region : null, blocked);
+  const choices = stepCandidates(grid, here, startGrid === null ? region : null, blocked, ship);
   if (startGrid === null || choices.length === 0) {
     return choices.length === 0 ? null : (choices[turn % choices.length] ?? null);
   }
@@ -411,18 +425,12 @@ async function stepTo(
   to: Cell,
   state: MoveState,
   map: unknown,
+  ship = false,
 ): Promise<Reply> {
   const adjacent = Math.abs(from[0] - to[0]) + Math.abs(from[1] - to[1]) === 1;
   let path: Cell[] = adjacent ? [from, to] : [];
   if (path.length === 0) {
-    const [here, planned] = await plan(
-      pilot,
-      to,
-      false,
-      new Set<string>(),
-      state,
-      map ?? undefined,
-    );
+    const [here, planned] = await plan(pilot, to, ship, new Set<string>(), state, map ?? undefined);
     if (here !== null && here[0] === from[0] && here[1] === from[1]) {
       path = walkPathCells(planned);
     }
@@ -479,7 +487,10 @@ function stopReason(
   completion: CompletionState | null,
 ): StopCheck {
   if (options.untilGold !== undefined && snapshot.gold >= options.untilGold) {
-    return { reached: true, reason: `钱够了(${snapshot.gold}/${options.untilGold})` };
+    return {
+      reached: true,
+      reason: `钱够了(${snapshot.gold}/${options.untilGold})`,
+    };
   }
   if (
     options.untilLevel !== undefined &&
@@ -493,7 +504,10 @@ function stopReason(
   }
   if (options.untilBestiary === true) {
     if (completion === null || completion.encounter === "unknown") {
-      return { reached: true, reason: "读不到本图的遇敌表，没法刷图鉴，先停下" };
+      return {
+        reached: true,
+        reason: "读不到本图的遇敌表，没法刷图鉴，先停下",
+      };
     }
     if (completion.encounter === "none" || completion.monsters.total === 0) {
       return { reached: true, reason: "本图现在不遇敌，不用刷图鉴" };
@@ -881,6 +895,29 @@ function minutesText(minutes: number): string {
 }
 
 /** The loop itself. Throws only for a missing argument set; every in-game failure is a stop. */
+/**
+ * Task 128: 11-11 live, `grind(until_bestiary)` rode a chocobo for eight minutes and met no
+ * battle at all. The game's field action for getting off is cancel (bridge `Backspace`); the
+ * move state is the only proof, so wait for it to stop saying Chocobo before walking.
+ */
+async function leaveChocobo(pilot: Pilot): Promise<[boolean, string]> {
+  await pilot.send("keys", { keys: ["Backspace"], gap: 200 });
+  const deadline = pilot.now() + CHOCOBO_DISMOUNT_MS;
+  while ((await rideState(pilot)) === "Chocobo" && pilot.now() < deadline) {
+    await pilot.sleep(300);
+  }
+  return (await rideState(pilot)) === "Chocobo"
+    ? [false, "骑着陆行鸟，按取消也没下来；先下鸟再刷"]
+    : [true, "先从陆行鸟上下来再刷"];
+}
+
+/** Task 128: whether a ship at this spot can meet enemies at all. */
+function shipEncounters(table: EncounterTable | null): boolean {
+  if (table === null) return false;
+  if (table.enabled === false || table.vehicle?.encounter === false) return false;
+  return activeParties(encounterParties(table)).length > 0;
+}
+
 export async function grind(
   pilot: Pilot,
   options: GrindOptions,
@@ -889,7 +926,20 @@ export async function grind(
   const say = context.say ?? (() => undefined);
   const startedMs = pilot.now();
   const deadline = startedMs + options.maxMinutes * 60_000;
-  const start = await readSnapshot(pilot);
+  const emptyBestiary = new Map<number, string>();
+  let start = await readSnapshot(pilot);
+  let ride = await rideState(pilot);
+  // Task 128: 11-11 live, grind on a chocobo met no battle for eight minutes. Dismount first;
+  // if that fails, say so at once instead of walking until max_minutes.
+  if (ride === "Chocobo") {
+    const [down, detail] = await leaveChocobo(pilot);
+    if (!down) {
+      return finish(pilot, start, start, emptyBestiary, 0, [], detail, startedMs, false);
+    }
+    say(detail);
+    start = await readSnapshot(pilot);
+    ride = await rideState(pilot);
+  }
   const spot = start.position.cell;
   if (spot === null) throw new Error("读不到队伍现在站在哪一格，没法刷怪。");
   const grid0 = await readWalkGrid(pilot);
@@ -899,6 +949,37 @@ export async function grind(
   } catch {
     // Indoors a missing table only costs the until_bestiary goal; on the world map it also
     // means the current region is unknown, and the check below stops instead of wandering.
+  }
+  // Task 128: a ship only meets enemies at sea when this region has a non-zero formation. The
+  // 11-11 report was "船上的刷怪循环走不了格子"; either drive the ship on the sea or stop now.
+  const ship = ride === "Ship";
+  if (ship) {
+    if (encounters === null) {
+      return finish(
+        pilot,
+        start,
+        start,
+        emptyBestiary,
+        0,
+        [],
+        "坐船时读不到这片海的遇敌表，先停下",
+        startedMs,
+        false,
+      );
+    }
+    if (!shipEncounters(encounters)) {
+      return finish(
+        pilot,
+        start,
+        start,
+        emptyBestiary,
+        0,
+        [],
+        "这里坐船遇不到敌人",
+        startedMs,
+        false,
+      );
+    }
   }
   const region = grid0.world ? (encounters?.region ?? null) : null;
   const gridCache = context.gridCache ?? new EncounterGridCache();
@@ -1066,6 +1147,7 @@ export async function grind(
         snapshot.position.map,
         occupied,
         turn,
+        ship,
       );
     } catch {
       stop = UNKNOWN_REGION;
@@ -1073,10 +1155,10 @@ export async function grind(
     }
     turn += 1;
     if (target === null) {
-      stop = "附近没有能走的格子，走不过去，先停下";
+      stop = ship ? "船在这片海里没有能走的格子，先停下" : "附近没有能走的格子，走不过去，先停下";
       break;
     }
-    const moved = await stepTo(pilot, here, target, context.moveState, snapshot.position.map);
+    const moved = await stepTo(pilot, here, target, context.moveState, snapshot.position.map, ship);
     const pos = record(moved.pos);
     const inBattle = truthy(pos.battle) || pos.state === "Battle";
     if (inBattle) {

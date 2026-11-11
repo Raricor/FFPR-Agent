@@ -8,6 +8,7 @@ import {
   Incidents,
   completionLine,
   completionState,
+  completionWhere,
   isComplete,
   timedLine,
 } from "../src/engine/completion.ts";
@@ -18,9 +19,21 @@ import { Game } from "../src/engine/game.ts";
 import type { Laptop } from "../src/engine/laptop.ts";
 import type { Pilot } from "../src/engine/pilot.ts";
 import type { Json } from "../src/engine/values.ts";
+import {
+  buildKnowledge,
+  type EncountersRow,
+  type Knowledge,
+  type MonstersRow,
+} from "../src/engine/knowledge/index.ts";
+import type { StaticData } from "../src/engine/knowledge/load.ts";
 import { FakePilot } from "./fake-pilot.ts";
 
-const LAPTOP: Laptop = { host: "laptop", user: "player", key: "/tmp/key", root: "C:/ffpr" };
+const LAPTOP: Laptop = {
+  host: "laptop",
+  user: "player",
+  key: "/tmp/key",
+  root: "C:/ffpr",
+};
 
 function battle(overrides: Partial<BattleRecord>): BattleRecord {
   return {
@@ -55,9 +68,27 @@ void test("the completion line names missing chests, hidden items and monsters",
       { area: 26, name: "火力船", type: 2, total: 1, open: 0 },
     ],
     entities: [
-      { kind: "TresureBox", cell: [1, 1], contentName: "以太", hidden: false, opened: true },
-      { kind: "TresureBox", cell: [2, 2], contentName: "金针", hidden: false, opened: false },
-      { kind: "TresureBox", cell: [3, 3], contentName: "精灵披风", hidden: true, opened: false },
+      {
+        kind: "TresureBox",
+        cell: [1, 1],
+        contentName: "以太",
+        hidden: false,
+        opened: true,
+      },
+      {
+        kind: "TresureBox",
+        cell: [2, 2],
+        contentName: "金针",
+        hidden: false,
+        opened: false,
+      },
+      {
+        kind: "TresureBox",
+        cell: [3, 3],
+        contentName: "精灵披风",
+        hidden: true,
+        opened: false,
+      },
       { kind: "GotoMap", cell: [9, 9], toMap: 24 },
       { kind: "Event", name: "首领战", cell: [8, 8] },
       { kind: "Event", name: "流される①", cell: [7, 7] },
@@ -206,7 +237,14 @@ void test("the world map reports the current region's monsters", () => {
       start: [20, 10],
       end: [40, 30],
       current: true,
-      parties: [{ id: 1, rate: 1000, notEscape: false, monsters: [{ name: "祖", book: 20 }] }],
+      parties: [
+        {
+          id: 1,
+          rate: 1000,
+          notEscape: false,
+          monsters: [{ name: "祖", book: 20 }],
+        },
+      ],
     },
     regionLabel: "世界地图 · 区域 3((20,10)-(40,30))",
     treasure: [],
@@ -247,7 +285,9 @@ void test("a backlog entry is added once and resolves when the place is complete
     assert.equal(await reloaded.resolve(24, 24, null), 1);
     assert.equal(reloaded.pending().length, 0);
     const lines = (await readFile(path, "utf8")).trim().split("\n");
-    const last = JSON.parse(lines[lines.length - 1] ?? "{}") as { resolvedAt?: string | null };
+    const last = JSON.parse(lines[lines.length - 1] ?? "{}") as {
+      resolvedAt?: string | null;
+    };
     assert.equal(last.resolvedAt !== null, true);
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -294,8 +334,20 @@ void test("the save-local bestiary restores from the save-count snapshot and add
       type: "battle.hit",
       target: { side: "enemy", hp: 0, book: 41 },
     });
-    assert.equal(hitKill({ type: "battle.hit", target: { side: "enemy", hp: 0, book: 41 } }), 41);
-    assert.equal(hitKill({ type: "battle.hit", target: { side: "enemy", hp: 3, book: 41 } }), null);
+    assert.equal(
+      hitKill({
+        type: "battle.hit",
+        target: { side: "enemy", hp: 0, book: 41 },
+      }),
+      41,
+    );
+    assert.equal(
+      hitKill({
+        type: "battle.hit",
+        target: { side: "enemy", hp: 3, book: 41 },
+      }),
+      null,
+    );
     assert.deepEqual(
       recordKills(
         battle({
@@ -340,7 +392,15 @@ void test("the save-local bestiary restores from the save-count snapshot and add
       recordKills(
         battle({
           enemies: [
-            { name: "船员尘埃", id: 41, maxHp: 1, hp: 0, mp: null, status: [], boss: false },
+            {
+              name: "船员尘埃",
+              id: 41,
+              maxHp: 1,
+              hp: 0,
+              mp: null,
+              status: [],
+              boss: false,
+            },
           ],
         }),
         new Map([["船员尘埃", 41]]),
@@ -353,13 +413,31 @@ void test("the save-local bestiary restores from the save-count snapshot and add
       battle({
         startedAt: "2026-11-03T23:00:00.000Z",
         enemies: [
-          { name: "旧怪", id: 9, book: 9, maxHp: 1, hp: 0, mp: null, status: [], boss: false },
+          {
+            name: "旧怪",
+            id: 9,
+            book: 9,
+            maxHp: 1,
+            hp: 0,
+            mp: null,
+            status: [],
+            boss: false,
+          },
         ],
       }),
       battle({
         startedAt: "2026-11-04T01:00:00.000Z",
         enemies: [
-          { name: "败怨魔", id: 42, book: 42, maxHp: 1, hp: 0, mp: null, status: [], boss: false },
+          {
+            name: "败怨魔",
+            id: 42,
+            book: 42,
+            maxHp: 1,
+            hp: 0,
+            mp: null,
+            status: [],
+            boss: false,
+          },
         ],
       }),
     ]);
@@ -373,7 +451,10 @@ void test("the save-local bestiary restores from the save-count snapshot and add
   }
 });
 
-async function completionGame(directory: string): Promise<Game> {
+async function completionGame(
+  directory: string,
+  knowledge: Knowledge = knowledgeOf(),
+): Promise<Game> {
   return await Game.create({
     laptop: LAPTOP,
     game: "ff5",
@@ -385,7 +466,78 @@ async function completionGame(directory: string): Promise<Game> {
     incidentsFile: join(directory, "incidents-ff5.jsonl"),
     incidentsStateFile: join(directory, "incidents-state-ff5.json"),
     bestiarySaveFile: join(directory, "bestiary-save-ff5.json"),
+    knowledge,
   });
+}
+
+/** Task 128: synthetic encounter rows for the knowledge-based leave check. */
+function knowledgeOf(
+  monsters: readonly {
+    readonly number: number;
+    readonly name: string;
+    readonly maps: readonly number[];
+  }[] = [],
+): Knowledge {
+  const rows: MonstersRow[] = monsters.map((monster, index) => ({
+    id: index + 1,
+    name: monster.name,
+    bookId: monster.number,
+    level: null,
+    hp: null,
+    mp: null,
+    weak: [],
+    absorb: [],
+    nullify: [],
+    statusImmune: [],
+    drops: [],
+    steal: [],
+    boss: null,
+    scriptId: null,
+    moves: null,
+  }));
+  const encounters: EncountersRow[] = monsters.flatMap((monster, index) =>
+    monster.maps.map((mapId) => ({
+      scope: "map" as const,
+      mapId,
+      areaId: mapId,
+      groupId: index + 1,
+      weight: 1000,
+      monsterIds: [index + 1],
+    })),
+  );
+  const data: StaticData = {
+    game: "ff5",
+    build: null,
+    bridge: null,
+    dir: "",
+    tables: ["monsters", "encounters"],
+    maps: [],
+    monsters: rows,
+    encounters,
+    treasures: [],
+    shops: [],
+    items: [],
+    magic: [],
+    sources: [],
+  };
+  return buildKnowledge({
+    static: data,
+    files: null,
+    guide: null,
+    atlas: null,
+    collisions: null,
+    profile: null,
+    progress: {
+      openedChests: [],
+      bestiary: [],
+      blueMagic: [],
+      visitedMaps: [],
+    },
+  });
+}
+
+function leaveNoticeOf(game: Game): string {
+  return (game as unknown as { leaveNotice: string | null }).leaveNotice ?? "";
 }
 
 function answerCompletion(
@@ -429,7 +581,10 @@ function answerCompletion(
         bestiary.length === 0
           ? null
           : {
-              entries: bestiary.map((entry) => ({ ...entry, registered: false })),
+              entries: bestiary.map((entry) => ({
+                ...entry,
+                registered: false,
+              })),
               areas: {},
             },
     },
@@ -438,9 +593,20 @@ function answerCompletion(
     entities: {
       total: 5,
       entities: [
-        { kind: "TresureBox", cell: [4, 7], contentName: "以太", opened: complete },
+        {
+          kind: "TresureBox",
+          cell: [4, 7],
+          contentName: "以太",
+          opened: complete,
+        },
         { kind: "TresureBox", cell: [5, 7], contentName: "金针", opened: true },
-        { kind: "TresureBox", cell: [6, 7], contentName: "精灵披风", hidden: true, opened: true },
+        {
+          kind: "TresureBox",
+          cell: [6, 7],
+          contentName: "精灵披风",
+          hidden: true,
+          opened: true,
+        },
         { kind: "GotoMap", cell: [9, 9], toMap: 25 },
         { kind: "Event", name: `${mapName}首领战`, cell: [8, 8] },
       ],
@@ -459,6 +625,24 @@ function answerCompletion(
           ],
         },
       ],
+    },
+  });
+}
+
+/** Task 128: replace answerCompletion's two default monsters with the ones a test needs. */
+function answerMonsters(
+  pilot: FakePilot,
+  monsters: readonly { readonly number: number; readonly name: string }[],
+): void {
+  pilot.onQuery("encounters", {
+    encounters: {
+      monsterSet: 5,
+      enabled: true,
+      parties: monsters.map((monster, index) => ({
+        id: index + 1,
+        rate: 1000,
+        monsters: [{ name: monster.name, book: monster.number }],
+      })),
     },
   });
 }
@@ -533,25 +717,27 @@ void test("a world-map grid without a rectangle names its encounter area by numb
   assert.match(completionLine(state), /本图完成度\(世界地图 · 遇敌区 169\)/);
 });
 
-void test("leaving a world-map grid is refused until that grid's bestiary is complete", async () => {
+void test("a world-map grid lets a later monster go with a reminder instead of a debt", async () => {
   const directory = await mkdtemp(join(tmpdir(), "ffpr-world-grid-"));
   const pilot = new FakePilot();
   try {
     const game = await completionGame(directory);
     answerWorld(pilot);
     const guard = guardOf(game);
-    // The same grid: not a leave, so the incomplete bestiary is not blocking.
+    // The same grid: not a leave, so no reminder either.
     assert.equal(await guard({}, pilot, [213, 45]), null);
-    // `go` to the neighbouring grid is stopped by the same leave check.
-    const refused = await game.run("go", { to: [208, 50] }, pilot);
-    assert.match(refused, /要离开「世界地图 · 遇敌区 169」/);
-    assert.match(refused, /本图鉴还缺 1 种：豪猪/);
+    assert.equal(leaveNoticeOf(game), "");
+    // Crossing into the neighbouring grid is allowed; the missing monster is not lost.
+    assert.equal(await guard({}, pilot, [208, 50]), null);
+    assert.match(leaveNoticeOf(game), /另有 1 种以后还会出现的怪/);
+    assert.match(leaveNoticeOf(game), /豪猪/);
+    assert.equal(game.backlog.pending().length, 0);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
 });
 
-void test("a world-map debt is keyed by its grid and clears when that grid is complete", async () => {
+void test("a later world-map monster does not create a debt even with leave_incomplete", async () => {
   const directory = await mkdtemp(join(tmpdir(), "ffpr-world-debt-"));
   const pilot = new FakePilot();
   try {
@@ -559,13 +745,118 @@ void test("a world-map debt is keyed by its grid and clears when that grid is co
     answerWorld(pilot);
     const guard = guardOf(game);
     assert.equal(await guard({ leave_incomplete: "先去别处" }, pilot, [208, 50]), null);
-    const entry = game.backlog.pending()[0];
-    assert.ok(entry !== undefined);
-    assert.equal(entry.region, 169);
-    assert.equal(entry.mapId, 1);
-    game.bestiary.numbers.add(350);
-    assert.equal(await guard({}, pilot, [213, 45]), null);
     assert.equal(game.backlog.pending().length, 0);
+    assert.match(leaveNoticeOf(game), /以后还会出现的怪/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("a monster that appears on another map no longer blocks leaving", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-later-monster-"));
+  const pilot = new FakePilot();
+  try {
+    const knowledge = knowledgeOf([{ number: 99, name: "风形魔", maps: [203, 204] }]);
+    const game = await completionGame(directory, knowledge);
+    answerCompletion(pilot, true, 203, "风之神殿 2 层", [
+      { number: 99, name: "风形魔", areas: [203] },
+    ]);
+    answerMonsters(pilot, [{ number: 99, name: "风形魔" }]);
+    const state = await (
+      game as unknown as {
+        refreshCompletion(pilot: Pilot): Promise<ReturnType<typeof completionState> | null>;
+      }
+    ).refreshCompletion(pilot);
+    assert.equal(state?.monsters.missing.length, 1);
+    // No chest is missing, and the only monster appears again on 204.
+    assert.equal(await guardOf(game)({}, pilot, [9, 9]), null);
+    assert.match(leaveNoticeOf(game), /以后还会出现的怪/);
+    assert.match(leaveNoticeOf(game), /风形魔/);
+    assert.equal(game.backlog.pending().length, 0);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("a monster exclusive to a one-time place still blocks leaving", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-one-time-bestiary-"));
+  const pilot = new FakePilot();
+  try {
+    const knowledge = knowledgeOf([{ number: 99, name: "风形魔", maps: [71] }]);
+    const game = await completionGame(directory, knowledge);
+    answerCompletion(pilot, true, 71, "沃尔斯塔", [{ number: 99, name: "风形魔", areas: [71] }]);
+    answerMonsters(pilot, [{ number: 99, name: "风形魔" }]);
+    const refused = await guardOf(game)({}, pilot, [9, 9]);
+    assert.ok(refused !== null);
+    assert.match(refused.text, /本图鉴还缺 1 种/);
+    assert.match(refused.text, /风形魔/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("a deadline blocks, but knowledge that it appears elsewhere wins", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-deadline-bestiary-"));
+  const pilot = new FakePilot();
+  try {
+    const entry = [{ number: 233, name: "玛基莎", areas: [15] }];
+    const blocked = await completionGame(
+      directory,
+      knowledgeOf([{ number: 233, name: "玛基莎", maps: [15] }]),
+    );
+    answerCompletion(pilot, true, 15, "北山", entry);
+    answerMonsters(pilot, [{ number: 233, name: "玛基莎" }]);
+    const refused = await guardOf(blocked)({}, pilot, [9, 9]);
+    assert.ok(refused !== null);
+    assert.match(refused.text, /本图鉴还缺 1 种/);
+    assert.match(refused.text, /限时/);
+
+    const directory2 = await mkdtemp(join(tmpdir(), "ffpr-deadline-elsewhere-"));
+    try {
+      const game = await completionGame(
+        directory2,
+        knowledgeOf([{ number: 233, name: "玛基莎", maps: [15, 16] }]),
+      );
+      answerCompletion(pilot, true, 15, "北山", entry);
+      answerMonsters(pilot, [{ number: 233, name: "玛基莎" }]);
+      assert.equal(await guardOf(game)({}, pilot, [9, 9]), null);
+      assert.match(leaveNoticeOf(game), /玛基莎/);
+    } finally {
+      await rm(directory2, { recursive: true, force: true });
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("Tycoon's meteor (189) is named as itself, not the world map", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-tycoon-meteor-"));
+  const pilot = new FakePilot();
+  try {
+    const game = await completionGame(directory);
+    answerCompletion(pilot, true, 189, "泰空陨石地");
+    // 11-11 live: this map said areaType 0 even though it is not map 1.
+    pilot.on("pos", {
+      pos: {
+        map: 189,
+        area: 21,
+        areaType: 0,
+        areaText: "泰空陨石地",
+        state: "Player",
+        cell: [52, 32],
+        saves: 1,
+      },
+    });
+    const state = await (
+      game as unknown as {
+        refreshCompletion(pilot: Pilot): Promise<ReturnType<typeof completionState> | null>;
+      }
+    ).refreshCompletion(pilot);
+    assert.ok(state !== null);
+    assert.equal(state.world, false);
+    assert.equal(completionWhere(state), "泰空陨石地");
+    assert.match(completionLine(state), /泰空陨石地/);
+    assert.doesNotMatch(completionLine(state), /世界地图 · 遇敌区/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
