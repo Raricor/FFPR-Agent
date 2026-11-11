@@ -62,10 +62,24 @@ const RECORD = {
     },
   ],
   events: [
-    { kind: "battle.act", actor: "巨翼猛禽", action: "利爪", counter: true, detail: "" },
-    { kind: "battle.act", actor: "巨翼猛禽", action: "风之刃", counter: false, detail: "" },
+    {
+      kind: "battle.act",
+      actor: "巨翼猛禽",
+      action: "利爪",
+      counter: true,
+      detail: "",
+    },
+    {
+      kind: "battle.act",
+      actor: "巨翼猛禽",
+      action: "风之刃",
+      counter: false,
+      detail: "",
+    },
   ],
-  summary: { gaps: [{ item: "不死鸟之尾", held: 0, basis: "规则 2", skips: 2 }] },
+  summary: {
+    gaps: [{ item: "不死鸟之尾", held: 0, basis: "规则 2", skips: 2 }],
+  },
 } as unknown as BattleRecord;
 
 async function cacheWithWings(): Promise<MonsterAiCache> {
@@ -139,7 +153,12 @@ void test("the AI cache saves, reloads and also keeps battle.ai pushes", async (
       ],
     });
     await cache.ensure(pilot, [123]);
-    cache.recordEvent({ type: "battle.ai", monster: 124, scriptId: 8, scriptName: "sc_ai_124" });
+    cache.recordEvent({
+      type: "battle.ai",
+      monster: 124,
+      scriptId: 8,
+      scriptName: "sc_ai_124",
+    });
     await cache.save();
     const reloaded = await MonsterAiCache.load("ff5", path);
     assert.equal(reloaded.entry(123)?.name, "巨翼猛禽");

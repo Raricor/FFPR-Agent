@@ -132,7 +132,9 @@ export class MonsterAiCache {
     } catch (error) {
       if (isMissingFile(error)) return cache;
       signal?.throwIfAborted();
-      throw new Error(`读不了怪物 AI 缓存 ${path}:${String(error)}`, { cause: error });
+      throw new Error(`读不了怪物 AI 缓存 ${path}:${String(error)}`, {
+        cause: error,
+      });
     }
     let parsed: unknown;
     try {
@@ -240,7 +242,9 @@ export class MonsterAiCache {
     try {
       await writeFile(this.path, JSON.stringify({ game: this.game, monsters }, null, 1), "utf8");
     } catch (error) {
-      throw new Error(`写不了怪物 AI 缓存 ${this.path}:${String(error)}`, { cause: error });
+      throw new Error(`写不了怪物 AI 缓存 ${this.path}:${String(error)}`, {
+        cause: error,
+      });
     }
   }
 }
@@ -249,7 +253,10 @@ export class MonsterAiCache {
 export interface ScriptFeatures {
   readonly counters: boolean;
   readonly transforms: boolean;
-  readonly groups: readonly { readonly table: number; readonly abilities: readonly string[] }[];
+  readonly groups: readonly {
+    readonly table: number;
+    readonly abilities: readonly string[];
+  }[];
   readonly attacks: readonly string[];
 }
 
