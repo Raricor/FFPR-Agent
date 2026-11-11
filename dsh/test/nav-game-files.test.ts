@@ -431,3 +431,22 @@ void test(
     );
   },
 );
+
+void test("real FF5 world map: a ship at (150, 89) can plan to Tule", async (t) => {
+  if (!HAS_REAL_WORLD) {
+    t.skip("没有本机 FF5 的 world 导出");
+    return;
+  }
+  const store = await CollisionStore.load(undefined, undefined, REAL_MAPS);
+  const atlas = await realAtlas();
+  const path = mapPath(atlas, 1, 30, new Set(), true, {
+    start: [150, 89],
+    worldModes: ["walk", "ship"],
+    collisions: store,
+  });
+  assert.ok(path !== null, "船上到图尔村应该有一条世界地图路线");
+  assert.deepEqual(
+    path.map((hop) => [hop.from, hop.to, hop.cell]),
+    [[1, 30, [130, 89]]],
+  );
+});

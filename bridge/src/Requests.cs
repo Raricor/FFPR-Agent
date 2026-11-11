@@ -39,6 +39,8 @@ namespace FfprBridge;
 ///   {"op": "mappackage", "map": 23}    FF5: read-only map package manifest (0.14.6)
 ///   {"op": "mapasset", "map": 23, "asset": "collision", "offset": 0, "limit": 20000}
 ///                                      FF5: one map text asset, paginated (0.14.6)
+///   {"op": "treasureflags"}            every master TreasureBox flag: true/false/null (0.14.8)
+///   {"op": "vehicles"}                 FF5: where each owned vehicle is parked (0.14.9)
 /// </summary>
 internal static class Requests
 {
@@ -180,6 +182,16 @@ internal static class Requests
                 case "achievements":
                     reply["achievements"] = GameState.Achievements();
                     break;
+                case "treasureflags":
+                    reply["treasureflags"] = GameState.TreasureFlags();
+                    break;
+                case "vehicles":
+#if FF5
+                    reply["vehicles"] = GameState.Vehicles();
+                    break;
+#else
+                    throw new ArgumentException("vehicles 目前只在 FF5 里有");
+#endif
                 case "monsters":
                     reply["monsters"] = GameState.Monsters();
                     break;

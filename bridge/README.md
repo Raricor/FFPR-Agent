@@ -1,6 +1,6 @@
 # 桥插件(FfprBridge)
 
-BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（设计方案 §5），从不改游戏数据和存档。当前版本 0.14.7。
+BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（设计方案 §5），从不改游戏数据和存档。当前版本 0.14.9。
 
 - 所有挂钩都是 postfix，只读参数和返回值，不改参数、不改返回值，也不改任何游戏对象。
 - 调用游戏的地方只有取值函数和纯查询。
@@ -14,6 +14,8 @@ BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（�
 - 把以上内容写进 `BepInEx/ffpr/probe-<启动时间>.jsonl`，同时推送给 WebSocket 客户端。
 - 在查询通道上回答查询(见「查询通道」)。
 - 0.5.0 起，在局域网连接上替开发机按键(见「局域网连接」)。0.9.0 起按键走虚拟手柄，游戏在后台、最小化时也能玩。
+- 0.14.9:新增仅 FF5 的 `vehicles` 查询，列出玩家拥有的每个交通工具：`id`、主数据 `TypeId` 和 `MapConstants.TransportationType` 名字、所在地图 `map`、格子 `cell`、层 `layer`、朝向 `direction`、`enabled`、是否正在骑 `riding`。位置读 `UserDataManager.OwnedTransportationList` 里每项的 `saveData`（`SaveTransportationData`，继承 `SaveEntityData`）的 `mapId` / `position` / `direction` / `enable`；读不到的字段为 null，标题画面或存档未就绪回 `{ready:false}`。
+- 0.14.8:新增 `treasureflags` 查询，一次读出主数据 `TreasureBox` 的每个旗标是否已开(`MapUIManager.GetTreasureFlag`，不需要载入那张图)；标题画面或读档中主数据/存档没准备好时回 `{ready:false}`。
 - 0.14.7:`saveui` 每次重找正在显示的存档列表(从标题画面读档后，野外菜单的存档列表是另一个实例，旧版一直读标题那份、回 `open: false`)。
 - 0.14.6(实验性，仅 FF5):新增三个只读地图数据查询 `mapinfo` / `mappackage` / `mapasset`。`mapinfo` 只读 `MapManager` 的包名和已载入列表、当前 `Map` 主数据行；`mappackage` 用 `MapPackageLoader` 异步加载一张图的资源清单；`mapasset` 再用 `ResourceManager` 读其中一个文本资源并分页返回。全程不调 `RequestLoadMap`、不切换地图、不实例化 `MapModel`/实体。
 - 0.14.5:新增仅 FF5 的 `export` 整作静态数据查询：`maps` / `monsters` / `encounters` / `treasures` / `shops` / `items` / `magic`，按 `offset` / `limit` 分页，只读 `MasterManager`；`treasures` 的 `mapId` / `cell` / `contentId` / `contentName` 和部分数值字段读不到时为 null。
@@ -60,6 +62,8 @@ BepInEx 6 IL2CPP 插件，运行在游戏进程里，**只读**游戏状态（�
 | `Walker.cs` | `walkpath`:命令线程等、游戏线程逐帧走;路线校验、拐角换键、冲过头回走、各种停下条件;`walk` 查询和 `walk.start` / `progress` / `end` 推送 |
 | `GameInput.cs` | 虚拟手柄:按键对应的按钮、按住的期限、每帧一个完整状态事件(0.14.1)、全部松键 |
 | `GameState.Achievements.cs` | 成就：主数据、账号层、存档层、宝箱按地点、图鉴 |
+| `GameState.Treasure.cs` | 全作宝箱旗标：`treasureflags` 一次读出每个旗标的开关(0.14.8) |
+| `GameState.Vehicles.cs` | FF5 交通工具位置：`vehicles` 从 `OwnedTransportationList` 的 `SaveTransportationData` 读地图、格子、朝向和是否可用(0.14.9) |
 | `GameState.Monsters.cs` | 怪物资料：等级、HP、属性、状态免疫、掉落、偷窃 |
 | `GameState.Encounters.cs` | 当前位置和整张图(世界地图是当前区域)的遇敌表 |
 | `GameState.cs` | 采样的骨架、消息文本查询、公共小工具 |
@@ -185,10 +189,28 @@ FfprBridge/
 | `monsterai` (`id` / `ids`) | FF5 怪物 AI 脚本:脚本名、原文(截断)、能认出的能力名;不给编号就是当前战斗的敌人 | 0.13.0 |
 | `monstermoves` (`ids`) | FF5 每只怪的 AI 招式：`abilityId`、名字、`blueMagic`、附带状态 `conditions`、招式的 `rate`；不给 `ids` 就是当前战斗的敌人 | 0.14.4 |
 | `bluemagic` | FF5 青魔法：`learned`(已学会)和 `all`(主数据全部青魔法 + `learnedBy` 学法) | 0.14.4 |
+| `treasureflags` | 主数据 `TreasureBox` 的每个旗标是否已开：`flags` 是以旗标号为键的 `true` / `false` / `null`(读这个旗标抛错)，`total` 是旗标数；标题画面或读档中回 `{ready:false}` | 0.14.8 |
+| `vehicles` | 仅 FF5：玩家拥有的每个交通工具，`list` 里每项有 `id`、`type`(主数据 `TypeId`)、`typeName`(枚举名，如 `Ship` / `YellowChocobo`)、`map`、`cell`、`layer`、`direction`、`enabled`、`riding`；读不到为 null，标题画面或读档中回 `{ready:false}` | 0.14.9 |
 | `export` (`table`, `offset`, `limit`) | FF5 整作静态数据的一页：`table` 是七张表之一，`limit` 默认 200、上限 500；回复 `export: {table, total, offset, rows, build}` | 0.14.5 |
 | `mapinfo` | FF5 实验性：`MapManager` 的 `AssetPackageName`、当前 `Map` 主数据行、已载入的包/模型列表；不启动加载 | 0.14.6 |
 | `mappackage` (`map`, `timeoutMs`) | FF5 实验性：只读加载这张图的包清单，回复资源名/类型和包内地图名；异步，默认 5 秒超时，超时带 `timeout: true` | 0.14.6 |
 | `mapasset` (`map`, `asset`, `offset`, `limit`, `timeoutMs`) | FF5 实验性：只读加载这张图的一个文本资源并按字符分页；`limit` 默认 20000、上限 60000，异步，超时带 `timeout: true` | 0.14.6 |
+
+### `vehicles` 查询(0.14.9,仅 FF5)
+
+请求是 `{"id": 1, "op": "vehicles"}`。它只读 `UserDataManager.instance.OwnedTransportationList`：每项的 `saveData` 是 `SaveTransportationData`，它的 `mapId`、`position`(继承自 `SaveEntityData`，格子坐标)、`direction`、`enable` 就是船/陆行鸟停在哪、朝向和是否可用。`type` 和 `typeName` 再查主数据 `Last.Data.Master.Transportation` 的 `TypeId`，用 `MapConstants.TransportationType` 给出名字。`riding` 由 `TransportationController.CurrentTransportation`（没有时退回 `SaveMapData.TransportationId`）判断。
+
+```json
+{"ok": true, "vehicles": {
+  "ready": true,
+  "list": [
+    {"id": 4, "type": 2, "typeName": "Ship", "map": 1,
+     "cell": [150, 89], "layer": 0, "direction": 2, "enabled": true, "riding": false}
+  ]
+}}
+```
+
+标题画面、读档中或 `OwnedTransportationList` 还没准备好时回 `{"vehicles": {"ready": false}}`。
 
 ### `bridge` 查询(0.12.0)
 
