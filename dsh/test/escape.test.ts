@@ -72,7 +72,15 @@ void test("a boss or notEscape battle skips the 逃跑 rule and fights the next 
   for (const blocked of ["boss", "notEscape"] as const) {
     const sim = new FakeBattle({
       party: PARTY,
-      enemies: [{ name: "巨翼猛禽", id: 282, hp: 300, maxHp: 300, boss: blocked === "boss" }],
+      enemies: [
+        {
+          name: "巨翼猛禽",
+          id: 282,
+          hp: 300,
+          maxHp: 300,
+          boss: blocked === "boss",
+        },
+      ],
       notEscape: blocked === "notEscape",
       fleeAfterMs: 3000,
       maxTurns: 1,
@@ -125,7 +133,11 @@ void test("go with flee:true escapes the encounter; without it the table fights"
   });
   installWalk(fleeing);
   const said: string[] = [];
-  const state: MoveState = { drake: null, battle: { tableFor: () => FLEE }, flee: true };
+  const state: MoveState = {
+    drake: null,
+    battle: { tableFor: () => FLEE },
+    flee: true,
+  };
   await walkLeg(fleeing.pilot, 2, 2, (line) => said.push(line), state);
   assert.equal(fleeing.actions.length, 0);
   assert.ok(holds(fleeing.pilot).length >= 2, "L1 and R1 were held on the way");
@@ -139,7 +151,10 @@ void test("go with flee:true escapes the encounter; without it the table fights"
   });
   installWalk(fighting);
   const attack: Strategy = { ...FLEE, rules: [{ who: "all", do: "攻击" }] };
-  const stateNoFlee: MoveState = { drake: null, battle: { tableFor: () => attack } };
+  const stateNoFlee: MoveState = {
+    drake: null,
+    battle: { tableFor: () => attack },
+  };
   await walkLeg(fighting.pilot, 2, 2, () => undefined, stateNoFlee);
   assert.deepEqual(holds(fighting.pilot), [], "without flee no L1/R1 is held");
   assert.deepEqual(

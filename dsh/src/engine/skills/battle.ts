@@ -770,7 +770,10 @@ export async function act(
     // Task 53: never let a broken expression escape the executor; fall back to an attack.
     if (!(error instanceof StrategyFailure)) throw error;
     runtime.noteProblem("策略执行", error.message);
-    choice = { steps: fallbackSteps(strategy, snapshot, context.instinct), skipped: [] };
+    choice = {
+      steps: fallbackSteps(strategy, snapshot, context.instinct),
+      skipped: [],
+    };
   }
   const { steps, skipped } = choice;
   const passed: string[] = [];
@@ -789,7 +792,9 @@ export async function act(
       return "回合已经轮到别人" + note(passed);
     }
     if (step.action.command === "逃跑") {
-      const escaped = await flee(pilot, FLEE_TIMEOUT_MS, { closeMenu: FLEE_CLOSE_MENU });
+      const escaped = await flee(pilot, FLEE_TIMEOUT_MS, {
+        closeMenu: FLEE_CLOSE_MENU,
+      });
       if (escaped.fled) {
         runtime.done(step, snapshot, pilot.now());
         const action: gambit.Action = {
@@ -1474,7 +1479,9 @@ export async function regular(
     } else if (notEscape) {
       fleeNote = "这场逃不了(遇敌组 notEscape)";
     } else {
-      const attempt = await flee(pilot, FLEE_TIMEOUT_MS, { closeMenu: FLEE_CLOSE_MENU });
+      const attempt = await flee(pilot, FLEE_TIMEOUT_MS, {
+        closeMenu: FLEE_CLOSE_MENU,
+      });
       if (attempt.fled) {
         const detail = `逃跑成功(用了 ${secondsText(attempt.seconds)} 秒)`;
         await session?.finish(pilot.now(), "ok", detail);
@@ -1560,7 +1567,10 @@ export function judgePlayers(party: readonly Reply[]): [string, string] {
 
 /** Task 91: how much HP a spell is expected to restore per MP, for choosing 治疗 or 救疗. */
 const HEAL_PER_MP = 12;
-const DEFAULT_HEAL_COST: Readonly<Record<string, number>> = { 治疗: 4, 救疗: 8 };
+const DEFAULT_HEAL_COST: Readonly<Record<string, number>> = {
+  治疗: 4,
+  救疗: 8,
+};
 export const HEAL_SPELLS: readonly string[] = ["治疗", "救疗"];
 export const HEAL_ITEMS: readonly string[] = ["恢复药", "高级恢复药", "Potion", "Hi-Potion"];
 const TENT_ITEMS: readonly string[] = ["帐篷", "小屋", "Tent", "Cottage"];
@@ -1704,7 +1714,10 @@ function healSpellsOf(member: Reply): { spell: string; cost: number }[] {
   for (const ability of records(member.abilities)) {
     const name = iconName(ability.name);
     if (!HEAL_SPELLS.includes(name)) continue;
-    found.push({ spell: name, cost: num(ability.mp) ?? DEFAULT_HEAL_COST[name] ?? 0 });
+    found.push({
+      spell: name,
+      cost: num(ability.mp) ?? DEFAULT_HEAL_COST[name] ?? 0,
+    });
   }
   for (const value of list(member.spells)) {
     const name = iconName(value);

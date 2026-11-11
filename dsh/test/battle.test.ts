@@ -68,7 +68,12 @@ const runners: Record<string, (pilot: FakePilot) => Promise<unknown>> = {
         boss: limited.boss,
         items: limited.items,
       },
-      plain: { actor: plain.actor, turn: plain.turn, boss: plain.boss, items: plain.items },
+      plain: {
+        actor: plain.actor,
+        turn: plain.turn,
+        boss: plain.boss,
+        items: plain.items,
+      },
       held: await heldItems(pilot),
     };
   },
@@ -238,7 +243,9 @@ void test("fight sees a wipe and confirms until the battle scene is gone", async
   let inBattle = true;
   let presses = 0;
   pilot.onQuery("items", { items: { normal: [] } });
-  pilot.onQuery("battlemenu", () => ({ battlemenu: menuWhileDead(() => inBattle) }));
+  pilot.onQuery("battlemenu", () => ({
+    battlemenu: menuWhileDead(() => inBattle),
+  }));
   pilot.on("keys", () => {
     presses += 1;
     if (presses >= 2) inBattle = false;
@@ -272,7 +279,9 @@ void test("regular does not load after a wipe that puts the party back on the ma
     battle: { active: false },
   };
   pilot.onQuery("items", { items: { normal: [] } });
-  pilot.onQuery("battlemenu", () => ({ battlemenu: menuWhileDead(() => !onMap) }));
+  pilot.onQuery("battlemenu", () => ({
+    battlemenu: menuWhileDead(() => !onMap),
+  }));
   pilot.onQuery("sample", () => ({ sample: onMap ? after : before }));
   pilot.on("keys", () => {
     onMap = true;
@@ -309,7 +318,9 @@ void test("regular still loads when a wipe returns to the title screen", async (
     battle: { active: false },
   };
   pilot.onQuery("items", { items: { normal: [] } });
-  pilot.onQuery("battlemenu", () => ({ battlemenu: menuWhileDead(() => !onTitle) }));
+  pilot.onQuery("battlemenu", () => ({
+    battlemenu: menuWhileDead(() => !onTitle),
+  }));
   pilot.onQuery("sample", () => ({ sample: onTitle ? title : before }));
   pilot.on("keys", () => {
     onTitle = true;
@@ -323,7 +334,10 @@ void test("regular still loads when a wipe returns to the title screen", async (
   pilot.onQuery("saveui", {
     saveui: { open: true, slots: [20], cursor: 0, current: 20 },
   });
-  pilot.on("wait", { ok: true, pos: { state: "Player", map: 229, cell: [20, 12] } });
+  pilot.on("wait", {
+    ok: true,
+    pos: { state: "Player", map: 229, cell: [20, 12] },
+  });
   const report = await regular(pilot, {}, () => undefined, 20);
   assert.match(report, /游戏回到了标题画面/);
   assert.match(report, /已读取 20 号位/);

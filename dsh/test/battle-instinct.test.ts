@@ -112,7 +112,14 @@ void test("a party with a white mage keeps the potion for later", () => {
 
 void test("a healer out of MP does not stop the party from drinking", () => {
   const party = [
-    { name: "蕾娜", jobName: "白魔法师", hp: 100, maxHp: 100, mp: 0, abilities: [] },
+    {
+      name: "蕾娜",
+      jobName: "白魔法师",
+      hp: 100,
+      maxHp: 100,
+      mp: 0,
+      abilities: [],
+    },
     { name: "巴兹", jobName: "骑士", hp: 25, maxHp: 100, mp: 0 },
   ];
   const table = gambit.defaultTable(party);
@@ -196,8 +203,9 @@ void test("a running countdown makes an ordinary battle flee before the rules fi
     "攻击",
   );
   assert.equal(
-    runtime.choices(ATTACK, snapshot({ timerActive: true }), { fleeOnTimer: false }).steps[0]
-      ?.action.command,
+    runtime.choices(ATTACK, snapshot({ timerActive: true }), {
+      fleeOnTimer: false,
+    }).steps[0]?.action.command,
     "攻击",
   );
 });
