@@ -5,7 +5,12 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { newBookProgress, routeFromBookSection } from "../src/engine/stage/book-plan.ts";
+import {
+  BookProgressStore,
+  bookStatsLine,
+  newBookProgress,
+  routeFromBookSection,
+} from "../src/engine/stage/book-plan.ts";
 import type {
   RouteBlueMagic,
   RouteBook,
@@ -202,18 +207,19 @@ void test("a real save is a save, a boss is a boss, and a cell-less switch hands
   const boss = station(1, "boss", [8, 5]);
   const handoff = station(2, "switch", null);
   const route = routeOf(section({ stations: [save, boss, handoff] }));
-  const first = route[0];
-  const second = route[1];
-  const third = route[2];
-  assert.ok(first);
-  assert.ok(second);
-  assert.ok(third);
-  assert.equal(first.do, "save");
-  assert.equal(first.optional, false);
-  assert.equal(second.do, "boss");
-  assert.equal(third.do, "handoff");
-  assert.equal(third.to, "71");
-  assert.match(third.book?.text ?? "", /guide switch/);
+  const saved = route.find((stop) => stop.book?.index === 0);
+  const handed = route.find((stop) => stop.book?.index === 2);
+  const fought = route.find((stop) => stop.book?.index === 1);
+  assert.ok(saved);
+  assert.ok(handed);
+  assert.ok(fought);
+  assert.equal(saved.do, "save");
+  assert.equal(saved.optional, true);
+  assert.equal(handed.do, "handoff");
+  assert.equal(handed.to, "71");
+  assert.match(handed.book?.text ?? "", /guide switch/);
+  assert.equal(fought.do, "boss");
+  assert.ok(route.indexOf(saved) < route.indexOf(fought));
 });
 
 void test("a missable unregistered monster becomes a grind stop with the Config minute cap", () => {
@@ -330,6 +336,34 @@ void test("blue magic is ground only for a Blue Mage and only while unlearned", 
   assert.equal(grind.until.minutes, 5);
 });
 
+void test("the opening chest count includes what this save already opened", () => {
+  const already = chest(0, [2, 5], true);
+  const pending = chest(1, [4, 5], false);
+  const value = section({
+    stations: [station(0, "chest", [2, 5], already), station(1, "chest", [4, 5], pending)],
+    chests: [already, pending],
+    chestsTotal: 2,
+  });
+  const progress = newBookProgress("ff5", value, new Date("2026-11-11T00:00:00Z"), null);
+  assert.equal(progress.stats.chestsOpened, 1);
+  assert.equal(progress.stats.chestsTotal, 2);
+});
+
+void test("actual minutes drop idle gaps longer than ten minutes", async () => {
+  const started = new Date("2026-11-11T00:00:00Z");
+  const value = section({ stations: [station(0, "talk", null)] });
+  const store = new BookProgressStore("ff5");
+  store.current = newBookProgress("ff5", value, started, null);
+  const at = (minutes: number) => new Date(started.getTime() + minutes * 60_000);
+  await store.countTool("route", at(5));
+  await store.countTool("go", at(125));
+  await store.finish(at(128));
+  const finished = store.current;
+  assert.ok(finished);
+  assert.equal(finished.stats.minutes, 18);
+  assert.match(bookStatsLine(finished), /用时 18 分\(实际\)/u);
+});
+
 void test("a runnable 回头学 stop becomes a grind with the station's until and minute cap", () => {
   const spellStop: RouteStation = {
     ...station(-1, "note", null),
@@ -391,4 +425,110 @@ void test("move and note stations do not become execution stops", () => {
   assert.ok(first);
   assert.equal(first.do, "handoff");
   assert.equal(first.book?.kind, "cutscene");
+});
+
+void test("collection stations come first, handoffs keep guide order, and heal/save guard the boss", () => {
+  const firstHandoff = station(0, "talk", null);
+  const chestValue = chest(1, [2, 5], false);
+  const save = station(2, "save", [3, 3]);
+  const heal = station(3, "heal", [4, 4]);
+  const secondHandoff = station(4, "switch", null);
+  const boss = station(5, "boss", [8, 5]);
+  const route = routeOf(
+    section({
+      stations: [
+        firstHandoff,
+        station(1, "chest", [2, 5], chestValue),
+        save,
+        heal,
+        secondHandoff,
+        boss,
+      ],
+      chests: [chestValue],
+      chestsTotal: 1,
+    }),
+  );
+  assert.deepEqual(
+    route.map((stop) => [stop.do, stop.book?.index]),
+    [
+      ["open", 1],
+      ["handoff", 0],
+      ["handoff", 4],
+      ["save", 2],
+      ["talk", 3],
+      ["boss", 5],
+    ],
+  );
+  assert.equal(route.find((stop) => stop.book?.index === 2)?.optional, true);
+  assert.equal(route.find((stop) => stop.book?.index === 3)?.optional, true);
+});
+
+void test("without a boss, heal/save stops keep the guide's order instead of joining the chests", () => {
+  const first = station(0, "heal", [1, 1]);
+  const chestValue = chest(1, [2, 5], false);
+  const save = station(2, "save", [3, 3]);
+  const talk = station(3, "talk", null);
+  const route = routeOf(
+    section({
+      stations: [first, station(1, "chest", [2, 5], chestValue), save, talk],
+      chests: [chestValue],
+      chestsTotal: 1,
+    }),
+  );
+  assert.deepEqual(
+    route.map((stop) => [stop.do, stop.book?.index]),
+    [
+      ["open", 1],
+      ["talk", 0],
+      ["save", 2],
+      ["handoff", 3],
+    ],
+  );
+});
+
+void test("Note/Optional/Trivia lines never become stations", () => {
+  const note: RouteStation = { ...station(0, "talk", null), text: "Note: this step is required" };
+  const optional: RouteStation = { ...station(1, "piano", null), text: "Optional: play later" };
+  const trivia: RouteStation = { ...station(2, "cutscene", null), text: "Trivia: the pub is old" };
+  const route = routeOf(section({ stations: [note, optional, trivia] }));
+  assert.deepEqual(route, []);
+});
+
+void test("adjacent piano steps merge into one handoff that completes both guide indexes", () => {
+  const sit = { ...station(0, "talk", null), text: "Sit on the piano stool." };
+  const play = { ...station(1, "piano", null), text: "Play the piano." };
+  const route = routeOf(section({ stations: [sit, play] }));
+  const [only] = route;
+  assert.ok(only);
+  assert.equal(route.length, 1);
+  assert.equal(only.do, "handoff");
+  const book = only.book;
+  assert.ok(book);
+  assert.deepEqual(book.indexes, [0, 1]);
+  assert.match(book.text, /piano stool/u);
+  assert.match(book.text, /Play the piano/u);
+});
+
+void test("a story on a visited map before the first unopened chest is already past", () => {
+  const past = { ...station(0, "cutscene", [1, 1]), mapId: 71 };
+  const chestValue = chest(1, [2, 5], false);
+  const future = { ...station(2, "cutscene", [4, 4]), mapId: 71 };
+  const route = routeOf(
+    section({
+      maps: [
+        { mapId: 71, name: "测试洞窟", areaName: "测试洞窟", reasons: ["test"], visited: true },
+      ],
+      stations: [past, station(1, "chest", [2, 5], chestValue), future],
+      chests: [chestValue],
+      chestsTotal: 1,
+    }),
+  );
+  assert.equal(
+    route.some((stop) => stop.book?.index === 0),
+    false,
+  );
+  assert.equal(
+    route.some((stop) => stop.book?.index === 2),
+    true,
+  );
 });

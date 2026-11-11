@@ -19,7 +19,7 @@ import type {
   BookStationStatus,
 } from "./book-progress-types.ts";
 import type { RouteBook, RouteSection, RouteStation } from "./route-book.ts";
-import type { StageBookPoint, StagePlan } from "./types.ts";
+import type { StageBookCandidate, StageBookPoint, StagePlan } from "./types.ts";
 
 const ACTION_NAMES: Readonly<Record<string, string>> = {
   chest: "开宝箱",
@@ -46,35 +46,167 @@ export function routeFromBookSection(
   section: RouteSection,
   options: BookPlanOptions,
 ): StagePlan["route"] {
-  const route: StagePlan["route"][number][] = [];
-  for (const station of section.stations) {
-    const added = stationRoute(section, station);
-    route.push(...added);
-  }
-  const grinds = grindStops(section, options.grindMinutes);
-  if (grinds.length > 0) {
-    // A missable monster is best fought on its own map before the section ends. Insert the
-    // stop after the last station on that map (or before a boss on it); the analyzer may
-    // reorder it later, but the input keeps the book's intent.
-    for (const grind of grinds) {
-      const mapId = typeof grind.to === "number" ? grind.to : Number(grind.to.split(":")[0]);
-      let at = route.length;
-      for (const [index, stop] of route.entries()) {
-        if (
-          stop.book?.kind === "boss" &&
-          (stop.to === String(mapId) || stop.to.startsWith(`${mapId}:`))
-        ) {
-          at = index;
-          break;
-        }
-      }
-      route.splice(at, 0, grind);
+  const main: StagePlan["route"][number][] = [];
+  for (const planned of plannedStations(section)) {
+    const added = stationRoute(section, planned.station);
+    for (const stop of added) {
+      main.push(withIndexes(stop, planned.indexes));
     }
   }
-  // Task 122: a "回头学" block is a normal tail of the section. Stops the save or the party
-  // rules out stay in the book (and progress) with their reason, but never walk anywhere.
-  route.push(...revisitStops(section, options.grindMinutes));
-  return route;
+  // Task 133: every collection stop comes first, handoffs keep the guide's order, and a boss
+  // stays last. Grinds join the collection group, so a chest is never skipped just because
+  // the guide's piano line came before it.
+  //
+  // Task 136: heal and save stops are conditional, not collection. They are inserted just
+  // before the boss they guard (or stay in the guide's own order when the section has no
+  // boss). The executor decides at runtime whether the party actually needs them.
+  const collection = main.filter((stop) => isCollectionStop(stop) && !isConditionalStop(stop));
+  const handoffs = main.filter(
+    (stop) => !isCollectionStop(stop) && !isBossStop(stop) && !isConditionalStop(stop),
+  );
+  const conditional = main.filter(isConditionalStop);
+  const bosses = main.filter(isBossStop);
+  const grinds = grindStops(section, options.grindMinutes);
+  const revisits = revisitStops(section, options.grindMinutes);
+  if (bosses.length === 0) {
+    return [...collection, ...grinds, ...byGuideOrder([...handoffs, ...conditional]), ...revisits];
+  }
+  const before: StagePlan["route"][number][][] = bosses.map(() => []);
+  const tail: StagePlan["route"][number][] = [];
+  for (const stop of conditional) {
+    const at = bossAfter(stop, bosses);
+    if (at === null) tail.push(stop);
+    else (before[at] ?? []).push(stop);
+  }
+  const guarded: StagePlan["route"][number][] = [];
+  for (const [index, boss] of bosses.entries()) {
+    guarded.push(...(before[index] ?? []), boss);
+  }
+  return [...collection, ...grinds, ...handoffs, ...revisits, ...guarded, ...tail];
+}
+
+/** The first boss whose guide step comes after this conditional stop; null means none. */
+function bossAfter(
+  stop: StagePlan["route"][number],
+  bosses: readonly StagePlan["route"][number][],
+): number | null {
+  const index = stop.book?.index ?? -1;
+  for (const [position, boss] of bosses.entries()) {
+    if ((boss.book?.index ?? Number.POSITIVE_INFINITY) > index) return position;
+  }
+  return null;
+}
+
+/** Task 136: guide order, used when a section has no boss to guard. */
+function byGuideOrder(stops: readonly StagePlan["route"][number][]): StagePlan["route"][number][] {
+  return [...stops].sort((left, right) => (left.book?.index ?? 0) - (right.book?.index ?? 0));
+}
+
+interface PlannedStation {
+  readonly station: RouteStation;
+  /** Guide step indexes this one stop stands for (adjacent piano steps are merged). */
+  readonly indexes: readonly number[];
+  readonly group: string | null;
+}
+
+function plannedStations(section: RouteSection): PlannedStation[] {
+  const firstPending =
+    section.stations.find(
+      (station) =>
+        (station.kind === "chest" || station.kind === "hidden") && station.chest?.opened !== true,
+    )?.index ?? null;
+  const out: PlannedStation[] = [];
+  for (const station of section.stations) {
+    if (station.kind === "note" || isNoteLine(station.text)) continue;
+    if (isPassedStory(station, firstPending, section)) continue;
+    const group = handoffGroup(station);
+    const previous = out.at(-1);
+    if (group !== null && previous?.group === group && previous.station.where === station.where) {
+      out[out.length - 1] = {
+        station: combineHandoffs(previous.station, station),
+        indexes: [...previous.indexes, station.index],
+        group,
+      };
+      continue;
+    }
+    out.push({ station, indexes: [station.index], group });
+  }
+  return out;
+}
+
+function isNoteLine(text: string): boolean {
+  return /^\s*(?:note|optional|trivia)\s*[:：]/iu.test(text);
+}
+
+const HANDOFF_GROUPS: ReadonlySet<string> = new Set([
+  "talk",
+  "switch",
+  "cutscene",
+  "shop",
+  "piano",
+]);
+
+function handoffGroup(station: RouteStation): string | null {
+  if (station.kind === "boss" || !HANDOFF_GROUPS.has(station.kind)) return null;
+  if (station.kind === "piano" || /\b(?:piano|stool|bench)\b/iu.test(station.text)) {
+    return "piano";
+  }
+  return station.kind;
+}
+
+function combineHandoffs(left: RouteStation, right: RouteStation): RouteStation {
+  const candidates = [...(left.candidates ?? []), ...(right.candidates ?? [])].filter(
+    (candidate, index, all) =>
+      all.findIndex(
+        (other) =>
+          other.kind === candidate.kind &&
+          other.mapId === candidate.mapId &&
+          other.name === candidate.name &&
+          other.cell[0] === candidate.cell[0] &&
+          other.cell[1] === candidate.cell[1],
+      ) === index,
+  );
+  return {
+    ...left,
+    text: `${left.text} ${right.text}`.trim(),
+    ...(candidates.length === 0 ? {} : { candidates }),
+  };
+}
+
+function isPassedStory(
+  station: RouteStation,
+  firstPending: number | null,
+  section: RouteSection,
+): boolean {
+  if (firstPending === null || station.index >= firstPending) return false;
+  if (station.kind === "boss" || !HANDOFF_GROUPS.has(station.kind)) return false;
+  if (station.mapId === null) {
+    return (station.where ?? "").trim().toLowerCase() === "overworld";
+  }
+  return section.maps.find((map) => map.mapId === station.mapId)?.visited === true;
+}
+
+function withIndexes(
+  stop: StagePlan["route"][number],
+  indexes: readonly number[],
+): StagePlan["route"][number] {
+  if (indexes.length <= 1 || stop.book === undefined) return stop;
+  return { ...stop, book: { ...stop.book, indexes: [...indexes] } };
+}
+
+function isCollectionStop(stop: StagePlan["route"][number]): boolean {
+  const kind = stop.book?.kind;
+  return stop.do === "open" || stop.do === "grind" || kind === "chest" || kind === "hidden";
+}
+
+/** Task 136: a heal or save the party only needs when a condition holds. */
+function isConditionalStop(stop: StagePlan["route"][number]): boolean {
+  const kind = stop.book?.kind;
+  return stop.do === "save" || kind === "save" || kind === "heal";
+}
+
+function isBossStop(stop: StagePlan["route"][number]): boolean {
+  return stop.do === "boss" || stop.book?.kind === "boss";
 }
 
 /** Task 122: "回头学青魔法"/"回头补图鉴" stations as grind stops with an explicit `until`. */
@@ -113,15 +245,28 @@ function stationRoute(section: RouteSection, station: RouteStation): StagePlan["
       return chestStops(station, book, mapFallback);
     case "save": {
       if (station.cell === null || station.mapId === null)
-        return [handoffStop(station, book, mapFallback)];
+        return [{ ...handoffStop(station, book, mapFallback), optional: true }];
       return [
         {
           to: `${station.mapId}:${station.cell[0]},${station.cell[1]}`,
           do: "save",
-          optional: false,
+          optional: true,
           book,
         },
       ];
+    }
+    case "heal": {
+      if (station.cell !== null && station.mapId !== null) {
+        return [
+          {
+            to: `${station.mapId}:${station.cell[0]},${station.cell[1]}`,
+            do: "talk",
+            optional: true,
+            book,
+          },
+        ];
+      }
+      return [{ ...handoffStop(station, book, mapFallback), optional: true }];
     }
     case "boss": {
       const mapId = station.mapId ?? mapFallback;
@@ -216,6 +361,18 @@ function bookPoint(section: RouteSection, station: RouteStation): StageBookPoint
     kind: station.kind,
     text: station.text,
     where: station.where,
+    ...(station.chest === null ? {} : { item: station.chest.item }),
+    ...(station.candidates === undefined || station.candidates.length === 0
+      ? {}
+      : {
+          candidates: station.candidates.map((candidate) => ({
+            kind: candidate.kind,
+            mapId: candidate.mapId,
+            name: candidate.name,
+            names: candidate.names ?? null,
+            cell: candidate.cell,
+          })),
+        }),
   };
 }
 
@@ -286,14 +443,34 @@ export function handoffText(
     readonly kind: string;
     readonly text: string;
     readonly where?: string | null;
+    readonly candidates?: readonly StageBookCandidate[];
   },
   mapLabel: string,
 ): string {
   const action = ACTION_NAMES[station.kind] ?? "处理";
+  const candidates = candidateText(station.candidates);
   return (
     `路线书「${section}」第 ${station.index + 1} 站交给你:${action}，` +
-    `攻略原文:${station.text}；在地图 ${mapLabel}。处理完再 route {} 接着走。`
+    `攻略原文:${station.text}；在地图 ${mapLabel}。` +
+    (candidates === "" ? "" : `候选:${candidates}。`) +
+    "处理完再 route {} 接着走。"
   );
+}
+
+function candidateText(candidates: readonly StageBookCandidate[] | undefined): string {
+  if (candidates === undefined || candidates.length === 0) return "";
+  return candidates
+    .map((candidate) => {
+      const names = [candidate.names?.ja, candidate.names?.en, candidate.names?.zhc]
+        .filter((name): name is string => name !== null && name !== undefined && name !== "")
+        .join("/");
+      const label =
+        candidate.kind === "event"
+          ? `事件 ${candidate.name}`
+          : `NPC ${candidate.name}${names === "" ? "" : `(${names})`}`;
+      return `${label} 地图 ${candidate.mapId} (${candidate.cell[0]},${candidate.cell[1]})`;
+    })
+    .join("；");
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -343,6 +520,8 @@ function progressOf(value: unknown, game: string): BookProgress {
       bestiaryMissing: missing(stats.bestiaryMissing),
       blueMagicMissing: missing(stats.blueMagicMissing),
       minutes: count(stats.minutes),
+      ...(stats.activeMs === undefined ? {} : { activeMs: count(stats.activeMs) }),
+      ...(text(stats.lastToolAt) === undefined ? {} : { lastToolAt: text(stats.lastToolAt) }),
     },
   };
 }
@@ -371,11 +550,13 @@ export function newBookProgress(
     go: tool === "go" ? 1 : 0,
     route: tool === "route" ? 1 : 0,
     handoffs: 0,
-    chestsOpened: 0,
+    chestsOpened: section.chests.filter((chest) => chest.opened === true).length,
     chestsTotal: section.chestsTotal,
     bestiaryMissing: section.bestiaryMissing,
     blueMagicMissing: section.blueMagicMissing,
     minutes: 0,
+    activeMs: 0,
+    lastToolAt: at.toISOString(),
   };
   return {
     game,
@@ -437,14 +618,14 @@ export class BookProgressStore {
   }
 
   /** Count one game tool call by the model, using task 113's name buckets. */
-  async countTool(name: string): Promise<void> {
+  async countTool(name: string, at = new Date()): Promise<void> {
     const progress = this.current;
     if (progress === null) return;
     if (progress.finishedAt !== null) return;
-    const stats = progress.stats;
+    const stats = advanceTiming(progress.stats, progress.startedAt, at);
     this.current = {
       ...progress,
-      updatedAt: new Date().toISOString(),
+      updatedAt: at.toISOString(),
       stats: {
         ...stats,
         tools: stats.tools + 1,
@@ -502,20 +683,37 @@ export class BookProgressStore {
     const progress = this.current;
     if (progress === null) return;
     if (progress.finishedAt !== null) return;
+    const stats = advanceTiming(progress.stats, progress.startedAt, at);
     this.current = {
       ...progress,
       finishedAt: at.toISOString(),
       updatedAt: at.toISOString(),
-      stats: { ...progress.stats, minutes: minutesOf(progress, at) },
+      stats: { ...stats, minutes: minutesOf(stats) },
     };
     await this.save();
   }
 }
 
-function minutesOf(progress: BookProgress, end: Date): number {
-  const started = Date.parse(progress.startedAt);
-  if (!Number.isFinite(started)) return 0;
-  return Math.max(0, Math.round((end.getTime() - started) / 60_000));
+/** Task 133: one long gap (the model stopped overnight) must not become working time. */
+const IDLE_GAP_MS = 10 * 60_000;
+
+function advanceTiming(stats: BookSectionStats, startedAt: string, at: Date): BookSectionStats {
+  const last = Date.parse(stats.lastToolAt ?? startedAt);
+  const gap = Number.isFinite(last) ? Math.max(0, at.getTime() - last) : 0;
+  const activeMs = (stats.activeMs ?? 0) + Math.min(gap, IDLE_GAP_MS);
+  return { ...stats, activeMs, lastToolAt: at.toISOString(), minutes: minutesOf({ activeMs }) };
+}
+
+function minutesOf(stats: { readonly activeMs?: number }): number {
+  return Math.max(0, Math.round((stats.activeMs ?? 0) / 60_000));
+}
+
+/** Minutes so far: finished sections use the stored number, a running one adds the current gap. */
+function currentMinutes(progress: BookProgress, at: Date): number {
+  if (progress.finishedAt !== null) return progress.stats.minutes;
+  const last = Date.parse(progress.stats.lastToolAt ?? progress.startedAt);
+  const gap = Number.isFinite(last) ? Math.max(0, at.getTime() - last) : 0;
+  return minutesOf({ activeMs: (progress.stats.activeMs ?? 0) + Math.min(gap, IDLE_GAP_MS) });
 }
 
 /** The acceptance line task 117 puts in the activity log and at the end of `route`. */
@@ -523,15 +721,12 @@ export function bookStatsLine(progress: BookProgress): string {
   const stats = progress.stats;
   const bestiary = stats.bestiaryMissing === null ? "未知" : String(stats.bestiaryMissing);
   const blue = stats.blueMagicMissing === null ? "未知" : String(stats.blueMagicMissing);
-  const minutes =
-    progress.finishedAt === null
-      ? minutesOf(progress, new Date())
-      : Math.max(stats.minutes, minutesOf(progress, new Date(Date.parse(progress.finishedAt))));
+  const minutes = currentMinutes(progress, new Date());
   return (
     `路线书统计「${progress.section}」:工具 ${stats.tools} 次` +
     `(go ${stats.go}、route ${stats.route}),交回 ${stats.handoffs} 次,` +
     `宝箱 ${stats.chestsOpened}/${stats.chestsTotal},图鉴还缺 ${bestiary},` +
-    `青魔法还缺 ${blue},用时 ${minutes} 分`
+    `青魔法还缺 ${blue},用时 ${minutes} 分(实际)`
   );
 }
 

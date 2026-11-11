@@ -101,8 +101,15 @@ export interface RouteRunOptions {
    * the executor rebuilds waypoints from the plan's legs and unreachable entries.
    */
   readonly waypoints?: readonly Waypoint[];
-  /** Task 117: called after each waypoint, before the next one, for the book progress file. */
-  readonly onWaypoint?: (stop: Waypoint, event: WaypointEvent) => Promise<void> | void;
+  /**
+   * Task 117: called after each waypoint, before the next one, for the book progress file.
+   * Task 136: `note` is why an optional heal/save stop was skipped ("走不到，跳过").
+   */
+  readonly onWaypoint?: (
+    stop: Waypoint,
+    event: WaypointEvent,
+    note?: string,
+  ) => Promise<void> | void;
 }
 
 /** `resumeRoute` takes the same knobs except the file and the waypoints, which it reads. */
@@ -151,9 +158,10 @@ async function reportWaypoint(
   options: RouteRunOptions,
   stop: Waypoint,
   event: WaypointEvent,
+  note?: string,
 ): Promise<void> {
   if (options.onWaypoint === undefined) return;
-  await options.onWaypoint(stop, event);
+  await options.onWaypoint(stop, event, note);
 }
 
 interface RunSeed {
@@ -285,6 +293,16 @@ function waypointLabels(waypoints: readonly Waypoint[]): string {
 function grindIds(waypoints: readonly Waypoint[]): Set<string> {
   return new Set(
     waypoints.filter((waypoint) => waypoint.kind === "grind").map((waypoint) => waypoint.id),
+  );
+}
+
+/** Task 136: a stop the plan can do without when it cannot be reached. */
+function skippable(stop: Waypoint): boolean {
+  return (
+    stop.optional === true ||
+    stop.book?.kind === "heal" ||
+    stop.book?.kind === "save" ||
+    stop.kind === "save"
   );
 }
 
@@ -452,6 +470,22 @@ async function run(
     }
     lastFailure = oneLine(detail);
     if (failures < failureLimit) return null;
+    // Task 136: a heal/save/optional stop that keeps failing is not worth stopping the whole
+    // plan for. Record it and walk on; a chest/story/boss still hands back with its reason.
+    if (skippable(target)) {
+      lines.push(
+        `跳过：「${target.label}」连续 ${failures} 次走不到，最后一次：${lastFailure}；接着下一站`,
+      );
+      pending = pending.filter((waypoint) => waypoint.id !== target.id);
+      legs = legs.filter((entry, index) => index < next || entry.waypoint !== target.id);
+      skipped.push(target);
+      failureId = null;
+      failures = 0;
+      lastFailure = "";
+      await reportWaypoint(options, target, "skipped", "走不到，跳过");
+      await save();
+      return null;
+    }
     lines.push(`失败：「${target.label}」连续 ${failures} 次，最后一次：${lastFailure}`);
     return halt(
       "failed",

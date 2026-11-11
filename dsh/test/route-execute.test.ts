@@ -374,6 +374,49 @@ void test("the same waypoint failing twice stops the run", async () => {
   });
 });
 
+void test("an unreachable heal station is skipped and the plan keeps walking", async () => {
+  await inTemp(async (dir) => {
+    const file = join(dir, "route-progress.json");
+    const heal: Waypoint = {
+      ...waypoint("h", "story", 2, "回复点"),
+      optional: true,
+      book: {
+        section: "测试洞窟",
+        index: 1,
+        kind: "heal",
+        text: "Drink from the healing pot.",
+        where: null,
+      },
+    };
+    const stops = [heal, waypoint("b", "chest", 3, "宝箱")];
+    const state = newState();
+    const notes: (string | undefined)[] = [];
+    const ports = fakePorts(state, {
+      goTo: (stop) => Promise.resolve(stop.id === "h" ? { ok: false, text: "路被挡住" } : null),
+    });
+
+    const result = await executeRoute(planFrom(START, stops), ports, {
+      progressFile: file,
+      waypoints: stops,
+      onWaypoint: (_stop, event, note) => {
+        if (event === "skipped") notes.push(note);
+      },
+    });
+
+    assert.equal(result.reason, "completed");
+    assert.deepEqual(state.went, ["h", "h", "b"]);
+    assert.deepEqual(state.acted, ["b"]);
+    assert.deepEqual(
+      result.skipped.map((stop) => stop.id),
+      ["h"],
+    );
+    assert.deepEqual(notes, ["走不到，跳过"]);
+    assert.match(result.text, /跳过：「回复点」/);
+    const saved = await readProgress(file);
+    assert.deepEqual(saved.completed, ["b"]);
+  });
+});
+
 void test("a dialog stop pages the story and then keeps walking without a failure", async () => {
   await inTemp(async (dir) => {
     const file = join(dir, "route-progress.json");
