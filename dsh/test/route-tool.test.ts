@@ -21,7 +21,12 @@ import { record, truthy } from "../src/engine/values.ts";
 import { FakeBattle } from "./fake-battle.ts";
 import { FakePilot } from "./fake-pilot.ts";
 
-const LAPTOP: Laptop = { host: "laptop", user: "player", key: "/tmp/key", root: "C:/ffpr" };
+const LAPTOP: Laptop = {
+  host: "laptop",
+  user: "player",
+  key: "/tmp/key",
+  root: "C:/ffpr",
+};
 
 const MAPS = {
   71: { name: "卡纳克城", exits: [{ cell: [5, 5] as Cell, to: 72 }] },
@@ -41,7 +46,10 @@ interface World {
   readonly openedOrder: string[];
   readonly exits: Map<string, number>;
   readonly entries: Map<number, Cell>;
-  readonly timer?: { readonly active: boolean; readonly seconds: number | null };
+  readonly timer?: {
+    readonly active: boolean;
+    readonly seconds: number | null;
+  };
   readonly gameover?: {
     readonly open: boolean;
     readonly prompt?: string;
@@ -54,6 +62,11 @@ interface World {
   battleActive: boolean;
   battleSeen: boolean;
   battleCell: Cell | null;
+  /** Task 125: a story trigger cell the route has to walk onto (`sc_e_...`). */
+  readonly story?: { readonly cell: Cell; readonly name: string };
+  storyOpen: boolean;
+  storyPolls: number;
+  storyDone: boolean;
 }
 
 function routeWorld(): World {
@@ -77,6 +90,9 @@ function routeWorld(): World {
     battleActive: false,
     battleSeen: false,
     battleCell: null,
+    storyOpen: false,
+    storyPolls: 0,
+    storyDone: false,
   };
   return world;
 }
@@ -86,16 +102,23 @@ function keyOf(cell: Cell): string {
 }
 
 function position(world: World): Reply {
+  // Task 125: the story on the trigger cell plays for one poll, then clears; this is the
+  // short cutscene settleWalkEvent waits for.
+  if (world.storyOpen) {
+    world.storyPolls += 1;
+    if (world.storyPolls >= 2) world.storyOpen = false;
+  }
   const pos: Record<string, unknown> = {
     map: world.map,
     area: world.map,
     areaType: 1,
     areaText: MAPS[world.map as 71 | 72].name,
-    state: world.battleActive ? "Battle" : "Player",
+    state: world.storyOpen ? "Event" : world.battleActive ? "Battle" : "Player",
     cell: world.cell,
     saves: 1,
     battle: world.battleActive,
   };
+  if (world.storyOpen) pos.dialog = "剧情";
   if (world.timer !== undefined) pos.timer = world.timer;
   if (world.gameover !== undefined) pos.gameover = world.gameover;
   return { pos };
@@ -114,6 +137,14 @@ function entities(world: World, kind: string): Reply[] {
     if (Number(map) === world.map)
       out.push({ kind: "GotoMap", cell: [Number(x), Number(y)], toMap: to });
   }
+  if (world.story !== undefined) {
+    out.push({
+      kind: "Event",
+      cell: world.story.cell,
+      name: world.story.name,
+      active: true,
+    });
+  }
   return out.filter((entity) => kind === "All" || entity.kind === kind);
 }
 
@@ -131,7 +162,12 @@ function pilotFor(world: World): FakePilot {
     collision: {
       searchLayer: 1,
       playerCell: [world.cell[0], world.cell[1]],
-      layers: [{ name: "GroundCollision", rows: Array.from({ length: 20 }, () => "0".repeat(20)) }],
+      layers: [
+        {
+          name: "GroundCollision",
+          rows: Array.from({ length: 20 }, () => "0".repeat(20)),
+        },
+      ],
     },
   }));
   pilot.on("entities", (fields) => ({
@@ -152,6 +188,27 @@ function pilotFor(world: World): FakePilot {
       return { ok: false, ...position(world) };
     }
     world.cell = [to[0], to[1]];
+    if (
+      world.story !== undefined &&
+      !world.storyDone &&
+      keyOf(world.cell) === keyOf(world.story.cell)
+    ) {
+      world.storyDone = true;
+      world.storyOpen = true;
+      world.storyPolls = 0;
+      return {
+        ok: false,
+        reason: "state:Event",
+        index: 0,
+        steps: 0,
+        pos: {
+          map: world.map,
+          cell: [world.cell[0], world.cell[1]],
+          state: "Event",
+          dialog: world.story.name,
+        },
+      };
+    }
     if (
       world.battle !== undefined &&
       world.battleCell !== null &&
@@ -225,7 +282,13 @@ function pilotFor(world: World): FakePilot {
     },
   });
   pilot.onQuery("encounters", {
-    encounters: { monsterSet: null, parties: [], region: null, regions: [], enabled: false },
+    encounters: {
+      monsterSet: null,
+      parties: [],
+      region: null,
+      regions: [],
+      enabled: false,
+    },
   });
   pilot.onQuery("sample", () => {
     const sample: Record<string, unknown> = {
@@ -243,7 +306,9 @@ function pilotFor(world: World): FakePilot {
       };
     }
     if (world.choiceOpen)
-      sample.choice = { main: { open: true, options: ["是", "否"], cursor: 0 } };
+      sample.choice = {
+        main: { open: true, options: ["是", "否"], cursor: 0 },
+      };
     if (world.timer !== undefined) sample.timer = world.timer;
     if (world.gameover !== undefined) sample.gameover = world.gameover;
     return { sample };
@@ -287,7 +352,11 @@ async function makeGame(
   for (const [key, map] of Object.entries(MAPS)) {
     game.atlas.maps.set(key, {
       name: map.name,
-      exits: map.exits.map((exit) => ({ cell: exit.cell, to: exit.to, name: "" })),
+      exits: map.exits.map((exit) => ({
+        cell: exit.cell,
+        to: exit.to,
+        name: "",
+      })),
       chests: [],
     });
   }
@@ -295,7 +364,12 @@ async function makeGame(
   const collision = {
     searchLayer: 1,
     playerCell: [1, 5] as Cell,
-    layers: [{ name: "GroundCollision", rows: Array.from({ length: 20 }, () => "0".repeat(20)) }],
+    layers: [
+      {
+        name: "GroundCollision",
+        rows: Array.from({ length: 20 }, () => "0".repeat(20)),
+      },
+    ],
   };
   await game.collisions.remember(71, collision);
   await game.collisions.remember(72, collision);
@@ -335,6 +409,31 @@ void test("three stops walk in order, open both chests, reach the exit and never
     assert.deepEqual(world.openedOrder, ["2,5", "4,5"]);
     assert.equal(world.map, 72);
     assert.equal(result.includes("交给 AI"), false);
+  });
+});
+
+void test("a route move stop walks onto a story trigger cell instead of asking for a side", async () => {
+  // Task 125: a `sc_e_` cell is the route's endpoint, so the walk goes onto it. 11-11 the
+  // route stopped at (13,54) and the next stop reported "旁边没有能站的格子".
+  await inTemp(async (dir) => {
+    const world: World = {
+      ...routeWorld(),
+      chests: [],
+      story: {
+        cell: [6, 5],
+        name: "sc_e_0479_1:レナとガラフを探す（ゴブリン戦②）",
+      },
+    };
+    const game = await makeGame(dir);
+    const result = await game.run(
+      "route",
+      { stops: [{ to: "6,5" }], end: [8, 8] },
+      pilotFor(world),
+    );
+    assert.match(result, /完成/);
+    assert.equal(result.includes("旁边没有能站的格子"), false);
+    assert.equal(world.storyDone, true);
+    assert.deepEqual(world.cell, [8, 8]);
   });
 });
 
@@ -631,7 +730,12 @@ void test("leave_incomplete still walks the coordinate instead of the plan", asy
 
 void test("a named go that reaches the plan's map keeps walking the plan in the same call", async () => {
   await inTemp(async (dir) => {
-    const world: World = { ...routeWorld(), chests: [], opened: new Set(), openedOrder: [] };
+    const world: World = {
+      ...routeWorld(),
+      chests: [],
+      opened: new Set(),
+      openedOrder: [],
+    };
     const game = await makeGame(dir);
     await game.stagePlans.save({
       ...stageRecord([{ to: "72:2,2" }, { to: "72:3,3" }]),
@@ -647,7 +751,12 @@ void test("a named go that reaches the plan's map keeps walking the plan in the 
 
 void test("arriving with the continue switch off returns at the destination", async () => {
   await inTemp(async (dir) => {
-    const world: World = { ...routeWorld(), chests: [], opened: new Set(), openedOrder: [] };
+    const world: World = {
+      ...routeWorld(),
+      chests: [],
+      opened: new Set(),
+      openedOrder: [],
+    };
     const game = await makeGame(dir, { stageContinueAfterTravel: false });
     await game.stagePlans.save({
       ...stageRecord([{ to: "72:2,2" }, { to: "72:3,3" }]),
@@ -678,7 +787,12 @@ void test("a story choice after the arrival makes the plan walk return early", a
 
 void test("a coordinate go on an entrance arrives there and keeps walking the plan", async () => {
   await inTemp(async (dir) => {
-    const world: World = { ...routeWorld(), chests: [], opened: new Set(), openedOrder: [] };
+    const world: World = {
+      ...routeWorld(),
+      chests: [],
+      opened: new Set(),
+      openedOrder: [],
+    };
     const game = await makeGame(dir);
     await game.stagePlans.save({
       ...stageRecord([{ to: "72:2,2" }, { to: "72:3,3" }]),

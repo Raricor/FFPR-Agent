@@ -64,6 +64,9 @@ export interface GameDefaults {
   readonly routeFile: string;
   /** Task 97: the one stage plan per game. */
   readonly stagePlanFile: string;
+  /** Task 117: the route book's live progress and learned handoff cells. */
+  readonly routeBookProgressFile: string;
+  readonly routeBookLearnedFile: string;
 }
 
 /** Per-game defaults shared by the schema, the plugin and the tests. Unknown keys throw. */
@@ -88,6 +91,8 @@ export function gameDefaults(key: string): GameDefaults {
     bestiarySaveFile: join(DEPS, "ds", `bestiary-save-${game.key}.json`),
     routeFile: join(DEPS, "ds", `route-${game.key}.json`),
     stagePlanFile: join(DEPS, "ds", `stage-${game.key}.json`),
+    routeBookProgressFile: join(DEPS, "ds", `routebook-progress-${game.key}.json`),
+    routeBookLearnedFile: join(DEPS, "ds", `routebook-learned-${game.key}.json`),
   };
 }
 
@@ -152,6 +157,18 @@ const RawConfig = Schema.object({
   routeFile: Schema.string(),
   /** Task 97: where the one stage plan is kept. */
   stagePlanFile: Schema.string(),
+  /** Task 117: run a route book section as one `route {}` (default on). */
+  routeBookEnabled: Schema.boolean().default(true),
+  /** Task 117: a missable-monster/blue-magic grind stop's time cap in minutes. */
+  routeBookGrindMinutes: Schema.number().default(8),
+  /** Task 124: build only the current section and this many after it (default 4). */
+  routeBookAheadSections: Schema.number().default(4),
+  /** Task 124: stop a runtime book build after this many milliseconds (default 5 s). */
+  routeBookTimeBudgetMs: Schema.number().default(5_000),
+  /** Task 117: the route book's per-station progress file. */
+  routeBookProgressFile: Schema.string(),
+  /** Task 117: cells the model acted on at a handoff station. */
+  routeBookLearnedFile: Schema.string(),
   /** Task 105: snapshots and scout-window intervals live here (default .deps/ds). */
   scoutDir: Schema.string(),
   /** Task 105: scout()'s default time budget in minutes. */
@@ -251,6 +268,12 @@ export const Config = Schema.transform(RawConfig, (config) => {
     bestiarySaveFile: config.bestiarySaveFile ?? defaults.bestiarySaveFile,
     routeFile: config.routeFile ?? defaults.routeFile,
     stagePlanFile: config.stagePlanFile ?? defaults.stagePlanFile,
+    routeBookEnabled: config.routeBookEnabled ?? true,
+    routeBookGrindMinutes: config.routeBookGrindMinutes ?? 8,
+    routeBookAheadSections: config.routeBookAheadSections ?? 4,
+    routeBookTimeBudgetMs: config.routeBookTimeBudgetMs ?? 5_000,
+    routeBookProgressFile: config.routeBookProgressFile ?? defaults.routeBookProgressFile,
+    routeBookLearnedFile: config.routeBookLearnedFile ?? defaults.routeBookLearnedFile,
     scoutDir: config.scoutDir ?? join(DEPS, "ds"),
     scoutMinutes: config.scoutMinutes ?? 20,
     scoutMaxTargets: config.scoutMaxTargets ?? 200,

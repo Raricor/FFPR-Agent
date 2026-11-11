@@ -16,7 +16,14 @@ import { isRecord, text } from "../values.ts";
 import { stageFactsKnowledge } from "./facts.ts";
 import type { StageFacts, StageGrindUntil, StageMonster, StagePlan } from "./types.ts";
 
-const ROUTE_ACTIONS: ReadonlySet<string> = new Set(["open", "save", "talk", "grind"]);
+const ROUTE_ACTIONS: ReadonlySet<string> = new Set([
+  "open",
+  "save",
+  "talk",
+  "grind",
+  "boss",
+  "handoff",
+]);
 
 /** Item and spell names that cure one status; "毒" and "中毒" both occur in the exports. */
 const STATUS_CURES: Readonly<
@@ -403,7 +410,7 @@ function checkRoute(
     const bad = routeTargetProblem(stop.to);
     if (bad !== null) problems.push(`${where}:${bad}`);
     if (stop.do !== undefined && !ROUTE_ACTIONS.has(stop.do)) {
-      problems.push(`${where}的 do 只能是 open、save、talk 或 grind`);
+      problems.push(`${where}的 do 只能是 open、save、talk、grind、boss 或 handoff`);
     }
     if (stop.do !== "grind") {
       if (stop.until !== undefined) problems.push(`${where}:只有 do 是 grind 才能写 until`);
@@ -613,6 +620,23 @@ function readStageGrindUntil(value: unknown, field: string): StageGrindUntil {
   };
 }
 
+/** Task 117: the route book's station metadata on one stop; absent for officer-written stops. */
+function readBookPoint(value: unknown, field: string): StagePlan["route"][number]["book"] {
+  if (!isRecord(value)) bad(field);
+  const part = value.part === undefined ? undefined : integerField(value.part, `${field}.part`);
+  const parts = value.parts === undefined ? undefined : integerField(value.parts, `${field}.parts`);
+  return {
+    section: stringField(value.section, `${field}.section`),
+    index: integerField(value.index, `${field}.index`),
+    kind: stringField(value.kind, `${field}.kind`),
+    text: stringField(value.text, `${field}.text`),
+    where: value.where === null ? null : stringField(value.where, `${field}.where`),
+    ...(part === undefined ? {} : { part }),
+    ...(parts === undefined ? {} : { parts }),
+    ...(value.autoStory === true ? { autoStory: true } : {}),
+  };
+}
+
 /** Read the schema-validated structured reply; throws a Chinese error when it is malformed. */
 export function readStagePlan(value: unknown): StagePlan {
   if (!isRecord(value)) bad("structured（不是对象）");
@@ -644,13 +668,20 @@ export function readStagePlan(value: unknown): StagePlan {
         : readStageGrindUntil(entry.until, `route[${index}].until`);
     if (doValue !== "grind" && until !== undefined) bad(`route[${index}].until`);
     const optional = entry.optional;
+    const book =
+      entry.book === undefined ? undefined : readBookPoint(entry.book, `route[${index}].book`);
     return {
       to: stringField(entry.to, `route[${index}].to`),
-      ...(doValue === undefined ? {} : { do: doValue as "open" | "save" | "talk" | "grind" }),
+      ...(doValue === undefined
+        ? {}
+        : {
+            do: doValue as "open" | "save" | "talk" | "grind" | "boss" | "handoff",
+          }),
       ...(until === undefined ? {} : { until }),
       ...(optional === undefined
         ? {}
         : { optional: booleanField(optional, `route[${index}].optional`) }),
+      ...(book === undefined ? {} : { book }),
     };
   });
   const turnBack = recordList(value.turnBack, "turnBack").map((entry, index) => {

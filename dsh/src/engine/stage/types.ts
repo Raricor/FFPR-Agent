@@ -95,6 +95,28 @@ export type TurnBack =
   | { readonly kind: "no-revive" }
   | { readonly kind: "hp-below"; readonly percent: number };
 
+/**
+ * Task 117: one route-book station carried on a stage-plan stop, so the executor can hand the
+ * station back with its guide text and the code can learn the cell the model acted on.
+ */
+export interface StageBookPoint {
+  /** The guide section title ("Wind Shrine"). */
+  readonly section: string;
+  /** The station's index in that section. */
+  readonly index: number;
+  /** The guide step kind ("chest", "switch", "cutscene" ...). */
+  readonly kind: string;
+  /** The guide line as written. */
+  readonly text: string;
+  /** The sub-location header the step sat under. */
+  readonly where: string | null;
+  /** For a multi-cell station: this stop's 1-based part and the part count. */
+  readonly part?: number;
+  readonly parts?: number;
+  /** Task 117: a cutscene/talk handoff found exactly one story event and walks it itself. */
+  readonly autoStory?: boolean;
+}
+
 /** What the stage officer hands back; the code checks it before using it. */
 export interface StagePlan {
   readonly threats: readonly string[];
@@ -113,10 +135,12 @@ export interface StagePlan {
   readonly minLevel: number | null;
   readonly route: readonly {
     readonly to: string;
-    readonly do?: "open" | "save" | "talk" | "grind";
+    readonly do?: "open" | "save" | "talk" | "grind" | "boss" | "handoff";
     /** Task 100: a grind stop's conditions; absent for every other action. */
     readonly until?: StageGrindUntil;
     readonly optional?: boolean;
+    /** Task 117: set when this stop came from the route book. */
+    readonly book?: StageBookPoint;
   }[];
   readonly turnBack: readonly TurnBack[];
   readonly notes: string;

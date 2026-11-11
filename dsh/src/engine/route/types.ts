@@ -9,9 +9,10 @@
 
 import type { Atlas } from "../atlas.ts";
 import type { Cell } from "../nav.ts";
-import type { CollisionStore, RegionIndex } from "../regions.ts";
+import type { CollisionStore, RegionIndex, WorldMode } from "../regions.ts";
 
-export type WaypointKind = "chest" | "grind" | "shop" | "inn" | "save" | "boss" | "move" | "story";
+export type WaypointKind =
+  "chest" | "grind" | "shop" | "inn" | "save" | "boss" | "move" | "story" | "handoff";
 
 /** Task 100: what a `grind` waypoint stops at. Any combination is allowed; the first met ends it. */
 export interface GrindUntil {
@@ -23,6 +24,18 @@ export interface GrindUntil {
   readonly battles?: number;
   /** Stop after this many minutes. */
   readonly minutes?: number;
+}
+
+/** Task 117: the route book's station carried with a waypoint while it executes. */
+export interface WaypointBook {
+  readonly section: string;
+  readonly index: number;
+  readonly kind: string;
+  readonly text: string;
+  readonly where: string | null;
+  readonly part?: number;
+  readonly parts?: number;
+  readonly autoStory?: boolean;
 }
 
 export interface Waypoint {
@@ -49,6 +62,8 @@ export interface Waypoint {
    * (interact walks beside a chest or NPC itself); the default is the exact cell.
    */
   readonly reach?: "cell" | "map";
+  /** Task 117: set for a route-book waypoint; absent for the model's own route stops. */
+  readonly book?: WaypointBook;
 }
 
 export interface RouteInput {
@@ -89,6 +104,11 @@ export interface RouteWorld {
   readonly regions?: RegionIndex;
   /** Collision snapshots, used for walking estimates inside one map. */
   readonly collisions?: CollisionStore;
+  /**
+   * What can cross the world map. The route tool reads the live vehicle when it can; without
+   * that, the analyzer assumes walking, a chocobo and a ship all dismount at the coast (11-11).
+   */
+  readonly worldModes?: readonly WorldMode[];
   /** Task 100: Config's estimated seconds per battle, for a grind waypoint's own time. */
   readonly battleSeconds?: number;
   readonly distance?: RouteDistance;

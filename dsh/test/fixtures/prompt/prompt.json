@@ -37,7 +37,7 @@
       "type": "function",
       "function": {
         "name": "route",
-        "description": "一段路一次走完:按 stops 里给的地方排好顺序,走路、途中的普通战斗和剧情都由代码处理,不再一步一步问你。stops 每项写 {to, do?, optional?}:to 和 go 的写法一样(地图号、地图名、坐标或「地图号:x,y」);do 写 open(开宝箱、拿隐藏道具)、save(到存档点存 20 号位)、talk(调查/对话)、grind(到 to 刷怪),省略就只是走到;grind 要带 until(至少一项):bestiary 怪名或图鉴号、blueMagic 青魔法名、battles 场数、minutes 分钟,到 to 后调现有刷怪循环,满足一项就停;倒计时期间所有 grind 路标都会跳过。optional 是可选路标(倒计时不够可以跳过),默认只有 do: open 的算可选。end 是终点(比如出口地图),不写就把最后一个 stops 当终点。不带 stops 和 end 调用时,从上次的路线进度接着走;没有进度时按当前阶段计划接着走。一段路上要去的地方已经清楚时就用 route,不要一格一格地 go。结果每个路标一行(到了、开了什么、跳过、用时),最后写停下原因;倒计时还开着时写剩余秒数。",
+        "description": "一段路一次走完:按 stops 里给的地方排好顺序,走路、途中的普通战斗和剧情都由代码处理,不再一步一步问你。stops 每项写 {to, do?, optional?}:to 和 go 的写法一样(地图号、地图名、坐标或「地图号:x,y」);do 写 open(开宝箱、拿隐藏道具)、save(到存档点存 20 号位)、talk(调查/对话)、grind(到 to 刷怪),省略就只是走到;grind 要带 until(至少一项):bestiary 怪名或图鉴号、blueMagic 青魔法名、battles 场数、minutes 分钟,到 to 后调现有刷怪循环,满足一项就停;倒计时期间所有 grind 路标都会跳过。optional 是可选路标(倒计时不够可以跳过),默认只有 do: open 的算可选。end 是终点(比如出口地图),不写就把最后一个 stops 当终点。不带 stops 和 end 调用时,从上次的路线进度接着走;没有进行中的计划、当前又在路线书覆盖的地图时,会按路线书自动建计划并执行下一段。代码交回时只处理交回的那一站,处理完再 route {} 接着走。一段路上要去的地方已经清楚时就用 route,不要一格一格地 go。结果每个路标一行(到了、开了什么、跳过、用时),最后写停下原因;倒计时还开着时写剩余秒数。",
         "parameters": {
           "type": "object",
           "properties": {

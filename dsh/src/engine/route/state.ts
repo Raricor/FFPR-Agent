@@ -21,6 +21,7 @@ import type {
   RouteTotal,
   UnreachableWaypoint,
   Waypoint,
+  WaypointBook,
   WaypointKind,
 } from "./types.ts";
 
@@ -35,6 +36,7 @@ const WAYPOINT_KINDS: ReadonlySet<string> = new Set([
   "boss",
   "move",
   "story",
+  "handoff",
 ]);
 
 /** One executable snapshot. `next` indexes `plan.legs`; `waypoints` is what is left. */
@@ -140,6 +142,22 @@ function untilOf(value: unknown, where: string): GrindUntil {
   };
 }
 
+function bookOf(value: unknown, where: string): WaypointBook {
+  if (!isRecord(value)) throw new Error(`${where}.book 不是对象`);
+  const part = value.part === undefined ? undefined : integer(value.part, `${where}.book.part`);
+  const parts = value.parts === undefined ? undefined : integer(value.parts, `${where}.book.parts`);
+  return {
+    section: stringOf(value.section, `${where}.book.section`),
+    index: integer(value.index, `${where}.book.index`),
+    kind: stringOf(value.kind, `${where}.book.kind`),
+    text: stringOf(value.text, `${where}.book.text`),
+    where: value.where === null ? null : stringOf(value.where, `${where}.book.where`),
+    ...(part === undefined ? {} : { part }),
+    ...(parts === undefined ? {} : { parts }),
+    ...(value.autoStory === true ? { autoStory: true } : {}),
+  };
+}
+
 function waypointOf(value: unknown, where: string): Waypoint {
   if (!isRecord(value)) throw new Error(`${where} 不是对象`);
   const after =
@@ -166,6 +184,7 @@ function waypointOf(value: unknown, where: string): Waypoint {
     ...(until === undefined ? {} : { until }),
     ...(value.optional === undefined ? {} : { optional: value.optional === true }),
     ...(reach === undefined ? {} : { reach }),
+    ...(value.book === undefined ? {} : { book: bookOf(value.book, where) }),
   };
 }
 

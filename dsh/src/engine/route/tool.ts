@@ -11,7 +11,7 @@ import type { Cell } from "../nav.ts";
 import { findMap, mapName } from "../skills/travel.ts";
 import { isRecord, num, text } from "../values.ts";
 import type { RouteTimer } from "./execute.ts";
-import type { GrindUntil, Waypoint, WaypointKind } from "./types.ts";
+import type { GrindUntil, Waypoint, WaypointBook, WaypointKind } from "./types.ts";
 
 /** Task 89: estimated battle length for one road encounter, until Config overrides it. */
 export const DEFAULT_ROUTE_BATTLE_SECONDS = 45;
@@ -22,7 +22,7 @@ export const DEFAULT_ROUTE_BATTLE_SECONDS = 45;
  */
 export const ROUTE_ENCOUNTER_CELLS = 30;
 
-export type RouteAction = "move" | "open" | "save" | "talk" | "grind";
+export type RouteAction = "move" | "open" | "save" | "talk" | "grind" | "boss" | "handoff";
 
 export interface RouteStopInput {
   readonly to: unknown;
@@ -30,6 +30,10 @@ export interface RouteStopInput {
   readonly optional: boolean;
   /** Task 100: only a grind stop has one. */
   readonly until?: GrindUntil;
+  /** Task 117: only the route book's own stops carry one. */
+  readonly book?: WaypointBook;
+  /** Task 117: a handoff's Chinese instruction replaces the generic waypoint label. */
+  readonly label?: string;
 }
 
 /**
@@ -194,11 +198,15 @@ export function resolveRouteStop(
           ? "story"
           : stop.action === "grind"
             ? "grind"
-            : "move";
+            : stop.action === "boss"
+              ? "boss"
+              : stop.action === "handoff"
+                ? "handoff"
+                : "move";
   const place = mapName(atlas, map) || `地图 ${map}`;
   const label = isEnd
     ? `终点 ${place}${cell === null ? "" : ` ${cellText(cell)}`}`
-    : labelOf(stop.action, place, cell);
+    : (stop.label ?? labelOf(stop.action, place, cell));
   return {
     id,
     kind,
@@ -207,7 +215,13 @@ export function resolveRouteStop(
     label,
     optional: isEnd ? false : stop.optional,
     ...(stop.until === undefined ? {} : { until: stop.until }),
-    reach: stop.action === "open" || stop.action === "talk" ? "map" : "cell",
+    ...(stop.book === undefined ? {} : { book: stop.book }),
+    reach:
+      stop.book?.autoStory === true
+        ? "cell"
+        : stop.action === "open" || stop.action === "talk"
+          ? "map"
+          : "cell",
   };
 }
 
@@ -217,6 +231,8 @@ function labelOf(action: RouteAction, place: string, cell: Cell | null): string 
   if (action === "save") return `存档 ${at}`;
   if (action === "talk") return `调查 ${at}`;
   if (action === "grind") return `刷怪 ${at}`;
+  if (action === "boss") return `首领 ${at}`;
+  if (action === "handoff") return `交回 ${at}`;
   return `移动 ${at}`;
 }
 

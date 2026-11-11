@@ -20,6 +20,12 @@ void test("Config defaults point at FF5's deployment paths and slot", () => {
   assert.equal(config.elementsFile, join(DEPS, "ds", "elements-ff5.json"));
   assert.equal(config.battlesFile, join(DEPS, "ds", "battles-ff5.jsonl"));
   assert.equal(config.routeFile, join(DEPS, "ds", "route-ff5.json"));
+  assert.equal(config.routeBookEnabled, true);
+  assert.equal(config.routeBookGrindMinutes, 8);
+  assert.equal(config.routeBookAheadSections, 4);
+  assert.equal(config.routeBookTimeBudgetMs, 5000);
+  assert.equal(config.routeBookProgressFile, join(DEPS, "ds", "routebook-progress-ff5.json"));
+  assert.equal(config.routeBookLearnedFile, join(DEPS, "ds", "routebook-learned-ff5.json"));
   assert.equal(config.scoutDir, join(DEPS, "ds"));
   assert.equal(config.scoutMinutes, 20);
   assert.equal(config.scoutMaxTargets, 200);
@@ -72,6 +78,11 @@ void test("all six games write save slot 20 but keep their own port and files", 
     assert.equal(defaults.elementsFile, join(DEPS, "ds", `elements-${key}.json`));
     assert.equal(defaults.battlesFile, join(DEPS, "ds", `battles-${key}.jsonl`));
     assert.equal(defaults.routeFile, join(DEPS, "ds", `route-${key}.json`));
+    assert.equal(
+      defaults.routeBookProgressFile,
+      join(DEPS, "ds", `routebook-progress-${key}.json`),
+    );
+    assert.equal(defaults.routeBookLearnedFile, join(DEPS, "ds", `routebook-learned-${key}.json`));
   }
 });
 
@@ -133,6 +144,12 @@ void test("Config keeps explicit values", () => {
     stageGoGate: false,
     stageGoFollowPlan: false,
     stageContinueAfterTravel: false,
+    routeBookEnabled: false,
+    routeBookGrindMinutes: 3,
+    routeBookAheadSections: 2,
+    routeBookTimeBudgetMs: 1500,
+    routeBookProgressFile: "/tmp/book-progress.json",
+    routeBookLearnedFile: "/tmp/book-learned.json",
     scoutDir: "/tmp/scout",
     scoutMinutes: 7,
     scoutMaxTargets: 12,

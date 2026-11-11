@@ -15,6 +15,7 @@ const KIND_NAMES: Readonly<Record<WaypointKind | "end", string>> = {
   boss: "首领",
   move: "移动",
   story: "剧情",
+  handoff: "交回",
   end: "终点",
 };
 

@@ -29,6 +29,7 @@ import {
   completionWhere as whereOf,
   incidentLines,
   isComplete,
+  isStoryEventName,
   missingLines,
   parseTreasureEntities,
   regionLines,
@@ -140,6 +141,13 @@ import {
   type Snapshot,
 } from "./scout/snapshot.ts";
 import { loadSlotFromMenu, SCOUT_SLOT } from "./skills/load.ts";
+import {
+  BookProgressStore,
+  bookStatsLine,
+  handoffText,
+  routeFromBookSection,
+  type BookPlanOptions,
+} from "./stage/book-plan.ts";
 import { buildStageFacts, describeStageFacts, stageTargetMapIds } from "./stage/facts.ts";
 import {
   MAX_RECOVERY_DISTANCE,
@@ -162,7 +170,23 @@ import { purchaseList, type ShopHere } from "./stage/purchase.ts";
 import { describeStagePlan } from "./stage/report.ts";
 import type { StageOfficerRunner } from "./stage/runner.ts";
 import { StagePlanStore, type StagePlanRecord, type StageStats } from "./stage/store.ts";
-import type { StageBossPartyMember, StageBossTable, StageFacts, StagePlan } from "./stage/types.ts";
+import type {
+  StageBossPartyMember,
+  StageBossTable,
+  StageFacts,
+  StagePlan,
+  StageTarget,
+} from "./stage/types.ts";
+import {
+  loadRouteBook,
+  readLearnedPoints,
+  readVisitOrder,
+  selectSectionIndex,
+  writeLearnedPoint,
+  type LearnedPoint,
+  type RouteBookRuntime,
+} from "./stage/route-book-load.ts";
+import type { RouteBook, RouteSection } from "./stage/route-book.ts";
 import {
   bossMapIds,
   loadKnowledge,
@@ -226,6 +250,11 @@ export interface GameOptions {
   readonly atlasFile?: string;
   /** Task 75: collision cache directory; defaults beside atlasFile as collision-<game>. */
   readonly collisionDir?: string;
+  /**
+   * Task 123: the game files' map export used for unvisited maps; defaults to
+   * `.deps/knowledge/<game>/files/maps`. `null` turns the fallback off (synthetic tests).
+   */
+  readonly gameFilesDir?: string | null;
   /** Task 57: save-local visited maps; defaults next to atlasFile. Unset stays in memory. */
   readonly atlasSaveFile?: string;
   readonly tacticsFile?: string;
@@ -293,6 +322,17 @@ export interface GameOptions {
   readonly stageTurnBackDistance?: number;
   /** Task 106: this many levels of change at a checkpoint rewrites the boss table (Config). */
   readonly stageBossLevelGap?: number;
+  /** Task 117: route book executor switch, grind cap, progress and learned-coordinate files. */
+  readonly routeBookEnabled?: boolean;
+  readonly routeBookGrindMinutes?: number;
+  /** Task 124: how many sections from the current one and the build's time budget (Config). */
+  readonly routeBookAheadSections?: number;
+  readonly routeBookTimeBudgetMs?: number;
+  readonly routeBookProgressFile?: string;
+  readonly routeBookLearnedFile?: string;
+  /** Task 117: guide cache path and an injected book for tests and previews. */
+  readonly routeBookGuideFile?: string;
+  readonly routeBook?: RouteBook;
   /** A preloaded knowledge module (tests and previews); otherwise it loads on first use. */
   readonly knowledge?: Knowledge;
   /** The stage officer runner (the plugin supplies it; tests use a fake). */
@@ -591,6 +631,30 @@ export class Game {
   readonly stageTurnBackDistance: number;
   /** Task 106: levels moved this much or a job changed before the boss rewrites its table. */
   readonly stageBossLevelGap: number;
+  /** Task 117: the route book's switch, grind cap and live files. */
+  readonly routeBookEnabled: boolean;
+  readonly routeBookGrindMinutes: number;
+  /** Task 124: the runtime build's window and budget. */
+  readonly routeBookAheadSections: number;
+  readonly routeBookTimeBudgetMs: number;
+  private readonly routeBookGuideFile: string | undefined;
+  private readonly routeBookOption: RouteBook | undefined;
+  private readonly routeBookLearnedFile: string | undefined;
+  private readonly bookProgress: BookProgressStore;
+  private bookCache: {
+    readonly book: RouteBook;
+    readonly sectionIndex: number;
+    readonly section: RouteSection;
+    readonly mapId: number | null;
+  } | null = null;
+  /** Task 117: a handoff/boss the model took over; the next `route {}` records it. */
+  private pendingBook: {
+    readonly section: string;
+    readonly index: number;
+    readonly kind: string;
+  } | null = null;
+  /** Task 117: remember the guide sections by title for progress restarts. */
+  private bookSectionsByTitle = new Map<string, RouteSection>();
   private readonly knowledgeOption: Knowledge | undefined;
   private knowledge: Knowledge | null = null;
   private knowledgeLoading: Promise<Knowledge> | null = null;
@@ -654,6 +718,14 @@ export class Game {
     stageContinueAfterTravel: boolean,
     stageTurnBackDistance: number,
     stageBossLevelGap: number,
+    routeBookEnabled: boolean,
+    routeBookGrindMinutes: number,
+    routeBookAheadSections: number,
+    routeBookTimeBudgetMs: number,
+    routeBookGuideFile: string | undefined,
+    routeBookOption: RouteBook | undefined,
+    routeBookLearnedFile: string | undefined,
+    bookProgress: BookProgressStore,
     knowledge: Knowledge | undefined,
     scoutDir: string,
     scoutMinutes: number,
@@ -699,6 +771,14 @@ export class Game {
     this.stageContinueAfterTravel = stageContinueAfterTravel;
     this.stageTurnBackDistance = stageTurnBackDistance;
     this.stageBossLevelGap = stageBossLevelGap;
+    this.routeBookEnabled = routeBookEnabled;
+    this.routeBookGrindMinutes = routeBookGrindMinutes;
+    this.routeBookAheadSections = routeBookAheadSections;
+    this.routeBookTimeBudgetMs = routeBookTimeBudgetMs;
+    this.routeBookGuideFile = routeBookGuideFile;
+    this.routeBookOption = routeBookOption;
+    this.routeBookLearnedFile = routeBookLearnedFile;
+    this.bookProgress = bookProgress;
     this.knowledgeOption = knowledge;
     this.scoutDir = scoutDir;
     this.scoutMinutes = scoutMinutes;
@@ -818,7 +898,12 @@ export class Game {
       (options.atlasFile === undefined
         ? undefined
         : join(dirname(options.atlasFile), `collision-${game}`));
-    const collisions = await CollisionStore.load(collisionDir, signal);
+    // Task 123: the game files' map export is the collision/exit fallback for unvisited maps.
+    const gameFilesDir =
+      options.gameFilesDir === null
+        ? undefined
+        : (options.gameFilesDir ?? join(DEPS, "knowledge", game, "files", "maps"));
+    const collisions = await CollisionStore.load(collisionDir, signal, gameFilesDir);
     const atlasSaveFile =
       options.atlasSaveFile ??
       (options.atlasFile === undefined
@@ -887,6 +972,14 @@ export class Game {
       options.stageContinueAfterTravel ?? true,
       options.stageTurnBackDistance ?? MAX_RECOVERY_DISTANCE,
       options.stageBossLevelGap ?? 3,
+      options.routeBookEnabled ?? true,
+      options.routeBookGrindMinutes ?? 8,
+      options.routeBookAheadSections ?? 4,
+      options.routeBookTimeBudgetMs ?? 5_000,
+      options.routeBookGuideFile,
+      options.routeBook,
+      options.routeBookLearnedFile,
+      await BookProgressStore.load(game, options.routeBookProgressFile, signal),
       options.knowledge,
       options.scoutDir ?? join(DEPS, "ds"),
       options.scoutMinutes ?? 20,
@@ -906,6 +999,9 @@ export class Game {
     created.moveState.blockedTrustCount = options.blockedTrustCount;
     created.moveState.carryRepeatLimit = options.carryRepeatLimit;
     created.moveState.carryTotalLimit = options.carryTotalLimit;
+    // Task 129: the walk opens the game files' hidden passages and pages a story itself.
+    created.moveState.passages = (mapId) => created.collisions.passages(mapId);
+    created.moveState.story = (pilot) => created.storyAdvance(pilot);
     created.notes =
       options.notesFile === undefined ? [] : await loadNotes(options.notesFile, signal);
     // A web restart must still show the boss table and walker notes the tactician wrote.
@@ -926,6 +1022,589 @@ export class Game {
   /** The saved stage plan, for tests and the sidebar. */
   stagePlan(): StagePlanRecord | null {
     return this.stagePlans.current;
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // Task 117: the route book executor
+
+  private bookPlanOptions(): BookPlanOptions {
+    return { grindMinutes: this.routeBookGrindMinutes };
+  }
+
+  /** This save's live data for the book: bestiary, jobs, learned spells and opened chests. */
+  private async liveBookSave(pilot: Pilot): Promise<import("./stage/route-book.ts").RouteBookSave> {
+    let jobs: string[] | null = null;
+    let blueMagic: string[] | null = null;
+    try {
+      const sample = record((await pilot.query("sample")).sample);
+      const party = readParty(sample);
+      jobs = party.map((member) => member.job);
+      blueMagic = party.flatMap((member) => member.abilities.map((ability) => ability.name));
+    } catch {
+      // An old bridge without sample still gets the book's chest order and bestiary.
+    }
+    return {
+      bestiary: new Set(this.bestiary.numbers),
+      blueMagic,
+      jobs,
+      openedChests: await this.openedChestsHere(pilot),
+    };
+  }
+
+  /** `"mapId:x,y"` for every opened treasure entity the bridge reports on this map. */
+  private async openedChestsHere(pilot: Pilot): Promise<ReadonlySet<string> | null> {
+    const { map } = await this.stagePosition(pilot);
+    if (map === null) return null;
+    try {
+      const reply = record(
+        (await pilot.send("entities", { kind: "TresureBox", max: 400 })).entities,
+      );
+      const opened = new Set<string>();
+      for (const entity of records(reply.entities)) {
+        if (entity.opened !== true) continue;
+        const cell = cellOf(entity.cell);
+        if (cell === null) continue;
+        opened.add(`${map}:${cell[0]},${cell[1]}`);
+      }
+      return opened;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Build (or inject) the route book and pick the section for one map/plan. */
+  private async buildBookRuntime(
+    pilot: Pilot,
+    signal: AbortSignal | undefined,
+    options: {
+      readonly preferredSection?: string;
+      readonly preferredMapId?: number | null;
+    } = {},
+  ): Promise<RouteBookRuntime | null> {
+    if (!this.routeBookEnabled) return null;
+    const position = await this.stagePosition(pilot);
+    const previous =
+      this.bookProgress.current === null
+        ? null
+        : {
+            title: this.bookProgress.current.section,
+            finished: this.bookProgress.current.finishedAt !== null,
+          };
+    if (this.routeBookOption !== undefined) {
+      const book = this.routeBookOption;
+      this.bookSectionsByTitle = new Map(book.sections.map((section) => [section.title, section]));
+      const sectionIndex = selectSectionIndex(book, position.map, {
+        ...(options.preferredSection === undefined
+          ? {}
+          : { preferredSection: options.preferredSection }),
+        ...(options.preferredMapId === undefined ? {} : { preferredMapId: options.preferredMapId }),
+        ...(previous === null ? {} : { previous }),
+      });
+      const section = sectionIndex === null ? undefined : book.sections[sectionIndex];
+      return section === undefined || sectionIndex === null
+        ? null
+        : { book, sectionIndex, section };
+    }
+    const knowledge = await this.ensureStageKnowledge(signal);
+    const visitOrder = await readVisitOrder(this.game, undefined, signal);
+    const learned = await readLearnedPoints(this.game, this.routeBookLearnedFile, signal);
+    const runtime = await loadRouteBook(
+      {
+        game: this.game,
+        knowledge,
+        atlas: this.atlas,
+        visitOrder,
+        save: await this.liveBookSave(pilot),
+        ...(this.routeBookGuideFile === undefined ? {} : { guideFile: this.routeBookGuideFile }),
+        ...(options.preferredSection === undefined
+          ? {}
+          : { preferredSection: options.preferredSection }),
+        ...(options.preferredMapId === undefined ? {} : { preferredMapId: options.preferredMapId }),
+        ...(previous === null ? {} : { previous }),
+        mapId: position.map,
+        learned,
+        aheadSections: this.routeBookAheadSections,
+        timeBudgetMs: this.routeBookTimeBudgetMs,
+        onWarning: (message: string) => this.onActivity?.(message),
+      },
+      signal,
+    );
+    if (runtime !== null) {
+      this.bookSectionsByTitle = new Map(
+        runtime.book.sections.map((section) => [section.title, section]),
+      );
+    }
+    return runtime;
+  }
+
+  /**
+   * The cached current-section runtime. A build happens on the first call and whenever the map
+   * changes; the progress file is only restarted when the section itself changes.
+   */
+  private async ensureBook(
+    pilot: Pilot,
+    signal: AbortSignal | undefined,
+    preferredSection?: string,
+  ): Promise<RouteBookRuntime | null> {
+    if (!this.routeBookEnabled) return null;
+    const position = await this.stagePosition(pilot);
+    const cached = this.bookCache;
+    const finished =
+      this.bookProgress.current !== null && this.bookProgress.current.finishedAt !== null;
+    if (
+      cached !== null &&
+      cached.mapId === position.map &&
+      !(finished && cached.section.title === this.bookProgress.current?.section) &&
+      (preferredSection === undefined || cached.section.title === preferredSection)
+    ) {
+      return {
+        book: cached.book,
+        sectionIndex: cached.sectionIndex,
+        section: cached.section,
+      };
+    }
+    const runtime = await this.buildBookRuntime(pilot, signal, {
+      ...(preferredSection === undefined ? {} : { preferredSection }),
+    });
+    if (runtime === null) return null;
+    const current = this.bookProgress.current;
+    if (current?.finishedAt != null && current.section === runtime.section.title) {
+      // The last section is finished and the party is still on one of its maps; there is no
+      // next section, so do not start the same one again.
+      return null;
+    }
+    if (current?.section !== runtime.section.title) {
+      if (current !== null && current.finishedAt === null) await this.finishBookProgress();
+      await this.bookProgress.start(runtime.section, new Date(), this.stageCallName);
+    }
+    this.bookCache = {
+      book: runtime.book,
+      sectionIndex: runtime.sectionIndex,
+      section: runtime.section,
+      mapId: position.map,
+    };
+    return runtime;
+  }
+
+  /** Close the current section (if open) and put its acceptance line in the activity log. */
+  private async finishBookProgress(): Promise<string> {
+    const current = this.bookProgress.current;
+    if (current === null) return "";
+    if (current.finishedAt === null) {
+      await this.bookProgress.finish();
+      const line = bookStatsLine(this.bookProgress.current ?? current);
+      this.onActivity?.(line);
+      return line;
+    }
+    return bookStatsLine(current);
+  }
+
+  /** The book's route for a plan target, or null when the book does not cover it. */
+  private async bookRouteForTarget(
+    pilot: Pilot,
+    target: StageTarget,
+    signal: AbortSignal | undefined,
+  ): Promise<{
+    readonly runtime: RouteBookRuntime;
+    readonly route: StagePlan["route"];
+  } | null> {
+    const runtime = await this.buildBookRuntime(pilot, signal, {
+      ...(target.mapId === null ? {} : { preferredMapId: target.mapId }),
+    });
+    if (runtime === null) return null;
+    const section =
+      runtime.book.sections.find(
+        (candidate) =>
+          (target.mapId !== null && candidate.maps.some((map) => map.mapId === target.mapId)) ||
+          (target.areaName !== null && candidate.areaName === target.areaName) ||
+          candidate.title === target.label,
+      ) ?? null;
+    if (section === null) return null;
+    return {
+      runtime,
+      route: routeFromBookSection(section, this.bookPlanOptions()),
+    };
+  }
+
+  /**
+   * A missing plan created from the current book section. The officer still writes supplies,
+   * jobs and levels when it is wired; its route is replaced by the book's.
+   */
+  private async ensureBookPlan(
+    pilot: Pilot,
+    runtime: RouteBookRuntime,
+    signal: AbortSignal | undefined,
+  ): Promise<{ readonly record: StagePlanRecord } | { readonly error: string }> {
+    const position = await this.stagePosition(pilot);
+    const section = runtime.section;
+    const mapId = section.maps[0]?.mapId ?? position.map;
+    if (mapId === null) return { error: "路线书这一节没有对上地图，没法执行" };
+    const target: StageTarget = {
+      mapId,
+      areaName: section.areaName,
+      label: section.title,
+    };
+    if (this.stageOfficer !== undefined) {
+      const created = await this.createStagePlan(pilot, target, signal);
+      if (created.record === null) {
+        return {
+          error:
+            `路线书这一节「${section.title}」自动建计划没通过：\n` +
+            created.problems.map((problem) => `- ${problem}`).join("\n"),
+        };
+      }
+      const marked: StagePlanRecord = {
+        ...created.record,
+        book: { section: section.title, order: section.order },
+      };
+      await this.stagePlans.save(marked);
+      return { record: marked };
+    }
+    const plan: StagePlan = {
+      threats: [],
+      supplies: [],
+      spells: [],
+      gear: [],
+      jobs: [],
+      minLevel: null,
+      route: routeFromBookSection(section, this.bookPlanOptions()),
+      turnBack: [],
+      notes: `路线书自动计划：${section.title}`,
+    };
+    const record: StagePlanRecord = {
+      target,
+      plan,
+      createdAt: new Date().toISOString(),
+      status: "planned",
+      ...(position.map === null
+        ? {}
+        : {
+            startMapId: position.map,
+            startLabel: stagePlaceName(
+              this.knowledgeOption ?? this.knowledge ?? null,
+              this.atlas,
+              position.map,
+            ),
+          }),
+      book: { section: section.title, order: section.order },
+    };
+    await this.stagePlans.save(record);
+    return { record };
+  }
+
+  /** `route {}`'s first choice: a book section with no plan starts one and runs it. */
+  private async autoBookRoute(
+    pilot: Pilot,
+    args: Json,
+    signal: AbortSignal | undefined,
+  ): Promise<HandlerResult | null> {
+    if (!this.routeBookEnabled) return null;
+    const active = this.stagePlans.current;
+    if (active !== null && active.status !== "completed") return null;
+    const runtime = await this.ensureBook(pilot, signal);
+    if (runtime === null) return null;
+    const position = await this.stagePosition(pilot);
+    const covered =
+      position.map === null ||
+      position.map === 1 ||
+      runtime.section.maps.some((map) => map.mapId === position.map);
+    // A finished section may have ended on its last map; the next section's first travel leg
+    // starts from there. Any other map outside the book is not "in the book's range".
+    const afterFinished =
+      this.bookProgress.current?.finishedAt != null &&
+      runtime.book.sections.some((section) =>
+        section.maps.some((map) => map.mapId === position.map),
+      );
+    if (!covered && !afterFinished) return null;
+    const created = await this.ensureBookPlan(pilot, runtime, signal);
+    if ("error" in created) return { text: created.error, early: true };
+    const refusal = await this.stageBeforeTravel(pilot, args, created.record.target.mapId, signal);
+    if (refusal !== null) return refusal;
+    await this.stageMarkDeparted();
+    return await this.followBookSection(pilot, args, signal);
+  }
+
+  /**
+   * A pending handoff/boss decision is finished when the model calls `route {}` again: the
+   * station becomes handoff, and the next station runs in the same call.
+   */
+  private async settleBookDecision(record: StagePlanRecord): Promise<void> {
+    const progress = this.bookProgress.current;
+    if (progress === null) return;
+    for (const station of progress.stations) {
+      if (station.status !== "current") continue;
+      const stop = record.plan.route.find(
+        (candidate) =>
+          candidate.book?.index === station.index && candidate.book.section === progress.section,
+      );
+      if (stop === undefined) continue;
+      const kind = stop.book?.kind ?? stop.do ?? "";
+      if (kind !== "boss" && stop.do !== "handoff") continue;
+      await this.bookProgress.mark(
+        station.index,
+        "handoff",
+        kind === "boss" ? "首领交回处理完" : "交回处理完",
+        kind,
+      );
+    }
+    this.pendingBook = null;
+  }
+
+  /** The event cell a cutscene/talk handoff can walk itself, when exactly one is untriggered. */
+  private async bookAutoStoryCell(pilot: Pilot): Promise<Cell | null> {
+    try {
+      const reply = record((await pilot.send("entities", { kind: "Event", max: 200 })).entities);
+      const cells: Cell[] = [];
+      for (const entity of records(reply.entities)) {
+        if (entity.active === false) continue;
+        const name = text(entity.name) ?? "";
+        if (!isStoryEventName(name)) continue;
+        const cell = cellOf(entity.cell);
+        if (cell !== null) cells.push(cell);
+      }
+      return cells.length === 1 ? (cells[0] ?? null) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Map one plan stop to the executor's stop input, learning an event cell for a handoff. */
+  private async bookStopsOf(
+    pilot: Pilot,
+    record: StagePlanRecord,
+    section: RouteSection,
+  ): Promise<RouteStopInput[]> {
+    const progress = this.bookProgress.current;
+    const terminal = new Set(
+      (progress?.stations ?? [])
+        .filter(
+          (station) =>
+            station.status === "done" ||
+            station.status === "handoff" ||
+            station.status === "skipped",
+        )
+        .map((station) => station.index),
+    );
+    const position = await this.stagePosition(pilot);
+    const stops: RouteStopInput[] = [];
+    for (const stop of record.plan.route) {
+      const book = stop.book;
+      if (book?.section !== section.title) continue;
+      if (terminal.has(book.index)) continue;
+      let action: RouteStopInput["action"] = stop.do ?? "move";
+      let to: unknown = stop.to;
+      if (action === "handoff" && (book.kind === "cutscene" || book.kind === "talk")) {
+        const mapId = Number.parseInt(stop.to.split(":")[0] ?? "", 10);
+        if (Number.isFinite(mapId) && mapId === position.map) {
+          const cell = await this.bookAutoStoryCell(pilot);
+          if (cell !== null) {
+            action = "talk";
+            to = `${mapId}:${cell[0]},${cell[1]}`;
+          }
+        }
+      }
+      const mapId = Number.parseInt(stop.to.split(":")[0] ?? "", 10);
+      const label =
+        action === "handoff"
+          ? handoffText(section.title, book, Number.isFinite(mapId) ? `地图 ${mapId}` : "当前地图")
+          : undefined;
+      stops.push({
+        to,
+        action,
+        optional: stop.optional ?? false,
+        ...(label === undefined ? {} : { label }),
+        ...(stop.until === undefined ? {} : { until: stop.until }),
+        book: {
+          ...book,
+          ...(action === "talk" && book.kind !== "talk" ? { autoStory: true } : {}),
+        },
+      });
+    }
+    return stops;
+  }
+
+  /** Per-waypoint book progress; multi-cell stations complete only when every part did. */
+  private bookWaypointCallback(): (
+    stop: Waypoint,
+    event: "done" | "skipped" | "current",
+  ) => Promise<void> {
+    const parts = new Map<number, Set<number>>();
+    const skipped = new Map<number, Set<number>>();
+    return async (stop, event) => {
+      const book = stop.book;
+      if (book === undefined) return;
+      const part = book.part ?? 1;
+      const total = book.parts ?? 1;
+      if (event === "current") {
+        await this.bookProgress.mark(book.index, "current", "交回 AI", book.kind);
+        if (stop.kind === "boss" || stop.kind === "handoff") {
+          this.pendingBook = {
+            section: book.section,
+            index: book.index,
+            kind: book.kind,
+          };
+        }
+        return;
+      }
+      const set = event === "done" ? parts : skipped;
+      const found = set.get(book.index) ?? new Set<number>();
+      found.add(part);
+      set.set(book.index, found);
+      if (event === "done" && total > 1 && found.size < total) {
+        await this.bookProgress.mark(
+          book.index,
+          "current",
+          `已处理 ${found.size}/${total}`,
+          book.kind,
+        );
+        return;
+      }
+      await this.bookProgress.mark(
+        book.index,
+        event === "done" ? "done" : "skipped",
+        event === "done" ? this.bookDoneNote(stop) : "倒计时跳过",
+        book.kind,
+      );
+    };
+  }
+
+  private bookDoneNote(stop: Waypoint): string {
+    if (stop.kind === "chest") return `开了 ${stop.label.replace(/^宝箱 /u, "")}`;
+    if (stop.kind === "save") return `存档 ${stop.label.replace(/^存档 /u, "")}`;
+    if (stop.kind === "boss") return "首领完成";
+    if (stop.kind === "handoff") return "交回完成";
+    return `处理了 ${stop.label}`;
+  }
+
+  /** Finish the section once every station is terminal; log the acceptance line. */
+  private async finishBookIfDone(): Promise<string> {
+    const progress = this.bookProgress.current;
+    if (progress === null) return "";
+    const done = progress.stations.every(
+      (station) =>
+        station.status === "done" || station.status === "handoff" || station.status === "skipped",
+    );
+    if (!done) return bookStatsLine(progress);
+    const line = await this.finishBookProgress();
+    const record = this.stagePlans.current;
+    if (record?.book !== undefined && record.status !== "completed") {
+      const finishedAt = new Date().toISOString();
+      const stats = record.stats === undefined ? undefined : { ...record.stats, finishedAt };
+      await this.stagePlans.save({
+        ...record,
+        status: "completed",
+        ...(stats === undefined ? {} : { stats }),
+      });
+    }
+    return line;
+  }
+
+  /** Execute the active plan's book section, filtering stations the progress already has. */
+  private async followBookSection(
+    pilot: Pilot,
+    args: Json,
+    signal?: AbortSignal,
+  ): Promise<HandlerResult> {
+    const record = this.stagePlans.current;
+    if (record?.book === undefined) {
+      return { text: "没有进行中的路线书计划", early: true };
+    }
+    const runtime = await this.ensureBook(pilot, signal, record.book.section);
+    if (runtime === null) {
+      return { text: "路线书没有生成，不能按书执行", early: true };
+    }
+    const section =
+      runtime.book.sections.find((candidate) => candidate.title === record.book?.section) ??
+      this.bookSectionsByTitle.get(record.book.section) ??
+      runtime.section;
+    await this.settleBookDecision(record);
+    const stops = await this.bookStopsOf(pilot, record, section);
+    if (stops.length === 0) {
+      const line = await this.finishBookIfDone();
+      return {
+        text: `路线书这一节「${section.title}」没有要执行的站了。\n${line}`,
+        early: true,
+      };
+    }
+    const result = await this.runRouteStops(
+      pilot,
+      args,
+      stops,
+      null,
+      signal,
+      true,
+      false,
+      this.bookWaypointCallback(),
+    );
+    // A decision the executor reported without the per-waypoint callback (an ordinary dialog
+    // choice on a talk stop) still hands the station back to the model.
+    if (result.early === true) {
+      const pending = this.pendingBook;
+      if (pending === null && this.bookProgress.current !== null) {
+        const current = this.bookProgress.current.stations.find(
+          (station) => station.status === "current",
+        );
+        const stop =
+          current === undefined
+            ? undefined
+            : record.plan.route.find(
+                (candidate) =>
+                  candidate.book?.index === current.index &&
+                  candidate.book.section === record.book?.section,
+              );
+        if (stop?.book !== undefined && (stop.do === "boss" || stop.do === "handoff")) {
+          this.pendingBook = {
+            section: stop.book.section,
+            index: stop.book.index,
+            kind: stop.book.kind,
+          };
+        }
+      }
+    }
+    const line = await this.finishBookIfDone();
+    return {
+      text: [result.text, line].filter((part) => part !== "").join("\n"),
+      early: result.early,
+    };
+  }
+
+  /**
+   * The model actually interacted or walked while a handoff was pending: remember that cell,
+   * keyed by section + station + map, so the next book build gives the station a coordinate.
+   */
+  private async captureBookCell(
+    name: string,
+    args: Json,
+    pilot: Pilot,
+    resultText: string,
+  ): Promise<void> {
+    const pending = this.pendingBook;
+    if (pending === null) return;
+    if (name !== "interact" && name !== "go" && name !== "advance_story") return;
+    if (/阶段计划拦下|还没完成|没有执行|没有可接着走/u.test(resultText)) return;
+    const position = await this.stagePosition(pilot);
+    if (position.map === null) return;
+    let cell: Cell | null = null;
+    if (name === "interact") {
+      const x = num(args.x);
+      const y = num(args.y);
+      if (x !== undefined && y !== undefined) cell = [Math.trunc(x), Math.trunc(y)];
+    } else if (position.cell !== null) {
+      cell = position.cell;
+    }
+    if (cell === null) return;
+    const point: LearnedPoint = {
+      section: pending.section,
+      station: pending.index,
+      mapId: position.map,
+      cell,
+      at: new Date().toISOString(),
+    };
+    try {
+      await writeLearnedPoint(this.game, point, this.routeBookLearnedFile);
+    } catch (error) {
+      this.onIncident?.(`路线书学会坐标没写成:${describeError(error)}`);
+    }
   }
 
   /**
@@ -2546,6 +3225,8 @@ export class Game {
     this.stageCallName = name;
     await this.stageTrackTool(name);
     const outcome = await handler(args, pilot, signal);
+    // Task 117: while a handoff is pending, the model's own action names the cell to learn.
+    await this.captureBookCell(name, args, pilot, outcome.text);
     // Task 91: a wait can stop on a game-over popup; recover before the usual settle/hints.
     const ended = await this.recoverGameover(pilot);
     if (ended !== null) {
@@ -2707,7 +3388,11 @@ export class Game {
       // Unreadable: say so and require no monsters. 11-05: the bestiary "habitats" fallback
       // pulled in monsters this map cannot meet (Wind Shrine's boss, later-game islands).
     }
-    const world = pos.areaType === 0;
+    // Task 128: 11-11 map 189 (Tycoon's meteor) reported areaType 0 too, so areaType alone called
+    // it the world map. Ask the game files (map 1 is always a world map; later worlds 12/18/19/29
+    // carry a world grid too) instead of trusting the area type.
+    const world =
+      travel.isWorldMap(pos.map) || (pos.map !== null && this.collisions.hasWorld(pos.map));
     const area = pos.area ?? null;
     const areaName = pos.areaText ?? "";
     const mapName =
@@ -2874,11 +3559,23 @@ export class Game {
     if (this.scouting) return null;
     const state = await this.refreshCompletion(pilot);
     if (state === null || isComplete(state)) return null;
-    // Task 68: a monster automatically deferred by grind(until_bestiary), or one already lost
-    // for good, is not a reason to stay. Other gaps on this map still block.
-    const excused = this.excusedBestiary(state);
+    // Task 128: use the knowledge module to tell "以后还会出现" from "错过就没了". Where its
+    // encounter rows disagree with completion.ts's guide-only monsterStatus, knowledge wins:
+    // the game files know every map a monster can appear in, the guide remembers only the
+    // deadlines it wrote down. A normal place is revisitable either way, so its monsters never
+    // justify a refusal; only a deadline or a one-time place does.
+    let knowledge: Knowledge | null = null;
+    if (state.monsters.missing.length > 0) {
+      try {
+        knowledge = await this.ensureStageKnowledge();
+      } catch {
+        // A missing export only loses the "appears again" proof; deadlines and one-time places
+        // below still block, so the guard stays conservative.
+      }
+    }
+    const excused = this.excusedBestiary(state, knowledge);
     const remaining = missingLines(state, excused);
-    if (remaining.length === 0) return null;
+    const later = this.laterBestiaryNote(state, excused);
     // Task 69: look up both grids before judging, so the leave check is one decision. Null means
     // the bridge cannot answer and isLeaving keeps the old rectangle behaviour.
     const gridOutside = await this.worldGridOutside(state, pilot, goal);
@@ -2889,6 +3586,12 @@ export class Game {
     // remaining chests are attached to every tool result instead. Task 89: bridge 0.14.3's
     // timer is checked too, because a route can carry a countdown the profile does not name.
     if (state.timedUntil !== null || this.lastTimer?.active === true) return null;
+    if (remaining.length === 0) {
+      // Task 128: these monsters can be found again, so leaving is allowed without a reason
+      // and without a debt. The reminder still reaches the model at the end of the result.
+      if (later !== "") this.leaveNotice = later;
+      return null;
+    }
     const reason = text(args.leave_incomplete)?.trim() ?? "";
     if (reason !== "") {
       await this.backlog.add({
@@ -2908,10 +3611,9 @@ export class Game {
     const why = story
       ? `「${where}」是一次性地点，你正要踩剧情/首领事件格 ${goal[0]},${goal[1]}${storyName}`
       : `要离开「${where}」`;
-    const grindHint =
-      state.monsters.missing.length > 0
-        ? "这图还缺的怪用 grind(until_bestiary) 刷齐，不要一步步走；"
-        : "";
+    const grindHint = remaining.some((line) => line.startsWith("本图鉴还缺"))
+      ? "这图还缺的怪用 grind(until_bestiary) 刷齐，不要一步步走；"
+      : "";
     return {
       early: true,
       text:
@@ -2919,7 +3621,8 @@ export class Game {
         "先拿完宝箱和隐藏道具；" +
         grindHint +
         '确实要离开就带 leave_incomplete，并写具体理由，例如 leave_incomplete="需要钥匙"、' +
-        '"打不过，等升级"、"剧情强制离开"。带理由离开会记一条欠账，回来补齐后自动销掉。',
+        '"打不过，等升级"、"剧情强制离开"。带理由离开会记一条欠账，回来补齐后自动销掉。' +
+        (later === "" ? "" : `\n${later}`),
     };
   }
 
@@ -3189,12 +3892,18 @@ export class Game {
   private stageBossLocation(
     knowledge: Knowledge,
     facts: StageFacts,
-    bosses: readonly { readonly name: string; readonly bookId: number | null }[],
+    bosses: readonly {
+      readonly name: string;
+      readonly bookId: number | null;
+    }[],
   ): number | null {
     const target = new Set(stageTargetMapIds(knowledge, facts.target));
     const found = new Set<number>();
     for (const boss of bosses) {
-      for (const mapId of bossMapIds(knowledge, { name: boss.name, bookId: boss.bookId })) {
+      for (const mapId of bossMapIds(knowledge, {
+        name: boss.name,
+        bookId: boss.bookId,
+      })) {
         if (target.has(mapId)) found.add(mapId);
       }
     }
@@ -3227,7 +3936,11 @@ export class Game {
     const location = this.stageBossLocation(knowledge, facts, bosses);
     const triggerMap = location ?? facts.target.mapId ?? this.mapId;
     if (triggerMap === null || !this.onMap(triggerMap)) {
-      return { boss: null, text: "", error: "读不到首领在哪张图，首领表没有写成" };
+      return {
+        boss: null,
+        text: "",
+        error: "读不到首领在哪张图，首领表没有写成",
+      };
     }
     const names = bosses.map((boss) => boss.name);
     const where = location === null ? "这一段的首领" : `这一段的首领（地图 ${location}）`;
@@ -3376,7 +4089,11 @@ export class Game {
       for (const [index, stop] of route.entries()) {
         try {
           const waypoint = resolveRouteStop(
-            { to: stop.to, action: stop.do ?? "move", optional: stop.optional ?? false },
+            {
+              to: stop.to,
+              action: stop.do ?? "move",
+              optional: stop.optional ?? false,
+            },
             `boss${index}`,
             map,
             this.atlas,
@@ -3397,7 +4114,11 @@ export class Game {
       let waypoint: Waypoint;
       try {
         waypoint = resolveRouteStop(
-          { to: stop.to, action: stop.do ?? "move", optional: stop.optional ?? false },
+          {
+            to: stop.to,
+            action: stop.do ?? "move",
+            optional: stop.optional ?? false,
+          },
           `check${index}`,
           map,
           this.atlas,
@@ -3460,6 +4181,16 @@ export class Game {
     }
   }
 
+  /** Task 117: keep the officer's route as a note; the book's route is what executes. */
+  private bookPlanNotes(notes: string, officerRoute: StagePlan["route"], section: string): string {
+    const line =
+      officerRoute.length === 0
+        ? `阶段官没有给路线；路线书「${section}」的站直接执行。`
+        : `阶段官路线（不执行）：${officerRoute.map((stop) => stop.to).join(" → ")}；` +
+          `执行路线书「${section}」的站。`;
+    return [notes.trim(), line].filter((part) => part !== "").join("\n");
+  }
+
   /**
    * One stage officer call, shared by the tool and the auto trigger. Only a plan that passed
    * `checkStagePlan` is saved; an invalid one is returned with its problems so the caller can
@@ -3493,13 +4224,29 @@ export class Game {
     );
     const startMap = (await this.stagePosition(pilot)).map;
     const problems = answer.problems.length === 0 ? [] : [...answer.problems];
+    // Task 117: when the book covers this target, its stations are the route. The officer's
+    // route still goes into the notes for review, but the executor never walks it.
+    const bookRoute =
+      problems.length === 0 ? await this.bookRouteForTarget(pilot, target, signal) : null;
+    const plan: StagePlan =
+      bookRoute === null
+        ? answer.plan
+        : {
+            ...answer.plan,
+            route: bookRoute.route,
+            notes: this.bookPlanNotes(
+              answer.plan.notes,
+              answer.plan.route,
+              bookRoute.runtime.section.title,
+            ),
+          };
     const prepared =
       problems.length === 0
         ? await this.stageBossPrep(pilot, facts, knowledge, "", "boss-prep")
         : { boss: null, text: "", error: "" };
     const record: StagePlanRecord = {
       target: facts.target,
-      plan: answer.plan,
+      plan,
       createdAt: new Date().toISOString(),
       status: "planned",
       ...(startMap === null
@@ -3510,6 +4257,14 @@ export class Game {
           }),
       ...(prepared.boss === null ? {} : { boss: prepared.boss }),
       ...(prepared.error === "" ? {} : { bossError: prepared.error }),
+      ...(bookRoute === null
+        ? {}
+        : {
+            book: {
+              section: bookRoute.runtime.section.title,
+              order: bookRoute.runtime.section.order,
+            },
+          }),
     };
     if (problems.length === 0) {
       // Task 113: a new plan replaces the old one; the old stage's numbers go to the log.
@@ -4161,6 +4916,14 @@ export class Game {
 
   /** Task 113: count one model tool call while the active plan is on the road. */
   private async stageTrackTool(name: string): Promise<void> {
+    // Task 117: the route book keeps its own acceptance numbers, independent of a stage plan.
+    if (this.bookProgress.current !== null && this.bookProgress.current.finishedAt === null) {
+      try {
+        await this.bookProgress.countTool(name);
+      } catch (error) {
+        this.onIncident?.(`路线书统计没写成:${describeError(error)}`);
+      }
+    }
     const record = this.stagePlans.current;
     if (record?.status !== "departed") return;
     const stats = record.stats ?? this.stageNewStats();
@@ -4206,7 +4969,10 @@ export class Game {
     if (record?.status !== "departed") return;
     const stats = record.stats ?? this.stageNewStats();
     try {
-      await this.stagePlans.save({ ...record, stats: { ...stats, stops: stats.stops + count } });
+      await this.stagePlans.save({
+        ...record,
+        stats: { ...stats, stops: stats.stops + count },
+      });
     } catch (error) {
       this.onIncident?.(`阶段统计没写成:${describeError(error)}`);
     }
@@ -4388,6 +5154,14 @@ export class Game {
     if (!this.stageGoGate) return null;
     const active = this.stagePlans.current;
     if (active === null || active.status === "completed") return null;
+    // Task 117: a station handed to the model has no coordinate by definition; its own
+    // interact/go must not be turned back into the plan that just stopped there.
+    if (
+      active.book !== undefined &&
+      this.bookProgress.current?.stations.some((station) => station.status === "current") === true
+    ) {
+      return null;
+    }
     const { map: currentMap, cell: currentCell } = await this.stagePosition(pilot);
     if (currentMap === null) return null;
     let knowledge: Knowledge;
@@ -4533,6 +5307,15 @@ export class Game {
     args: Json,
     signal?: AbortSignal,
   ): Promise<HandlerResult | null> {
+    const bookPlan = this.stagePlans.current;
+    if (
+      this.routeBookEnabled &&
+      bookPlan !== null &&
+      bookPlan.status !== "completed" &&
+      bookPlan.book !== undefined
+    ) {
+      return await this.followBookSection(pilot, args, signal);
+    }
     if (this.routeFile !== undefined) {
       try {
         let completedBefore = 0;
@@ -4891,6 +5674,9 @@ export class Game {
     if (this.scouting) return "";
     const record = this.stagePlans.current;
     if (record === null || record.status === "completed") return "";
+    // Task 117: a book plan finishes when its stations are done, not when the party happens to
+    // stand on the last route target (a handoff has no cell at all).
+    if (record.book !== undefined) return "";
     let reason = "";
     if (this.stageBossWon) {
       if (this.mapId !== null) {
@@ -4997,7 +5783,10 @@ export class Game {
               ? await this.stageContinuePlanAfterTravel(pilot, args, entranceMap, signal)
               : null;
           if (followed === null) return walked;
-          return { text: [walked.text, followed.text].join("\n"), early: followed.early };
+          return {
+            text: [walked.text, followed.text].join("\n"),
+            early: followed.early,
+          };
         });
       }
       return await this.withWalkLabel(label, async () => {
@@ -5045,7 +5834,10 @@ export class Game {
         if (!result.reached) return { text: result.text };
         const followed = await this.stageContinuePlanAfterTravel(pilot, args, choice.mapId, signal);
         if (followed === null) return { text: result.text };
-        return { text: [result.text, followed.text].join("\n"), early: followed.early };
+        return {
+          text: [result.text, followed.text].join("\n"),
+          early: followed.early,
+        };
       }),
     );
   }
@@ -5079,6 +5871,8 @@ export class Game {
     endInput: RouteStopInput | null,
     signal?: AbortSignal,
     followPlan = false,
+    persistProgress = true,
+    onWaypoint?: (stop: Waypoint, event: "done" | "skipped" | "current") => Promise<void>,
   ): Promise<HandlerResult> {
     const destination = await this.routeDestinationMap(pilot, stops, endInput);
     const refusal = await this.stageBeforeTravel(pilot, args, destination, signal);
@@ -5089,10 +5883,11 @@ export class Game {
         if (built === null) return { text: "路线没有排出来：读不到当前位置", early: true };
         if ("error" in built) return { text: built.error, early: true };
         const result = await executeRoute(built.plan, this.routePorts(pilot, args), {
-          progressFile: this.routeFile,
+          ...(persistProgress ? { progressFile: this.routeFile } : {}),
           waypoints: built.waypoints,
           end: built.end,
           signal,
+          ...(onWaypoint === undefined ? {} : { onWaypoint }),
         });
         // Task 113: only a code-driven plan walk counts toward the stage's stop total; an
         // explicit `route` from the model is its own plan.
@@ -5111,6 +5906,10 @@ export class Game {
    * so a fresh plan must not leave `route()` with nothing to walk.
    */
   private async resumeRouteTool(pilot: Pilot, signal?: AbortSignal): Promise<HandlerResult> {
+    // Task 117: with no running plan, a book section that covers where the party is starts
+    // its own plan first. It is `route {}` = execute the next section, not a manual plan call.
+    const automatic = await this.autoBookRoute(pilot, {}, signal);
+    if (automatic !== null) return automatic;
     const followed = await this.stageFollowPlan(pilot, {}, signal);
     if (followed !== null) return followed;
     return {
@@ -5126,6 +5925,7 @@ export class Game {
       action: stop.do ?? "move",
       optional: stop.optional ?? stop.do === "open",
       ...(stop.until === undefined ? {} : { until: stop.until }),
+      ...(stop.book === undefined ? {} : { book: stop.book }),
     }));
   }
 
@@ -5302,6 +6102,7 @@ export class Game {
         }
         return { ok: true, done: true, text: acted.text };
       },
+      story: async () => await this.storyAdvance(pilot),
       replan: (from, rest, end) =>
         Promise.resolve(
           analyzeRoute(
@@ -5421,13 +6222,30 @@ export class Game {
   }
 
   /**
-   * Task 68: bestiary numbers this map's leave check may ignore: already impossible ones and
-   * the ones a low-probability grind deferred into the backlog for this exact place.
+   * Task 68 + 128: bestiary numbers this map's leave check may ignore. That is an already lost
+   * monster, one a low-probability grind deferred for this exact place, and one that can be
+   * found again (knowledge's encounter rows name a map other than this one) or that lives in a
+   * normal, revisitable map. Only a deadline or a monster exclusive to a one-time place still
+   * blocks. Knowledge wins over completion.ts's guide-only status when the two disagree.
    */
-  private excusedBestiary(state: import("./completion.ts").CompletionState): Set<number> {
+  private excusedBestiary(
+    state: import("./completion.ts").CompletionState,
+    knowledge: Knowledge | null,
+  ): Set<number> {
     const numbers = new Set<number>();
     for (const monster of state.monsters.missing) {
-      if (monster.lost && monster.number !== null) numbers.add(monster.number);
+      if (monster.number === null) continue;
+      if (monster.lost) {
+        numbers.add(monster.number);
+        continue;
+      }
+      const elsewhere =
+        knowledge === null ? null : this.monsterElsewhere(knowledge, state, monster.number);
+      if (elsewhere === true) {
+        numbers.add(monster.number);
+        continue;
+      }
+      if (monster.missable === null && !state.oneTime) numbers.add(monster.number);
     }
     const region = state.world ? (state.region?.grid ?? null) : null;
     for (const entry of this.backlog.pending()) {
@@ -5439,7 +6257,68 @@ export class Game {
     return numbers;
   }
 
+  /**
+   * Task 128: whether the game files put this bestiary number on any map other than the current
+   * one. Null means the knowledge module has no encounter rows for it, so the caller stays
+   * conservative. World regions are counted by encounter-area id: a monster in more than one
+   * region can be met again later.
+   */
+  private monsterElsewhere(
+    knowledge: Knowledge,
+    state: import("./completion.ts").CompletionState,
+    number: number,
+  ): boolean | null {
+    const monsters = knowledge.monsters.filter((monster) => monster.bookId === number);
+    const groups = monsters.flatMap((monster) => monster.encounters);
+    if (groups.length === 0) return null;
+    if (state.world) {
+      const areas = new Set(
+        groups.flatMap((group) => (group.encounterAreaId === null ? [] : [group.encounterAreaId])),
+      );
+      return areas.size > 1;
+    }
+    return groups.some((group) => {
+      const maps =
+        group.mapIds.length > 0 ? group.mapIds : group.mapId === null ? [] : [group.mapId];
+      return maps.some((mapId) => mapId !== state.mapId);
+    });
+  }
+
+  /** Task 128: the one-line reminder for monsters that will appear again. */
+  private laterBestiaryNote(
+    state: import("./completion.ts").CompletionState,
+    excused: ReadonlySet<number>,
+  ): string {
+    const region = state.world ? (state.region?.grid ?? null) : null;
+    const deferred = new Set(
+      this.backlog
+        .pending()
+        .filter(
+          (entry) =>
+            entry.mapId === state.mapId && entry.areaId === state.areaId && entry.region === region,
+        )
+        .flatMap((entry) => entry.bestiary),
+    );
+    const later = state.monsters.missing.filter(
+      (monster) =>
+        monster.number !== null &&
+        excused.has(monster.number) &&
+        !monster.lost &&
+        !deferred.has(monster.number),
+    );
+    if (later.length === 0) return "";
+    return (
+      `另有 ${later.length} 种以后还会出现的怪，不拦离开，也不记欠账：` +
+      later.map((monster) => monster.name).join("、")
+    );
+  }
+
   private completionWhere(state: import("./completion.ts").CompletionState): string {
+    // Task 128: 11-11 Tycoon's meteor (189) reported areaType 0, so state.world alone called it
+    // the world map. Only the real world map (map 1) may use the encounter-region label.
+    if (state.world && state.mapId !== 1) {
+      return state.mapName === "" ? `地图 ${state.mapId ?? "?"}` : state.mapName;
+    }
     return whereOf(state);
   }
 
@@ -5690,6 +6569,13 @@ export class Game {
       await this.noteJump(pilot, message, startMap, goal);
       return { text: message };
     });
+  }
+
+  /** Task 129: page the story that stopped a walk, then report a choice/shop/boss handoff. */
+  private async storyAdvance(pilot: Pilot): Promise<move.StoryAdvance> {
+    const advanced = await this.toolAdvanceStory(pilot);
+    const decision = await this.storyDecision(pilot);
+    return { text: advanced.text, ...(decision === null ? {} : { decision }) };
   }
 
   private async toolAdvanceStory(pilot: Pilot): Promise<HandlerResult> {
