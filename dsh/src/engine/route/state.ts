@@ -146,6 +146,10 @@ function bookOf(value: unknown, where: string): WaypointBook {
   if (!isRecord(value)) throw new Error(`${where}.book 不是对象`);
   const part = value.part === undefined ? undefined : integer(value.part, `${where}.book.part`);
   const parts = value.parts === undefined ? undefined : integer(value.parts, `${where}.book.parts`);
+  const indexes = list(value.indexes).map((entry, index) =>
+    integer(entry, `${where}.book.indexes[${index}]`),
+  );
+  const item = value.item === null ? null : text(value.item);
   return {
     section: stringOf(value.section, `${where}.book.section`),
     index: integer(value.index, `${where}.book.index`),
@@ -155,6 +159,8 @@ function bookOf(value: unknown, where: string): WaypointBook {
     ...(part === undefined ? {} : { part }),
     ...(parts === undefined ? {} : { parts }),
     ...(value.autoStory === true ? { autoStory: true } : {}),
+    ...(indexes.length === 0 ? {} : { indexes }),
+    ...(item === undefined ? {} : { item }),
   };
 }
 

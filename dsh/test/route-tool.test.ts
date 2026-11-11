@@ -693,7 +693,9 @@ void test("a refused coordinate go follows the stage plan and records its stats"
     assert.equal(game.stagePlan()?.stats?.stops, 1);
     assert.ok(
       lines.some((line) =>
-        line.includes("阶段统计「卡纳克城」:工具 1 次(go 1、route 0),按计划走了 1 站，用时 0 分"),
+        line.includes(
+          "阶段统计「卡纳克城」:工具 1 次(go 1、route 0),按计划走了 1 站，用时 0 分(实际)",
+        ),
       ),
       lines.join("\n"),
     );

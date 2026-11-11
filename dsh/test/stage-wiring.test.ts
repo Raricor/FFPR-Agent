@@ -749,7 +749,7 @@ void test("plan_stage shows the current plan's tool, stop and time numbers", asy
     // This plan_stage call is itself counted before the result is rendered.
     assert.match(
       text,
-      /阶段统计「火力船」:工具 4 次\(go 2、route 0、plan_stage 2\),按计划走了 4 站，用时 0 分/,
+      /阶段统计「火力船」:工具 4 次\(go 2、route 0、plan_stage 2\),按计划走了 4 站，用时 0 分\(实际\)/,
     );
   } finally {
     await rm(directory, { recursive: true, force: true });

@@ -36,6 +36,9 @@ export interface WaypointBook {
   readonly part?: number;
   readonly parts?: number;
   readonly autoStory?: boolean;
+  /** Task 133: every guide step this merged stop completes. */
+  readonly indexes?: readonly number[];
+  readonly item?: string | null;
 }
 
 export interface Waypoint {

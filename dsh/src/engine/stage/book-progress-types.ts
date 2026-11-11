@@ -29,6 +29,10 @@ export interface BookSectionStats {
   readonly bestiaryMissing: number | null;
   readonly blueMagicMissing: number | null;
   readonly minutes: number;
+  /** Task 133: working time, without idle gaps longer than ten minutes. */
+  readonly activeMs?: number;
+  /** Task 133: when the last counted tool call ended. */
+  readonly lastToolAt?: string;
 }
 
 export interface BookProgress {

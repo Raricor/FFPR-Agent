@@ -28,6 +28,7 @@ import {
   type Knowledge,
   type MapKnowledge,
   type MonsterKnowledge,
+  type TrilingualNames,
 } from "../knowledge/index.ts";
 import { isRecord, list, num, records, text, type Json } from "../values.ts";
 import type { GuideSection, GuideStep, GuideStepKind } from "./guide-types.ts";
@@ -40,8 +41,13 @@ export interface RouteBookSave {
   readonly blueMagic: readonly string[] | null;
   /** Current jobs; used only to see whether a Blue Mage is in the party. */
   readonly jobs: readonly string[] | null;
-  /** Opened chests as `"mapId:x,y"`. */
+  /** Opened chests as `"mapId:x,y"`; the old bridge's current-map fallback. */
   readonly openedChests: ReadonlySet<string> | null;
+  /**
+   * Task 135: the whole-game flag table (flag id → open). Optional so callers that only have
+   * the current map still work; a chest's flag wins over its cell when both are known.
+   */
+  readonly treasureFlags?: ReadonlyMap<number, boolean | null> | null;
   /**
    * Story flags this save has already set. Optional: when the caller cannot read them, event
    * triggers are paired in event-number order instead.
@@ -75,10 +81,21 @@ export interface RouteNpc {
   readonly names?: { readonly ja?: string; readonly en?: string; readonly zhc?: string } | null;
 }
 
-/** The game files' story data the book aligns against (task 122). */
+/** One event/NPC handed to the model when a story station cannot be paired (task 133). */
+export interface RouteStoryCandidate {
+  readonly kind: "event" | "npc";
+  readonly mapId: number;
+  readonly name: string;
+  readonly names?: TrilingualNames | null;
+  readonly cell: Cell;
+}
+
+/** The game files' story data the book aligns against (task 122, 133). */
 export interface RouteBookFiles {
   readonly events: readonly RouteStoryEvent[];
   readonly npcs: readonly RouteNpc[];
+  /** Map id → the exported three-language map title (task 133). */
+  readonly titles?: ReadonlyMap<number, TrilingualNames>;
 }
 
 export interface RouteBookInput {
@@ -106,6 +123,8 @@ export interface RouteMap {
   readonly name: string;
   readonly areaName: string | null;
   readonly reasons: readonly string[];
+  /** True when this save has already visited the map (the atlas knows it). */
+  readonly visited?: boolean;
 }
 
 /** One sub-location header of a section and the maps it resolved to. */
@@ -125,6 +144,8 @@ export interface RouteChestCandidate {
   readonly cell: Cell;
   readonly name: string | null;
   readonly opened: boolean | null;
+  /** Task 135: the game file's treasure flag, when the map record or export has it. */
+  readonly flag?: string | null;
 }
 
 /** A guide chest/hidden item and the atlas chest it was paired with, if any. */
@@ -141,6 +162,8 @@ export interface RouteChest {
   readonly opened: boolean | null;
   readonly match: ChestMatch;
   readonly note: string;
+  /** Task 135: the game file's treasure flag, when known. */
+  readonly flag?: string | null;
   /** Atlas cells the guide item may be, when more than one candidate was left unpaired. */
   readonly candidates: readonly RouteChestCandidate[];
 }
@@ -179,6 +202,8 @@ export interface RouteStation {
   readonly pointCandidate: "save" | "heal" | null;
   /** For a "回头学" station: the grind target and, when non-null, why it is skipped. */
   readonly grind?: RouteStationGrind | null;
+  /** Task 133: events and NPCs on this map, listed when the station stays a handoff. */
+  readonly candidates?: readonly RouteStoryCandidate[];
 }
 
 export interface RouteMonster {
@@ -370,6 +395,8 @@ interface AtlasChest {
   readonly cell: Cell;
   readonly name: string | null;
   readonly knowledgeNames: readonly string[];
+  /** Task 135: the game file's treasure flag (numeric string), when known. */
+  readonly flag: string | null;
 }
 
 interface RegionBetween {
@@ -790,6 +817,7 @@ function directAlignment(section: GuideSection, ctx: BuildContext): Alignment {
   const alignment: Alignment = { maps: new Map() };
   alignMonsters(section, ctx, alignment);
   alignFloors(section, ctx, alignment);
+  alignTitles(section, ctx, alignment);
   alignPlaces(section, ctx, alignment);
   alignConnected(section, ctx, alignment);
   return alignment;
@@ -871,6 +899,39 @@ function alignFloors(section: GuideSection, ctx: BuildContext, alignment: Alignm
       const label = mapFloorLabel(mapName(ctx, map.id));
       addReason(alignment, map.id, `楼层 ${floor} ↔ ${label}`);
     }
+  }
+}
+
+/**
+ * Task 133: the guide's sub-location name ("Tule - Pub") against the map's exported English
+ * title ("Pub"). This is the direct evidence the old area/connectivity rules lacked: the pub's
+ * neighbours include Zok's house (39), so ordering alone put the piano on the wrong map.
+ */
+function alignTitles(section: GuideSection, ctx: BuildContext, alignment: Alignment): void {
+  if (ctx.files?.titles === undefined) return;
+  for (const place of section.places) {
+    if (isGenericPlace(place)) continue;
+    const keys = placeTitleKeys(place, section.title);
+    if (keys.length === 0) continue;
+    const areaMaps = mapsInArea(
+      unique([...sectionAreaKeys(section.title, ctx), ...areaKeys(ctx.knowledge.guide, place)]),
+      ctx,
+    );
+    let best = 0;
+    const found: { mapId: number; label: string }[] = [];
+    for (const map of areaMaps) {
+      if (map.id === null) continue;
+      const title = ctx.files.titles.get(map.id);
+      if (title === undefined) continue;
+      const match = titleMatch(title, keys);
+      if (match.score === 0) continue;
+      if (match.score > best) {
+        best = match.score;
+        found.length = 0;
+      }
+      if (match.score === best) found.push({ mapId: map.id, label: match.label });
+    }
+    for (const item of found) addReason(alignment, item.mapId, `图标题 ${item.label}`);
   }
 }
 
@@ -1074,6 +1135,43 @@ function matchesAnyKey(
   return false;
 }
 
+/** The normalized place name with the section prefix removed, plus its word tokens. */
+function placeTitleKeys(place: string, sectionTitle: string): string[] {
+  const own = normalizeName(place);
+  const section = normalizeName(sectionTitle);
+  const rest = section === "" ? own : own.replace(section, "");
+  const keys = [rest, own].filter((key) => Array.from(key).length >= 2);
+  const tokens = place
+    .split(/[^\p{L}\p{N}]+/u)
+    .map((token) => normalizeName(token))
+    .filter((token) => Array.from(token).length >= 2);
+  return unique([...keys, ...tokens]);
+}
+
+/** Exact title beats a title that only contains the place name ("Pub" over "Pub 2F"). */
+function titleMatch(
+  title: TrilingualNames,
+  keys: readonly string[],
+): { score: number; label: string } {
+  let best = { score: 0, label: "" };
+  for (const [language, value] of [
+    ["en", title.en],
+    ["ja", title.ja],
+    ["zhc", title.zhc],
+  ] as const) {
+    if (value === null || value.trim() === "") continue;
+    const own = normalizeName(value);
+    if (Array.from(own).length < 2) continue;
+    const exact = keys.some((key) => key === own);
+    const contains = !exact && keys.some((key) => key.includes(own) || own.includes(key));
+    const score = exact ? 2 : contains ? 1 : 0;
+    if (score > best.score) {
+      best = { score, label: language === "en" ? value : `${value}(${language})` };
+    }
+  }
+  return best;
+}
+
 function addReason(alignment: Alignment, mapId: number, reason: string): void {
   const reasons = alignment.maps.get(mapId) ?? [];
   if (!reasons.includes(reason)) reasons.push(reason);
@@ -1175,6 +1273,7 @@ function atlasChestsOf(mapId: number, ctx: BuildContext): AtlasChest[] {
       cell,
       name: text(raw.name) ?? null,
       knowledgeNames: knowledgeNamesAt(mapId, cell, null, ctx),
+      flag: flagAt(mapId, cell, raw, ctx),
     });
   }
   // The export sometimes knows a chest the atlas has not seen yet; keep it as a candidate but
@@ -1188,6 +1287,7 @@ function atlasChestsOf(mapId: number, ctx: BuildContext): AtlasChest[] {
       cell: chest.cell,
       name: chest.contentName,
       knowledgeNames: knowledgeNamesAt(mapId, chest.cell, null, ctx),
+      flag: chest.flagId === null ? chest.flag : String(chest.flagId),
     });
   }
   return out;
@@ -1211,6 +1311,15 @@ function knowledgeNamesAt(
     if (chest.contentName !== null && chest.contentName !== "") names.push(chest.contentName);
   }
   return unique(names);
+}
+
+/** Task 135: the atlas chest's flag, falling back to the merged knowledge row at this cell. */
+function flagAt(mapId: number, cell: Cell, raw: Json, ctx: BuildContext): string | null {
+  const own = num(raw.flag);
+  if (own !== undefined) return String(own);
+  const known = knowledgeChestFor(mapId, cell, null, ctx);
+  if (known === undefined) return null;
+  return known.flagId === null ? known.flag : String(known.flagId);
 }
 
 function knowledgeChestFor(
@@ -1258,7 +1367,14 @@ function mapName(ctx: BuildContext, mapId: number): string {
 }
 
 function mapText(mapId: number, ctx: BuildContext): string {
-  const parts = [mapName(ctx, mapId), mapAreaName(mapId, ctx) ?? ""];
+  const title = ctx.files?.titles?.get(mapId) ?? null;
+  const parts = [
+    mapName(ctx, mapId),
+    mapAreaName(mapId, ctx) ?? "",
+    title?.en ?? "",
+    title?.ja ?? "",
+    title?.zhc ?? "",
+  ];
   const entry = ctx.atlas.maps.get(String(mapId));
   if (entry !== undefined) {
     for (const exit of exitsOf(entry)) {
@@ -1293,6 +1409,7 @@ function buildSection(
     name: mapName(ctx, mapId),
     areaName: mapAreaName(mapId, ctx),
     reasons: alignment.maps.get(mapId) ?? [],
+    visited: ctx.atlas.maps.has(String(mapId)),
   }));
   const areaName = unique(
     maps.flatMap((map) => (map.areaName === null ? [] : [map.areaName])),
@@ -1332,6 +1449,11 @@ function buildSection(
   const stationByStep = new Map<number, RouteStation>();
   const stations: RouteStation[] = [];
   const story: StoryMatchState = { usedEvents: new Set<string>() };
+  // Task 133: a story step on a map this save already walked past, before the first chest
+  // still unopened, has already happened (the ship's "Sail north" on the way to Tule).
+  const firstPendingCollection =
+    section.steps.find((step) => isChestStep(step) && chestByStep.get(step.index)?.opened !== true)
+      ?.index ?? null;
 
   for (const step of section.steps) {
     const chest = chestByStep.get(step.index) ?? null;
@@ -1363,7 +1485,7 @@ function buildSection(
       }
       continue;
     }
-    if (step.kind === "note") {
+    if (step.kind === "note" || isGuideNoteText(step.text)) {
       notes.push({
         index: step.index,
         where: step.where,
@@ -1381,6 +1503,16 @@ function buildSection(
         text: step.text,
         basis: station.basis,
         pointCandidate: station.pointCandidate,
+      });
+      continue;
+    }
+    if (isPassedStory(station, firstPendingCollection, maps)) {
+      notes.push({
+        index: step.index,
+        where: step.where,
+        text: step.text,
+        basis: "攻略说明:这张图已经走过,这段剧情在第一个没拿的收集站之前,不会再触发",
+        pointCandidate: null,
       });
       continue;
     }
@@ -1479,6 +1611,15 @@ function buildPlaces(
       : unique(section.steps.flatMap((step) => (step.where === null ? [] : [step.where])));
   const used = new Set<number>();
   const out: RoutePlace[] = [];
+  // Task 133: a place whose name matches an exported map title owns that map. The parent area
+  // ("Tule") must not consume it as a room sibling first, or "Tule - Pub" would still take 39.
+  const reserved = new Set<number>();
+  for (const title of titles) {
+    if (isGenericPlace(title)) continue;
+    for (const mapId of bestTitledMaps(maps, placeTitleKeys(title, section.title), ctx)) {
+      reserved.add(mapId);
+    }
+  }
   for (let index = 0; index < titles.length; index += 1) {
     const title = titles[index];
     if (title === undefined) continue;
@@ -1500,7 +1641,10 @@ function buildPlaces(
       const groups = floor === null ? groupsByName(specific, maps) : groupsByArea(specific, maps);
       const group = firstUsableGroup(groups, used);
       chosen = (group?.mapIds ?? specific).filter((mapId) => !used.has(mapId));
-      if (floor === null) chosen = withAreaSiblings(chosen, title, maps, ctx, used);
+      const titled = bestTitledMaps(maps, placeTitleKeys(title, section.title), ctx);
+      if (floor === null && titled.length === 0) {
+        chosen = withAreaSiblings(chosen, title, maps, ctx, used, reserved);
+      }
     }
     if (chosen.length === 0) chosen = connectedFromPrevious(out, maps, used, ctx);
     if (chosen.length === 0) {
@@ -1528,6 +1672,7 @@ function withAreaSiblings(
   maps: readonly RouteMap[],
   ctx: BuildContext,
   used: ReadonlySet<number>,
+  reserved: ReadonlySet<number>,
 ): number[] {
   const keys = areaKeys(ctx.knowledge.guide, place);
   const first = chosen[0];
@@ -1537,7 +1682,7 @@ function withAreaSiblings(
   const areaName = own.areaName;
   if (areaName === null) return [...chosen];
   const extra = maps
-    .filter((map) => map.areaName === areaName && !used.has(map.mapId))
+    .filter((map) => map.areaName === areaName && !used.has(map.mapId) && !reserved.has(map.mapId))
     .filter((map) => {
       const name = normalizeName(map.name);
       return name === "" || name.startsWith("map") || name.startsWith(normalizeName(areaName));
@@ -1613,6 +1758,11 @@ function placeSpecificMaps(
   if (floor !== null) {
     return maps.filter((map) => mapFloor(map.name) === floor).map((map) => map.mapId);
   }
+  // Task 133: an exported map title is more specific than the area's name. "Tule - Pub"
+  // must claim 33 (Pub), not 39 (Zok's House) just because 39 is the next room.
+  const titleKeys = placeTitleKeys(place, section.title);
+  const titled = bestTitledMaps(maps, titleKeys, ctx);
+  if (titled.length > 0) return titled;
   const keys = areaKeys(ctx.knowledge.guide, place);
   const byArea = maps.filter((map) => matchesAnyKey(map.areaName ?? map.name, keys, ctx));
   if (byArea.length > 0) {
@@ -1627,6 +1777,28 @@ function placeSpecificMaps(
     return tokens.some((token) => haystack.includes(token));
   });
   return matched.map((map) => map.mapId);
+}
+
+function bestTitledMaps(
+  maps: readonly RouteMap[],
+  keys: readonly string[],
+  ctx: BuildContext,
+): number[] {
+  if (keys.length === 0) return [];
+  let best = 0;
+  let found: number[] = [];
+  for (const map of maps) {
+    const title = ctx.files?.titles?.get(map.mapId);
+    if (title === undefined) continue;
+    const match = titleMatch(title, keys);
+    if (match.score === 0) continue;
+    if (match.score > best) {
+      best = match.score;
+      found = [];
+    }
+    if (match.score === best) found.push(map.mapId);
+  }
+  return found;
 }
 
 function isGenericPlace(place: string): boolean {
@@ -1720,7 +1892,8 @@ function matchChest(
   const match: ChestMatch =
     byName !== undefined ? "name" : ordered !== undefined ? "order" : "none";
   if (picked !== undefined) used.add(chestKey(picked.mapId, picked.cell));
-  const opened = picked === undefined ? null : openedAt(ctx.save, picked.mapId, picked.cell);
+  const opened =
+    picked === undefined ? null : openedChest(ctx.save, picked.mapId, picked.cell, picked.flag);
   const note =
     match === "name"
       ? "按名字对上"
@@ -1744,6 +1917,7 @@ function matchChest(
     mapName: picked === undefined ? null : mapName(ctx, picked.mapId),
     cell: picked?.cell ?? null,
     opened,
+    flag: picked?.flag ?? null,
     match,
     note,
     candidates:
@@ -1753,7 +1927,8 @@ function matchChest(
             mapName: mapName(ctx, chest.mapId),
             cell: chest.cell,
             name: chest.name,
-            opened: openedAt(ctx.save, chest.mapId, chest.cell),
+            opened: openedChest(ctx.save, chest.mapId, chest.cell, chest.flag),
+            flag: chest.flag,
           }))
         : [],
   };
@@ -1813,13 +1988,62 @@ function itemFromText(value: string): string | null {
   return item === "" ? null : item;
 }
 
-function openedAt(save: RouteBookSave, mapId: number, cell: Cell): boolean | null {
-  if (save.openedChests === null) return null;
+/**
+ * Task 135: whether this save opened the chest. The treasure flag from the game files is the
+ * authority; the `"mapId:x,y"` set is the older bridge's current-map fallback. A flag the table
+ * read as null (the game threw) is unknown, not closed.
+ */
+export function openedChest(
+  save: RouteBookSave,
+  mapId: number | null,
+  cell: Cell | null,
+  flag: string | null | undefined,
+): boolean | null {
+  const key = flag ?? null;
+  if (key !== null) {
+    const id = Number.parseInt(key, 10);
+    const fromFlags = Number.isInteger(id) ? save.treasureFlags?.get(id) : undefined;
+    if (fromFlags === true || fromFlags === false) return fromFlags;
+    if (save.openedChests?.has(key) === true) return true;
+    if (save.treasureFlags !== undefined && save.treasureFlags !== null) {
+      // The complete table has no answered value for this flag: do not claim it is closed.
+      return null;
+    }
+  }
+  if (save.openedChests === null || mapId === null || cell === null) return null;
   return save.openedChests.has(`${mapId}:${cell[0]},${cell[1]}`);
 }
 
 function chestKey(mapId: number, cell: Cell): string {
   return `${mapId}:${cell[0]},${cell[1]}`;
+}
+
+/** Task 133: a note-looking sentence never becomes a station, even if a keyword classified it. */
+function isGuideNoteText(text: string): boolean {
+  return /^\s*(?:note|optional|trivia)\s*[:：]/iu.test(text);
+}
+
+/** A "secret passage" line can be classified as a switch; a travel verb makes it plain walking. */
+function looksLikeTravelInstruction(text: string): boolean {
+  return /^\s*(?:go|head|walk|make your way|enter|exit|leave|return|follow|take|climb|descend|board|sail|fly)\b/iu.test(
+    text,
+  );
+}
+
+const HANDOFF_KINDS: ReadonlySet<string> = new Set(["talk", "switch", "cutscene", "shop", "piano"]);
+
+function isPassedStory(
+  station: RouteStation,
+  firstPendingCollection: number | null,
+  maps: readonly RouteMap[],
+): boolean {
+  if (firstPendingCollection === null) return false;
+  if (station.index >= firstPendingCollection) return false;
+  if (!HANDOFF_KINDS.has(station.kind)) return false;
+  if (station.mapId === null) {
+    return (station.where ?? "").trim().toLowerCase() === "overworld";
+  }
+  return maps.find((map) => map.mapId === station.mapId)?.visited === true;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1884,7 +2108,7 @@ function buildStation(
     const located =
       step.kind === "talk"
         ? matchNpc(step, placeMaps, ctx)
-        : matchStoryEvent(placeMaps, ctx, story);
+        : matchStoryEvent(step, section, placeMaps, ctx, story);
     if (located !== null) {
       return {
         index: step.index,
@@ -1897,6 +2121,37 @@ function buildStation(
         basis: located.basis,
         chest: null,
         pointCandidate: null,
+      };
+    }
+    if (step.kind === "switch" && looksLikeTravelInstruction(step.text)) {
+      return {
+        index: step.index,
+        where: step.where,
+        kind: "move",
+        mapId: primaryMap(placeMaps, ctx),
+        cell: null,
+        action: "移动",
+        text: step.text,
+        basis: "攻略句子是走过去,不是机关;计划里不单独交回",
+        chest: null,
+        pointCandidate: null,
+      };
+    }
+    const candidates = storyCandidates(placeMaps, ctx, story);
+    if (candidates.length > 0) {
+      const mapId = primaryMap(placeMaps, ctx);
+      return {
+        index: step.index,
+        where: step.where,
+        kind: step.kind,
+        mapId,
+        cell: null,
+        action,
+        text: step.text,
+        basis: "没对上事件/NPC,交回时列出这张图的候选",
+        chest: null,
+        pointCandidate: null,
+        candidates,
       };
     }
   }
@@ -2004,73 +2259,191 @@ function matchNpc(
     : { mapId: best.mapId, cell: best.cell, basis: `游戏文件：NPC ${best.name}` };
 }
 
+/** Task 133: exit/entrance-looking events are never story stations. */
+const ENTRANCE_EVENT =
+  /出口|入口|ワールドマップ|world\s*map|worldmap|changemap|to_world|entrance|exit|を置いていく|を置いて行く|置いていく|置いて行く/iu;
+
+function isEntranceEvent(event: RouteStoryEvent): boolean {
+  return ENTRANCE_EVENT.test(`${event.name} ${event.file}`);
+}
+
+function eventKey(event: RouteStoryEvent): string {
+  return `${event.mapId}|${event.file}|${event.name}|${event.scriptId ?? ""}`;
+}
+
+function usableEvent(event: RouteStoryEvent, ctx: BuildContext, state: StoryMatchState): boolean {
+  if (event.cell === null && event.rect === null) return false;
+  if (state.usedEvents.has(eventKey(event))) return false;
+  if (storyEventDone(event, ctx.save)) return false;
+  return !isEntranceEvent(event);
+}
+
+function npcNames(npc: RouteNpc): string[] {
+  return [npc.name, npc.names?.ja, npc.names?.en, npc.names?.zhc].filter(
+    (name): name is string => name !== undefined && name.trim() !== "",
+  );
+}
+
 /**
- * Task 122: pair a cutscene/mechanism station with the next event trigger on its map, in event
- * number order (`sc_e_0021` → 21). When this save's story flags name a trigger, it is skipped;
- * without flags the order alone decides.
+ * Task 133: a story station gets a coordinate only from evidence, never from event numbers.
+ * An event matches when its own label, or an NPC standing on the same cell, is named by the
+ * guide line/section/place or a map title. A lone not-yet-triggered event on the map counts as
+ * evidence only when this save's story flags are readable, so an unreadable save never guesses.
  */
 function matchStoryEvent(
+  step: GuideStep,
+  section: GuideSection,
   mapIds: readonly number[],
   ctx: BuildContext,
   state: StoryMatchState,
 ): { mapId: number; cell: Cell; basis: string } | null {
   if (ctx.files === null || mapIds.length === 0) return null;
-  const groups = new Map<
-    string,
-    {
-      mapId: number;
-      file: string;
-      name: string;
-      scriptId: number | null;
-      events: RouteStoryEvent[];
-    }
-  >();
-  for (const event of ctx.files.events) {
-    if (!mapIds.includes(event.mapId)) continue;
-    if (event.cell === null && event.rect === null) continue;
-    const key = `${event.mapId}|${event.file}|${event.name}|${event.scriptId ?? ""}`;
-    if (state.usedEvents.has(key) || storyEventDone(event, ctx.save)) continue;
-    const group = groups.get(key);
-    if (group === undefined) {
-      groups.set(key, {
-        mapId: event.mapId,
-        file: event.file,
-        name: event.name,
-        scriptId: event.scriptId,
-        events: [event],
+  const context = normalizeName(
+    [
+      step.text,
+      section.title,
+      step.where ?? "",
+      ...mapIds.flatMap((mapId) => {
+        const title = ctx.files?.titles?.get(mapId);
+        return title === undefined ? [] : [title.en ?? "", title.ja ?? "", title.zhc ?? ""];
+      }),
+    ].join(" "),
+  );
+  const eligible = ctx.files.events.filter(
+    (event) => mapIds.includes(event.mapId) && usableEvent(event, ctx, state),
+  );
+  const byKey = new Map<string, RouteStoryEvent[]>();
+  for (const event of eligible) {
+    const key = eventKey(event);
+    byKey.set(key, [...(byKey.get(key) ?? []), event]);
+  }
+  const matches: { key: string; events: RouteStoryEvent[]; basis: string; score: number }[] = [];
+  for (const [key, events] of byKey) {
+    const first = events[0];
+    if (first === undefined) continue;
+    const label = storyEventLabel(first.name);
+    const own = normalizeName(label);
+    let score = 0;
+    if (Array.from(own).length >= 2 && context.includes(own)) score = 2;
+    let npcName: string | null = null;
+    const eventNpcs = ctx.files.npcs.filter(
+      (npc) => npc.mapId === first.mapId && npcOnEvent(npc, events),
+    );
+    for (const npc of eventNpcs) {
+      const named = npcNames(npc).find((name) => {
+        const key = normalizeName(name);
+        return Array.from(key).length >= 2 && context.includes(key);
       });
-    } else {
-      group.events.push(event);
+      if (named !== undefined) {
+        npcName = npc.name;
+        score = Math.max(score, 3);
+        break;
+      }
+    }
+    if (score === 0) continue;
+    matches.push({
+      key,
+      events,
+      score,
+      basis:
+        npcName === null
+          ? `游戏文件：事件 ${storyEventCode(first)}(${label})`
+          : `游戏文件：事件 ${storyEventCode(first)}(NPC ${npcName})`,
+    });
+  }
+  matches.sort((left, right) => right.score - left.score || left.key.localeCompare(right.key));
+  const best = matches[0];
+  const second = matches[1];
+  let chosen =
+    best !== undefined && (second === undefined || best.score > second.score) ? best : null;
+  if (chosen === null) {
+    const flags = ctx.save.storyFlags;
+    const readable = flags !== undefined && flags !== null;
+    if (readable && byKey.size === 1) {
+      const only = [...byKey.entries()][0];
+      if (only !== undefined) {
+        const first = only[1][0];
+        if (first !== undefined) {
+          chosen = {
+            key: only[0],
+            events: only[1],
+            score: 1,
+            basis: `游戏文件：事件 ${storyEventCode(first)}(这张图只有一个未触发的剧情事件)`,
+          };
+        }
+      }
     }
   }
-  const ordered = [...groups.values()].sort(
-    (left, right) =>
-      storyEventNumber(left) - storyEventNumber(right) ||
-      left.mapId - right.mapId ||
-      left.file.localeCompare(right.file) ||
-      left.name.localeCompare(right.name),
+  if (chosen === null) return null;
+  state.usedEvents.add(chosen.key);
+  const cell = eventTriggerCell(
+    { mapId: chosen.events[0]?.mapId ?? 0, events: chosen.events },
+    ctx,
   );
-  const chosen = ordered[0];
-  if (chosen === undefined) return null;
-  const key = `${chosen.mapId}|${chosen.file}|${chosen.name}|${chosen.scriptId ?? ""}`;
-  state.usedEvents.add(key);
-  const cell = eventTriggerCell(chosen, ctx);
-  if (cell === null) return null;
-  const code = storyEventCode(chosen);
-  return {
-    mapId: chosen.mapId,
-    cell,
-    basis: `游戏文件：事件 ${code}(${storyEventLabel(chosen.name)})`,
-  };
+  const first = chosen.events[0];
+  if (cell === null || first === undefined) return null;
+  return { mapId: first.mapId, cell, basis: chosen.basis };
 }
 
-function storyEventNumber(event: {
-  readonly file: string;
-  readonly name: string;
-  readonly scriptId: number | null;
-}): number {
-  const match = /(?:sc_e_|ev_e_)(\d+)/iu.exec(`${event.name} ${event.file}`);
-  return match?.[1] === undefined ? Number.MAX_SAFE_INTEGER : Number.parseInt(match[1], 10);
+function npcOnEvent(npc: RouteNpc, events: readonly RouteStoryEvent[]): boolean {
+  for (const event of events) {
+    if (event.cell !== null && event.cell[0] === npc.cell[0] && event.cell[1] === npc.cell[1]) {
+      return true;
+    }
+    if (event.rect !== null) {
+      const { x1, y1, x2, y2 } = event.rect;
+      if (npc.cell[0] >= x1 && npc.cell[0] <= x2 && npc.cell[1] >= y1 && npc.cell[1] <= y2) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** Task 133: the events and NPCs the handoff wording shows when no coordinate is proven. */
+function storyCandidates(
+  mapIds: readonly number[],
+  ctx: BuildContext,
+  state: StoryMatchState,
+): RouteStoryCandidate[] {
+  if (ctx.files === null || mapIds.length === 0) return [];
+  const out: RouteStoryCandidate[] = [];
+  const seen = new Set<string>();
+  for (const event of ctx.files.events) {
+    if (!mapIds.includes(event.mapId) || !usableEvent(event, ctx, state)) continue;
+    const cell = eventTriggerCell({ mapId: event.mapId, events: [event] }, ctx);
+    if (cell === null) continue;
+    const key = `event|${event.mapId}|${event.name}|${cell[0]},${cell[1]}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      kind: "event",
+      mapId: event.mapId,
+      name: storyEventLabel(event.name),
+      cell,
+    });
+  }
+  for (const npc of ctx.files.npcs) {
+    if (!mapIds.includes(npc.mapId)) continue;
+    const key = `npc|${npc.mapId}|${npc.name}|${npc.cell[0]},${npc.cell[1]}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      kind: "npc",
+      mapId: npc.mapId,
+      name: npc.name,
+      names: {
+        ja: npc.names?.ja ?? null,
+        en: npc.names?.en ?? null,
+        zhc: npc.names?.zhc ?? null,
+      },
+      cell: npc.cell,
+    });
+  }
+  return out.sort(
+    (left, right) =>
+      left.mapId - right.mapId || left.cell[1] - right.cell[1] || left.cell[0] - right.cell[0],
+  );
 }
 
 function storyEventCode(event: { readonly file: string; readonly name: string }): string {

@@ -15,6 +15,7 @@ import type { Laptop } from "../src/engine/laptop.ts";
 import type { Cell } from "../src/engine/nav.ts";
 import type { Reply } from "../src/engine/pilot.ts";
 import type { BookProgress } from "../src/engine/stage/book-progress-types.ts";
+
 import type {
   RouteBook,
   RouteChest,
@@ -22,6 +23,7 @@ import type {
   RouteStation,
 } from "../src/engine/stage/route-book.ts";
 import type { StageOfficerRunner } from "../src/engine/stage/runner.ts";
+import { ROUTE_BOOK_PLAN_VERSION } from "../src/engine/stage/book-version.ts";
 import type { StagePlan } from "../src/engine/stage/types.ts";
 import { FakePilot } from "./fake-pilot.ts";
 
@@ -219,12 +221,13 @@ function station(
   kind: RouteStation["kind"],
   cell: Cell | null,
   chestValue: RouteChest | null = null,
+  mapId = MAP,
 ): RouteStation {
   return {
     index,
     where: null,
     kind,
-    mapId: MAP,
+    mapId,
     cell,
     action: kind,
     text: `guide ${kind}`,
@@ -237,12 +240,14 @@ function station(
 function section(
   stations: readonly RouteStation[],
   chests: readonly RouteChest[] = [],
+  overrides: Partial<RouteSection> = {},
 ): RouteSection {
   return {
     title: "测试洞窟",
     order: 0,
     areaName: MAP_NAME,
     maps: [{ mapId: MAP, name: MAP_NAME, areaName: MAP_NAME, reasons: ["test"] }],
+    ...overrides,
     places: [],
     stations,
     notes: [],
@@ -261,17 +266,19 @@ function section(
   };
 }
 
-function book(sectionValue: RouteSection): RouteBook {
+function bookOf(sections: readonly RouteSection[]): RouteBook {
+  const first = sections[0];
+  if (first === undefined) throw new Error("book needs a section");
   return {
-    fromSection: sectionValue.title,
+    fromSection: first.title,
     fromPlace: null,
-    toSection: sectionValue.title,
-    sections: [sectionValue],
+    toSection: sections[sections.length - 1]?.title ?? first.title,
+    sections,
     totals: {
-      sections: 1,
-      stations: sectionValue.stations.length,
-      chestsMatched: sectionValue.chestsMatched,
-      chestsTotal: sectionValue.chestsTotal,
+      sections: sections.length,
+      stations: sections.reduce((sum, item) => sum + item.stations.length, 0),
+      chestsMatched: sections.reduce((sum, item) => sum + item.chestsMatched, 0),
+      chestsTotal: sections.reduce((sum, item) => sum + item.chestsTotal, 0),
       bestiaryMissing: 0,
       bestiaryUnknown: false,
       blueMagicMissing: 0,
@@ -281,15 +288,23 @@ function book(sectionValue: RouteSection): RouteBook {
   };
 }
 
+function book(sectionValue: RouteSection): RouteBook {
+  return bookOf([sectionValue]);
+}
+
 async function makeGame(
   directory: string,
   bookValue: RouteBook,
   officer?: StageOfficerRunner,
+  extraAtlas: Record<string, unknown> = {},
 ): Promise<{ readonly game: Game; readonly progressFile: string; readonly learnedFile: string }> {
   const atlasFile = join(directory, "atlas.json");
   await writeFile(
     atlasFile,
-    JSON.stringify({ [MAP]: { name: MAP_NAME, exits: [], chests: [] } }),
+    JSON.stringify({
+      [MAP]: { name: MAP_NAME, exits: [], chests: [] },
+      ...extraAtlas,
+    }),
     "utf8",
   );
   const progressFile = join(directory, "routebook-progress-ff5.json");
@@ -405,6 +420,53 @@ void test("already opened chests are skipped", async () => {
     const result = await game.run("route", {}, pilotFor(value));
     assert.match(result, /完成/);
     assert.deepEqual(value.openedOrder, ["4,5"]);
+  });
+});
+
+void test("a full party skips the heal station and the plan opens the next chest", async () => {
+  await inTemp(async (dir) => {
+    const value = world();
+    const first = chest(1, [2, 5]);
+    const { game } = await makeGame(
+      dir,
+      book(section([station(0, "heal", [7, 7]), station(1, "chest", [2, 5], first)], [first])),
+    );
+    const result = await game.run("route", {}, pilotFor(value));
+    assert.match(result, /完成/);
+    assert.deepEqual(value.openedOrder, ["2,5"]);
+    const progress = JSON.parse(
+      await readFile(join(dir, "routebook-progress-ff5.json"), "utf8"),
+    ) as BookProgress;
+    const heal = progress.stations.find((station) => station.index === 0);
+    assert.ok(heal !== undefined);
+    assert.equal(heal.status, "skipped");
+    assert.match(heal.note, /满血，跳过回复/);
+  });
+});
+
+void test("a heal station on another floor is not walked back to at full HP", async () => {
+  await inTemp(async (dir) => {
+    const value = world();
+    const first = chest(1, [2, 5]);
+    const { game } = await makeGame(
+      dir,
+      book(
+        section(
+          [station(0, "heal", [2, 2], null, 72), station(1, "chest", [2, 5], first)],
+          [first],
+        ),
+      ),
+      undefined,
+      { 72: { name: "二楼", exits: [], chests: [] } },
+    );
+    const result = await game.run("route", {}, pilotFor(value));
+    assert.match(result, /完成/);
+    assert.doesNotMatch(result, /地图 72/);
+    assert.deepEqual(value.openedOrder, ["2,5"]);
+    const progress = JSON.parse(
+      await readFile(join(dir, "routebook-progress-ff5.json"), "utf8"),
+    ) as BookProgress;
+    assert.equal(progress.stations.find((station) => station.index === 0)?.status, "skipped");
   });
 });
 
@@ -530,6 +592,141 @@ void test("route {} builds the plan from the book first, not from a stage office
   });
 });
 
+void test("go walks normally when the book plan has no executable station left", async () => {
+  await inTemp(async (dir) => {
+    const value = world();
+    const near = chest(0, [2, 5]);
+    const far: RouteChest = {
+      ...chest(1, [1, 1]),
+      mapId: 72,
+      mapName: "下一站",
+      cell: [1, 1],
+    };
+    const { game } = await makeGame(
+      dir,
+      book(
+        section(
+          [station(0, "chest", [2, 5], near), station(1, "chest", [1, 1], far, 72)],
+          [near, far],
+          {
+            maps: [
+              { mapId: MAP, name: MAP_NAME, areaName: MAP_NAME, reasons: ["test"] },
+              { mapId: 72, name: "下一站", areaName: "下一站", reasons: ["test"] },
+            ],
+          },
+        ),
+      ),
+      undefined,
+      { "72": { name: "下一站", exits: [], chests: [] } },
+    );
+    await autoBook(game)(pilotFor(value), undefined, true);
+    const store = (
+      game as unknown as {
+        bookProgress: {
+          current: { stations: readonly { index: number }[] } | null;
+          mark(index: number, status: string, note: string, kind: string): Promise<void>;
+        };
+      }
+    ).bookProgress;
+    assert.ok(store.current);
+    for (const station of store.current.stations) {
+      await store.mark(station.index, "done", "test", "chest");
+    }
+    const result = await game.run("go", { to: 72 }, pilotFor(value));
+    assert.doesNotMatch(result, /代码接着按计划走|没有要执行的站了/u);
+  });
+});
+
+void test("overlapping sections pick the earliest unfinished one, not the one that was just finished", async () => {
+  await inTemp(async (dir) => {
+    const value = world();
+    const doneChest = chest(0, [2, 5], true);
+    const openChest = chest(1, [4, 5], false);
+    const doneSection = section([station(0, "chest", [2, 5], doneChest)], [doneChest], {
+      title: "先做完的节",
+      order: 0,
+    });
+    const nextSection = section([station(1, "chest", [4, 5], openChest)], [openChest], {
+      title: "运河",
+      order: 1,
+    });
+    const { game } = await makeGame(dir, bookOf([doneSection, nextSection]));
+    await autoBook(game)(pilotFor(value), undefined, true);
+    assert.equal(game.stagePlan()?.book?.section, "运河");
+  });
+});
+
+void test("bridge 0.14.8's flag table marks a far chest done and moves to the next section", async () => {
+  await inTemp(async (dir) => {
+    const value = world();
+    const doneChest: RouteChest = { ...chest(0, [2, 5], false), flag: "88" };
+    const nextChest: RouteChest = { ...chest(1, [4, 5], false), flag: "89" };
+    const doneSection = section([station(0, "chest", [2, 5], doneChest)], [doneChest], {
+      title: "图尔村",
+      order: 0,
+    });
+    const nextSection = section([station(1, "chest", [4, 5], nextChest)], [nextChest], {
+      title: "运河",
+      order: 1,
+    });
+    const { game } = await makeGame(dir, bookOf([doneSection, nextSection]));
+    const pilot = pilotFor(value);
+    pilot.onQuery("treasureflags", {
+      treasureflags: { flags: { "88": true, "89": false }, total: 2 },
+    });
+    await autoBook(game)(pilot, undefined, true);
+    assert.equal(game.stagePlan()?.book?.section, "运河");
+  });
+});
+
+void test("a book plan starts before the stage officer answers and merges the officer later", async () => {
+  await inTemp(async (dir) => {
+    const value = world();
+    const opened = chest(0, [2, 5]);
+    const officerPlan: StagePlan = {
+      threats: [],
+      supplies: [{ item: "Potion", min: 2, buyTo: 3 }],
+      spells: [],
+      gear: [],
+      jobs: [{ member: "巴兹", job: "青魔导士", reason: "测试" }],
+      minLevel: 5,
+      route: [{ to: "71:9,9" }],
+      turnBack: [],
+      notes: "阶段官的药品和等级",
+    };
+    interface OfficerAnswer {
+      readonly plan: StagePlan;
+      readonly problems: readonly string[];
+      readonly text: string;
+    }
+    let resolveAnswer: (answer: OfficerAnswer) => void = () => undefined;
+    const answer = new Promise<OfficerAnswer>((resolve) => {
+      resolveAnswer = resolve;
+    });
+    const officer: StageOfficerRunner = () => answer;
+    const { game } = await makeGame(
+      dir,
+      book(section([station(0, "chest", [2, 5], opened)], [opened])),
+      officer,
+    );
+    await autoBook(game)(pilotFor(value), undefined, true);
+    const immediate = game.stagePlan();
+    assert.ok(immediate?.book);
+    assert.deepEqual(immediate.plan.supplies, []);
+    assert.equal(immediate.plan.route.length, 1);
+    resolveAnswer({ plan: officerPlan, problems: [], text: "阶段官计划" });
+    await game.whenTacticianIdle();
+    const merged = game.stagePlan();
+    assert.ok(merged);
+    const supply = merged.plan.supplies[0];
+    assert.ok(supply);
+    assert.equal(supply.item, "Potion");
+    assert.equal(merged.plan.minLevel, 5);
+    assert.equal(merged.plan.route.length, 1);
+    assert.equal(merged.book?.section, "测试洞窟");
+  });
+});
+
 void test("plan_stage keeps the officer's route as a note and stores the book's route", async () => {
   await inTemp(async (dir) => {
     const value = world();
@@ -577,5 +774,216 @@ void test("route {} does not start a book section from a map the book does not c
     assert.match(result, /没有可接着走的路线/);
     assert.equal(game.stagePlan(), null);
     assert.deepEqual(value.openedOrder, []);
+  });
+});
+
+interface AutoBook {
+  autoBookPlanOnMove(
+    pilot: FakePilot,
+    signal: AbortSignal | undefined,
+    force?: boolean,
+  ): Promise<{ readonly text: string } | null>;
+}
+
+function autoBook(game: Game): AutoBook["autoBookPlanOnMove"] {
+  return (
+    game as unknown as {
+      autoBookPlanOnMove: AutoBook["autoBookPlanOnMove"];
+    }
+  ).autoBookPlanOnMove.bind(game);
+}
+
+void test("the first movement into a book section builds its plan and says so", async () => {
+  await inTemp(async (dir) => {
+    const value = world();
+    const opened = chest(0, [2, 5]);
+    const { game } = await makeGame(
+      dir,
+      book(section([station(0, "chest", [2, 5], opened)], [opened])),
+    );
+    const result = await game.run("go", { to: [1, 4] }, pilotFor(value));
+    assert.ok(
+      result.startsWith(
+        "已按路线书为「测试洞窟」生成计划，共 1 站(宝箱 1、剧情 0、交回 0)," +
+          "代码会按计划走;处理完交回站再 `route {}`",
+      ),
+      result,
+    );
+    const plan = game.stagePlan();
+    assert.ok(plan);
+    assert.ok(plan.book);
+    assert.equal(plan.book.section, "测试洞窟");
+    assert.equal(plan.book.version, ROUTE_BOOK_PLAN_VERSION);
+    assert.equal(typeof plan.book.digest, "string");
+    assert.deepEqual(value.openedOrder, ["2,5"]);
+  });
+});
+
+void test("moving into the next section settles the old plan and builds the new one", async () => {
+  await inTemp(async (dir) => {
+    const value = world();
+    const opened = chest(0, [2, 5]);
+    const first = section([station(0, "chest", [2, 5], opened), station(1, "switch", null)]);
+    const second = section([station(2, "switch", null, null, 72)], [], {
+      title: "第二段",
+      order: 1,
+      areaName: "第二地区",
+      maps: [{ mapId: 72, name: "第二洞窟", areaName: "第二地区", reasons: ["test"] }],
+    });
+    const { game } = await makeGame(dir, bookOf([first, second]), undefined, {
+      "72": { name: "第二洞窟", exits: [], chests: [] },
+    });
+    const lines: string[] = [];
+    game.onActivity = (message) => lines.push(message);
+    const automatic = autoBook(game);
+    await automatic(pilotFor(value), undefined, true);
+    const planned = game.stagePlan();
+    assert.ok(planned);
+    await game.stagePlans.save({
+      ...planned,
+      status: "departed",
+      stats: {
+        departedAt: new Date().toISOString(),
+        tools: 1,
+        go: 1,
+        route: 0,
+        planStage: 0,
+        stops: 0,
+      },
+    });
+    value.map = 72;
+    value.cell = [1, 1];
+    await automatic(pilotFor(value), undefined, true);
+    assert.equal(game.stagePlan()?.book?.section, "第二段");
+    assert.equal(game.stagePlan()?.target.mapId, 72);
+    assert.equal(
+      lines.some((line) => line.startsWith("阶段统计「测试洞窟」:")),
+      true,
+      lines.join("\n"),
+    );
+  });
+});
+
+void test("a plan from an older book version is rebuilt", async () => {
+  await inTemp(async (dir) => {
+    const value = world();
+    const opened = chest(0, [2, 5]);
+    const { game } = await makeGame(
+      dir,
+      book(section([station(0, "chest", [2, 5], opened)], [opened])),
+    );
+    const automatic = autoBook(game);
+    await automatic(pilotFor(value), undefined, true);
+    const old = game.stagePlan();
+    assert.ok(old?.book);
+    await game.stagePlans.save({
+      ...old,
+      target: { ...old.target, label: "旧计划" },
+      book: { ...old.book, version: 0 },
+    });
+    await automatic(pilotFor(value), undefined, true);
+    assert.equal(game.stagePlan()?.book?.version, ROUTE_BOOK_PLAN_VERSION);
+    assert.equal(game.stagePlan()?.target.label, "测试洞窟");
+  });
+});
+
+void test("the world map goes on to the next section without an empty world plan", async () => {
+  await inTemp(async (dir) => {
+    const value = world({ map: 1, cell: [1, 1] });
+    const opened = chest(0, [2, 5]);
+    const { game } = await makeGame(
+      dir,
+      book(section([station(0, "chest", [2, 5], opened)], [opened])),
+      undefined,
+      { "1": { name: "世界地图", exits: [], chests: [] } },
+    );
+    const result = await game.run("go", { to: [1, 2] }, pilotFor(value));
+    const plan = game.stagePlan();
+    assert.ok(plan);
+    assert.equal(plan.target.mapId, MAP);
+    assert.equal(plan.plan.route.length, 1);
+    assert.equal(plan.book?.section, "测试洞窟");
+    assert.doesNotMatch(result, /Map_/);
+  });
+});
+
+void test("go by map name follows a covered book plan; a map outside it walks normally", async () => {
+  await inTemp(async (dir) => {
+    const value = world();
+    const opened = chest(0, [2, 5]);
+    const { game } = await makeGame(
+      dir,
+      book(section([station(0, "chest", [2, 5], opened)], [opened])),
+      undefined,
+      { "72": { name: "别处", exits: [], chests: [] } },
+    );
+    await autoBook(game)(pilotFor(value), undefined, true);
+    const followed = await game.run("go", { to: MAP_NAME }, pilotFor(value));
+    assert.match(followed, /代码接着按计划走/);
+    assert.deepEqual(value.openedOrder, ["2,5"]);
+  });
+  await inTemp(async (dir) => {
+    const value = world();
+    const opened = chest(0, [2, 5]);
+    const { game } = await makeGame(
+      dir,
+      book(section([station(0, "chest", [2, 5], opened)], [opened])),
+      undefined,
+      { "72": { name: "别处", exits: [], chests: [] } },
+    );
+    await autoBook(game)(pilotFor(value), undefined, true);
+    const normal = await game
+      .run("go", { to: 72 }, pilotFor(value))
+      .catch((error: unknown) => String(error));
+    assert.doesNotMatch(normal, /代码接着按计划走/);
+    assert.deepEqual(value.openedOrder, []);
+  });
+});
+
+void test("leaving a book section with an unopened chest is refused, then allowed with a debt", async () => {
+  await inTemp(async (dir) => {
+    const value = world();
+    const opened = chest(0, [2, 5]);
+    const { game } = await makeGame(
+      dir,
+      book(section([station(0, "chest", [2, 5], opened)], [opened])),
+      undefined,
+      { "72": { name: "别处", exits: [], chests: [] } },
+    );
+    await autoBook(game)(pilotFor(value), undefined, true);
+    const refused = await game.run("go", { to: 72 }, pilotFor(value));
+    assert.match(refused, /还有没开的宝箱/u);
+    assert.match(refused, /地图 71 \(2,5\) 帐篷/u);
+    assert.equal(await readFile(join(dir, "backlog.jsonl"), "utf8").catch(() => ""), "");
+    const allowed = await game.run("go", { to: 72, leave_incomplete: "测试离开" }, pilotFor(value));
+    assert.doesNotMatch(allowed, /还有没开的宝箱/u);
+    const backlog = await readFile(join(dir, "backlog.jsonl"), "utf8");
+    assert.match(backlog, /测试离开/u);
+    assert.match(backlog, /地图 71 \(2,5\) 帐篷/u);
+  });
+});
+
+void test("a book plan's statistics use the section's Chinese area, not a map resource", async () => {
+  await inTemp(async (dir) => {
+    const value = world();
+    const opened = chest(0, [2, 5]);
+    const chapter = section([station(0, "chest", [2, 5], opened)], [opened], {
+      title: "Prologue",
+      areaName: "泰空",
+    });
+    const { game } = await makeGame(dir, book(chapter));
+    const lines: string[] = [];
+    game.onActivity = (message) => lines.push(message);
+    await game.run("go", { to: [1, 4] }, pilotFor(value));
+    assert.equal(game.stagePlan()?.target.label, "Prologue（泰空）");
+    assert.equal(
+      lines.some((line) => line.startsWith("阶段统计「Prologue（泰空）」:")),
+      true,
+      lines.join("\n"),
+    );
+    assert.equal(
+      lines.some((line) => line.includes("Map_")),
+      false,
+    );
   });
 });

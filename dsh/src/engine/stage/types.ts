@@ -115,6 +115,25 @@ export interface StageBookPoint {
   readonly parts?: number;
   /** Task 117: a cutscene/talk handoff found exactly one story event and walks it itself. */
   readonly autoStory?: boolean;
+  /** The chest/hidden item's name, when the station is a collection stop. */
+  readonly item?: string | null;
+  /** Task 133: guide step indexes this stop completes (adjacent steps merged into one). */
+  readonly indexes?: readonly number[];
+  /** Task 133: events and NPCs to show when a story station stays a handoff. */
+  readonly candidates?: readonly StageBookCandidate[];
+}
+
+/** One event/NPC candidate printed in a handoff's instruction. */
+export interface StageBookCandidate {
+  readonly kind: "event" | "npc";
+  readonly mapId: number;
+  readonly name: string;
+  readonly names?: {
+    readonly ja: string | null;
+    readonly en: string | null;
+    readonly zhc: string | null;
+  } | null;
+  readonly cell: readonly [number, number];
 }
 
 /** What the stage officer hands back; the code checks it before using it. */

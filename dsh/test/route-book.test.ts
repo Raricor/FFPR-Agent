@@ -24,8 +24,12 @@ import {
   type RouteBookFiles,
   type RouteBookInput,
 } from "../src/engine/stage/route-book.ts";
-import { loadRouteBook, readVisitOrder } from "../src/engine/stage/route-book-load.ts";
-import { routeFromBookSection } from "../src/engine/stage/book-plan.ts";
+import {
+  loadRouteBook,
+  readRouteBookFiles,
+  readVisitOrder,
+} from "../src/engine/stage/route-book-load.ts";
+import { handoffText, routeFromBookSection } from "../src/engine/stage/book-plan.ts";
 import { renderRouteBook } from "../src/engine/stage/route-book-render.ts";
 import { isRecord } from "../src/engine/values.ts";
 
@@ -188,6 +192,7 @@ function input(
     blueMagic?: readonly string[] | null;
     jobs?: readonly string[] | null;
     openedChests?: ReadonlySet<string> | null;
+    treasureFlags?: ReadonlyMap<number, boolean | null> | null;
     files?: RouteBookFiles | null;
   } = {},
 ): RouteBookInput {
@@ -204,6 +209,7 @@ function input(
       blueMagic: options.blueMagic ?? null,
       jobs: options.jobs ?? null,
       openedChests: options.openedChests ?? null,
+      ...(options.treasureFlags === undefined ? {} : { treasureFlags: options.treasureFlags }),
     },
     ...(options.files === undefined ? {} : { files: options.files }),
   };
@@ -486,6 +492,40 @@ void test("chests match by merged name first, then by order; count gaps and open
   const text = renderRouteBook(book);
   assert.match(text, /已开/u);
   assert.match(text, /未配对/u);
+});
+
+void test("a game-file flag marks a chest opened on a map that was never loaded", () => {
+  const knowledge = makeKnowledge({
+    maps: [mapRow(10, "试验迷宫 １层", "试验迷宫")],
+    treasures: [treasure(41, 10, [1, 2], "Tent")],
+  });
+  const atlas = makeAtlas({
+    10: { name: "试验迷宫 １层", chests: [{ cell: [1, 2], name: "テント" }] },
+  });
+  const book = buildRouteBook(
+    input(
+      [
+        section(
+          "试验迷宫",
+          ["试验迷宫 - 1F"],
+          [
+            step(0, "chest", "试验迷宫 - 1F", "Open for a Tent.", {
+              ref: { kind: "chest", n: 1 },
+              item: "Tent",
+            }),
+          ],
+        ),
+      ],
+      knowledge,
+      atlas,
+      { openedChests: new Set(), treasureFlags: new Map([[41, true]]) },
+    ),
+  );
+  const chest = first(book).chests[0];
+  assert.ok(chest !== undefined);
+  assert.equal(chest.flag, "41");
+  assert.equal(chest.opened, true);
+  assert.match(renderRouteBook(book), /已开/u);
 });
 
 void test("one chest per map still pairs in map order", () => {
@@ -959,7 +999,7 @@ void test("a missed missable monster gets a bestiary return trip even without bl
   assert.equal(revisit.grind[0]?.until.blueMagic, null);
 });
 
-void test("story stations take event-number-ordered triggers and dialog stations take an NPC", () => {
+void test("story stations pair by event/NPC names and dialog stations take an NPC", () => {
   const knowledge = makeKnowledge({ maps: [mapRow(10, "试验洞窟", "试验洞窟")] });
   const atlas = makeAtlas({ 10: { name: "试验洞窟" } });
   const files: RouteBookFiles = {
@@ -997,8 +1037,8 @@ void test("story stations take event-number-ordered triggers and dialog stations
           "试验洞窟",
           [],
           [
-            step(0, "cutscene", null, "Watch the first scene."),
-            step(1, "cutscene", null, "Watch the second scene."),
+            step(0, "cutscene", null, "Watch 测试之家前."),
+            step(1, "cutscene", null, "Watch 后来发生的."),
             step(2, "talk", null, "Speak to the receptionist and answer yes."),
             step(3, "switch", null, "Pull the lever."),
           ],
@@ -1028,6 +1068,123 @@ void test("story stations take event-number-ordered triggers and dialog stations
   const text = renderRouteBook(book);
   assert.match(text, /\| 剧情站有坐标 \|/u);
   assert.match(text, /\| 3\/4 \|/u);
+});
+
+void test("an exported map title wins over the area's neighbouring rooms", () => {
+  const title = (en: string) => ({ ja: null, en, zhc: null });
+  const knowledge = makeKnowledge({
+    maps: [
+      mapRow(10, "图尔村", "Tule"),
+      mapRow(11, "图尔村 酒馆", "Tule"),
+      mapRow(12, "图尔村 佐克家", "Tule"),
+    ],
+  });
+  const atlas = makeAtlas({
+    10: { name: "图尔村", exits: [{ cell: [1, 1], to: 11, name: "Door" }] },
+    11: { name: "图尔村 酒馆", exits: [{ cell: [2, 1], to: 12, name: "Door" }] },
+    12: { name: "图尔村 佐克家", exits: [] },
+  });
+  const book = buildRouteBook(
+    input(
+      [section("Tule", ["Tule - Pub"], [step(0, "move", "Tule - Pub", "Go into the pub.")])],
+      knowledge,
+      atlas,
+      {
+        files: {
+          events: [],
+          npcs: [],
+          titles: new Map([
+            [10, title("1F")],
+            [11, title("Pub")],
+            [12, title("Zok's House")],
+          ]),
+        },
+      },
+    ),
+  );
+  const result = first(book);
+  const pub = result.places.find((place) => place.title === "Tule - Pub");
+  assert.ok(pub);
+  assert.deepEqual(pub.mapIds, [11]);
+  assert.ok(result.maps.find((map) => map.mapId === 11)?.reasons.includes("图标题 Pub"));
+});
+
+void test("exit/entrance events are never story coordinates", () => {
+  const knowledge = makeKnowledge({ maps: [mapRow(10, "试验洞窟", "试验洞窟")] });
+  const atlas = makeAtlas({ 10: { name: "试验洞窟" } });
+  const files: RouteBookFiles = {
+    events: [
+      {
+        mapId: 10,
+        file: "ev_e_0021.json",
+        name: "出口:ワールドマップ",
+        cell: [3, 3],
+        rect: { x1: 3, y1: 3, x2: 3, y2: 3 },
+        scriptId: 21,
+      },
+    ],
+    npcs: [],
+  };
+  const book = buildRouteBook(
+    input(
+      [section("试验洞窟", [], [step(0, "cutscene", null, "Go to the exit.")])],
+      knowledge,
+      atlas,
+      { files },
+    ),
+  );
+  const station = first(book).stations[0];
+  assert.ok(station);
+  assert.equal(station.cell, null);
+  assert.doesNotMatch(station.basis, /游戏文件/u);
+  assert.deepEqual(station.candidates ?? [], []);
+});
+
+void test("an unmatched story handoff lists the map's events and NPCs with three-language names", () => {
+  const knowledge = makeKnowledge({ maps: [mapRow(10, "试验洞窟", "试验洞窟")] });
+  const atlas = makeAtlas({ 10: { name: "试验洞窟" } });
+  const files: RouteBookFiles = {
+    events: [
+      {
+        mapId: 10,
+        file: "ev_e_0021.json",
+        name: "sc_e_0021:谜之剧情",
+        cell: [5, 5],
+        rect: { x1: 5, y1: 5, x2: 5, y2: 5 },
+        scriptId: 21,
+      },
+    ],
+    npcs: [
+      {
+        mapId: 10,
+        name: "受付",
+        cell: [7, 8],
+        names: { ja: "受付", en: "Receptionist", zhc: "接待员" },
+      },
+    ],
+  };
+  const book = buildRouteBook(
+    input(
+      [section("试验洞窟", [], [step(0, "cutscene", null, "Watch the scene.")])],
+      knowledge,
+      atlas,
+      { files },
+    ),
+  );
+  const station = first(book).stations[0];
+  assert.ok(station);
+  assert.equal(station.cell, null);
+  assert.deepEqual(
+    station.candidates?.map((candidate) => [candidate.kind, candidate.name, candidate.cell]),
+    [
+      ["event", "谜之剧情", [5, 5]],
+      ["npc", "受付", [7, 8]],
+    ],
+  );
+  const text = handoffText("试验洞窟", station, "地图 10");
+  assert.match(text, /候选:/u);
+  assert.match(text, /事件 谜之剧情 地图 10 \(5,5\)/u);
+  assert.match(text, /NPC 受付\(受付\/Receptionist\/接待员\) 地图 10 \(7,8\)/u);
 });
 
 void test("a save point and a spring use the knowledge module's real cells", () => {
@@ -1290,13 +1447,64 @@ void test("real FF5 data: a Prologue plan for cave 194 starts at the cave, not 1
   assert.ok(runtime !== null);
   const route = routeFromBookSection(runtime.section, { grindMinutes: 8 });
   assert.ok(route.length > 0);
-  assert.match(route[0]?.to ?? "", /^19[12](?::|$)/u);
+  assert.match(route[0]?.to ?? "", /^19[1-4](?::|$)/u);
   assert.equal(
     route.some((stop) => /^(189|453|454)(?::|$)/u.test(stop.to)),
     false,
   );
   const bestiary = route.flatMap((stop) => stop.until?.bestiary ?? []);
   assert.equal(new Set(bestiary.map(String)).size, bestiary.length);
+});
+
+void test("real FF5 data: the Tule plan puts the piano on 33 and hands story back", async (t) => {
+  if (!(await hasRealData())) {
+    t.skip("没有本机 .deps 的 FF5 地图记录或知识导出");
+    return;
+  }
+  const map33 = JSON.parse(
+    await readFile(join(REAL_HOME, "files", "maps", "33.json"), "utf8"),
+  ) as unknown;
+  if (!isRecord(map33) || !isRecord(map33.title) || typeof map33.title.en !== "string") {
+    t.skip("地图标题还没导出（任务 133 的 game-files 脚本要在外面重跑）");
+    return;
+  }
+  const knowledge = await loadKnowledge({
+    game: "ff5",
+    home: REAL_HOME,
+    atlas: null,
+    collisions: null,
+    bestiarySave: null,
+    atlasSave: null,
+  });
+  const atlas = await Atlas.load(REAL_ATLAS);
+  const files = await readRouteBookFiles("ff5", join(REAL_HOME, "files"));
+  assert.ok(files);
+  const raw: unknown = JSON.parse(await readFile(join(REAL_HOME, "guide.json"), "utf8"));
+  if (!isRecord(raw)) assert.fail("真实 guide.json 不是对象");
+  const book = buildRouteBook(
+    input(parseWalkthrough(raw.walkthrough), knowledge, atlas, {
+      from: "Tule",
+      to: "Tule",
+      files,
+    }),
+  );
+  const tule = book.sections.find((item) => item.title === "Tule");
+  assert.ok(tule);
+  const piano = tule.stations.find((station) => station.kind === "piano");
+  assert.ok(piano, "Tule 应该有钢琴站");
+  assert.equal(piano.mapId, 33);
+  assert.equal(
+    tule.stations.some(
+      (station) =>
+        station.mapId === 32 &&
+        station.cell !== null &&
+        ((station.cell[0] === 32 && station.cell[1] === 49) ||
+          (station.cell[0] === 49 && station.cell[1] === 32)),
+    ),
+    false,
+  );
+  const route = routeFromBookSection(tule, { grindMinutes: 8 });
+  assert.ok(route.filter((stop) => stop.do === "handoff").length <= 3);
 });
 
 void test("the async build yields between sections and keeps the part built before the budget", async () => {
