@@ -19,6 +19,7 @@ const TACTICS_OPENED_PREFIX = "ffpr-dsh.tactics.opened.";
 const PLAYER_OPENED_PREFIX = "ffpr-dsh.player.opened.";
 const BATTLE_OPENED_PREFIX = "ffpr-dsh.battle.opened.";
 const PLAN_OPENED_KEY = "ffpr-dsh.plan.opened";
+const ROUTE_OPENED_KEY = "ffpr-dsh.chapter.route.opened";
 const ONLY_MISSING_KEY = "ffpr-dsh.achievements.onlyMissing";
 const PANEL_TAB_KEY = "ffpr-dsh.achievements.tab";
 const REFRESH_MS = 30_000;
@@ -27,7 +28,10 @@ const OVERVIEW_REFRESH_MS = 3000;
 const WALK_ACTIVE_REFRESH_MS = 500;
 const WALK_IDLE_REFRESH_MS = 3000;
 type PanelTab = "achievements" | "bestiary" | "treasure";
-const PANEL_TABS: readonly { readonly key: PanelTab; readonly label: string }[] = [
+const PANEL_TABS: readonly {
+  readonly key: PanelTab;
+  readonly label: string;
+}[] = [
   { key: "achievements", label: "成就" },
   { key: "bestiary", label: "图鉴" },
   { key: "treasure", label: "宝箱" },
@@ -297,6 +301,209 @@ interface PlanPanelView {
   readonly plan: PlanView | null;
 }
 
+interface ChapterSegmentRowView {
+  readonly number: number;
+  readonly section: string;
+  readonly stationCount: number;
+  readonly doneCount: number;
+  readonly stateText: string;
+  readonly current: boolean;
+}
+
+interface ChapterSkippedRowView {
+  readonly kind: string;
+  readonly name: string;
+  readonly whereText: string;
+  readonly why: string;
+}
+
+interface ChapterView {
+  readonly heading: string;
+  readonly goalText: string;
+  readonly revisionText: string;
+  readonly statusText: string;
+  readonly startedText: string;
+  readonly updatedText: string;
+  readonly segmentHeaders: readonly string[];
+  readonly segments: readonly ChapterSegmentRowView[];
+  readonly segmentEmptyText: string;
+  readonly stationSectionText: string;
+  readonly stationHeaders: readonly string[];
+  readonly stations: readonly PlanStationRowView[];
+  readonly stationEmptyText: string;
+  readonly growth: readonly string[];
+  readonly growthEmptyText: string;
+  readonly fallback: readonly string[];
+  readonly fallbackRecords: readonly string[];
+  readonly fallbackEmptyText: string;
+  readonly skipped: readonly ChapterSkippedRowView[];
+  readonly skippedHeaders: readonly string[];
+  readonly skippedEmptyText: string;
+  readonly report: PlanReportView | null;
+  readonly reportEmptyText: string;
+  readonly warnings: readonly string[];
+}
+
+interface ChapterPanelView {
+  readonly title: string;
+  readonly status: string;
+  readonly message: string | null;
+  readonly chapter: ChapterView | null;
+  readonly mode: "chapter" | "plan";
+}
+
+type RouteStationStatus = "pending" | "current" | "done" | "failed" | "skipped";
+type RouteStationKind =
+  "chest" | "hidden" | "boss" | "story" | "heal" | "save" | "shop" | "grind" | "move";
+
+interface RouteMapRefView {
+  readonly id: number;
+  readonly name: string;
+  readonly text: string;
+  readonly stationCount: number;
+  readonly current: boolean;
+}
+
+interface RouteCandidateView {
+  readonly cell: readonly [number, number];
+  readonly cellText: string;
+  readonly name: string;
+  readonly text: string;
+}
+
+interface ChapterRouteStationView {
+  readonly number: number;
+  readonly segmentNumber: number;
+  readonly label: string;
+  readonly mapId: number | null;
+  readonly mapText: string;
+  readonly cell: readonly [number, number] | null;
+  readonly cellText: string;
+  readonly unknownCell: boolean;
+  readonly candidates: readonly RouteCandidateView[];
+  readonly candidateText: string;
+  readonly action: string;
+  readonly why: string;
+  readonly kind: RouteStationKind;
+  readonly itemName: string | null;
+  readonly itemText: string;
+  readonly status: RouteStationStatus;
+  readonly statusText: string;
+  readonly note: string;
+  readonly current: boolean;
+}
+
+interface ChapterRouteLegView {
+  readonly number: number;
+  readonly fromNumber: number | null;
+  readonly fromLabel: string;
+  readonly toNumber: number;
+  readonly toLabel: string;
+  readonly text: string;
+  readonly mapsText: string;
+  readonly mapIds: readonly number[];
+  readonly hops: number;
+  readonly cells: number;
+  readonly seconds: number;
+  readonly durationText: string;
+  readonly ok: boolean;
+  readonly reason: string | null;
+  readonly from: { readonly map: number; readonly cell: readonly [number, number] | null } | null;
+  readonly to: { readonly map: number; readonly cell: readonly [number, number] | null } | null;
+}
+
+interface ChapterRouteSegmentView {
+  readonly number: number;
+  readonly section: string;
+  readonly stateText: string;
+  readonly current: boolean;
+  readonly stations: readonly ChapterRouteStationView[];
+  readonly legs: readonly ChapterRouteLegView[];
+  readonly chestsText: string;
+  readonly distanceText: string;
+  readonly unreachableText: string | null;
+}
+
+interface ChapterRouteView {
+  readonly title: string;
+  readonly status: string;
+  readonly message: string | null;
+  readonly chapter: number | null;
+  readonly goalText: string;
+  readonly startText: string;
+  readonly currentMapId: number | null;
+  readonly currentCell: readonly [number, number] | null;
+  readonly currentCellText: string;
+  readonly maps: readonly RouteMapRefView[];
+  readonly segments: readonly ChapterRouteSegmentView[];
+  readonly totalsText: string;
+  readonly emptyText: string;
+  readonly warnings: readonly string[];
+}
+
+interface RouteMapStationView {
+  readonly number: number;
+  readonly segmentNumber: number;
+  readonly label: string;
+  readonly cell: readonly [number, number];
+  readonly cellText: string;
+  readonly unknownCell: boolean;
+  readonly candidateText: string;
+  readonly action: string;
+  readonly kind: RouteStationKind;
+  readonly itemName: string | null;
+  readonly status: RouteStationStatus;
+  readonly statusText: string;
+  readonly current: boolean;
+}
+
+interface RouteMapPathView {
+  readonly legNumber: number;
+  readonly fromNumber: number | null;
+  readonly fromLabel: string;
+  readonly toNumber: number;
+  readonly toLabel: string;
+  readonly text: string;
+  readonly points: readonly (readonly [number, number])[];
+  readonly entryText: string;
+  readonly exitText: string;
+  readonly ok: boolean;
+  readonly reason: string | null;
+}
+
+interface RouteMapExitView {
+  readonly cell: readonly [number, number];
+  readonly cellText: string;
+  readonly to: number | null;
+  readonly toName: string;
+  readonly text: string;
+}
+
+interface ChapterRouteMapView {
+  readonly title: string;
+  readonly status: string;
+  readonly message: string | null;
+  readonly mapId: number | null;
+  readonly mapName: string;
+  readonly width: number;
+  readonly height: number;
+  readonly origin: readonly [number, number];
+  readonly layer: number;
+  readonly rows: readonly string[];
+  readonly legendText: string;
+  readonly maps: readonly RouteMapRefView[];
+  readonly stations: readonly RouteMapStationView[];
+  readonly paths: readonly RouteMapPathView[];
+  readonly exits: readonly RouteMapExitView[];
+  readonly party: {
+    readonly cell: readonly [number, number];
+    readonly cellText: string;
+    readonly text: string;
+  } | null;
+  readonly emptyText: string;
+  readonly warnings: readonly string[];
+}
+
 interface TacticianRuleLine {
   readonly text: string;
   readonly hits: number;
@@ -382,7 +589,11 @@ interface CurrentCard {
   readonly gil: number | null;
   readonly saveCount: number | null;
   readonly busy: { readonly name: string; readonly at: string } | null;
-  readonly last: { readonly at: string; readonly kind: string; readonly text: string } | null;
+  readonly last: {
+    readonly at: string;
+    readonly kind: string;
+    readonly text: string;
+  } | null;
   readonly lastKnownAt: string | null;
   readonly saveSlot: number;
 }
@@ -724,7 +935,12 @@ async function fetchPlayer(signal: AbortSignal, game: string): Promise<PollResul
       decisions: Array.isArray(view.decisions)
         ? view.decisions.flatMap((item) =>
             isRecord(item) && typeof item.line === "string"
-              ? [{ said: typeof item.said === "string" ? item.said : null, line: item.line }]
+              ? [
+                  {
+                    said: typeof item.said === "string" ? item.said : null,
+                    line: item.line,
+                  },
+                ]
               : [],
           )
         : [],
@@ -903,6 +1119,294 @@ function isPlanPanelView(value: unknown): value is PlanPanelView {
   );
 }
 
+function isChapterSegmentRow(value: unknown): value is ChapterSegmentRowView {
+  return (
+    isRecord(value) &&
+    typeof value.number === "number" &&
+    typeof value.section === "string" &&
+    typeof value.stationCount === "number" &&
+    typeof value.doneCount === "number" &&
+    typeof value.stateText === "string" &&
+    typeof value.current === "boolean"
+  );
+}
+
+function isChapterSkippedRow(value: unknown): value is ChapterSkippedRowView {
+  return (
+    isRecord(value) &&
+    typeof value.kind === "string" &&
+    typeof value.name === "string" &&
+    typeof value.whereText === "string" &&
+    typeof value.why === "string"
+  );
+}
+
+function isChapterView(value: unknown): value is ChapterView {
+  return (
+    isRecord(value) &&
+    typeof value.heading === "string" &&
+    typeof value.goalText === "string" &&
+    typeof value.revisionText === "string" &&
+    typeof value.statusText === "string" &&
+    typeof value.startedText === "string" &&
+    typeof value.updatedText === "string" &&
+    isStringArray(value.segmentHeaders) &&
+    Array.isArray(value.segments) &&
+    value.segments.every(isChapterSegmentRow) &&
+    typeof value.segmentEmptyText === "string" &&
+    typeof value.stationSectionText === "string" &&
+    isStringArray(value.stationHeaders) &&
+    Array.isArray(value.stations) &&
+    value.stations.every(isPlanStationRow) &&
+    typeof value.stationEmptyText === "string" &&
+    isStringArray(value.growth) &&
+    typeof value.growthEmptyText === "string" &&
+    isStringArray(value.fallback) &&
+    isStringArray(value.fallbackRecords) &&
+    typeof value.fallbackEmptyText === "string" &&
+    Array.isArray(value.skipped) &&
+    value.skipped.every(isChapterSkippedRow) &&
+    isStringArray(value.skippedHeaders) &&
+    typeof value.skippedEmptyText === "string" &&
+    (value.report === null || isPlanReport(value.report)) &&
+    typeof value.reportEmptyText === "string" &&
+    isStringArray(value.warnings)
+  );
+}
+
+function isChapterPanelView(value: unknown): value is ChapterPanelView {
+  return (
+    isRecord(value) &&
+    typeof value.title === "string" &&
+    typeof value.status === "string" &&
+    (value.message === null || typeof value.message === "string") &&
+    (value.chapter === null || isChapterView(value.chapter)) &&
+    (value.mode === "chapter" || value.mode === "plan")
+  );
+}
+
+function isRouteStationStatus(value: unknown): value is RouteStationStatus {
+  return (
+    value === "pending" ||
+    value === "current" ||
+    value === "done" ||
+    value === "failed" ||
+    value === "skipped"
+  );
+}
+
+function isRouteStationKind(value: unknown): value is RouteStationKind {
+  return (
+    value === "chest" ||
+    value === "hidden" ||
+    value === "boss" ||
+    value === "story" ||
+    value === "heal" ||
+    value === "save" ||
+    value === "shop" ||
+    value === "grind" ||
+    value === "move"
+  );
+}
+
+function isRouteMapRef(value: unknown): value is RouteMapRefView {
+  return (
+    isRecord(value) &&
+    typeof value.id === "number" &&
+    typeof value.name === "string" &&
+    typeof value.text === "string" &&
+    typeof value.stationCount === "number" &&
+    typeof value.current === "boolean"
+  );
+}
+
+function isRoutePoint(
+  value: unknown,
+): value is { map: number; cell: readonly [number, number] | null } {
+  return (
+    isRecord(value) && typeof value.map === "number" && (value.cell === null || isCell(value.cell))
+  );
+}
+
+function isRouteCandidate(value: unknown): value is RouteCandidateView {
+  return (
+    isRecord(value) &&
+    isCell(value.cell) &&
+    typeof value.cellText === "string" &&
+    typeof value.name === "string" &&
+    typeof value.text === "string"
+  );
+}
+
+function isRouteStation(value: unknown): value is ChapterRouteStationView {
+  return (
+    isRecord(value) &&
+    typeof value.number === "number" &&
+    typeof value.segmentNumber === "number" &&
+    typeof value.label === "string" &&
+    (value.mapId === null || typeof value.mapId === "number") &&
+    typeof value.mapText === "string" &&
+    (value.cell === null || isCell(value.cell)) &&
+    typeof value.cellText === "string" &&
+    typeof value.unknownCell === "boolean" &&
+    Array.isArray(value.candidates) &&
+    value.candidates.every(isRouteCandidate) &&
+    typeof value.candidateText === "string" &&
+    typeof value.action === "string" &&
+    typeof value.why === "string" &&
+    isRouteStationKind(value.kind) &&
+    (value.itemName === null || typeof value.itemName === "string") &&
+    typeof value.itemText === "string" &&
+    isRouteStationStatus(value.status) &&
+    typeof value.statusText === "string" &&
+    typeof value.note === "string" &&
+    typeof value.current === "boolean"
+  );
+}
+
+function isRouteLeg(value: unknown): value is ChapterRouteLegView {
+  return (
+    isRecord(value) &&
+    typeof value.number === "number" &&
+    (value.fromNumber === null || typeof value.fromNumber === "number") &&
+    typeof value.fromLabel === "string" &&
+    typeof value.toNumber === "number" &&
+    typeof value.toLabel === "string" &&
+    typeof value.text === "string" &&
+    typeof value.mapsText === "string" &&
+    Array.isArray(value.mapIds) &&
+    value.mapIds.every((id) => typeof id === "number") &&
+    typeof value.hops === "number" &&
+    typeof value.cells === "number" &&
+    typeof value.seconds === "number" &&
+    typeof value.durationText === "string" &&
+    typeof value.ok === "boolean" &&
+    (value.reason === null || typeof value.reason === "string") &&
+    (value.from === null || isRoutePoint(value.from)) &&
+    (value.to === null || isRoutePoint(value.to))
+  );
+}
+
+function isRouteSegment(value: unknown): value is ChapterRouteSegmentView {
+  return (
+    isRecord(value) &&
+    typeof value.number === "number" &&
+    typeof value.section === "string" &&
+    typeof value.stateText === "string" &&
+    typeof value.current === "boolean" &&
+    Array.isArray(value.stations) &&
+    value.stations.every(isRouteStation) &&
+    Array.isArray(value.legs) &&
+    value.legs.every(isRouteLeg) &&
+    typeof value.chestsText === "string" &&
+    typeof value.distanceText === "string" &&
+    (value.unreachableText === null || typeof value.unreachableText === "string")
+  );
+}
+
+function isChapterRouteView(value: unknown): value is ChapterRouteView {
+  return (
+    isRecord(value) &&
+    typeof value.title === "string" &&
+    typeof value.status === "string" &&
+    (value.message === null || typeof value.message === "string") &&
+    (value.chapter === null || typeof value.chapter === "number") &&
+    typeof value.goalText === "string" &&
+    typeof value.startText === "string" &&
+    (value.currentMapId === null || typeof value.currentMapId === "number") &&
+    (value.currentCell === null || isCell(value.currentCell)) &&
+    typeof value.currentCellText === "string" &&
+    Array.isArray(value.maps) &&
+    value.maps.every(isRouteMapRef) &&
+    Array.isArray(value.segments) &&
+    value.segments.every(isRouteSegment) &&
+    typeof value.totalsText === "string" &&
+    typeof value.emptyText === "string" &&
+    isStringArray(value.warnings)
+  );
+}
+
+function isMapStation(value: unknown): value is RouteMapStationView {
+  return (
+    isRecord(value) &&
+    typeof value.number === "number" &&
+    typeof value.segmentNumber === "number" &&
+    typeof value.label === "string" &&
+    isCell(value.cell) &&
+    typeof value.cellText === "string" &&
+    typeof value.unknownCell === "boolean" &&
+    typeof value.candidateText === "string" &&
+    typeof value.action === "string" &&
+    isRouteStationKind(value.kind) &&
+    (value.itemName === null || typeof value.itemName === "string") &&
+    isRouteStationStatus(value.status) &&
+    typeof value.statusText === "string" &&
+    typeof value.current === "boolean"
+  );
+}
+
+function isRouteMapPath(value: unknown): value is RouteMapPathView {
+  return (
+    isRecord(value) &&
+    typeof value.legNumber === "number" &&
+    (value.fromNumber === null || typeof value.fromNumber === "number") &&
+    typeof value.fromLabel === "string" &&
+    typeof value.toNumber === "number" &&
+    typeof value.toLabel === "string" &&
+    typeof value.text === "string" &&
+    Array.isArray(value.points) &&
+    value.points.every(isCell) &&
+    typeof value.entryText === "string" &&
+    typeof value.exitText === "string" &&
+    typeof value.ok === "boolean" &&
+    (value.reason === null || typeof value.reason === "string")
+  );
+}
+
+function isRouteMapExit(value: unknown): value is RouteMapExitView {
+  return (
+    isRecord(value) &&
+    isCell(value.cell) &&
+    typeof value.cellText === "string" &&
+    (value.to === null || typeof value.to === "number") &&
+    typeof value.toName === "string" &&
+    typeof value.text === "string"
+  );
+}
+
+function isChapterRouteMapView(value: unknown): value is ChapterRouteMapView {
+  return (
+    isRecord(value) &&
+    typeof value.title === "string" &&
+    typeof value.status === "string" &&
+    (value.message === null || typeof value.message === "string") &&
+    (value.mapId === null || typeof value.mapId === "number") &&
+    typeof value.mapName === "string" &&
+    typeof value.width === "number" &&
+    typeof value.height === "number" &&
+    isCell(value.origin) &&
+    typeof value.layer === "number" &&
+    Array.isArray(value.rows) &&
+    value.rows.every((row) => typeof row === "string") &&
+    typeof value.legendText === "string" &&
+    Array.isArray(value.maps) &&
+    value.maps.every(isRouteMapRef) &&
+    Array.isArray(value.stations) &&
+    value.stations.every(isMapStation) &&
+    Array.isArray(value.paths) &&
+    value.paths.every(isRouteMapPath) &&
+    Array.isArray(value.exits) &&
+    value.exits.every(isRouteMapExit) &&
+    (value.party === null ||
+      (isRecord(value.party) &&
+        isCell(value.party.cell) &&
+        typeof value.party.cellText === "string" &&
+        typeof value.party.text === "string")) &&
+    typeof value.emptyText === "string" &&
+    isStringArray(value.warnings)
+  );
+}
+
 async function fetchBook(signal: AbortSignal, game: string): Promise<PollResult<BookPanelView>> {
   const response = await fetch(`api/ffpr/book?game=${encodeURIComponent(game)}`, {
     signal,
@@ -947,6 +1451,103 @@ async function fetchPlan(signal: AbortSignal, game: string): Promise<PollResult<
 
 async function loadPlan(signal: AbortSignal, game: string): Promise<PollResult<PlanPanelView>> {
   return await fetchPlan(signal, game);
+}
+
+async function fetchChapter(
+  signal: AbortSignal,
+  game: string,
+): Promise<PollResult<ChapterPanelView>> {
+  const response = await fetch(`api/ffpr/chapter?game=${encodeURIComponent(game)}`, {
+    signal,
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(`读不了章计划(HTTP ${response.status})，试试刷新网页`);
+  const body: unknown = await response.json();
+  if (!isRecord(body)) throw new Error("读不懂章计划");
+  const at = typeof body.at === "string" ? body.at : null;
+  if (body.ok !== true || !isChapterPanelView(body.view)) {
+    return {
+      value: null,
+      error: typeof body.error === "string" ? body.error : "读不了章计划",
+      at,
+    };
+  }
+  return { value: body.view, error: null, at };
+}
+
+async function loadChapter(
+  signal: AbortSignal,
+  game: string,
+): Promise<PollResult<ChapterPanelView>> {
+  return await fetchChapter(signal, game);
+}
+
+async function fetchChapterRoute(
+  signal: AbortSignal,
+  game: string,
+  extra = "",
+): Promise<PollResult<ChapterRouteView>> {
+  const position = extra.trim();
+  const suffix = position === "" ? "" : `&position=${encodeURIComponent(position)}`;
+  const response = await fetch(`api/ffpr/chapter/route?game=${encodeURIComponent(game)}${suffix}`, {
+    signal,
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(`读不了章路线(HTTP ${response.status})，试试刷新网页`);
+  const body: unknown = await response.json();
+  if (!isRecord(body)) throw new Error("读不懂章路线");
+  const at = typeof body.at === "string" ? body.at : null;
+  if (body.ok !== true || !isChapterRouteView(body.view)) {
+    return {
+      value: null,
+      error: typeof body.error === "string" ? body.error : "读不了章路线",
+      at,
+    };
+  }
+  return { value: body.view, error: null, at };
+}
+
+async function fetchChapterRouteMap(
+  signal: AbortSignal,
+  game: string,
+  extra = "",
+): Promise<PollResult<ChapterRouteMapView>> {
+  const [map = "", position = ""] = extra.split("|");
+  const mapSuffix = map.trim() === "" ? "" : `&map=${encodeURIComponent(map.trim())}`;
+  const positionSuffix =
+    position.trim() === "" ? "" : `&position=${encodeURIComponent(position.trim())}`;
+  const response = await fetch(
+    `api/ffpr/chapter/route/map?game=${encodeURIComponent(game)}${mapSuffix}${positionSuffix}`,
+    { signal, headers: { Accept: "application/json" } },
+  );
+  if (!response.ok) throw new Error(`读不了章路线地图(HTTP ${response.status})，试试刷新网页`);
+  const body: unknown = await response.json();
+  if (!isRecord(body)) throw new Error("读不懂章路线地图");
+  const at = typeof body.at === "string" ? body.at : null;
+  if (body.ok !== true || !isChapterRouteMapView(body.view)) {
+    return {
+      value: null,
+      error: typeof body.error === "string" ? body.error : "读不了章路线地图",
+      at,
+    };
+  }
+  return { value: body.view, error: null, at };
+}
+
+async function loadChapterRoute(
+  signal: AbortSignal,
+  game: string,
+  extra = "",
+): Promise<PollResult<ChapterRouteView>> {
+  return await fetchChapterRoute(signal, game, extra);
+}
+
+async function loadChapterRouteMap(
+  signal: AbortSignal,
+  game: string,
+  extra = "",
+): Promise<PollResult<ChapterRouteMapView>> {
+  return await fetchChapterRouteMap(signal, game, extra);
 }
 
 function isRuleLine(value: unknown): value is TacticianRuleLine {
@@ -1036,7 +1637,12 @@ async function fetchTactician(
       calls: Array.isArray(view.calls)
         ? view.calls.flatMap((item) =>
             isRecord(item) && typeof item.line === "string"
-              ? [{ line: item.line, atText: typeof item.atText === "string" ? item.atText : "" }]
+              ? [
+                  {
+                    line: item.line,
+                    atText: typeof item.atText === "string" ? item.atText : "",
+                  },
+                ]
               : [],
           )
         : [],
@@ -1213,10 +1819,11 @@ function walkInterval(data: WalkReply | null): number {
 
 /** One 30-second poll, shared by both sidebar tabs; errors keep the last good content. */
 function usePolling<T>(
-  load: (signal: AbortSignal, game: string) => Promise<PollResult<T>>,
+  load: (signal: AbortSignal, game: string, extra?: string) => Promise<PollResult<T>>,
   intervalMs: number | ((data: T | null) => number),
   game: string,
   paused = false,
+  extra = "",
 ): { data: T | null; error: string | null; at: string; reload: () => void } {
   const [data, setData] = React.useState<T | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -1231,7 +1838,7 @@ function usePolling<T>(
     const fetchNow = async (): Promise<void> => {
       if (document.visibilityState === "hidden") return;
       try {
-        const next = await load(controller.signal, game);
+        const next = await load(controller.signal, game, extra);
         if (stopped) return;
         if (next.value !== null) setData(next.value);
         setError(next.error);
@@ -1253,7 +1860,7 @@ function usePolling<T>(
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", reload);
     };
-  }, [tick, game, interval, paused]);
+  }, [tick, game, interval, paused, extra]);
   return {
     data,
     error,
@@ -1345,7 +1952,14 @@ function bestiaryBlock(bestiary: BestiaryView, onlyMissing: boolean): unknown {
         h("summary", { style: { cursor: "pointer" } }, ...summary),
         h(
           "div",
-          { style: { marginTop: 2, paddingLeft: 14, fontSize: 12, opacity: 0.8 } },
+          {
+            style: {
+              marginTop: 2,
+              paddingLeft: 14,
+              fontSize: 12,
+              opacity: 0.8,
+            },
+          },
           ...monster.details.map((line) => h("div", { key: line }, line)),
         ),
       );
@@ -1490,7 +2104,9 @@ function hpBar(member: { readonly hp: number; readonly maxHp: number }): unknown
         overflow: "hidden",
       },
     },
-    h("div", { style: { width: `${percent}%`, height: "100%", background: color } }),
+    h("div", {
+      style: { width: `${percent}%`, height: "100%", background: color },
+    }),
   );
 }
 
@@ -1502,14 +2118,20 @@ function panelHeader(
 ): unknown {
   return h(
     "div",
-    { style: { display: "flex", alignItems: "center", gap: 6, marginBottom: 4 } },
+    {
+      style: { display: "flex", alignItems: "center", gap: 6, marginBottom: 4 },
+    },
     h("div", { style: { fontWeight: 600, fontSize: 13, flex: 1 } }, title),
     running === null
       ? null
       : tag(status ?? (running ? "运行中" : "没在运行"), running ? "win" : "muted"),
     h(
       "button",
-      { type: "button", onClick: reload, style: { fontSize: 12, padding: "2px 8px" } },
+      {
+        type: "button",
+        onClick: reload,
+        style: { fontSize: 12, padding: "2px 8px" },
+      },
       "刷新",
     ),
   );
@@ -1554,7 +2176,14 @@ function bookStationCell(row: BookStationRowView): unknown {
       ? null
       : h(
           "div",
-          { style: { fontSize: 11, opacity: 0.7, marginTop: 2, overflowWrap: "anywhere" } },
+          {
+            style: {
+              fontSize: 11,
+              opacity: 0.7,
+              marginTop: 2,
+              overflowWrap: "anywhere",
+            },
+          },
           row.note,
         ),
   );
@@ -1563,6 +2192,7 @@ function bookStationCell(row: BookStationRowView): unknown {
 function planStatusTone(status: string): Tone {
   if (status === "完成") return "win";
   if (status === "执行中") return "business";
+  if (status.startsWith("等待修复")) return "hard";
   if (status === "出例外") return "hard";
   return "muted";
 }
@@ -1587,7 +2217,14 @@ function planStationCell(row: PlanStationRowView): unknown {
     parts.push(
       h(
         "div",
-        { style: { fontSize: 11, opacity: 0.7, marginTop: 2, overflowWrap: "anywhere" } },
+        {
+          style: {
+            fontSize: 11,
+            opacity: 0.7,
+            marginTop: 2,
+            overflowWrap: "anywhere",
+          },
+        },
         row.note,
       ),
     );
@@ -1604,7 +2241,10 @@ function planRuleTables(tables: readonly PlanRuleTableView[], keyPrefix: string)
       ...table.lines.map((line, lineIndex) =>
         h(
           "div",
-          { key: lineIndex, style: { fontSize: 12, marginTop: 1, overflowWrap: "anywhere" } },
+          {
+            key: lineIndex,
+            style: { fontSize: 12, marginTop: 1, overflowWrap: "anywhere" },
+          },
           line,
         ),
       ),
@@ -1620,7 +2260,10 @@ function planReportBlock(report: PlanReportView | null, emptyText: string): unkn
     ...report.lines.map((line, index) =>
       h(
         "div",
-        { key: `report-${index}`, style: { fontSize: 12, marginTop: index === 0 ? 0 : 1 } },
+        {
+          key: `report-${index}`,
+          style: { fontSize: 12, marginTop: index === 0 ? 0 : 1 },
+        },
         line,
       ),
     ),
@@ -1643,7 +2286,14 @@ function planBlock(view: PlanPanelView | null, error: string | null): unknown {
       sectionTitle(view.title),
       h(
         "div",
-        { style: { display: "flex", alignItems: "center", gap: 6, marginTop: 2 } },
+        {
+          style: {
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            marginTop: 2,
+          },
+        },
         tag(view.status, planStatusTone(view.status)),
       ),
       view.message === null ? null : emptyLine(view.message),
@@ -1802,6 +2452,671 @@ function planBlock(view: PlanPanelView | null, error: string | null): unknown {
   );
 }
 
+function routeStatusTone(status: RouteStationStatus): Tone {
+  if (status === "done") return "win";
+  if (status === "current") return "business";
+  if (status === "failed") return "hard";
+  if (status === "skipped") return "skip";
+  return "muted";
+}
+
+function routeKindColor(kind: RouteStationKind, status: RouteStationStatus): string {
+  if (status === "done" || status === "skipped") return "var(--dsw-alias-label-tertiary)";
+  if (kind === "chest") return "#b7791f";
+  if (kind === "hidden") return "#805ad5";
+  if (kind === "boss") return "#c53030";
+  if (kind === "story") return "#2b6cb0";
+  if (kind === "heal" || kind === "save") return "#2f855a";
+  if (kind === "shop") return "#718096";
+  if (kind === "grind") return "#c05621";
+  return "#4a5568";
+}
+
+function routeStationLine(row: ChapterRouteStationView): unknown {
+  const marker = row.kind === "hidden" ? "◆" : row.kind === "chest" ? "▣" : "";
+  return h(
+    "div",
+    {
+      key: `route-station-${row.number}`,
+      style: {
+        display: "flex",
+        alignItems: "baseline",
+        gap: 5,
+        flexWrap: "wrap",
+        fontSize: 12,
+        marginTop: 2,
+        color: row.status === "done" ? "inherit" : undefined,
+        opacity: row.status === "done" || row.status === "skipped" ? 0.7 : 1,
+      },
+    },
+    h(
+      "span",
+      {
+        style: {
+          minWidth: 18,
+          fontWeight: 700,
+          color: routeKindColor(row.kind, row.status),
+        },
+      },
+      row.label,
+    ),
+    h(
+      "span",
+      {
+        style: {
+          fontSize: 11,
+          opacity: 0.8,
+          color: row.unknownCell ? toneColor("business") : undefined,
+        },
+      },
+      `${row.mapText} ${row.cellText}${row.unknownCell && row.candidateText !== "" ? `，${row.candidateText}` : ""}`,
+    ),
+    h("span", null, row.action),
+    row.itemText === ""
+      ? null
+      : h(
+          "span",
+          {
+            style: {
+              fontWeight: 700,
+              color: row.kind === "hidden" ? "#805ad5" : "#b7791f",
+            },
+          },
+          `${marker} ${row.itemText}`,
+        ),
+    tag(row.statusText, routeStatusTone(row.status)),
+    row.note === "" ? null : h("span", { style: { fontSize: 11, opacity: 0.65 } }, row.note),
+  );
+}
+
+function routeLegLine(leg: ChapterRouteLegView): unknown {
+  return h(
+    "div",
+    {
+      key: `route-leg-${leg.number}`,
+      style: {
+        fontSize: 12,
+        marginTop: 2,
+        color: leg.ok ? undefined : toneColor("hard"),
+        overflowWrap: "anywhere",
+      },
+    },
+    leg.text,
+    leg.ok || leg.reason === null ? null : h("span", null, `（${leg.reason}）`),
+  );
+}
+
+function routeSegmentBlock(segment: ChapterRouteSegmentView): unknown {
+  return h(
+    "details",
+    {
+      key: `route-segment-${segment.number}`,
+      open: segment.current,
+      style: { marginTop: 5 },
+    },
+    h(
+      "summary",
+      { style: { cursor: "pointer", fontSize: 12, fontWeight: 600 } },
+      `${segment.number}. ${segment.section}`,
+      h(
+        "span",
+        { style: { marginLeft: 6 } },
+        tag(segment.stateText, planStatusTone(segment.stateText)),
+      ),
+    ),
+    h("div", { style: { fontSize: 11, opacity: 0.8, marginTop: 2 } }, segment.chestsText),
+    h(
+      "div",
+      {
+        style: {
+          fontSize: 11,
+          opacity: 0.8,
+          color: segment.unreachableText === null ? undefined : toneColor("hard"),
+        },
+      },
+      segment.distanceText,
+    ),
+    ...segment.stations.map((row) => routeStationLine(row)),
+    segment.legs.length === 0
+      ? null
+      : h(
+          "div",
+          { style: { marginTop: 4 } },
+          h("div", { style: { fontSize: 11, fontWeight: 600, opacity: 0.75 } }, "站间路段"),
+          ...segment.legs.map((leg) => routeLegLine(leg)),
+        ),
+  );
+}
+
+function routeCellColor(char: string): string {
+  if (char === "#") return "#2d3748";
+  if (char === ".") return "#e2e8f0";
+  if (char === "+") return "#9f7aea";
+  if (char === ":") return "#a0aec0";
+  if (char === "S") return "#f6e05e";
+  if (char === "=") return "#63b3ed";
+  if (char === " ") return "transparent";
+  return "#cbd5e0";
+}
+
+function routeMapGrid(view: ChapterRouteMapView): unknown {
+  const rows = view.rows;
+  if (view.width <= 0 || view.height <= 0 || rows.length === 0) {
+    return emptyLine(view.width <= 0 ? "没有碰撞缓存，画不出网格" : "这张图是空的");
+  }
+  const size = Math.max(3, Math.min(10, Math.floor(280 / Math.max(1, view.width))));
+  const widthPx = view.width * size;
+  const heightPx = view.height * size;
+  const cells: unknown[] = [];
+  for (let y = 0; y < view.height; y += 1) {
+    const row = rows[y] ?? "";
+    for (let x = 0; x < view.width; x += 1) {
+      const char = row[x] ?? " ";
+      cells.push(
+        h("div", {
+          key: `cell-${x}-${y}`,
+          title: `(${x},${y}) ${char}`,
+          style: {
+            width: size,
+            height: size,
+            boxSizing: "border-box",
+            background: routeCellColor(char),
+            border: "1px solid rgba(0,0,0,0.06)",
+          },
+        }),
+      );
+    }
+  }
+  const lines: unknown[] = [];
+  for (const path of view.paths) {
+    if (path.points.length < 2) continue;
+    const points = path.points.map(([x, y]) => `${(x + 0.5) * size},${(y + 0.5) * size}`).join(" ");
+    lines.push(
+      h("polyline", {
+        key: `path-${path.legNumber}-${path.points[0]?.[0] ?? 0}-${path.points[0]?.[1] ?? 0}`,
+        points,
+        fill: "none",
+        stroke: path.ok ? "#2f855a" : "#c53030",
+        strokeWidth: Math.max(1, size / 4),
+        strokeLinecap: "round",
+        strokeLinejoin: "round",
+        opacity: 0.9,
+      }),
+    );
+  }
+  const stationCells = new Set(view.stations.map((row) => `${row.cell[0]},${row.cell[1]}`));
+  const markers: unknown[] = [];
+  for (const exit of view.exits) {
+    if (stationCells.has(`${exit.cell[0]},${exit.cell[1]}`)) continue;
+    markers.push(
+      h(
+        "div",
+        {
+          key: `exit-${exit.cell[0]}-${exit.cell[1]}-${exit.to ?? "?"}`,
+          title: exit.text,
+          style: {
+            position: "absolute",
+            left: (exit.cell[0] + 0.5) * size - 5,
+            top: (exit.cell[1] + 0.5) * size - 5,
+            width: 10,
+            height: 10,
+            borderRadius: 2,
+            background: "#3182ce",
+            color: "#fff",
+            fontSize: 7,
+            lineHeight: "10px",
+            textAlign: "center",
+            opacity: 0.85,
+          },
+        },
+        "门",
+      ),
+    );
+  }
+  const markerSize = Math.max(14, Math.min(20, size * 1.8));
+  for (const row of view.stations) {
+    const color = routeKindColor(row.kind, row.status);
+    markers.push(
+      h(
+        "div",
+        {
+          key: `station-${row.number}`,
+          title: `${row.label} ${row.action} ${row.statusText}${
+            row.unknownCell ? ` 格子未定，${row.candidateText}` : ""
+          }${row.itemName === null ? "" : ` ${row.itemName}`}`,
+          style: {
+            position: "absolute",
+            left: (row.cell[0] + 0.5) * size - markerSize / 2,
+            top: (row.cell[1] + 0.5) * size - markerSize / 2,
+            width: markerSize,
+            height: markerSize,
+            borderRadius: row.kind === "boss" ? 2 : "50%",
+            background: color,
+            color: "#fff",
+            border: "1px solid rgba(255,255,255,0.9)",
+            boxShadow: "0 0 0 1px rgba(0,0,0,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: markerSize * 0.55,
+            fontWeight: 700,
+            opacity: row.status === "done" || row.status === "skipped" ? 0.45 : 1,
+          },
+        },
+        row.unknownCell ? "?" : row.label,
+      ),
+    );
+  }
+  if (view.party !== null) {
+    markers.push(
+      h(
+        "div",
+        {
+          key: "party",
+          title: view.party.text,
+          style: {
+            position: "absolute",
+            left: (view.party.cell[0] + 0.5) * size - markerSize / 2,
+            top: (view.party.cell[1] + 0.5) * size - markerSize / 2,
+            width: markerSize,
+            height: markerSize,
+            borderRadius: "50%",
+            background: "#d9822b",
+            color: "#fff",
+            border: "2px solid #fff",
+            boxShadow: "0 0 0 2px rgba(0,0,0,0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: markerSize * 0.5,
+            fontWeight: 700,
+            zIndex: 5,
+          },
+        },
+        "队",
+      ),
+    );
+  }
+  return h(
+    "div",
+    {
+      style: {
+        position: "relative",
+        width: widthPx,
+        height: heightPx,
+        border: "1px solid rgba(128,128,128,0.45)",
+        background: "#fff",
+        overflow: "hidden",
+      },
+    },
+    h(
+      "div",
+      {
+        style: {
+          display: "grid",
+          gridTemplateColumns: `repeat(${view.width}, ${size}px)`,
+          lineHeight: 0,
+        },
+      },
+      ...cells,
+    ),
+    lines.length === 0
+      ? null
+      : h(
+          "svg",
+          {
+            width: widthPx,
+            height: heightPx,
+            style: { position: "absolute", left: 0, top: 0, pointerEvents: "none" },
+          },
+          ...lines,
+        ),
+    ...markers,
+  );
+}
+
+function routeMapBlock(
+  view: ChapterRouteView,
+  map: ChapterRouteMapView | null,
+  error: string | null,
+  selected: string,
+  onSelect: (mapId: number) => void,
+): unknown {
+  if (map === null) return emptyLine(error ?? "正在读取章路线地图…");
+  const refs = map.maps.length > 0 ? map.maps : view.maps;
+  const selectedId = map.mapId ?? (selected === "" ? null : Number(selected));
+  const children: unknown[] = [
+    h(
+      "div",
+      { style: { display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 } },
+      ...refs.map((ref) =>
+        h(
+          "button",
+          {
+            key: `route-map-${ref.id}`,
+            type: "button",
+            onClick: () => {
+              onSelect(ref.id);
+            },
+            style: {
+              fontSize: 11,
+              padding: "1px 6px",
+              borderRadius: 4,
+              border: `1px solid ${ref.id === selectedId ? toneColor("business") : "rgba(128,128,128,0.45)"}`,
+              background: ref.id === selectedId ? "rgba(43,108,176,0.12)" : "transparent",
+              color: "inherit",
+              cursor: "pointer",
+            },
+          },
+          ref.text,
+        ),
+      ),
+    ),
+  ];
+  if (map.mapId === null) {
+    return h("div", null, ...children, emptyLine(map.message ?? map.emptyText));
+  }
+  children.push(
+    h(
+      "div",
+      {
+        style: { display: "flex", gap: 6, flexWrap: "wrap", alignItems: "baseline", marginTop: 4 },
+      },
+      h("span", { style: { fontWeight: 600, fontSize: 12 } }, map.status),
+      map.party === null
+        ? null
+        : h("span", { style: { fontSize: 11, color: toneColor("business") } }, map.party.text),
+    ),
+    h(
+      "div",
+      { style: { fontSize: 10, opacity: 0.65, marginTop: 2 } },
+      `${map.width}×${map.height} · 第 ${map.layer} 层`,
+    ),
+    h("div", { style: { marginTop: 4, overflowX: "auto" } }, routeMapGrid(map)),
+    h("div", { style: { fontSize: 10, opacity: 0.7, marginTop: 3 } }, map.legendText),
+  );
+  const unknownStations = map.stations.filter((row) => row.unknownCell);
+  if (unknownStations.length > 0) {
+    children.push(
+      h(
+        "div",
+        { style: { marginTop: 4 } },
+        h("div", { style: { fontSize: 11, fontWeight: 600, opacity: 0.75 } }, "格子未定"),
+        ...unknownStations.map((row) =>
+          h(
+            "div",
+            { key: `unknown-${row.number}`, style: { fontSize: 11, marginTop: 1 } },
+            `${row.label}：${row.candidateText}`,
+          ),
+        ),
+      ),
+    );
+  }
+  if (map.stations.length === 0) children.push(emptyLine(map.emptyText));
+  if (map.paths.length === 0) {
+    children.push(emptyLine("这张图上没有路段"));
+  } else {
+    children.push(
+      h(
+        "div",
+        { style: { marginTop: 4 } },
+        h("div", { style: { fontSize: 11, fontWeight: 600, opacity: 0.75 } }, "本图路段"),
+        ...map.paths.map((path) =>
+          h(
+            "div",
+            {
+              key: `map-path-${path.legNumber}-${path.points[0]?.[0] ?? 0}-${path.points[0]?.[1] ?? 0}`,
+              style: {
+                fontSize: 11,
+                marginTop: 2,
+                color: path.ok ? undefined : toneColor("hard"),
+                overflowWrap: "anywhere",
+              },
+            },
+            `${path.text}：${path.entryText}；${path.exitText}`,
+            path.reason === null ? "" : `（${path.reason}）`,
+          ),
+        ),
+      ),
+    );
+  }
+  if (map.exits.length > 0) {
+    children.push(
+      h(
+        "div",
+        { style: { marginTop: 4 } },
+        h("div", { style: { fontSize: 11, fontWeight: 600, opacity: 0.75 } }, "出口"),
+        ...map.exits.map((exit, index) =>
+          h("div", { key: `exit-line-${index}`, style: { fontSize: 11, marginTop: 1 } }, exit.text),
+        ),
+      ),
+    );
+  }
+  for (const warning of map.warnings) children.push(emptyLine(warning));
+  return h("div", null, ...children);
+}
+
+function chapterRouteBlock(
+  view: ChapterRouteView | null,
+  map: ChapterRouteMapView | null,
+  routeError: string | null,
+  mapError: string | null,
+  selected: string,
+  onSelect: (mapId: number) => void,
+): unknown {
+  if (view === null) {
+    return h(
+      "div",
+      { style: { marginTop: 6 } },
+      sectionTitle("路线"),
+      emptyLine(routeError ?? "正在读取章路线…"),
+    );
+  }
+  if (view.chapter === null) {
+    return h(
+      "div",
+      { style: { marginTop: 6 } },
+      sectionTitle("路线"),
+      emptyLine(view.message ?? view.status),
+    );
+  }
+  const open = readStorage(ROUTE_OPENED_KEY) !== "0";
+  const onToggle = (event: unknown): void => {
+    if (!isRecord(event)) return;
+    const target = event.currentTarget;
+    if (isRecord(target) && typeof target.open === "boolean") {
+      writeStorage(ROUTE_OPENED_KEY, target.open ? "1" : "0");
+    }
+  };
+  const children: unknown[] = [
+    h("div", { style: { fontSize: 12, marginTop: 2 } }, view.startText),
+    h("div", { style: { fontSize: 12, marginTop: 2 } }, view.totalsText),
+  ];
+  for (const warning of view.warnings) children.push(emptyLine(warning));
+  if (view.segments.length === 0) children.push(emptyLine(view.emptyText));
+  else children.push(...view.segments.map((segment) => routeSegmentBlock(segment)));
+  children.push(
+    h(
+      "div",
+      { style: { marginTop: 8 } },
+      sectionTitle("地图"),
+      routeMapBlock(view, map, mapError, selected, onSelect),
+    ),
+  );
+  return h(
+    "details",
+    { style: { marginTop: 10 }, open, onToggle },
+    h(
+      "summary",
+      { style: { cursor: "pointer", fontSize: 12, fontWeight: 600 } },
+      "路线",
+      h("span", { style: { marginLeft: 6 } }, tag(view.status, planStatusTone(view.status))),
+    ),
+    ...children,
+  );
+}
+
+function routeStartOf(view: WalkView | null): string {
+  const map = view?.map ?? null;
+  if (map === null || view === null) return "";
+  return `${map}:${view.cell[0]},${view.cell[1]}`;
+}
+
+function ChapterRouteSection(props: { readonly game: string; readonly start: string }): unknown {
+  const route = usePolling(loadChapterRoute, REFRESH_MS, props.game, false, props.start);
+  const [selectedMap, setSelectedMap] = React.useState<string>("");
+  const map = usePolling(
+    loadChapterRouteMap,
+    REFRESH_MS,
+    props.game,
+    false,
+    `${selectedMap}|${props.start}`,
+  );
+  return chapterRouteBlock(route.data, map.data, route.error, map.error, selectedMap, (mapId) => {
+    setSelectedMap(String(mapId));
+  });
+}
+
+function chapterBlock(
+  view: ChapterPanelView | null,
+  error: string | null,
+  game: string,
+  start: string,
+): unknown {
+  if (view === null) {
+    return card([sectionTitle("章计划"), emptyLine(error ?? "正在读取章计划…")]);
+  }
+  if (view.chapter === null) {
+    return card([
+      sectionTitle(view.title),
+      h(
+        "div",
+        {
+          style: {
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            marginTop: 2,
+          },
+        },
+        tag(view.status, planStatusTone(view.status)),
+      ),
+      view.message === null ? null : emptyLine(view.message),
+    ]);
+  }
+  const chapter = view.chapter;
+  const children: unknown[] = [
+    h("div", { style: { fontWeight: 600, fontSize: 13, marginTop: 2 } }, chapter.heading),
+    h("div", { style: { fontSize: 12, marginTop: 2 } }, chapter.goalText),
+    h(
+      "div",
+      { style: { fontSize: 11, opacity: 0.75, marginTop: 2 } },
+      `${chapter.revisionText} · ${chapter.startedText} · ${chapter.updatedText}`,
+    ),
+  ];
+  for (const warning of chapter.warnings) children.push(emptyLine(warning));
+  children.push(sectionTitle("各段"));
+  if (chapter.segments.length === 0) children.push(emptyLine(chapter.segmentEmptyText));
+  else {
+    children.push(
+      table(
+        chapter.segmentHeaders,
+        chapter.segments.map((row) => [
+          row.number,
+          row.section,
+          row.stationCount,
+          row.doneCount,
+          row.stateText,
+        ]),
+        chapter.segments.map((row) =>
+          row.current ? { background: "rgba(217, 130, 43, 0.14)" } : undefined,
+        ),
+      ),
+    );
+  }
+  children.push(sectionTitle(chapter.stationSectionText));
+  if (chapter.stations.length === 0) children.push(emptyLine(chapter.stationEmptyText));
+  else {
+    children.push(
+      table(
+        chapter.stationHeaders,
+        chapter.stations.map((row) => [
+          row.number,
+          row.mapText,
+          row.cellText,
+          row.action,
+          row.why,
+          row.untilText,
+          planStationCell(row),
+        ]),
+        chapter.stations.map((row) =>
+          row.current ? { background: "rgba(217, 130, 43, 0.14)" } : undefined,
+        ),
+      ),
+    );
+  }
+  children.push(sectionTitle("长线成长"));
+  if (chapter.growth.length === 0) children.push(emptyLine(chapter.growthEmptyText));
+  else {
+    children.push(
+      h(
+        "div",
+        null,
+        ...chapter.growth.map((line, index) =>
+          h("div", { key: `growth-${index}`, style: { fontSize: 12 } }, line),
+        ),
+      ),
+    );
+  }
+  children.push(sectionTitle("兜底"));
+  children.push(
+    h(
+      "div",
+      null,
+      ...chapter.fallback.map((line, index) =>
+        h("div", { key: `fallback-${index}`, style: { fontSize: 12 } }, line),
+      ),
+    ),
+  );
+  if (chapter.fallbackRecords.length > 0) {
+    children.push(
+      h(
+        "div",
+        { style: { marginTop: 4 } },
+        ...chapter.fallbackRecords.map((line, index) =>
+          h("div", { key: `fallback-record-${index}`, style: { fontSize: 12 } }, line),
+        ),
+      ),
+    );
+  } else {
+    children.push(emptyLine(chapter.fallbackEmptyText));
+  }
+  children.push(sectionTitle("不做的目标"));
+  if (chapter.skipped.length === 0) children.push(emptyLine(chapter.skippedEmptyText));
+  else {
+    children.push(
+      table(
+        chapter.skippedHeaders,
+        chapter.skipped.map((row) => [row.kind, row.name, row.whereText, row.why]),
+      ),
+    );
+  }
+  children.push(sectionTitle(chapter.report?.heading ?? "最近一份章报告"));
+  children.push(planReportBlock(chapter.report, chapter.reportEmptyText));
+  children.push(h(ChapterRouteSection, { key: `chapter-route-${game}`, game, start }));
+  return h(
+    "details",
+    { style: CARD_STYLE, open: true },
+    h(
+      "summary",
+      { style: { cursor: "pointer", fontSize: 12, fontWeight: 600 } },
+      "章计划",
+      h("span", { style: { marginLeft: 6 } }, tag(view.status, planStatusTone(view.status))),
+    ),
+    ...children,
+  );
+}
+
 function bookBlock(view: BookPanelView | null, error: string | null): unknown {
   const children: unknown[] = [sectionTitle(view?.title ?? "路线书")];
   if (view === null) {
@@ -1812,7 +3127,14 @@ function bookBlock(view: BookPanelView | null, error: string | null): unknown {
   children.push(
     h(
       "div",
-      { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } },
+      {
+        style: {
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          flexWrap: "wrap",
+        },
+      },
       h("div", { style: { flex: 1, minWidth: 120, fontWeight: 600 } }, heading),
       view.section === null ? null : tag(view.status, bookStatusTone(view.status)),
     ),
@@ -1868,7 +3190,15 @@ function PlayerPanel(): unknown {
   const poll = usePolling(loadPlayer, REFRESH_MS, current.game);
   const book = usePolling(loadBook, REFRESH_MS, current.game);
   const plan = usePolling(loadPlan, REFRESH_MS, current.game);
+  const chapter = usePolling(loadChapter, REFRESH_MS, current.game);
+  // Task 157: the walk view is already on the page; its last cell is the live position the
+  // route route uses, with the chapter progress as the fallback when no walk is shown.
+  const walk = usePolling(loadWalk, REFRESH_MS, current.game);
+  const routeStart = routeStartOf(walk.data?.view ?? null);
   const view = poll.data;
+  // Task 153: the panel route carries the panel entry's Config mode, so chapter mode shows the
+  // chapter card and plan mode keeps the segment card even before either file exists.
+  const showChapter = chapter.data?.mode !== "plan";
   const children: unknown[] = [
     panelHeader(
       view?.title ?? `${current.current?.title ?? "FFPR"} 玩家`,
@@ -1879,6 +3209,8 @@ function PlayerPanel(): unknown {
         poll.reload();
         book.reload();
         plan.reload();
+        chapter.reload();
+        walk.reload();
       },
     ),
     h(
@@ -1890,7 +3222,11 @@ function PlayerPanel(): unknown {
   const error = poll.error ?? current.error;
   children.push(errorLine(error));
   if (view === null) {
-    children.push(planBlock(plan.data, plan.error));
+    children.push(
+      showChapter
+        ? chapterBlock(chapter.data, chapter.error, current.game, routeStart)
+        : planBlock(plan.data, plan.error),
+    );
     children.push(bookBlock(book.data, book.error));
     if (error === null) children.push(emptyLine("正在读取玩家记录…"));
     return h("div", { style: PANEL_STYLE }, ...children);
@@ -1916,7 +3252,9 @@ function PlayerPanel(): unknown {
       sectionTitle("现在"),
       view.now === "" ? emptyLine("AI 还没有说话") : h("div", null, view.now),
     ]),
-    planBlock(plan.data, plan.error),
+    showChapter
+      ? chapterBlock(chapter.data, chapter.error, current.game, routeStart)
+      : planBlock(plan.data, plan.error),
     bookBlock(book.data, book.error),
     card([
       sectionTitle("笔记"),
@@ -1936,7 +3274,14 @@ function PlayerPanel(): unknown {
             "div",
             null,
             ...view.incidents.map((incident, index) =>
-              h("div", { key: `incident-${index}`, style: { color: toneColor("wipe") } }, incident),
+              h(
+                "div",
+                {
+                  key: `incident-${index}`,
+                  style: { color: toneColor("wipe") },
+                },
+                incident,
+              ),
             ),
           ),
     ]),
@@ -1960,12 +3305,21 @@ function PlayerPanel(): unknown {
             ...view.decisions.map((decision, index) =>
               h(
                 "div",
-                { key: `decision-${index}`, style: { marginTop: index === 0 ? 0 : 5 } },
+                {
+                  key: `decision-${index}`,
+                  style: { marginTop: index === 0 ? 0 : 5 },
+                },
                 decision.said === null
                   ? null
                   : h(
                       "div",
-                      { style: { fontSize: 11, opacity: 0.55, whiteSpace: "pre-wrap" } },
+                      {
+                        style: {
+                          fontSize: 11,
+                          opacity: 0.55,
+                          whiteSpace: "pre-wrap",
+                        },
+                      },
                       decision.said,
                     ),
                 h("div", { style: { fontSize: 12, overflowWrap: "anywhere" } }, decision.line),
@@ -1983,7 +3337,10 @@ function PlayerPanel(): unknown {
             ...view.messages.map((message, index) =>
               h(
                 "div",
-                { key: `message-${index}`, style: { marginTop: index === 0 ? 0 : 5 } },
+                {
+                  key: `message-${index}`,
+                  style: { marginTop: index === 0 ? 0 : 5 },
+                },
                 h(
                   "span",
                   { style: { opacity: 0.65, fontSize: 11, marginRight: 6 } },
@@ -2014,7 +3371,14 @@ function tacticianTable(table: TacticianTableView): unknown {
   const children: unknown[] = [
     h(
       "div",
-      { style: { display: "flex", gap: 6, alignItems: "baseline", flexWrap: "wrap" } },
+      {
+        style: {
+          display: "flex",
+          gap: 6,
+          alignItems: "baseline",
+          flexWrap: "wrap",
+        },
+      },
       h("span", { style: { fontWeight: 600, fontSize: 12 } }, table.title),
       table.inUse ? tag("正在用", "win") : null,
       h("span", { style: { fontSize: 11, opacity: 0.7 } }, table.recordText),
@@ -2068,7 +3432,10 @@ function mapTacticianBlock(view: TacticianMapView): unknown {
         ...view.boss.rewrites.map((line, index) =>
           h(
             "div",
-            { key: `rewrite-${index}`, style: { fontSize: 11, color: toneColor("hard") } },
+            {
+              key: `rewrite-${index}`,
+              style: { fontSize: 11, color: toneColor("hard") },
+            },
             line,
           ),
         ),
@@ -2116,7 +3483,10 @@ function TacticianPanel(): unknown {
             ...view.calls.map((call, index) =>
               h(
                 "div",
-                { key: `call-${index}`, style: { fontSize: 11, marginTop: index === 0 ? 0 : 3 } },
+                {
+                  key: `call-${index}`,
+                  style: { fontSize: 11, marginTop: index === 0 ? 0 : 3 },
+                },
                 call.line,
               ),
             ),
@@ -2161,7 +3531,16 @@ function battleUnitRow(unit: BattleUnitView, key: string): unknown {
     parts.push(h("span", { style: { fontSize: 11, color: toneColor("hard") } }, unit.statusText));
   return h(
     "div",
-    { key, style: { display: "flex", alignItems: "center", gap: 5, fontSize: 12, marginTop: 2 } },
+    {
+      key,
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 5,
+        fontSize: 12,
+        marginTop: 2,
+      },
+    },
     ...parts,
   );
 }
@@ -2175,7 +3554,10 @@ function turnRows(turn: BattleTurnView, key: string): unknown[] {
     rows.push(
       h(
         "div",
-        { key: `${key}-skip`, style: { fontSize: 11, color: toneColor("skip") } },
+        {
+          key: `${key}-skip`,
+          style: { fontSize: 11, color: toneColor("skip") },
+        },
         turn.skippedText,
       ),
     );
@@ -2437,7 +3819,13 @@ function Panel(): unknown {
     h(
       "label",
       {
-        style: { display: "flex", alignItems: "center", gap: 4, margin: "8px 0 4px", fontSize: 12 },
+        style: {
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          margin: "8px 0 4px",
+          fontSize: 12,
+        },
       },
       h("input", {
         type: "checkbox",
@@ -2522,7 +3910,14 @@ function currentCardView(current: CurrentCard): unknown {
   const children: unknown[] = [
     h(
       "div",
-      { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
+      {
+        style: {
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          flexWrap: "wrap",
+        },
+      },
       h("span", { style: { fontWeight: 600, fontSize: 16 } }, current.title),
       tag(current.statusText, current.running ? "win" : "muted"),
     ),
@@ -2552,7 +3947,13 @@ function currentCardView(current: CurrentCard): unknown {
         "div",
         {
           key: `${member.name}-${index}`,
-          style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, marginTop: 3 },
+          style: {
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 12,
+            marginTop: 3,
+          },
         },
         h(
           "span",
@@ -2575,13 +3976,25 @@ function currentCardView(current: CurrentCard): unknown {
         ),
         h(
           "span",
-          { style: { fontVariantNumeric: "tabular-nums", flex: "none", width: 78 } },
+          {
+            style: {
+              fontVariantNumeric: "tabular-nums",
+              flex: "none",
+              width: 78,
+            },
+          },
           `HP ${member.hp}/${member.maxHp}`,
         ),
         hpBar(member),
         h(
           "span",
-          { style: { fontVariantNumeric: "tabular-nums", flex: "none", opacity: 0.8 } },
+          {
+            style: {
+              fontVariantNumeric: "tabular-nums",
+              flex: "none",
+              opacity: 0.8,
+            },
+          },
           member.mp === null
             ? ""
             : `MP ${member.mp}${member.maxMp === null ? "" : `/${member.maxMp}`}`,
@@ -2625,11 +4038,15 @@ function currentCardView(current: CurrentCard): unknown {
   return h("div", { style: { ...CARD_STYLE, opacity: current.running ? 1 : 0.72 } }, ...children);
 }
 
-function walkSegmentsClient(
-  path: readonly (readonly [number, number])[],
-): readonly { readonly from: readonly [number, number]; readonly to: readonly [number, number] }[] {
+function walkSegmentsClient(path: readonly (readonly [number, number])[]): readonly {
+  readonly from: readonly [number, number];
+  readonly to: readonly [number, number];
+}[] {
   if (path.length === 0) return [];
-  const out: { from: readonly [number, number]; to: readonly [number, number] }[] = [];
+  const out: {
+    from: readonly [number, number];
+    to: readonly [number, number];
+  }[] = [];
   let from = path[0] ?? [0, 0];
   for (let i = 1; i < path.length; i++) {
     const before = path[i - 1];
@@ -2819,7 +4236,14 @@ function walkCardView(view: WalkView): unknown {
     { style: CARD_STYLE },
     h(
       "div",
-      { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } },
+      {
+        style: {
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          flexWrap: "wrap",
+        },
+      },
       h("div", { style: { flex: 1, minWidth: 160, fontSize: 13, fontWeight: 600 } }, view.label),
       tag(status, walkTone(view)),
     ),
@@ -2850,7 +4274,13 @@ function OverviewPage(): unknown {
     h(
       "div",
       {
-        style: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, paddingTop: 28 },
+        style: {
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          gap: 12,
+          paddingTop: 28,
+        },
       },
       h("div", { style: { flex: 1, fontSize: 20, fontWeight: 500 } }, "FFPR 总控"),
       h(
@@ -2860,7 +4290,14 @@ function OverviewPage(): unknown {
       ),
       h(
         "label",
-        { style: { display: "flex", alignItems: "center", gap: 4, fontSize: 12 } },
+        {
+          style: {
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            fontSize: 12,
+          },
+        },
         h("input", {
           type: "checkbox",
           checked: paused,
@@ -2907,12 +4344,24 @@ function OverviewPage(): unknown {
           },
           h(
             "span",
-            { style: { flex: "none", opacity: 0.7, fontVariantNumeric: "tabular-nums" } },
+            {
+              style: {
+                flex: "none",
+                opacity: 0.7,
+                fontVariantNumeric: "tabular-nums",
+              },
+            },
             clock(entry.at),
           ),
           h(
             "span",
-            { style: { flex: "none", color: kindColor(entry.kind), fontWeight: 600 } },
+            {
+              style: {
+                flex: "none",
+                color: kindColor(entry.kind),
+                fontWeight: 600,
+              },
+            },
             kindLabel(entry.kind),
           ),
           h("span", { style: { overflowWrap: "anywhere" } }, entry.text),
