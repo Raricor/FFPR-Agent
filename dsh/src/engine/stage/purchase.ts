@@ -11,7 +11,10 @@ import type { StageFacts, StagePlan } from "./types.ts";
 export interface ShopHere {
   readonly area?: string;
   readonly kind?: string;
-  readonly products: readonly { readonly name: string; readonly price: number | null }[];
+  readonly products: readonly {
+    readonly name: string;
+    readonly price: number | null;
+  }[];
 }
 
 export interface Purchase {

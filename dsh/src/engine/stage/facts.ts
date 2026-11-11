@@ -103,7 +103,10 @@ interface CureReport {
 }
 
 interface PointCollection {
-  readonly savePoints: readonly { readonly mapId: number; readonly cell: Cell }[];
+  readonly savePoints: readonly {
+    readonly mapId: number;
+    readonly cell: Cell;
+  }[];
   readonly recoveryPoints: readonly {
     readonly mapId: number;
     readonly cell: Cell;
@@ -313,7 +316,11 @@ function missingBlueMagic(
     .filter((name): name is string => name !== null && name !== "")
     .map(normalizeName);
   const sources = blueMagicSources(knowledge, learned === undefined ? {} : { learned });
-  const facts: { name: string; monsters: string[]; missable: boolean | null }[] = [];
+  const facts: {
+    name: string;
+    monsters: string[];
+    missable: boolean | null;
+  }[] = [];
   const labels = new Map<string, readonly string[]>();
   for (const source of sources) {
     const from = source.from.filter(
@@ -446,7 +453,10 @@ function collectPoints(
   }
   collectGuidePoints(guideText, relevant, target.mapId, savePoints, recoveryPoints, sources);
   return {
-    savePoints: uniquePoints(savePoints).map((point) => ({ mapId: point.mapId, cell: point.cell })),
+    savePoints: uniquePoints(savePoints).map((point) => ({
+      mapId: point.mapId,
+      cell: point.cell,
+    })),
     recoveryPoints: uniqueRecoveries(recoveryPoints),
     sources,
   };

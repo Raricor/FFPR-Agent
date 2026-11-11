@@ -61,7 +61,10 @@ export interface StageFacts {
     readonly opened: boolean | null;
     readonly missable: boolean | null;
   }[];
-  readonly savePoints: readonly { readonly mapId: number; readonly cell: Cell }[];
+  readonly savePoints: readonly {
+    readonly mapId: number;
+    readonly cell: Cell;
+  }[];
   readonly recoveryPoints: readonly {
     readonly mapId: number;
     readonly cell: Cell;
@@ -70,7 +73,10 @@ export interface StageFacts {
   readonly shops: readonly {
     readonly area: string;
     readonly kind: string;
-    readonly products: readonly { readonly name: string; readonly price: number | null }[];
+    readonly products: readonly {
+      readonly name: string;
+      readonly price: number | null;
+    }[];
   }[];
   readonly party: readonly {
     readonly name: string;
@@ -90,7 +96,11 @@ export interface StageFacts {
 }
 
 export type TurnBack =
-  | { readonly kind: "item-below"; readonly item: string; readonly count: number }
+  | {
+      readonly kind: "item-below";
+      readonly item: string;
+      readonly count: number;
+    }
   | { readonly kind: "status-uncurable"; readonly status: string }
   | { readonly kind: "no-revive" }
   | { readonly kind: "hp-below"; readonly percent: number };
@@ -144,7 +154,10 @@ export interface StagePlan {
     readonly min: number;
     readonly buyTo: number;
   }[];
-  readonly spells: readonly { readonly spell: string; readonly for: string | null }[];
+  readonly spells: readonly {
+    readonly spell: string;
+    readonly for: string | null;
+  }[];
   readonly gear: readonly string[];
   readonly jobs: readonly {
     readonly member: string;

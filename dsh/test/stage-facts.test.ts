@@ -187,7 +187,10 @@ void test("describeStageFacts cuts a sheet longer than the limit", async () => {
     bag: BAG,
     gil: 0,
   });
-  const text = describeStageFacts({ ...facts, guideText: "攻略".repeat(STAGE_FACTS_LIMIT) });
+  const text = describeStageFacts({
+    ...facts,
+    guideText: "攻略".repeat(STAGE_FACTS_LIMIT),
+  });
   assert.ok(Array.from(text).length <= STAGE_FACTS_LIMIT);
   assert.match(text, /事实单太长/u);
 });

@@ -228,7 +228,13 @@ void test("readStagePlan keeps a grind action and its until", () => {
     gear: [],
     jobs: [],
     minLevel: null,
-    route: [{ to: "260", do: "grind", until: { bestiary: ["哥布林", 12], battles: 3 } }],
+    route: [
+      {
+        to: "260",
+        do: "grind",
+        until: { bestiary: ["哥布林", 12], battles: 3 },
+      },
+    ],
     turnBack: [],
     notes: "",
   });

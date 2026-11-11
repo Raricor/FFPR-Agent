@@ -13,13 +13,36 @@ import { readStageRecord, type StagePlanRecord } from "../src/engine/stage/store
 import type { StageFacts, StagePlan } from "../src/engine/stage/types.ts";
 import { FakePilot } from "./fake-pilot.ts";
 
-const LAPTOP: Laptop = { host: "laptop", user: "player", key: "/tmp/key", root: "C:/ffpr" };
+const LAPTOP: Laptop = {
+  host: "laptop",
+  user: "player",
+  key: "/tmp/key",
+  root: "C:/ffpr",
+};
 
 const MAPS = [
   { id: 30, name: "卡纳克镇", areaId: 3, areaName: "卡纳克", areaType: "Town" },
-  { id: 252, name: "火力船", areaId: 9, areaName: "火力船", areaType: "Dungeon" },
-  { id: 253, name: "火力船 深处", areaId: 9, areaName: "火力船", areaType: "Dungeon" },
-  { id: 254, name: "火力船 最深处", areaId: 9, areaName: "火力船", areaType: "Dungeon" },
+  {
+    id: 252,
+    name: "火力船",
+    areaId: 9,
+    areaName: "火力船",
+    areaType: "Dungeon",
+  },
+  {
+    id: 253,
+    name: "火力船 深处",
+    areaId: 9,
+    areaName: "火力船",
+    areaType: "Dungeon",
+  },
+  {
+    id: 254,
+    name: "火力船 最深处",
+    areaId: 9,
+    areaName: "火力船",
+    areaType: "Dungeon",
+  },
 ];
 
 const PLAN: StagePlan = {
@@ -212,7 +235,10 @@ function pilotFor(
   });
   pilot.onQuery("items", {
     items: {
-      normal: Object.entries(options.items ?? {}).map(([name, count]) => ({ name, count })),
+      normal: Object.entries(options.items ?? {}).map(([name, count]) => ({
+        name,
+        count,
+      })),
     },
   });
   pilot.onQuery("shop", {
@@ -265,7 +291,9 @@ void test("plan_stage plans, saves, and reads the plan back after a restart", as
     assert.equal(first.game.stagePlan()?.status, "planned");
     await rm(first.directory, { recursive: true, force: true });
 
-    const second = await temporaryGame(officer(PLAN, calls), { planFile: path });
+    const second = await temporaryGame(officer(PLAN, calls), {
+      planFile: path,
+    });
     const again = await second.game.run("plan_stage", { to: 252 }, pilot);
     assert.match(again, /直接沿用/);
     assert.equal(calls.length, 1);
@@ -368,7 +396,9 @@ void test("an uncurable status with no recovery point ahead refuses going deeper
 });
 
 void test("a recovery point 12 cells ahead only tells the party to go there first", async () => {
-  const { game, directory } = await temporaryGame(officer(), { recovery: true });
+  const { game, directory } = await temporaryGame(officer(), {
+    recovery: true,
+  });
   try {
     await game.stagePlans.save(record("departed"));
     const before = (
@@ -442,7 +472,12 @@ void test("a battle-ended story event is a displayed key event", async () => {
   assert.ok(WINDOWS[1].types.has("battle-ended"));
   assert.ok(WINDOWS[2].types.has("battle-ended"));
   const events = new KeyEvents(() => new Date("2026-11-10T12:00:10Z"));
-  events.feed({ seq: 0, t: "2026-11-10T12:00:00Z", type: "hello", plugin: "0.14.5" });
+  events.feed({
+    seq: 0,
+    t: "2026-11-10T12:00:00Z",
+    type: "hello",
+    plugin: "0.14.5",
+  });
   const sample = (seq: number, battle: Json, hp: number): Json => ({
     seq,
     t: `2026-11-10T12:00:0${seq}Z`,
@@ -478,7 +513,9 @@ function goGate(game: Game): GoGate {
 }
 
 void test("a coordinate go inside a departed plan is refused with the next waypoint and route()", async () => {
-  const { game, directory } = await temporaryGame(officer(), { goFollowPlan: false });
+  const { game, directory } = await temporaryGame(officer(), {
+    goFollowPlan: false,
+  });
   try {
     await game.stagePlans.save(record("departed"));
     const text = await game.run("go", { to: [3, 3] }, pilotFor({ map: 253, cell: [1, 1] }));
@@ -495,17 +532,28 @@ void test("a coordinate go inside a departed plan is refused with the next waypo
 });
 
 void test("a plan waypoint, an event cell and an unopened hidden item cell are allowed", async () => {
-  const { game, directory } = await temporaryGame(officer(), { goFollowPlan: false });
+  const { game, directory } = await temporaryGame(officer(), {
+    goFollowPlan: false,
+  });
   try {
     await game.stagePlans.save(record("departed"));
     const pilot = pilotFor({ map: 253, cell: [1, 1] });
     pilot.on("entities", (fields) => {
       if (fields.kind === "Event") {
-        return { entities: { entities: [{ kind: "Event", name: "", cell: [7, 7] }] } };
+        return {
+          entities: { entities: [{ kind: "Event", name: "", cell: [7, 7] }] },
+        };
       }
       return {
         entities: {
-          entities: [{ kind: "TresureBox", hidden: true, contentName: "银镜", cell: [8, 8] }],
+          entities: [
+            {
+              kind: "TresureBox",
+              hidden: true,
+              contentName: "银镜",
+              cell: [8, 8],
+            },
+          ],
         },
       };
     });
@@ -592,7 +640,11 @@ void test("a stage without bosses does not call the tactician for a boss table",
   const { game, directory } = await temporaryGame(officer());
   game.setTactician(() => {
     calls += 1;
-    return Promise.resolve({ tables: [{ 巴兹: [{ do: "攻击" }] }], walkerNotes: "", askUp: "" });
+    return Promise.resolve({
+      tables: [{ 巴兹: [{ do: "攻击" }] }],
+      walkerNotes: "",
+      askUp: "",
+    });
   });
   try {
     const text = await game.run("plan_stage", { to: 252 }, pilotFor());
@@ -606,7 +658,10 @@ void test("a stage without bosses does not call the tactician for a boss table",
 
 void test("a changed party at the last checkpoint before the boss rewrites the table", async () => {
   const calls: string[] = [];
-  const { game, directory } = await temporaryGame(officer(), { boss: true, recovery: true });
+  const { game, directory } = await temporaryGame(officer(), {
+    boss: true,
+    recovery: true,
+  });
   game.setTactician((facts) => {
     calls.push(facts);
     return Promise.resolve({
@@ -681,7 +736,10 @@ void test("a coordinate go on an atlas exit triggers the stage officer and depar
   const calls: StageFacts[] = [];
   const { game, directory } = await temporaryGame(officer(PLAN, calls));
   try {
-    game.atlas.maps.set("30", { name: "卡纳克镇", exits: [{ cell: [5, 5], to: 252 }] });
+    game.atlas.maps.set("30", {
+      name: "卡纳克镇",
+      exits: [{ cell: [5, 5], to: 252 }],
+    });
     const text = await game.run("go", { to: [5, 5] }, pilotFor({ map: 30, cell: [4, 5] }));
     assert.equal(calls.length, 1);
     assert.match(text, /还没备齐/);

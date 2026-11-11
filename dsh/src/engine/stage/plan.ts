@@ -317,7 +317,10 @@ function monstersAt(
   place: GrindPlace,
   facts: StageFacts,
   knowledge: Knowledge | undefined,
-): { readonly monsters: readonly (StageMonster | MonsterKnowledge)[]; readonly known: boolean } {
+): {
+  readonly monsters: readonly (StageMonster | MonsterKnowledge)[];
+  readonly known: boolean;
+} {
   if (knowledge !== undefined) {
     const filter =
       place.mapId === null

@@ -89,7 +89,11 @@ export const STAGE_OFFICER_OUTPUT_SCHEMA: ObjectJsonSchema = {
         additionalProperties: false,
       },
     },
-    gear: { type: "array", items: { type: "string" }, description: "要换或要买的装备" },
+    gear: {
+      type: "array",
+      items: { type: "string" },
+      description: "要换或要买的装备",
+    },
     jobs: {
       type: "array",
       items: {
@@ -293,7 +297,9 @@ export async function callStageOfficer(
       answer = await activation.result;
     } catch (error) {
       signal.throwIfAborted();
-      throw new Error(`阶段官没有回答:${describeError(error)}`, { cause: error });
+      throw new Error(`阶段官没有回答:${describeError(error)}`, {
+        cause: error,
+      });
     }
     if (answer.stopReason !== "completed") {
       signal.throwIfAborted();
@@ -316,7 +322,11 @@ export async function callStageOfficer(
     lastPlan = plan;
     lastProblems = problems;
     if (problems.length === 0) {
-      return { plan, problems: [], text: describeStagePlan(plan, facts.target.label) };
+      return {
+        plan,
+        problems: [],
+        text: describeStagePlan(plan, facts.target.label),
+      };
     }
   }
   if (lastPlan === null) throw new Error("阶段官没有交出可用的计划");

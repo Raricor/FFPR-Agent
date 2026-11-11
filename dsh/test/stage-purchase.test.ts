@@ -91,7 +91,11 @@ void test("an item the shop does not sell is skipped", () => {
 
 void test("a shop with no usable price cannot be bought from", () => {
   const result = purchaseList(plan([{ item: "眼药", min: 1, buyTo: 2 }]), bag(), 1000, [
-    { area: "卡纳克", kind: "道具店", products: [{ name: "眼药", price: null }] },
+    {
+      area: "卡纳克",
+      kind: "道具店",
+      products: [{ name: "眼药", price: null }],
+    },
   ]);
   assert.deepEqual(result.buy, []);
   assert.equal(result.skipped.length, 1);
