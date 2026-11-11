@@ -269,14 +269,24 @@ export const FF5_PROFILE: GameProfile = {
    * guide: leave the monster unmarked rather than call it lost.
    */
   bestiaryMissables: [
-    { numbers: [191, 192], areas: [11], until: "离开托纳运河前", past: "scenario_3" },
+    {
+      numbers: [191, 192],
+      areas: [11],
+      until: "离开托纳运河前",
+      past: "scenario_3",
+    },
     {
       numbers: [233],
       areas: [15],
       until: "北山首领战里让玛基莎把它召唤出来",
       past: "scenario_3",
     },
-    { numbers: [28, 29], areas: [71], until: "打倒沃尔斯塔顶的首领前", past: "scenario_3" },
+    {
+      numbers: [28, 29],
+      areas: [71],
+      until: "打倒沃尔斯塔顶的首领前",
+      past: "scenario_3",
+    },
     {
       numbers: [27],
       areas: [66, 71],
@@ -294,7 +304,12 @@ export const FF5_PROFILE: GameProfile = {
       until: "打倒隆卡遗迹首领前",
       past: "scenario_7",
     },
-    { numbers: [76, 77, 78, 79], areas: [54], until: "大桥的战斗结束前", past: "scenario_10" },
+    {
+      numbers: [76, 77, 78, 79],
+      areas: [54],
+      until: "大桥的战斗结束前",
+      past: "scenario_10",
+    },
     {
       numbers: [263],
       areas: [0],
@@ -307,7 +322,12 @@ export const FF5_PROFILE: GameProfile = {
       until: "打倒屏障之塔首领前",
       past: "scenario_10",
     },
-    { numbers: [122], areas: [79, 86], until: "慕亚大森林变化前", past: "scenario_11" },
+    {
+      numbers: [122],
+      areas: [79, 86],
+      until: "慕亚大森林变化前",
+      past: "scenario_11",
+    },
     {
       numbers: [71, 72],
       areas: [40],
@@ -332,5 +352,14 @@ export const FF5_PROFILE: GameProfile = {
   /** 10-27 live dump: 封印之间 holds 12 hidden-item boxes, the 12 sealed weapons. */
   areaGoals: [{ api: "get_sealed_weapon", area: 55, kind: "hidden" }],
   /** Checked on the 10-27 live dump. */
-  elements: { 1: "火", 2: "冰", 3: "雷", 4: "土", 5: "水", 6: "毒", 7: "圣", 8: "风" },
+  elements: {
+    1: "火",
+    2: "冰",
+    3: "雷",
+    4: "土",
+    5: "水",
+    6: "毒",
+    7: "圣",
+    8: "风",
+  },
 };

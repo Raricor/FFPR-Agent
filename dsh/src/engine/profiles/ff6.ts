@@ -251,11 +251,23 @@ export const FF6_PROFILE: GameProfile = {
     { area: 63, until: "走到地下四层前", past: "scenario_6" }, // 封魔壁洞窟
     { area: 41, until: "进入崩坏后的世界前", past: "scenario_7" }, // 帝国城
     // Only open when the banquet went well.
-    { area: 62, until: "进入崩坏后的世界前(皇帝的宴会要表现好)", past: "scenario_7" }, // 封魔壁监视所
-    { area: 56, until: "离开着火的民房前(先走右边的房间，再走左边)", past: "scenario_7" }, // 着火的民房
+    {
+      area: 62,
+      until: "进入崩坏后的世界前(皇帝的宴会要表现好)",
+      past: "scenario_7",
+    }, // 封魔壁监视所
+    {
+      area: 56,
+      until: "离开着火的民房前(先走右边的房间，再走左边)",
+      past: "scenario_7",
+    }, // 着火的民房
     { area: 60, until: "进入崩坏后的世界前", past: "scenario_7" }, // 幻兽洞窟
     // Three before Ultima Weapon; the fourth on the escape, south then north.
-    { area: 58, until: "逃出魔大陆前(第四个在逃跑路上：先往南再往北)", past: "scenario_7" }, // 魔大陆
+    {
+      area: 58,
+      until: "逃出魔大陆前(第四个在逃跑路上：先往南再往北)",
+      past: "scenario_7",
+    }, // 魔大陆
     // Tzen's collapsing house and Cyan's dream are optional World of Ruin events: no story
     // achievement is certainly after them, so these two only warn.
     { area: 49, until: "救出危房里的孩子前(有时限)" }, // 危房
@@ -270,7 +282,12 @@ export const FF6_PROFILE: GameProfile = {
    */
   bestiaryMissables: [
     // The Phantom Train's ghosts and the false Siegfried (the optional sixth chest).
-    { numbers: [47, 48], areas: [22], until: "进车头机房前", past: "scenario_3" },
+    {
+      numbers: [47, 48],
+      areas: [22],
+      until: "进车头机房前",
+      past: "scenario_3",
+    },
     {
       numbers: [290, 291, 292],
       areas: [58, 76],

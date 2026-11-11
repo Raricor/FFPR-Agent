@@ -191,8 +191,16 @@ void test("a job change that makes a stored rule unusable says which rule and wh
       ["法利斯", "武僧"],
     ]),
     [
-      { name: "蕾娜", job: "白魔法师", commands: ["攻击", "防御", "道具", "白魔法"] },
-      { name: "法利斯", job: "黑魔法师", commands: ["攻击", "防御", "道具", "黑魔法"] },
+      {
+        name: "蕾娜",
+        job: "白魔法师",
+        commands: ["攻击", "防御", "道具", "白魔法"],
+      },
+      {
+        name: "法利斯",
+        job: "黑魔法师",
+        commands: ["攻击", "防御", "道具", "黑魔法"],
+      },
     ],
   );
   assert.ok(problems.some((problem) => problem.includes("从黑魔法师换成了武僧")));

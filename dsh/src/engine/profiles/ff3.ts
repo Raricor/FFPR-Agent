@@ -203,7 +203,11 @@ export const FF3_PROFILE: GameProfile = {
    */
   oneTimePlaces: [
     // The hidden item: the guard on the left wall, as soon as you are brought in.
-    { area: 25, until: "打倒海因前(被抓进城时先和左边城墙上的守卫说话)", past: "scenario_5" }, // 海因城
+    {
+      area: 25,
+      until: "打倒海因前(被抓进城时先和左边城墙上的守卫说话)",
+      past: "scenario_5",
+    }, // 海因城
     { area: 27, until: "完成水之洞窟前", past: "scenario_5" }, // 遇难船
     // Only the 2 hidden items of the town's 13 boxes: no count of lost boxes, just the warning.
     { area: 36, until: "阿鲁斯王子同行时，找两个人拿 2 个隐藏道具" }, // 萨罗尼亚 西南
@@ -230,7 +234,12 @@ export const FF3_PROFILE: GameProfile = {
       past: "scenario_6",
     },
     // Pharoah, Lemur, Lamia, Demon, Dullahan.
-    { numbers: [66, 67, 68, 69, 70], areas: [25], until: "打倒海因前", past: "scenario_5" },
+    {
+      numbers: [66, 67, 68, 69, 70],
+      areas: [25],
+      until: "打倒海因前",
+      past: "scenario_5",
+    },
   ],
   areaGoals: [],
   // The weak-row sentences name 1-3 and 5-8 (10-28 dump); 4, 9 and 11-14 stay numbers.

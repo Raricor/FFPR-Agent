@@ -24,8 +24,17 @@ void test("an unknown game key is an error, not an empty profile", () => {
 });
 
 interface ProfileFixture {
-  readonly treasure: readonly { area: number; name: string; type: number; total: number }[];
-  readonly bestiary: readonly { number: number; name: string; areas: readonly number[] }[];
+  readonly treasure: readonly {
+    area: number;
+    name: string;
+    type: number;
+    total: number;
+  }[];
+  readonly bestiary: readonly {
+    number: number;
+    name: string;
+    areas: readonly number[];
+  }[];
 }
 
 /** Title-screen dumps of the games whose missables were matched against the guides. */
