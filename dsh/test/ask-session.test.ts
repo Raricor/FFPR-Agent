@@ -32,7 +32,11 @@ void test("a late turn/end from the interrupted previous round does not finish t
   assert.deepEqual(prompt, { turn: 2, seq: 5 });
   assert.equal(turnEnded(all, prompt), false);
 
-  all.push({ seq: 7, type: "turn/end", data: { turn: 2, reason: "completed" } });
+  all.push({
+    seq: 7,
+    type: "turn/end",
+    data: { turn: 2, reason: "completed" },
+  });
   assert.equal(turnEnded(all, prompt), true);
 });
 
@@ -50,7 +54,11 @@ void test("a log without the RPC identity still finds the prompt by its text", (
   const all: FakeEvent[] = [
     { seq: 1, type: "turn/end", data: { turn: 1, reason: "aborted" } },
     { seq: 2, type: "turn/start", data: { turn: 2 } },
-    { seq: 3, type: "user/message", data: { content: [{ type: "text", text: "继续" }] } },
+    {
+      seq: 3,
+      type: "user/message",
+      data: { content: [{ type: "text", text: "继续" }] },
+    },
     { seq: 4, type: "turn/end", data: { turn: 2, reason: "completed" } },
   ];
   const prompt = promptTurn(all, "missing-rpc-id", 1, "继续");

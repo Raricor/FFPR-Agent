@@ -242,7 +242,9 @@ async function main() {
       throw new Error("usage: ask.mjs [--session <id>] [--wait-forever] <prompt>");
     const cookie = await connect();
     sessionId ??= (
-      await call(cookie, "session/create", { request: { cwd: CWD, agentPreset: PRESET } })
+      await call(cookie, "session/create", {
+        request: { cwd: CWD, agentPreset: PRESET },
+      })
     ).sessionId;
     const before = Math.max(-1, ...events(sessionId).map((e) => e.seq ?? -1));
     const requestId = randomUUID();
