@@ -5,7 +5,9 @@ import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-const bin = execFileSync("sh", ["-c", "command -v dsh"], { encoding: "utf8" }).trim();
+const bin = execFileSync("sh", ["-c", "command -v dsh"], {
+  encoding: "utf8",
+}).trim();
 // <prefix>/@deepseek-ai/dsh/lib/bin.js → <prefix>/@deepseek-ai/dsh/node_modules/@deepseek-ai
 const packages = join(dirname(dirname(realpathSync(bin))), "node_modules", "@deepseek-ai");
 if (!existsSync(join(packages, "dsh-tools"))) {
