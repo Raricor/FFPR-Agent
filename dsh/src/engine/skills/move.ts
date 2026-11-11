@@ -31,6 +31,13 @@ import type {
 } from "../nav.ts";
 import { isRecord, num, record, records, text, truthy, type Json } from "../values.ts";
 import { movesFromMovingGimmickMap } from "../atlas.ts";
+import {
+  jumpMoves,
+  jumpStand,
+  splitFeatures,
+  type MapFeatures,
+  type MapJump,
+} from "../knowledge/jumps.ts";
 import { eventBaseName, fallMoves } from "../view.ts";
 import {
   beginWalk,
@@ -190,6 +197,14 @@ export interface MoveState {
    * not re-read on every replan (the full query is the expensive one).
    */
   gimmickChecked?: Set<string>;
+  /**
+   * Task 134: counter/collider cells read with a map's `kind: All` entities, by map id.
+   * The collision data does not contain them, so a plan can walk into a closed counter;
+   * navigate uses these cells to face and press it when no route to the goal exists.
+   */
+  counters?: Map<string, readonly Cell[]>;
+  /** Task 134: guards the counter-press detour against re-entering navigate. */
+  openingCounter?: boolean;
   /** Ways seen earlier on a map (conveyors, falls, layer changes), for the next plan. */
   moves?: (mapId: unknown) => readonly ObservedMove[];
   /**
@@ -202,7 +217,7 @@ export interface MoveState {
    * Task 129: hidden-passage cells from the game files, by map. `go` reads the live collision
    * (which still has the wall) and merges these before planning.
    */
-  passages?: (mapId: number) => readonly PassageCell[];
+  passages?: (mapId: number) => readonly PassageCell[] | MapFeatures;
   /**
    * Task 129: page the story/dialog that stopped a walk, then let navigate replan from the
    * current position. The Game wires this to advance_story; without it an interruption is
@@ -734,6 +749,10 @@ async function blockingCells(
   entrances: ReadonlySet<string>;
   /** Task 99: this map has a moving gimmick (an entity or a seen Gimmick state). */
   gimmick: boolean;
+  /** Task 134: active counter/collider cells, read only with the `kind: All` query. */
+  counters: Cell[];
+  /** Whether the `kind: All` query ran, so an empty `counters` is not mistaken for none. */
+  allRead: boolean;
 }> {
   const found = new Map<string, Cell>();
   const conveyors = new Set<string>();
@@ -745,6 +764,7 @@ async function blockingCells(
   const entrances = new Set<string>();
   const seenEntities: Json[] = [];
   let holeMoves: ObservedMove[] = [];
+  let allRead = false;
   const kinds = ["TresureBox", "Npc", "RelayInteraction", "GotoMap", "Event"];
   if (withTransitions) kinds.push("ToLayer", "PointIn");
   for (const kind of kinds) {
@@ -790,6 +810,7 @@ async function blockingCells(
   // Task 99: moving gimmicks can sit in any group, so read them all (0.13.5's kind All). This
   // also gives the hole edges when transitions were asked for, instead of a second query.
   if (withTransitions || withGimmick) {
+    allRead = true;
     const all = record(
       (
         await pilot.send("entities", {
@@ -813,7 +834,29 @@ async function blockingCells(
     events,
     entrances,
     gimmick: (withGimmick || withTransitions) && hasMovingGimmick(seenEntities),
+    counters: allRead ? counterCells(seenEntities) : [],
+    allRead,
   };
+}
+
+/**
+ * Task 134: active counter/collider cells in a map's `All` entities. A closed shop counter
+ * is a collider, not a collision row (11-11, Beginner's Hall 31: (11,12)/(11,13) sealed the
+ * only way into the chest room); the bridge names it "カウンター開閉". Keep the filter
+ * narrow so ordinary props are not pressed.
+ */
+function counterCells(entities: readonly Json[]): Cell[] {
+  const found = new Map<string, Cell>();
+  for (const entity of entities) {
+    if (!isRecord(entity) || entity.active === false) continue;
+    const kind = text(entity.kind) ?? "";
+    const name = text(entity.name) ?? "";
+    if (!/カウンター|counter/iu.test(name) && !/collider/iu.test(kind)) continue;
+    const cell = cellOf(entity.cell);
+    if (cell === null) continue;
+    found.set(cellKey(cell[0], cell[1]), cell);
+  }
+  return [...found.values()];
 }
 
 /**
@@ -905,6 +948,8 @@ interface Planned {
   readonly layer?: LayerInfo;
   /** Task 112: this plan read the world map's terrain, so it uses the world time limit. */
   readonly world?: boolean;
+  /** Task 149: jump edges this plan may use, for the walk to take one when it reaches it. */
+  readonly jumps?: readonly MapJump[];
   /** The grid this plan searched, for the walk view's cropped rows (task 61). */
   readonly base?: WalkBase;
   /**
@@ -1083,10 +1128,22 @@ async function plannedRoute(
   const floors = Array.isArray(collision.layers) ? collision.layers.length : 0;
   const mapKey = map === undefined ? null : show(map);
   const checked = mapKey !== null && (state?.gimmickChecked?.has(mapKey) ?? false);
-  const { blocked, conveyors, dangers, transitions, falls, holeMoves, events, entrances, gimmick } =
-    await blockingCells(pilot, floors > 1, map !== undefined && !checked);
+  const {
+    blocked,
+    conveyors,
+    dangers,
+    transitions,
+    falls,
+    holeMoves,
+    events,
+    entrances,
+    gimmick,
+    counters,
+    allRead,
+  } = await blockingCells(pilot, floors > 1, map !== undefined && !checked);
   if (mapKey !== null && state !== undefined) {
     (state.gimmickChecked ??= new Set()).add(mapKey);
+    if (allRead) (state.counters ??= new Map()).set(mapKey, counters);
   }
   const recordedMoves = state?.moves && map !== undefined ? state.moves(map) : [];
   const seenGimmick =
@@ -1105,8 +1162,18 @@ async function plannedRoute(
       // Task 99: a single refusal on a moving map is a snapshot, not a wall.
       !(movingGimmick && move.how === "走不过去" && (move.count ?? 1) < 2),
   );
+  // Task 129: the live collision has a wall on a hidden passage; the game files know the cell.
+  // Task 149: the same game-file callback also carries the map's jump edges.
+  const mapId = mapNumber(map);
+  const features =
+    mapId === null
+      ? { passages: [], jumps: [] }
+      : splitFeatures(state?.passages?.(mapId) ?? []);
+  const passageCells = features.passages;
+  const jumpLinks = features.jumps;
   // A conveyor or fall whose landing we have seen is a directed edge; until then it stays a
   // danger cell, so the party does not walk onto it blind but can when there is no other way.
+  const jumps = jumpMoves(jumpLinks);
   const forced = new Set(
     moves
       .filter(
@@ -1123,11 +1190,8 @@ async function plannedRoute(
     (danger) =>
       !sameCell(danger.cell, goal) && !forced.has(cellKey(danger.cell[0], danger.cell[1])),
   );
-  // Task 129: the live collision has a wall on a hidden passage; the game files know the cell.
-  const mapId = mapNumber(map);
-  const passageCells = mapId === null ? [] : (state?.passages?.(mapId) ?? []);
   const reply = passageCells.length === 0 ? collision : { ...collision, passages: passageCells };
-  const grid = layeredGrid(reply, occupied, transitions, moves, risky);
+  const grid = layeredGrid(reply, occupied, transitions, [...moves, ...jumps], risky);
   const fallSet = new Set(falls.map((cell) => cellKey(cell[0], cell[1])));
   if (grid === null) {
     return {
@@ -1200,6 +1264,7 @@ async function plannedRoute(
     ...(reachable === undefined ? {} : { reachable }),
     layer: layerInfo(startGrid, nodes, transitions),
     base: indoorBase(state?.game ?? "", mapNumber(map), startGrid),
+    ...(jumpLinks.length === 0 ? {} : { jumps: jumpLinks }),
     ...(suspects === undefined ? {} : { suspects }),
   };
 }
@@ -1757,6 +1822,130 @@ export interface RideOutcome {
   readonly detail: string;
 }
 
+
+/** Task 149: how long a jump script may run before the walk calls it failed. */
+export const JUMP_TIMEOUT_MS = 8_000;
+export const JUMP_POLL_MS = 250;
+/** Turn without moving, then press confirm on a touch stone. */
+export const JUMP_FACE_MS = 60;
+/** A short direction press that steps onto a `step` stone. */
+export const JUMP_STEP_MS = 90;
+
+const JUMP_FACING_TEXT: Readonly<Record<MapJump["facing"], string>> = {
+  Up: "上",
+  Right: "右",
+  Down: "下",
+  Left: "左",
+};
+
+function jumpText(jump: MapJump): string {
+  return `${cellText(jump.cell)} 的跳石(${jump.kind === "step" ? "走上去" : "按确认"})`;
+}
+
+/** The jump edge a planned path uses, if any; the walk must stop before it and take it. */
+export function jumpOnPath(
+  path: readonly Cell[],
+  jumps: readonly MapJump[],
+): { readonly index: number; readonly jump: MapJump } | null {
+  for (let index = 0; index + 1 < path.length; index += 1) {
+    const from = path[index];
+    const to = path[index + 1];
+    if (from === undefined || to === undefined) continue;
+    for (const jump of jumps) {
+      if (sameCell(jumpStand(jump), from) && sameCell(jump.land, to)) return { index, jump };
+    }
+  }
+  return null;
+}
+
+function walkBaseCell(base: WalkBase, cell: Cell): string | null {
+  const row = base.rows[cell[1] - base.origin[1]];
+  return row?.[cell[0] - base.origin[0]] ?? null;
+}
+
+/** Whether the stopped cell is still in the same walkable block as the expected landing. */
+function sameJumpBlock(base: WalkBase | undefined, stopped: Cell, land: Cell): boolean {
+  if (base === undefined) return false;
+  if (sameCell(stopped, land)) return true;
+  const queue: Cell[] = [stopped];
+  const seen = new Set<string>([cellKey(stopped[0], stopped[1])]);
+  const walkable = new Set(["0", "2", "3", "4", "5"]);
+  for (let head = 0; head < queue.length && head < 512; head += 1) {
+    const cell = queue[head];
+    if (cell === undefined) break;
+    for (const [dx, dy] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
+      const next: Cell = [cell[0] + dx, cell[1] + dy];
+      const key = cellKey(next[0], next[1]);
+      if (seen.has(key)) continue;
+      const value = walkBaseCell(base, next);
+      if (value === null || !walkable.has(value)) continue;
+      if (sameCell(next, land)) return true;
+      seen.add(key);
+      queue.push(next);
+    }
+  }
+  return false;
+}
+
+/**
+ * Task 149: use one exported jump. The party already stands on the cell in front of the
+ * object (`cell - facing`). A `step` stone is triggered by walking onto it (the entry
+ * direction is the facing); a `touch` one by turning to it and pressing confirm. Wait for the
+ * script to stop moving the party, then require the documented landing or a cell in its block.
+ */
+export async function takeJump(
+  pilot: Pilot,
+  jump: MapJump,
+  say: Say = () => undefined,
+  base?: WalkBase,
+): Promise<[boolean, string]> {
+  const stand = jumpStand(jump);
+  const here = cellOf(record((await pilot.send("pos")).pos).cell);
+  if (!sameCell(here, stand)) {
+    return [
+      false,
+      `没能在 ${cellText(stand)} 起跳(现在在 ${cellText(here)}),跳石 ${jumpText(jump)} 没用上`,
+    ];
+  }
+  const facing = JUMP_FACING_TEXT[jump.facing];
+  const keys = jump.kind === "step" ? [`${jump.facing}:${JUMP_STEP_MS}`] : [`${jump.facing}:${JUMP_FACE_MS}`, "Enter"];
+  say(`  在 ${cellText(stand)} 面朝${facing}${jump.kind === "step" ? "走上" : "按确认"}跳石,到 ${cellText(jump.land)}`);
+  const pressed = await pilot.send("keys", { keys, gap: 250 });
+  if (!truthy(pressed.ok)) {
+    return [false, `在 ${cellText(stand)} 用跳石时按键没成功:${show(pressed.error)}`];
+  }
+  const deadline = pilot.now() + JUMP_TIMEOUT_MS;
+  let position = record((await pilot.send("pos")).pos);
+  let cell = cellOf(position.cell);
+  let stable = 0;
+  while (pilot.now() < deadline) {
+    const state = text(position.state) ?? "";
+    const moving = truthy(position.moving);
+    if (!moving && state !== "Event" && state !== "ChangeMap" && !sameCell(cell, stand)) {
+      stable += 1;
+      if (stable >= 2) break;
+    } else {
+      stable = 0;
+    }
+    await pilot.sleep(JUMP_POLL_MS);
+    position = record((await pilot.send("pos")).pos);
+    cell = cellOf(position.cell);
+  }
+  if (cell === null) return [false, `跳石 ${jumpText(jump)} 之后没读到位置`];
+  if (sameCell(cell, jump.land) || sameJumpBlock(base, cell, jump.land)) {
+    return [true, `用跳石从 ${cellText(stand)} 到 ${cellText(cell)}`];
+  }
+  return [
+    false,
+    `跳石 ${jumpText(jump)} 之后停在 ${cellText(cell)},不是落点 ${cellText(jump.land)}`,
+  ];
+}
+
 /**
  * Take a recorded lift: walk to `from`, face `dir`, press Enter, then wait for the map id to
  * change. The map id is the only arrival signal (257 → 634, 635 → 260); the platform animates
@@ -2179,6 +2368,8 @@ export async function navigate(
   // in MoveState, so the next go on the same map also knows (11-03, Fire-Powered Ship
   // 261: the same step was walked into twice).
   const mapCut = cutsFor(state, startMap);
+  /** Task 134: counter cells already pressed in this go, so a failed press does not loop. */
+  const triedCounters = new Set<string>();
   // Task 99: on a moving-gimmick map a refusal only closes this go's search. Keep those
   // steps apart from the map's lasting cuts and layer cuts.
   const goCut = new Set<string>();
@@ -2504,7 +2695,7 @@ export async function navigate(
         );
         return done(eventReached, withCarried(eventText), eventReached ? "arrived" : "event_goal");
       }
-      let path = walkPathCells(initial);
+      let path = [...initial];
       if (!byShip && planned.suspects === undefined && !(await onWorldMap(pilot))) {
         // Indoors the game's own search comes first: it knows heights, stairs and which
         // side a cell can be entered from (control plan §4.9). Ours is the fallback, and
@@ -2531,6 +2722,25 @@ export async function navigate(
           }
         }
       }
+      // Task 149: a jump edge is not a walkable step. Stop on its stand cell (the path may
+      // already start there) and let the jump script move the party; the next plan continues
+      // from the landing.
+      const jumpPlan = jumpOnPath(path, planned.jumps ?? []);
+      if (jumpPlan !== null) path = path.slice(0, jumpPlan.index + 1);
+      if (jumpPlan !== null && jumpPlan.index === 0) {
+        const [jumped, jumpMessage] = await takeJump(pilot, jumpPlan.jump, say, planned.base);
+        say(`  ${jumpMessage}`);
+        if (!jumped) {
+          endWalk("blocked");
+          return done(false, withCarried(jumpMessage), "jump_failed");
+        }
+        const landed = cellOf(record((await pilot.send("pos")).pos).cell);
+        where = landed ?? where;
+        noteReplan("跳石落地,从落点重新规划");
+        freePlan = true;
+        continue;
+      }
+      path = walkPathCells(path);
       if (planned.layer) {
         const exits = planned.layer.transitions
           .slice(0, 6)
@@ -2545,6 +2755,27 @@ export async function navigate(
         );
       }
       if (path.length < 2) {
+        // Task 134: a closed counter is a collider, not a collision row. Press it first, as
+        // the 11-11 Beginner's Hall run had to do by hand, then plan again from here.
+        const counter = await openCounterBlock(
+          pilot,
+          goal,
+          here,
+          state,
+          startMap,
+          cut,
+          say,
+          triedCounters,
+        );
+        if (counter !== null) {
+          const into = `>${cellKey(counter[0], counter[1])}`;
+          for (const edges of [mapCut, goCut]) {
+            for (const edge of edges) if (edge.endsWith(into)) edges.delete(edge);
+          }
+          noteReplan("柜台按开了,从当前位置重新规划");
+          freePlan = true;
+          continue;
+        }
         endWalk("blocked");
         const floor = planned.layer
           ? `(第 ${planned.layer.start} 层,共 ${planned.layer.count} 层)`
@@ -3089,6 +3320,64 @@ const FACING: readonly (readonly [number, number, string])[] = [
 ];
 
 /**
+ * Task 134: walk to a closed counter and press it when no route reaches the goal. 11-11,
+ * Beginner's Hall 31: the two `カウンター開閉` colliders at (11,12)/(11,13) are not in the
+ * collision rows, so the party could not reach the chest room. The manual run got through
+ * after standing at (10,12) and pressing Right+Enter; this repeats that input and replans.
+ *
+ * The cells come from the map's `kind: All` read (MoveState.counters), so this adds no bridge
+ * query on a failed walk. It returns the counter it pressed, or null when none is adjacent to
+ * a reachable spot. The caller removes that cell's cuts before replanning.
+ */
+async function openCounterBlock(
+  pilot: Pilot,
+  goal: Cell,
+  here: Cell,
+  state: MoveState | undefined,
+  map: unknown,
+  cut: ReadonlySet<string>,
+  say: Say,
+  tried: Set<string>,
+): Promise<Cell | null> {
+  if (state === undefined || state.openingCounter === true || map === undefined) return null;
+  const counters = state.counters?.get(show(map));
+  if (counters === undefined || counters.length === 0) return null;
+  const available = counters
+    .filter((cell) => !tried.has(cellKey(cell[0], cell[1])))
+    .sort((a, b) => manhattan(a, goal) - manhattan(b, goal));
+  if (available.length === 0) return null;
+  state.openingCounter = true;
+  try {
+    for (const counter of available) {
+      tried.add(cellKey(counter[0], counter[1]));
+      const spots = FACING.map(([dx, dy, direction]) => ({
+        spot: [counter[0] - dx, counter[1] - dy] as Cell,
+        direction,
+      })).sort((a, b) => manhattan(a.spot, here) - manhattan(b.spot, here));
+      for (const { spot, direction } of spots) {
+        const [nearest, path] = await plan(pilot, spot, false, cut, state, map);
+        if (nearest === null || !sameCell(path[path.length - 1] ?? null, spot)) continue;
+        if (!sameCell(spot, here)) {
+          const [arrived] = await navigate(pilot, spot, false, say, 4, state);
+          if (!arrived) continue;
+        }
+        const pressed = await pilot.send("keys", {
+          keys: [`${direction}:60`, "Enter"],
+          gap: 250,
+        });
+        if (!truthy(pressed.ok)) continue;
+        await pilot.sleep(350);
+        say(`  被柜台挡住,在 ${cellText(spot)} 面朝${direction}按了确认,重新规划`);
+        return counter;
+      }
+    }
+    return null;
+  } finally {
+    state.openingCounter = false;
+  }
+}
+
+/**
  * Stand next to a chest, NPC or object, face it, press Enter and page the dialog.
  * Shopkeepers and innkeepers stand behind a counter: when no neighbouring cell can be
  * reached, talk across one cell from two cells away, the way the games allow.
@@ -3103,6 +3392,7 @@ export async function openAt(
   target: Cell,
   say: Say = () => undefined,
   state: MoveState = { drake: null },
+  retriedCounter = false,
 ): Promise<string> {
   // A first-visit FieldHelp would swallow the Enter meant for the chest or clerk.
   const firstHelp = await dismissFieldHelp(pilot);
@@ -3137,7 +3427,25 @@ export async function openAt(
       if (reachable) candidates.push({ spot, path, direction, rank });
     }
   }
-  if (candidates.length === 0) return `${cellText(target)} 四周两格内都走不到`;
+  if (candidates.length === 0) {
+    // Task 134: a closed counter can seal every side the planner can see. Press it once,
+    // then look for a stand spot again; without this the chest behind it looked unreachable.
+    if (!retriedCounter) {
+      const startMap = record((await pilot.send("pos")).pos).map;
+      const opened = await openCounterBlock(
+        pilot,
+        target,
+        here,
+        state,
+        startMap,
+        EMPTY_CUT,
+        say,
+        new Set<string>(),
+      );
+      if (opened !== null) return await openAt(pilot, target, say, state, true);
+    }
+    return `${cellText(target)} 四周两格内都走不到`;
+  }
   candidates.sort((a, b) => a.rank - b.rank || a.path.length - b.path.length);
   let failure = "";
   for (const best of candidates.slice(0, 3)) {

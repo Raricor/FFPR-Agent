@@ -2383,3 +2383,68 @@ void test("a trace file that cannot be written only warns and the walk still arr
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+void test("a closed counter is pressed when it seals the only way to the goal", async () => {
+  let here: Cell = [0, 1];
+  let open = false;
+  const closed = ["00100", "00100", "00100"];
+  const pilot = new FakePilot();
+  pilot.on("pos", () => ({ pos: { map: 260, cell: [here[0], here[1]] } }));
+  pilot.on("cells", () => ({
+    cells: {
+      origin: [0, 0],
+      center: [here[0], here[1]],
+      attr: closed.map(() => Array.from({ length: 5 }, () => 0)),
+    },
+  }));
+  pilot.on("collision", () => ({
+    collision: {
+      searchLayer: 1,
+      playerCell: [here[0], here[1]],
+      layers: [
+        {
+          name: "GroundCollision",
+          rows: open ? ["00000", "00000", "00000"] : closed,
+        },
+      ],
+    },
+  }));
+  pilot.on("entities", (fields) =>
+    fields.kind === "All"
+      ? {
+          entities: {
+            total: 1,
+            entities: [
+              {
+                kind: "ColliderEntity",
+                name: "カウンター開閉",
+                cell: [2, 1],
+                active: !open,
+              },
+            ],
+          },
+        }
+      : { entities: { total: 0, entities: [] } },
+  );
+  noWalkpath(pilot);
+  pilot.on("route", { route: {} });
+  pilot.on("walk", (fields) => {
+    const to = fields.to;
+    if (Array.isArray(to) && typeof to[0] === "number" && typeof to[1] === "number") {
+      here = [to[0], to[1]];
+    }
+    return { ok: true };
+  });
+  pilot.on("keys", () => {
+    open = true;
+    return { ok: true };
+  });
+  pilot.on("story", { pages: 1 });
+  const text = await openAt(pilot, [4, 1], () => undefined, { drake: null });
+  assert.match(text, /按了确认/u);
+  assert.ok(
+    pilot.keys().some((keys) => keys.includes("Right:60") && keys.includes("Enter")),
+    "faced the counter and pressed confirm",
+  );
+  assert.equal(open, true);
+});
