@@ -98,7 +98,7 @@ void test("a harness-emitted preset selection mounts the new preset before the f
   const { registered, emit } = scenario();
   emit("agent-preset/selected", "agent-1", "ffpr");
   assert.ok(registered.length > 0, "the target plugin should register its tools on the event");
-  assert.ok(registered.includes("go"));
+  assert.ok(registered.includes("plan_facts"), "计划模式默认开,注册的是计划工具");
 });
 
 void test("another preset's selection does not mount this game's tools", () => {

@@ -134,7 +134,7 @@ const SYSTEM_PROMPT_FF5 = `你在玩《最终幻想5 像素重制版》(中文�
   不要一格一格地 go;go 只留给单个目的地。
 - 一段路(一个副本、出发城镇和路上的世界地图)开始前,用一次 plan_stage(to=目的地) 让阶段官
   想清楚要带什么、学什么、怎么走、什么时候回头;计划会存盘,重启后还在。
-  从城镇或世界地图去另一个区域的副本时,代码也会自动叫它,不用你重复叫。
+  进入新的一节时,代码会自动按路线书出计划,不用你叫;移动时按计划走,交回时只处理那一站。
   用坐标 go 走已知入口时,代码也认得出这个入口去哪张图,一样会先过出发检查。
 - 有路线书时,route {} 就是执行下一段;代码只在需要你的一站停下(首领、剧情、机关等),
   结果里写清第几站交给你、攻略原文和在哪张图。只处理这一站,处理完再 route {} 接着走。
@@ -151,8 +151,8 @@ const SYSTEM_PROMPT_FF5 = `你在玩《最终幻想5 像素重制版》(中文�
 - 宝箱、NPC、调查用 interact,它会自己走过去。
 - 坐标只用在没有名字的地方,比如隐藏道具格、剧情触发格:go(to=[12, 8]) 或 go(to="12,8")。
   不要用坐标一段一段地挪;走不到时先看 look_around / terrain,不要换个相邻坐标再试。
-- 有阶段计划时,计划覆盖的图里用坐标 go 会被代码改成按计划接着走,结果开头会说明;
-  走到计划覆盖的地图后,代码也会接着走剩下的站。要离开计划就带 leave_incomplete
+- 有阶段计划时,计划覆盖的图里用坐标、地名或地图号 go 会被代码改成按计划接着走,
+  结果开头会说明;计划外的图(比如城里的商店)照旧走。要离开计划就带 leave_incomplete
   写具体理由再 go;隐藏道具格、触发格照旧。
 - 要穿过打不过的区域时,给 go/explore 带 flee: true:路上遇敌先逃跑,
   逃不了(首领战、不能逃的遇敌组)才按策略表打。
@@ -219,6 +219,52 @@ const SYSTEM_PROMPT_FF5 = `你在玩《最终幻想5 像素重制版》(中文�
   每一轮推进一段(一个阶段、一段路、一场首领战),轮末用两三句写这一次的进展,系统会自动开始下一轮;
   不要因为一段告一段落就把整个目标标成完成,只有真正达成才标完成。
 {hint}`;
+/**
+ * Plan mode's "how to play" block (task 139, 11-11): the player writes one complete plan per
+ * section and code executes it. Deliberately carries only the loop and the field formats; the
+ * old walking/chest/battle advice is gone because the player no longer acts step by step.
+ */
+const PLAN_MODE_RULES = `- 计划模式:你不直接操作游戏,只写计划和改计划,执行全交给代码。
+- 按这个循环走:
+  1. 用 plan_facts 取当前路线书小节(或带 section 取指定小节)的事实、草稿和格式。
+  2. 按事实写一份完整的段计划,一次写全:
+     - stations:按执行顺序写走路和开箱,以及 save(存档)、heal(回复)、talk(对话)、
+       switch(机关)、story(剧情触发)、choose(选项)、grind(刷怪)、boss(首领);
+       to 和 go 的写法一样(地图号、地图名、坐标或「地图号:x,y」)。boss 站要写
+       「地图号:x,y」,坐标用事实表里该首领的触发点。
+     - prep:出发前要换的职业和技能、要买的东西和数量、前后排;equip 写 optimize 或 keep。
+     - battle:普通战斗的规则表;maps 写适用地图号(空数组表示整节),tables 写 1–3 套。
+     - bosses:每个首领写 name、map、healFirst、saveFirst、tables 和 notes。
+     - grind 站的 until 至少写一项:bestiary(怪名或图鉴号)、blueMagic(青魔法名)、
+       battles(场数)、minutes(分钟)。
+     - turnBack:走路途中的回头条件,when 写 party.lowest_hp_pct < N、party.mp_pct < N、
+       party.dead >= N 或 item.道具名 < N;then 写 heal-and-continue 或 replan。
+  3. 用 submit_plan 交整份计划。不通过就按返回的问题改,再交;通过了会存盘。
+  4. 用 execute_plan 执行当前存盘的计划。它一直跑到这一段做完或出例外才返回,执行期间不叫你;
+     返回中文摘要和结构化 JSON 报告,报告同时存盘。
+  5. 读报告:status 是 done 就 plan_facts 规划下一节;status 是 exception 就按 exception 和
+     remaining 改计划,再 submit_plan、execute_plan。
+     改计划是修订同一份计划:上一份还没做的站(report.remaining)要保留,只改出问题的那部分;
+     确实不做的站写进 dropped,每项写 to、do、why(为什么不做),不能悄悄丢掉。
+- 任何一步想确认进度时用 plan_status 看当前计划摘要和上一份报告。
+- 不能直接走路、开箱、对话、战斗、刷怪、买卖、换职业或存档:这些全部写进计划。
+- 计划模式下只有这些查询工具:guide(查攻略)、atlas(地图记录)、inventory(背包)、
+  look_around / terrain / entrances(当前地图的实体、地形和入口)。它们只读,不按键、不移动、
+  不改游戏状态。
+- tables 的格式和以前的战斗规则表一样:角色名 → 规则列表,也接受策略 2.0。
+- 坐标是格子坐标:x 向右增大,y 向下增大。
+- 每次只调用一个工具。行动前用一两句话说明你的打算。
+- 计划要覆盖这一段的所有必经站;不确定的站写 optional: true,走不到时代码会跳过。
+- 这一节所有没开的宝箱和还没打过的首领都要写进计划;确实不做的写进 dropped 并写原因。
+- 路线书没有覆盖这一段时 plan_facts 会说明:先把情况告诉用户,不要绕开计划直接操作游戏。`;
+
+/** The goal-tool paragraph shared by both modes; plan mode keeps it after the plan loop. */
+const PLAN_MODE_GOAL_RULES = `- 这个会话有一个长期目标:人会在对话里要求你用目标工具创建(比如「通关 FF5」),它跨轮次保留。
+  没有目标时 get_goal 返回 null;人要求时用 create_goal(objective) 创建,objective 写清要做到什么。
+  改状态前先 get_goal 拿到 goal_id 和 revision,再 update_goal;complete 只在整个目标真的达成时用,
+  blocked 要同一个阻塞条件连续 3 轮才算阻塞,并在 blocked_reason 写清具体是什么。
+  每一轮推进一段(一个阶段、一段路、一场首领战),轮末用两三句写这一次的进展,系统会自动开始下一轮;
+  不要因为一段告一段落就把整个目标标成完成,只有真正达成才标完成。`;
 
 /** Titles as the games name themselves in Chinese; FF5's prompt keeps its old wording. */
 const GAME_NAMES: Readonly<Record<string, string>> = {
@@ -287,6 +333,31 @@ function withSaveSlotHint(text: string, saveSlot: number): string {
   return text.replace("{hint}", `${saveSlotHint(saveSlot)}\n{hint}`);
 }
 
+/** Plan mode writes saves and preparation into the plan, so `save_game` must not be named. */
+function planSaveSlotHint(saveSlot: number): string {
+  return (
+    `存档只写 ${saveSlot} 号存档位;游戏已经开好新游戏、过了起名,` +
+    "从现在的位置开始玩;准备和存档都写进计划,需要存档时在计划里写 save 站。"
+  );
+}
+
+/**
+ * The plan-mode persona: the same header and goal paragraph as the normal prompt, but the whole
+ * "how to play" list becomes the plan loop. Task 139: the old walking/chest advice must not be
+ * shown here, because the player has no tools to act on it.
+ */
+function planModeSystemPrompt(game: string, saveSlot: number): string {
+  const info = byKey(game);
+  const name = GAME_NAMES[info.key];
+  if (name === undefined) throw new Error(`没有 ${info.label} 的玩家提示词`);
+  const head =
+    `你在玩《${name} 像素重制版》(中文版),通过计划和执行工具操作游戏。\n\n` + "目标:{goal}\n\n";
+  // Only the loop and formats: the five games' usual points describe direct-play actions
+  // (press, menus) that plan mode deliberately cannot perform.
+  const body = `${head}规则:\n${PLAN_MODE_RULES}\n\n${PLAN_MODE_GOAL_RULES}\n{hint}`;
+  return body.replace("{hint}", `${planSaveSlotHint(saveSlot)}\n{hint}`);
+}
+
 function fiveGameSystemPrompt(name: string, points: string, saveSlot: number): string {
   let text = SYSTEM_PROMPT_FF5.replace(
     "你在玩《最终幻想5 像素重制版》(中文版),通过工具操作游戏。",
@@ -311,8 +382,9 @@ function saveSlotFor(game: string): number {
 }
 
 /** The first layer's persona for one game; FF5's text only gains the new-game hint. */
-export function systemPrompt(game: string, saveSlot = saveSlotFor(game)): string {
+export function systemPrompt(game: string, saveSlot = saveSlotFor(game), planMode = false): string {
   const info = byKey(game);
+  if (planMode) return planModeSystemPrompt(info.key, saveSlot);
   if (info.key === "ff5") return withSaveSlotHint(SYSTEM_PROMPT_FF5, saveSlot);
   const name = GAME_NAMES[info.key];
   const points = FIVE_GAME_POINTS[info.key];
@@ -396,6 +468,7 @@ const TOOLS_BASE = [
         "给地图时按地图记录自己排路线,每离开一张图都检查完成度,可以经过世界地图(步行或骑飞龙);" +
         "名字对上多张会列出来让你挑,不走、不猜。" +
         "给坐标时在当前地图走过去;世界地图上坐船会自动走海路,骑飞龙去入口会自动降落。" +
+        "有路线书计划时,指向计划覆盖的图(地图名、地图号或坐标)会改成按计划走;计划外的图照旧走。" +
         "坐标如果落在已知出口/入口上,代码会把它当成去那张地图,和写地图名一样先过出发检查。" +
         "坐标只用在没有名字的地方,不要用坐标一段一段地挪。" +
         "穿过打不过的区域时带 flee: true,路上遇敌先逃跑,逃不了才按策略表打。" +
@@ -436,8 +509,8 @@ const TOOLS_BASE = [
         "grind 要带 until(至少一项):bestiary 怪名或图鉴号、blueMagic 青魔法名、battles 场数、minutes 分钟,到 to 后调现有刷怪循环,满足一项就停;" +
         "倒计时期间所有 grind 路标都会跳过。optional 是可选路标(倒计时不够可以跳过),默认只有 do: open 的算可选。" +
         "end 是终点(比如出口地图),不写就把最后一个 stops 当终点。" +
-        "不带 stops 和 end 调用时,从上次的路线进度接着走;没有进行中的计划、当前又在路线书覆盖的地图时," +
-        "会按路线书自动建计划并执行下一段。代码交回时只处理交回的那一站,处理完再 route {} 接着走。" +
+        "不带 stops 和 end 调用时,从上次的路线进度接着走;进入新的一节时,代码会按路线书自动建计划并执行下一段," +
+        "不用先手动叫 plan_stage。代码交回时只处理交回的那一站,处理完再 route {} 接着走。" +
         "一段路上要去的地方已经清楚时就用 route,不要一格一格地 go。" +
         "结果每个路标一行(到了、开了什么、跳过、用时),最后写停下原因;倒计时还开着时写剩余秒数。",
       parameters: {
@@ -983,7 +1056,7 @@ export const PLAN_STAGE_TOOL: GameToolSchema = {
     description:
       "一段路开始前让阶段官把这一段想清楚：读当前队伍、背包、钱和知识库，" +
       "交回威胁、要带的、魔法、职业、最低等级、路线和回头条件。计划存盘，重启后还在。" +
-      "从城镇或世界地图去另一个区域的副本时，代码也会自动叫它。" +
+      "进入新的一节时，代码会自动按路线书出计划，不用你叫；移动时按计划走，交回时只处理那一站。" +
       "出发后到了计划覆盖的地图，代码会接着按计划走。" +
       "路线书覆盖这一段时，计划的路线由路线书站点转换，阶段官的路线只写进说明不执行。" +
       "计划完成时活动日志记一行阶段统计；结果里也有当前计划的工具次数、按计划走的站数和用时。" +
@@ -1008,6 +1081,32 @@ export const PLAN_STAGE_TOOL: GameToolSchema = {
       },
       required: ["to"],
     },
+  },
+};
+
+/**
+ * Task 139: the plan-mode tools that execute the saved plan and report its status. `plan_facts`
+ * and `submit_plan` live in engine/plan/tools.ts; these two are kept here with the other
+ * model-facing schemas. Neither is part of TOOLS: plugin/player.ts registers them only in plan
+ * mode, with a timeout long enough for a whole section.
+ */
+export const EXECUTE_PLAN_TOOL: GameToolSchema = {
+  type: "function",
+  function: {
+    name: "execute_plan",
+    description:
+      "执行当前存盘的段计划:一直跑到这一段做完或出例外才返回,执行期间不叫模型。" +
+      "返回中文摘要和结构化 JSON 报告,报告同时存盘。没有存盘的计划时先 plan_facts、submit_plan。",
+    parameters: { type: "object", properties: {} },
+  },
+};
+
+export const PLAN_STATUS_TOOL: GameToolSchema = {
+  type: "function",
+  function: {
+    name: "plan_status",
+    description: "查看当前存盘的段计划摘要和上一份执行报告。",
+    parameters: { type: "object", properties: {} },
   },
 };
 

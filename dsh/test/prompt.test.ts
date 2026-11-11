@@ -74,6 +74,10 @@ const ff5Tactician = await readFile(
   join(import.meta.dirname, "fixtures", "prompt", "tactician-prompt-ff5.txt"),
   "utf8",
 );
+const ff5PlanMode = await readFile(
+  join(import.meta.dirname, "fixtures", "prompt", "system-prompt-ff5-plan.txt"),
+  "utf8",
+);
 
 void test("the FF5 prompts and tool definitions keep the ported text", () => {
   // 10-29 (task 26): FF5 now starts a new game in slot 20 instead of reading its old slot 3.
@@ -90,6 +94,49 @@ void test("the FF5 prompts and tool definitions keep the ported text", () => {
   assert.ok(ff5System.includes("敌人:hp最低"));
   assert.ok(ff5System.includes("目标:{goal}") && ff5System.endsWith("{hint}"));
   assert.deepEqual(TOOLS, fixture.tools);
+});
+
+void test("plan mode replaces the old how-to-play text with the plan loop", () => {
+  const text = systemPrompt("ff5", 20, true);
+  assert.equal(text, ff5PlanMode);
+  for (const step of [
+    "plan_facts",
+    "submit_plan",
+    "execute_plan",
+    "plan_status",
+    "status 是 done",
+    "status 是 exception",
+  ]) {
+    assert.ok(text.includes(step), `计划模式提示词应该提到 ${step}`);
+  }
+  // The old walk/chest/interact advice belongs to direct play and must not appear.
+  for (const old of [
+    "一段路上要去的地方已经清楚时",
+    "宝箱在 look_around 里写作 TresureBox",
+    "宝箱用 interact",
+    "剧情对话用 advance_story",
+    "普通战斗的策略由战术官自动写好",
+  ]) {
+    assert.equal(text.includes(old), false, `计划模式提示词不该有:${old}`);
+  }
+  assert.equal(text.includes("save_game"), false);
+  assert.ok(text.includes("存档只写 20 号存档位"));
+  assert.ok(text.includes("计划里写 save 站"));
+  assert.ok(text.includes("{hint}"));
+});
+
+void test("the five games get the same plan-only persona without direct-play advice", () => {
+  for (const key of ["ff1", "ff2", "ff3", "ff4", "ff6"]) {
+    const text = systemPrompt(key, 20, true);
+    assert.ok(text.includes("计划模式"));
+    assert.ok(text.includes("plan_facts"));
+    assert.ok(text.includes("存档只写 20 号存档位"));
+    // Direct-play points mention press, menus, the drake or jobs; plan mode has none of them.
+    assert.equal(text.includes("这一作的要点:"), false, key);
+    assert.equal(text.includes("press"), false, key);
+    assert.equal(text.includes("飞龙"), false, key);
+    assert.equal(text.includes("change_job"), false, key);
+  }
 });
 
 void test("the prompt describes goal mode instead of calling done", () => {

@@ -515,7 +515,7 @@ async function checkCreatedUnderFF3(switchFirst: boolean): Promise<void> {
   harness.plugin("ff5");
   const { agent, personas } = harness.agent("session-1", "ffpr-ff3");
   await runCreated(ff3, agent, switchFirst);
-  assert.deepEqual(personas, [buildSystemPrompt("ff5", 20)]);
+  assert.deepEqual(personas, [buildSystemPrompt("ff5", 20, true)]);
   assert.equal(harness.tools("ffpr-ff3").size, 0);
   assert.ok(harness.tools("ffpr").size > 0);
 }
@@ -587,7 +587,7 @@ void test("agent/created switches to FF5 and mounts FF5 before any pre-step", as
   // Real machine 11-02: select commits, but the new preset's plugin never hears the event.
   await harness.runSilent(() => switching({ agent, source: "startup" }));
   assert.equal(harness.tools("ffpr-ff3").size, 0);
-  assert.deepEqual(personas, [buildSystemPrompt("ff5", 20)]);
+  assert.deepEqual(personas, [buildSystemPrompt("ff5", 20, true)]);
   assert.ok(harness.tools("ffpr").size > 0);
   assert.ok(harness.restrictions("ffpr") > 0);
 });

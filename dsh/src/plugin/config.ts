@@ -67,6 +67,9 @@ export interface GameDefaults {
   /** Task 117: the route book's live progress and learned handoff cells. */
   readonly routeBookProgressFile: string;
   readonly routeBookLearnedFile: string;
+  /** Task 139: the saved segment plan and its last execution report. */
+  readonly segmentPlanFile: string;
+  readonly segmentReportFile: string;
 }
 
 /** Per-game defaults shared by the schema, the plugin and the tests. Unknown keys throw. */
@@ -93,6 +96,8 @@ export function gameDefaults(key: string): GameDefaults {
     stagePlanFile: join(DEPS, "ds", `stage-${game.key}.json`),
     routeBookProgressFile: join(DEPS, "ds", `routebook-progress-${game.key}.json`),
     routeBookLearnedFile: join(DEPS, "ds", `routebook-learned-${game.key}.json`),
+    segmentPlanFile: join(DEPS, "ds", `segment-plan-${game.key}.json`),
+    segmentReportFile: join(DEPS, "ds", `segment-report-${game.key}.json`),
   };
 }
 
@@ -159,8 +164,12 @@ const RawConfig = Schema.object({
   stagePlanFile: Schema.string(),
   /** Task 117: run a route book section as one `route {}` (default on). */
   routeBookEnabled: Schema.boolean().default(true),
+  /** Task 131: entering a new book section generates and walks its plan (default on). */
+  routeBookAutoPlan: Schema.boolean().default(true),
   /** Task 117: a missable-monster/blue-magic grind stop's time cap in minutes. */
   routeBookGrindMinutes: Schema.number().default(8),
+  /** Task 136: use a book save station when the last save is this many minutes old (default 10). */
+  routeBookSaveMinutes: Schema.number().default(10),
   /** Task 124: build only the current section and this many after it (default 4). */
   routeBookAheadSections: Schema.number().default(4),
   /** Task 124: stop a runtime book build after this many milliseconds (default 5 s). */
@@ -169,6 +178,12 @@ const RawConfig = Schema.object({
   routeBookProgressFile: Schema.string(),
   /** Task 117: cells the model acted on at a handoff station. */
   routeBookLearnedFile: Schema.string(),
+  /** Task 139: the player writes a plan and code executes it instead of step-by-step tools. */
+  planMode: Schema.boolean().default(true),
+  /** Task 139: one current segment plan and its versions per game. */
+  segmentPlanFile: Schema.string(),
+  /** Task 139: the last segment report, so plan_status survives a restart. */
+  segmentReportFile: Schema.string(),
   /** Task 105: snapshots and scout-window intervals live here (default .deps/ds). */
   scoutDir: Schema.string(),
   /** Task 105: scout()'s default time budget in minutes. */
@@ -269,11 +284,16 @@ export const Config = Schema.transform(RawConfig, (config) => {
     routeFile: config.routeFile ?? defaults.routeFile,
     stagePlanFile: config.stagePlanFile ?? defaults.stagePlanFile,
     routeBookEnabled: config.routeBookEnabled ?? true,
+    routeBookAutoPlan: config.routeBookAutoPlan ?? true,
     routeBookGrindMinutes: config.routeBookGrindMinutes ?? 8,
+    routeBookSaveMinutes: config.routeBookSaveMinutes ?? 10,
     routeBookAheadSections: config.routeBookAheadSections ?? 4,
     routeBookTimeBudgetMs: config.routeBookTimeBudgetMs ?? 5_000,
     routeBookProgressFile: config.routeBookProgressFile ?? defaults.routeBookProgressFile,
     routeBookLearnedFile: config.routeBookLearnedFile ?? defaults.routeBookLearnedFile,
+    planMode: config.planMode ?? true,
+    segmentPlanFile: config.segmentPlanFile ?? defaults.segmentPlanFile,
+    segmentReportFile: config.segmentReportFile ?? defaults.segmentReportFile,
     scoutDir: config.scoutDir ?? join(DEPS, "ds"),
     scoutMinutes: config.scoutMinutes ?? 20,
     scoutMaxTargets: config.scoutMaxTargets ?? 200,

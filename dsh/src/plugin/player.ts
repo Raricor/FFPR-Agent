@@ -32,7 +32,9 @@ import { DEPS } from "../engine/paths.ts";
 import { createPilot, ensureAgent } from "../engine/link-pilot.ts";
 import type { Pilot } from "../engine/pilot.ts";
 import type { ToolDefinition } from "@deepseek-ai/dsh-tools";
-import { systemPrompt, SCOUT_TOOL } from "../engine/prompt.ts";
+import { DEFAULT_SEGMENT_BUDGET_MS } from "../engine/plan/execute.ts";
+import { PLAN_FACTS_TOOL, SUBMIT_PLAN_TOOL } from "../engine/plan/tools.ts";
+import { systemPrompt, EXECUTE_PLAN_TOOL, PLAN_STATUS_TOOL, SCOUT_TOOL } from "../engine/prompt.ts";
 import { configureInstinct } from "../engine/strategy/execute.ts";
 import { isRecord, text } from "../engine/values.ts";
 import { Redactor } from "../engine/redact.ts";
@@ -49,7 +51,12 @@ import { installPresetSwitch, playerPresetId, type PresetSelector } from "./pres
 import type { EngineSlot } from "./registry.ts";
 import { startTactician, TACTICIAN_TIMEOUT_MS, TacticianArchiveQueue } from "./tactician.ts";
 import { callStageOfficer } from "./stage-officer.ts";
-import { gameToolDefinitions, type ActivitySource, type GameToolHost } from "./tools.ts";
+import {
+  DEFAULT_TIMEOUT_MS,
+  gameToolDefinitions,
+  type ActivitySource,
+  type GameToolHost,
+} from "./tools.ts";
 
 declare module "@deepseek-ai/dsh-llm" {
   interface MessageSourceMap {
@@ -68,6 +75,28 @@ const NOTICE_SECTION = "ffpr:notice";
  * the model saw no goal tool and never entered goal mode (task 111).
  */
 const GOAL_TOOL_NAMES: readonly string[] = ["get_goal", "create_goal", "update_goal"];
+
+/** Task 139: the four plan tools, in the order the model reads them. */
+export const PLAN_MODE_PLAN_TOOLS: readonly string[] = [
+  "plan_facts",
+  "submit_plan",
+  "execute_plan",
+  "plan_status",
+];
+
+/**
+ * Task 139: the only game tools plan mode keeps. Each is a read-only query: guide and atlas
+ * read files/knowledge, inventory queries the bag, and look_around/terrain/entrances query the
+ * bridge's entity and map data. None presses a key, moves, or changes game state.
+ */
+export const PLAN_MODE_READONLY_TOOLS: readonly string[] = [
+  "guide",
+  "atlas",
+  "inventory",
+  "look_around",
+  "terrain",
+  "entrances",
+];
 
 /** The pieces one plugin instance shares between every agent it serves. */
 export interface PlayerEngine {
@@ -138,8 +167,8 @@ export function createPlayerLog(
 }
 
 /** The system prompt text, with the Python placeholders filled for dsh. */
-export function buildSystemPrompt(game: string, saveSlot?: number): string {
-  return systemPrompt(game, saveSlot)
+export function buildSystemPrompt(game: string, saveSlot?: number, planMode = false): string {
+  return systemPrompt(game, saveSlot, planMode)
     .replace("目标:{goal}", "目标:用户在对话里给你的目标;用户没说就接着之前的进度玩。")
     .replace("{hint}", "");
 }
@@ -310,11 +339,15 @@ export async function startEngine(
       routeBattleSeconds: config.routeBattleSeconds,
       stagePlanFile: config.stagePlanFile,
       routeBookEnabled: config.routeBookEnabled,
+      routeBookAutoPlan: config.routeBookAutoPlan,
       routeBookGrindMinutes: config.routeBookGrindMinutes,
+      routeBookSaveMinutes: config.routeBookSaveMinutes,
       routeBookAheadSections: config.routeBookAheadSections,
       routeBookTimeBudgetMs: config.routeBookTimeBudgetMs,
       routeBookProgressFile: config.routeBookProgressFile,
       routeBookLearnedFile: config.routeBookLearnedFile,
+      segmentPlanFile: config.segmentPlanFile,
+      segmentReportFile: config.segmentReportFile,
       scoutDir: config.scoutDir,
       scoutMinutes: config.scoutMinutes,
       scoutMaxTargets: config.scoutMaxTargets,
@@ -364,9 +397,10 @@ export async function startEngine(
         fleeOnTimer: config.battleFleeOnTimer,
       };
     }
-    // Task 101: a coordinate `go` allowed with a reason is a normal event, not an error.
-    game.onActivity = (message) => {
-      activity.record("event", message);
+    // Task 101/141: a coordinate `go` allowed with a reason is a normal event; the segment
+    // executor's step lines carry kind "plan" so the sidebar can tell them apart.
+    game.onActivity = (message, kind = "event") => {
+      activity.record(kind, message);
     };
     // Bridge 0.13's battle.act / battle.hit are not key events; fold them into the live battle.
     const savePilot =
@@ -624,6 +658,114 @@ function firstChars(value: string, max: number): string {
   return points.length <= max ? value : points.slice(0, max).join("");
 }
 
+/** One plan tool's model-facing shape, from engine/plan/tools.ts or engine/prompt.ts. */
+interface PlanToolSpec {
+  readonly name: string;
+  readonly description: string;
+  readonly parameters: Record<string, unknown>;
+  readonly timeoutMs: number;
+}
+
+/**
+ * Task 139: the plan tools' dsh definitions. `execute_plan` may run for a whole section, so its
+ * timeout follows the executor's budget instead of the ordinary tool timeout; the other three
+ * are short. Registered only in plan mode, so non-plan sessions keep exactly their old set.
+ */
+function planToolDefinitions(
+  host: GameToolHost,
+  activity: ActivitySource | undefined,
+): ToolDefinition[] {
+  const specs: readonly PlanToolSpec[] = [
+    { ...PLAN_FACTS_TOOL, timeoutMs: DEFAULT_TIMEOUT_MS },
+    { ...SUBMIT_PLAN_TOOL, timeoutMs: DEFAULT_TIMEOUT_MS },
+    {
+      name: EXECUTE_PLAN_TOOL.function.name,
+      description: EXECUTE_PLAN_TOOL.function.description,
+      parameters: EXECUTE_PLAN_TOOL.function.parameters,
+      timeoutMs: DEFAULT_SEGMENT_BUDGET_MS + 120_000,
+    },
+    {
+      name: PLAN_STATUS_TOOL.function.name,
+      description: PLAN_STATUS_TOOL.function.description,
+      parameters: PLAN_STATUS_TOOL.function.parameters,
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    },
+  ];
+  return specs.map((spec) => hostedPlanTool(host, activity, spec));
+}
+
+function hostedPlanTool(
+  host: GameToolHost,
+  activity: ActivitySource | undefined,
+  spec: PlanToolSpec,
+): ToolDefinition {
+  return {
+    name: spec.name,
+    description: spec.description,
+    parameters: spec.parameters,
+    timeoutMs: spec.timeoutMs,
+    output: {
+      schema: { type: "string" },
+      render: (_args, value) => [
+        { type: "text", text: typeof value === "string" ? value : JSON.stringify(value) },
+      ],
+    },
+    async execute(args, exec) {
+      const fields = isRecord(args) ? args : {};
+      const started = Date.now();
+      const log = typeof activity === "function" ? activity() : activity;
+      try {
+        const result = await host.run(
+          spec.name,
+          fields,
+          host.pilot(exec.signal),
+          exec.signal,
+          exec.agent,
+        );
+        const seconds = ((Date.now() - started) / 1000).toFixed(1);
+        const summary = (result.split(/\r\n|\r|\n/, 1)[0] ?? "").trim();
+        log?.record(
+          "tool",
+          `${spec.name} ${firstChars(JSON.stringify(fields), 120)} → ${summary}(${seconds} 秒)`,
+        );
+        return result;
+      } catch (error) {
+        exec.signal.throwIfAborted();
+        const message = describeError(error);
+        log?.record("error", `${spec.name} 出错:${message}`);
+        return `工具出错:${message}`;
+      }
+    },
+  };
+}
+
+/**
+ * Task 139: the tools one player session sees. Plan mode keeps the four plan tools plus the
+ * read-only queries above; every tool that walks, presses a key, fights, buys or saves is left
+ * out because the plan does those through `execute_plan`. Plan mode off returns the old set
+ * (including FF5's scout).
+ */
+export function playerToolDefinitions(
+  host: GameToolHost,
+  config: Config,
+  activity?: ActivitySource,
+): ToolDefinition[] {
+  const all = gameToolDefinitions(host, config.game, config.saveSlot, activity);
+  const gameTools = config.planMode
+    ? all.filter((tool) => PLAN_MODE_READONLY_TOOLS.includes(tool.name))
+    : all;
+  const planTools = config.planMode ? planToolDefinitions(host, activity) : [];
+  const scout =
+    !config.planMode && byKey(config.game).key === "ff5"
+      ? [
+          scoutToolDefinition(host, config.scoutMinutes * 60_000 + 120_000, () =>
+            typeof activity === "function" ? activity() : activity,
+          ),
+        ]
+      : [];
+  return [...gameTools, ...planTools, ...scout];
+}
+
 /** The calling agent and signal, for the tactician started from inside a tool call. */
 export interface TacticianBinding {
   readonly agent?: Agent;
@@ -765,6 +907,14 @@ export function installPlayer(
   // signal until it publishes the child (dsh-subagent README.zh 「失败与恢复」).
   let lastAgent: Agent | undefined = undefined;
   const prepare = (engine: PlayerEngine): void => {
+    // Task 145 follow-up: plan mode must make no model calls at all. The plan's own tables are
+    // the battle rules; a tactician/stage-officer child started after a plan tool was the
+    // repeated child session the user saw in the dsh session directories.
+    if (config.planMode) {
+      engine.game.setTactician(undefined);
+      engine.game.setStageOfficer(undefined);
+      return;
+    }
     // The tactician runs under the same agent and cancellation as the tool call that needed it.
     engine.game.setTactician((facts, options) => {
       const agent = binding?.agent ?? lastAgent;
@@ -829,21 +979,14 @@ export function installPlayer(
       log.warn(message);
     },
   });
-  const tools: ToolDefinition[] = [
-    ...gameToolDefinitions(host, config.game, config.saveSlot, () => slot.current()?.activity),
-    // Task 105: the scout is FF5-only, like the stage officer. Its timeout must cover the whole
-    // configured time budget plus the load/restore at the end.
-    ...(byKey(config.game).key === "ff5"
-      ? [
-          scoutToolDefinition(
-            host,
-            config.scoutMinutes * 60_000 + 120_000,
-            () => slot.current()?.activity,
-          ),
-        ]
-      : []),
-  ];
-  const personaText = buildSystemPrompt(config.game, config.saveSlot);
+  // Task 139: plan mode registers only the plan tools and read-only queries; plan mode off
+  // restores the old set, including FF5's scout.
+  const tools: ToolDefinition[] = playerToolDefinitions(
+    host,
+    config,
+    () => slot.current()?.activity,
+  );
+  const personaText = buildSystemPrompt(config.game, config.saveSlot, config.planMode);
   const disposers = new Map<string, () => Promise<void>>();
 
   ctx.on("session/event", (_session, event) => {
