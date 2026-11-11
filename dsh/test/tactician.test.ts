@@ -90,7 +90,10 @@ void test("the child is published before the plan arrives", async () => {
   });
   const starter: TacticianStarter = {
     startActivation() {
-      return Promise.resolve({ childId: "child-1" as SessionId, result: answer });
+      return Promise.resolve({
+        childId: "child-1" as SessionId,
+        result: answer,
+      });
     },
   };
   const call = startTactician(
@@ -134,7 +137,11 @@ void test("a tactician that stops with an error is a Chinese failure", async () 
     startActivation() {
       return Promise.resolve({
         childId: "child-1" as SessionId,
-        result: Promise.resolve({ output: [], stopReason: "error", diagnostic: "模型坏了" }),
+        result: Promise.resolve({
+          output: [],
+          stopReason: "error",
+          diagnostic: "模型坏了",
+        }),
       });
     },
   };
@@ -145,7 +152,10 @@ void test("a tactician that stops with an error is a Chinese failure", async () 
 });
 
 void test("tactician sessions past the visible limit are archived oldest first", async () => {
-  const archived: { readonly sessionId: SessionId; readonly stopActivity?: boolean }[] = [];
+  const archived: {
+    readonly sessionId: SessionId;
+    readonly stopActivity?: boolean;
+  }[] = [];
   const sessions = new TacticianArchiveQueue({
     keepVisible: 2,
     archive: () => ({
@@ -248,7 +258,11 @@ void test("a tactician that failed is still recorded and archived later", async 
       if (next === 1) {
         return Promise.resolve({
           childId: "child-failed" as SessionId,
-          result: Promise.resolve({ output: [], stopReason: "error", diagnostic: "模型坏了" }),
+          result: Promise.resolve({
+            output: [],
+            stopReason: "error",
+            diagnostic: "模型坏了",
+          }),
         });
       }
       return Promise.resolve({
@@ -396,7 +410,9 @@ void test("the tactician role registers only guide and atlas, with a complete pe
       getSectionOrder: () => 0,
     },
   };
-  created[0]?.({ agent: { id: "tactician", ctx: agentCtx } as unknown as Agent });
+  created[0]?.({
+    agent: { id: "tactician", ctx: agentCtx } as unknown as Agent,
+  });
   assert.deepEqual(names, ["guide", "atlas"]);
   assert.deepEqual(allow, { allow: [] });
   assert.equal(persona, tacticianPrompt("ff5"));
@@ -421,7 +437,9 @@ void test("the tactician's tools are read-only and answer without a game", async
     tools.map((tool) => tool.name),
     ["guide", "atlas"],
   );
-  const exec = { signal: new AbortController().signal } as unknown as ToolRunContext;
+  const exec = {
+    signal: new AbortController().signal,
+  } as unknown as ToolRunContext;
   assert.match(
     String(await tools[0]?.execute({ query: "火力船" }, exec)),
     /攻略知识库还没有准备好/,

@@ -10,10 +10,20 @@ import type { Laptop } from "../src/engine/laptop.ts";
 import type { Json } from "../src/engine/values.ts";
 import { FakePilot } from "./fake-pilot.ts";
 
-const LAPTOP: Laptop = { host: "laptop", user: "player", key: "/tmp/key", root: "C:/ffpr" };
+const LAPTOP: Laptop = {
+  host: "laptop",
+  user: "player",
+  key: "/tmp/key",
+  root: "C:/ffpr",
+};
 
 function record(seq: number, type: string, body: Json = {}): Json {
-  return { seq, t: `2026-11-03T12:00:${String(seq).padStart(2, "0")}Z`, type, ...body };
+  return {
+    seq,
+    t: `2026-11-03T12:00:${String(seq).padStart(2, "0")}Z`,
+    type,
+    ...body,
+  };
 }
 
 function live(party: readonly Json[] = []): Json {
@@ -23,7 +33,15 @@ function live(party: readonly Json[] = []): Json {
       party.length > 0
         ? party
         : [
-            { name: "巴兹", jobName: "骑士", lv: 10, hp: 100, maxHp: 100, mp: 20, maxMp: 20 },
+            {
+              name: "巴兹",
+              jobName: "骑士",
+              lv: 10,
+              hp: 100,
+              maxHp: 100,
+              mp: 20,
+              maxMp: 20,
+            },
             {
               name: "蕾娜",
               jobName: "白魔法师",
@@ -64,7 +82,9 @@ const GOOD_TABLE: Json = {
 
 function pilot(): FakePilot {
   const fake = new FakePilot();
-  fake.on("pos", { pos: { state: "Player", map: 30, cell: [1, 2], battle: false } });
+  fake.on("pos", {
+    pos: { state: "Player", map: 30, cell: [1, 2], battle: false },
+  });
   fake.on("entities", { entities: { total: 0, entities: [] } });
   fake.on("cells", {
     cells: {
@@ -84,7 +104,10 @@ function pilot(): FakePilot {
     },
   });
   fake.on("route", { route: { from: [1, 2], cells: [] } });
-  fake.on("walk", { ok: true, pos: { state: "Player", map: 30, cell: [2, 2] } });
+  fake.on("walk", {
+    ok: true,
+    pos: { state: "Player", map: 30, cell: [2, 2] },
+  });
   fake.on("wait", { ok: true });
   fake.onQuery("items", {
     items: {
@@ -145,7 +168,15 @@ async function harness(
 
 void test("a job change triggers party-changed and the fact sheet names the lost rule", async () => {
   const party = [
-    { name: "巴兹", jobName: "骑士", lv: 10, hp: 100, maxHp: 100, mp: 20, maxMp: 20 },
+    {
+      name: "巴兹",
+      jobName: "骑士",
+      lv: 10,
+      hp: 100,
+      maxHp: 100,
+      mp: 20,
+      maxMp: 20,
+    },
     {
       name: "法利斯",
       jobName: "武僧",
@@ -155,7 +186,15 @@ void test("a job change triggers party-changed and the fact sheet names the lost
       mp: 20,
       maxMp: 20,
     },
-    { name: "蕾娜", jobName: "白魔法师", lv: 10, hp: 100, maxHp: 100, mp: 30, maxMp: 30 },
+    {
+      name: "蕾娜",
+      jobName: "白魔法师",
+      lv: 10,
+      hp: 100,
+      maxHp: 100,
+      mp: 30,
+      maxMp: 30,
+    },
   ];
   const h = await harness(
     () => ({
@@ -175,8 +214,16 @@ void test("a job change triggers party-changed and the fact sheet names the lost
     };
     await h.game.tactics.set(30, [old], ["哥布林"], undefined, [
       { name: "巴兹", job: "骑士", commands: ["攻击", "防御", "道具"] },
-      { name: "法利斯", job: "黑魔法师", commands: ["攻击", "防御", "道具", "黑魔法"] },
-      { name: "蕾娜", job: "白魔法师", commands: ["攻击", "防御", "道具", "白魔法"] },
+      {
+        name: "法利斯",
+        job: "黑魔法师",
+        commands: ["攻击", "防御", "道具", "黑魔法"],
+      },
+      {
+        name: "蕾娜",
+        job: "白魔法师",
+        commands: ["攻击", "防御", "道具", "白魔法"],
+      },
     ]);
     const result = await h.game.run("inventory", {}, h.pilot);
     assert.equal(h.calls(), 1);
@@ -220,14 +267,25 @@ void test("entering a boss map calls boss-prep once and stores the table for the
     await h.game.run("inventory", {}, h.pilot);
     assert.equal(h.calls(), 1);
     // The fight itself starts by using the stored table: no second tactician call.
-    h.pilot.on("pos", { pos: { state: "Battle", map: 30, cell: [1, 2], battle: true } });
+    h.pilot.on("pos", {
+      pos: { state: "Battle", map: 30, cell: [1, 2], battle: true },
+    });
     h.pilot.onQuery("sample", {
       sample: {
         ...live(),
         battle: {
           active: true,
           boss: true,
-          enemies: [{ name: "巨翼猛禽", book: 229, id: 281, hp: 500, maxHp: 500, boss: true }],
+          enemies: [
+            {
+              name: "巨翼猛禽",
+              book: 229,
+              id: 281,
+              hp: 500,
+              maxHp: 500,
+              boss: true,
+            },
+          ],
           players: [],
         },
       },
@@ -252,7 +310,17 @@ void test("a hard battle's debrief fact sheet carries the battle record summary"
       mapId: 30,
       mapName: "风之神殿",
       boss: false,
-      enemies: [{ name: "哥布林", id: 1, hp: 20, maxHp: 20, mp: null, status: [], boss: false }],
+      enemies: [
+        {
+          name: "哥布林",
+          id: 1,
+          hp: 20,
+          maxHp: 20,
+          mp: null,
+          status: [],
+          boss: false,
+        },
+      ],
       party: [],
       table: { kind: "map", mapId: 30, table: 0 },
     });
@@ -281,7 +349,12 @@ void test("a bridge battle.ai push is kept in the monster AI cache", async () =>
   }));
   try {
     h.game.events?.feed(
-      record(4, "battle.ai", { monster: 555, scriptId: 9, scriptName: "sc_ai_555", length: 120 }),
+      record(4, "battle.ai", {
+        monster: 555,
+        scriptId: 9,
+        scriptName: "sc_ai_555",
+        length: 120,
+      }),
       true,
     );
     const entry = h.game.monsterAi.entry(555);

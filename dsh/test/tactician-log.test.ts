@@ -10,19 +10,45 @@ import type { Json } from "../src/engine/values.ts";
 import { Tactics } from "../src/engine/tactics.ts";
 import { FakePilot } from "./fake-pilot.ts";
 
-const LAPTOP: Laptop = { host: "laptop", user: "player", key: "/tmp/key", root: "C:/ffpr" };
+const LAPTOP: Laptop = {
+  host: "laptop",
+  user: "player",
+  key: "/tmp/key",
+  root: "C:/ffpr",
+};
 const TABLE: Json = { 巴兹: [{ do: "攻击" }] };
 
 function record(seq: number, type: string, body: Json = {}): Json {
-  return { seq, t: `2026-11-03T12:00:${String(seq).padStart(2, "0")}Z`, type, ...body };
+  return {
+    seq,
+    t: `2026-11-03T12:00:${String(seq).padStart(2, "0")}Z`,
+    type,
+    ...body,
+  };
 }
 
 function live(): Json {
   return record(3, "sample", {
     user: { mapId: 30, areaText: "图尔村" },
     party: [
-      { name: "巴兹", jobName: "骑士", lv: 10, hp: 100, maxHp: 100, mp: 20, maxMp: 20 },
-      { name: "蕾娜", jobName: "白魔法师", lv: 10, hp: 100, maxHp: 100, mp: 30, maxMp: 30 },
+      {
+        name: "巴兹",
+        jobName: "骑士",
+        lv: 10,
+        hp: 100,
+        maxHp: 100,
+        mp: 20,
+        maxMp: 20,
+      },
+      {
+        name: "蕾娜",
+        jobName: "白魔法师",
+        lv: 10,
+        hp: 100,
+        maxHp: 100,
+        mp: 30,
+        maxMp: 30,
+      },
     ],
     battle: { active: false },
   });
@@ -30,7 +56,9 @@ function live(): Json {
 
 function pilot(): FakePilot {
   const fake = new FakePilot();
-  fake.on("pos", { pos: { state: "Player", map: 30, cell: [1, 2], battle: false } });
+  fake.on("pos", {
+    pos: { state: "Player", map: 30, cell: [1, 2], battle: false },
+  });
   fake.on("entities", { entities: { total: 0, entities: [] } });
   fake.on("cells", {
     cells: {
@@ -50,7 +78,10 @@ function pilot(): FakePilot {
     },
   });
   fake.on("route", { route: { from: [1, 2], cells: [] } });
-  fake.on("walk", { ok: true, pos: { state: "Player", map: 30, cell: [2, 2] } });
+  fake.on("walk", {
+    ok: true,
+    pos: { state: "Player", map: 30, cell: [2, 2] },
+  });
   fake.on("wait", { ok: true });
   fake.onQuery("items", {
     items: {

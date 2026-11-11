@@ -200,7 +200,9 @@ export function startTactician(
       const reason: unknown = signal.reason;
       const failure = signal.aborted
         ? reason
-        : new Error(`战术官没有叫起来:${describeError(error)}`, { cause: error });
+        : new Error(`战术官没有叫起来:${describeError(error)}`, {
+            cause: error,
+          });
       fail(failure);
       throw failure;
     }
@@ -209,7 +211,9 @@ export function startTactician(
       answer = await activation.result;
     } catch (error) {
       signal.throwIfAborted();
-      throw new Error(`战术官没有回答:${describeError(error)}`, { cause: error });
+      throw new Error(`战术官没有回答:${describeError(error)}`, {
+        cause: error,
+      });
     } finally {
       // Covers success, a non-completed stop and a result rejection (including the timeout).
       sessions.finished(game, activation.childId);
@@ -332,7 +336,10 @@ export function tacticianTools(guide: Guide | null, atlas: Atlas, game = "ff5"):
 const textOutput: ToolDefinition["output"] = {
   schema: { type: "string" },
   render: (_args, value) => [
-    { type: "text", text: typeof value === "string" ? value : JSON.stringify(value) },
+    {
+      type: "text",
+      text: typeof value === "string" ? value : JSON.stringify(value),
+    },
   ],
 };
 

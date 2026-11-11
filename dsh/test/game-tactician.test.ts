@@ -10,11 +10,19 @@ import type { Laptop } from "../src/engine/laptop.ts";
 import type { Json } from "../src/engine/values.ts";
 import { FakePilot } from "./fake-pilot.ts";
 
-const LAPTOP: Laptop = { host: "laptop", user: "player", key: "/tmp/key", root: "C:/ffpr" };
+const LAPTOP: Laptop = {
+  host: "laptop",
+  user: "player",
+  key: "/tmp/key",
+  root: "C:/ffpr",
+};
 const TABLE: Json = { 巴兹: [{ do: "攻击" }] };
 const OTHER_TABLE: Json = { 巴兹: [{ do: "防御" }] };
 
-function deferred<T>(): { readonly promise: Promise<T>; resolve(value: T): void } {
+function deferred<T>(): {
+  readonly promise: Promise<T>;
+  resolve(value: T): void;
+} {
   let resolve: (value: T) => void = () => undefined;
   const promise = new Promise<T>((settle) => {
     resolve = settle;
@@ -28,15 +36,36 @@ function deferred<T>(): { readonly promise: Promise<T>; resolve(value: T): void 
 }
 
 function record(seq: number, type: string, body: Json = {}): Json {
-  return { seq, t: `2026-10-20T12:00:${String(seq).padStart(2, "0")}Z`, type, ...body };
+  return {
+    seq,
+    t: `2026-10-20T12:00:${String(seq).padStart(2, "0")}Z`,
+    type,
+    ...body,
+  };
 }
 
 function sample(battle: Json = { active: false }): Json {
   return record(3, "sample", {
     user: { mapId: 30, areaText: "图尔村" },
     party: [
-      { name: "巴兹", jobName: "骑士", lv: 10, hp: 100, maxHp: 100, mp: 20, maxMp: 20 },
-      { name: "蕾娜", jobName: "白魔法师", lv: 10, hp: 100, maxHp: 100, mp: 30, maxMp: 30 },
+      {
+        name: "巴兹",
+        jobName: "骑士",
+        lv: 10,
+        hp: 100,
+        maxHp: 100,
+        mp: 20,
+        maxMp: 20,
+      },
+      {
+        name: "蕾娜",
+        jobName: "白魔法师",
+        lv: 10,
+        hp: 100,
+        maxHp: 100,
+        mp: 30,
+        maxMp: 30,
+      },
     ],
     battle,
   });
@@ -47,7 +76,14 @@ function eventsWith(live: Json): KeyEvents {
     () => new Date("2026-10-20T20:30:00+08:00"),
     () => 1000,
   );
-  events.feed(record(1, "hello", { product: "FF5", gameVersion: "1.2.0", plugin: "0.7.2" }), false);
+  events.feed(
+    record(1, "hello", {
+      product: "FF5",
+      gameVersion: "1.2.0",
+      plugin: "0.7.2",
+    }),
+    false,
+  );
   events.feed(live, true);
   return events;
 }
@@ -67,7 +103,9 @@ function bossHere(pilot: FakePilot): void {
 
 function pilotFor(live: Json, options: { conveyor?: boolean; blocked?: boolean } = {}): FakePilot {
   const pilot = new FakePilot();
-  pilot.on("pos", { pos: { state: "Player", map: 30, cell: [1, 2], battle: false } });
+  pilot.on("pos", {
+    pos: { state: "Player", map: 30, cell: [1, 2], battle: false },
+  });
   pilot.on("entities", (fields) => {
     if (fields.kind === "Event" && options.conveyor === true) {
       return {
@@ -101,7 +139,11 @@ function pilotFor(live: Json, options: { conveyor?: boolean; blocked?: boolean }
   pilot.on(
     "walk",
     options.blocked === true
-      ? { ok: false, error: "blocked", pos: { state: "Player", map: 30, cell: [1, 2] } }
+      ? {
+          ok: false,
+          error: "blocked",
+          pos: { state: "Player", map: 30, cell: [1, 2] },
+        }
       : { ok: true, pos: { state: "Player", map: 30, cell: [9, 30] } },
   );
   pilot.on("wait", { ok: true });
@@ -165,7 +207,10 @@ async function harness(
   if (options.monsters !== undefined) {
     events.enemies.set(30, new Set(options.monsters));
   }
-  const pilot = pilotFor(live, { conveyor: options.conveyor, blocked: options.blocked });
+  const pilot = pilotFor(live, {
+    conveyor: options.conveyor,
+    blocked: options.blocked,
+  });
   return {
     game,
     pilot,
@@ -213,7 +258,10 @@ void test("the title screen or map 0 never calls the tactician", async () => {
   for (const position of positions) {
     const live = sample();
     live.user = { mapId: 0, areaText: "" };
-    live.scene = { name: position.scene, state: position.state === "Player" ? "Player" : null };
+    live.scene = {
+      name: position.scene,
+      state: position.state === "Player" ? "Player" : null,
+    };
     const h = await harness(live, () => ({
       tables: [TABLE],
       walkerNotes: "不该叫",
@@ -314,7 +362,11 @@ void test("a background table finishing while still on the map is not installed"
     assert.equal(h.calls(), 1);
     assert.match(first, /战术官在后台写地图 30 的规则表/);
     await h.game.run("set_tactics", { tables: [TABLE] }, h.pilot);
-    pending.resolve({ tables: [OTHER_TABLE], walkerNotes: "后台写的", askUp: "换防御" });
+    pending.resolve({
+      tables: [OTHER_TABLE],
+      walkerNotes: "后台写的",
+      askUp: "换防御",
+    });
     await h.game.whenTacticianIdle();
     assert.deepEqual(h.game.tactics.current(30), TABLE);
     assert.equal(h.game.tactics.isPlayerTable(30), true);
@@ -337,11 +389,15 @@ void test("leaving the map retires the player's mark and the next trigger instal
   try {
     await h.game.run("set_tactics", { tables: [TABLE] }, h.pilot);
     assert.equal(h.game.tactics.isPlayerTable(30), true);
-    h.pilot.on("pos", { pos: { state: "Player", map: 1, cell: [1, 2], battle: false } });
+    h.pilot.on("pos", {
+      pos: { state: "Player", map: 1, cell: [1, 2], battle: false },
+    });
     await h.game.run("inventory", {}, h.pilot);
     assert.equal(h.game.mapId, 1);
     assert.equal(h.game.tactics.isPlayerTable(30), false);
-    h.pilot.on("pos", { pos: { state: "Player", map: 30, cell: [1, 2], battle: false } });
+    h.pilot.on("pos", {
+      pos: { state: "Player", map: 30, cell: [1, 2], battle: false },
+    });
     h.game.settle = async () => {
       await h.game.hooks.report?.(30, "hard", "巴兹倒下");
       return "";
@@ -450,7 +506,9 @@ void test("a boss battle is written and fought by the code when tacticianBoss is
     walkerNotes: "首领战先回复",
     askUp: "",
   }));
-  h.pilot.on("pos", { pos: { state: "Battle", map: 30, cell: [1, 2], battle: true } });
+  h.pilot.on("pos", {
+    pos: { state: "Battle", map: 30, cell: [1, 2], battle: true },
+  });
   h.pilot.on("items", { items: { normal: [] } });
   try {
     const result = await h.game.run("inventory", {}, h.pilot);
@@ -479,7 +537,9 @@ void test("a boss battle without tacticianBoss keeps the old stop and asks no on
   const h = await harness(live, () => ({ tables: [TABLE], walkerNotes: "不该叫", askUp: "" }), {
     boss: false,
   });
-  h.pilot.on("pos", { pos: { state: "Battle", map: 30, cell: [1, 2], battle: true } });
+  h.pilot.on("pos", {
+    pos: { state: "Battle", map: 30, cell: [1, 2], battle: true },
+  });
   try {
     const result = await h.game.run("inventory", {}, h.pilot);
     assert.equal(h.calls(), 0);
@@ -539,7 +599,11 @@ void test("a road trigger returns before the answer and the next result carries 
     const second = await h.game.run("inventory", {}, h.pilot);
     assert.equal(h.calls(), 1);
     assert.doesNotMatch(second, /战术官在后台写/);
-    pending.resolve({ tables: [TABLE], walkerNotes: "后台写好了", askUp: "带眼药" });
+    pending.resolve({
+      tables: [TABLE],
+      walkerNotes: "后台写好了",
+      askUp: "带眼药",
+    });
     await h.game.whenTacticianIdle();
     assert.ok(h.game.tactics.has(30));
     const third = await h.game.run("inventory", {}, h.pilot);
@@ -556,7 +620,11 @@ void test("a background call retries bad tables without holding the next tool", 
   const h = await harness(sample(), () => {
     call += 1;
     return call === 1
-      ? { tables: [{ 巴兹: [{ if: "ally.hp_pct < 50" }] }], walkerNotes: "坏表", askUp: "" }
+      ? {
+          tables: [{ 巴兹: [{ if: "ally.hp_pct < 50" }] }],
+          walkerNotes: "坏表",
+          askUp: "",
+        }
       : { tables: [TABLE], walkerNotes: "改好了", askUp: "" };
   });
   try {
@@ -624,7 +692,9 @@ void test("a boss fight uses the stage's prepared table by enemy name and calls 
   const h = await harness(sample(battle), () => {
     throw new Error("出发前写好的首领表不该再叫战术官");
   });
-  h.pilot.on("pos", { pos: { state: "Battle", map: 30, cell: [1, 2], battle: true } });
+  h.pilot.on("pos", {
+    pos: { state: "Battle", map: 30, cell: [1, 2], battle: true },
+  });
   h.pilot.on("items", { items: { normal: [] } });
   try {
     await h.game.stagePlans.save({
