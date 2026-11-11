@@ -111,7 +111,11 @@ void test("steam shop tables and treasures parse from a section", () => {
     ],
   );
   assert.deepEqual(tables[0]?.goods, [{ name: "Rest", cost: 20, note: "" }]);
-  assert.deepEqual(tables[1]?.goods[1], { name: "Long Sword", cost: null, note: "Attack +22" });
+  assert.deepEqual(tables[1]?.goods[1], {
+    name: "Long Sword",
+    cost: null,
+    note: "Attack +22",
+  });
   assert.deepEqual(treasures(SHOP_SECTION, new Set(["Ricard Mage"])), [
     {
       kind: "hidden",

@@ -363,7 +363,9 @@ async function readOptionalText(path: string, signal?: AbortSignal): Promise<str
   } catch (error) {
     if (isMissingFile(error)) return null;
     signal?.throwIfAborted();
-    throw new Error(`读不了游戏文件 ${path}:${describeError(error)}`, { cause: error });
+    throw new Error(`读不了游戏文件 ${path}:${describeError(error)}`, {
+      cause: error,
+    });
   }
 }
 
@@ -422,6 +424,15 @@ async function readFileItems(dir: string, signal?: AbortSignal): Promise<GameIte
   return items;
 }
 
+/**
+ * Task 156 follow-up: task 150's export adds boss objects (the event object whose script has
+ * EncountBoss) to each map. Keep the new field without changing game-files.ts (150 owns it);
+ * the plan executor reads it and matches monster ids itself.
+ */
+interface MapFileWithBossObjects extends GameMapFile {
+  readonly bossObjects?: readonly unknown[];
+}
+
 async function readFileMaps(dir: string, signal?: AbortSignal): Promise<GameMapFile[]> {
   const mapsDir = join(dir, "maps");
   let names: string[];
@@ -430,7 +441,9 @@ async function readFileMaps(dir: string, signal?: AbortSignal): Promise<GameMapF
   } catch (error) {
     if (isMissingFile(error)) return [];
     signal?.throwIfAborted();
-    throw new Error(`读不了地图文件目录 ${mapsDir}:${describeError(error)}`, { cause: error });
+    throw new Error(`读不了地图文件目录 ${mapsDir}:${describeError(error)}`, {
+      cause: error,
+    });
   }
   const maps: GameMapFile[] = [];
   const files = names
@@ -448,10 +461,30 @@ async function readFileMaps(dir: string, signal?: AbortSignal): Promise<GameMapF
     try {
       parsed = JSON.parse(body);
     } catch (error) {
-      throw new Error(`读不懂地图文件 ${path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不懂地图文件 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     const map = parseGameMapFile(parsed);
-    if (map !== null) maps.push(map);
+    if (map === null) continue;
+    // 11-11: task 150 exports boss objects inside `events` (objectType 10, encounterGroupId);
+    // expose them as `bossObjects` too when the file has no separate list.
+    const fromEvents: Record<string, unknown>[] =
+      isRecord(parsed) && Array.isArray(parsed.events)
+        ? (parsed.events as unknown[])
+            .filter(isRecord)
+            .filter((event) => event.objectType === 10)
+            .map((event) => ({ ...event, encounterParty: event.encounterGroupId ?? null }))
+        : [];
+    const bossObjects =
+      isRecord(parsed) && Array.isArray(parsed.bossObjects)
+        ? parsed.bossObjects
+        : fromEvents.length > 0
+          ? fromEvents
+          : undefined;
+    const withBossObjects: MapFileWithBossObjects =
+      bossObjects === undefined ? map : { ...map, bossObjects };
+    maps.push(withBossObjects);
   }
   return maps;
 }
@@ -528,7 +561,9 @@ export async function readStatic(
   } catch (error) {
     if (isMissingFile(error)) return emptyStatic(game, dir);
     signal?.throwIfAborted();
-    throw new Error(`读不了知识导出目录 ${dir}:${describeError(error)}`, { cause: error });
+    throw new Error(`读不了知识导出目录 ${dir}:${describeError(error)}`, {
+      cause: error,
+    });
   }
   const rowsByTable: Record<TableName, unknown[]> = {
     maps: [],
@@ -550,13 +585,17 @@ export async function readStatic(
       body = await readFile(path, { encoding: "utf8", signal });
     } catch (error) {
       signal?.throwIfAborted();
-      throw new Error(`读不了知识导出 ${path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不了知识导出 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     let parsed: unknown;
     try {
       parsed = JSON.parse(body);
     } catch (error) {
-      throw new Error(`读不懂知识导出 ${path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不懂知识导出 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     if (!isRecord(parsed)) throw new Error(`知识导出 ${path} 不是 JSON 对象`);
     const table = text(parsed.table) ?? name.slice(0, -".json".length);

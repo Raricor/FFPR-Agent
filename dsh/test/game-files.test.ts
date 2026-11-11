@@ -85,7 +85,11 @@ void test("a map title resolves all three languages from its message keys", () =
   });
   const without = maps[1];
   assert.ok(without);
-  assert.deepEqual(mapTitleNames(without, messages), { ja: null, en: null, zhc: null });
+  assert.deepEqual(mapTitleNames(without, messages), {
+    ja: null,
+    en: null,
+    zhc: null,
+  });
 });
 
 void test("a gid object's cell is x/16 and y/16-1", () => {
@@ -159,7 +163,11 @@ void test("content_id becomes three names with icon tags removed", async () => {
   const gil = items.find((item) => item.id === 1);
   assert.ok(gil !== undefined);
   assert.equal(gil.kind, "gil");
-  assert.deepEqual(gil.names, { ja: "测试金币", en: "Test Gil", zhc: "测试金币" });
+  assert.deepEqual(gil.names, {
+    ja: "测试金币",
+    en: "Test Gil",
+    zhc: "测试金币",
+  });
   assert.ok(
     items.every(
       (item) =>

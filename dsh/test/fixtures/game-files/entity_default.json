@@ -77,7 +77,11 @@
           "height": 16,
           "properties": [
             { "name": "object_type", "type": "int", "value": 6 },
-            { "name": "message_key", "type": "string", "value": "TEST_MSG_001" },
+            {
+              "name": "message_key",
+              "type": "string",
+              "value": "TEST_MSG_001"
+            },
             { "name": "script_id", "type": "int", "value": 0 }
           ]
         },

@@ -188,7 +188,11 @@ export function attributesOf(source: string): {
   absorb: string[];
   immune: string[];
 } {
-  const result = { weak: [] as string[], absorb: [] as string[], immune: [] as string[] };
+  const result = {
+    weak: [] as string[],
+    absorb: [] as string[],
+    immune: [] as string[],
+  };
   const text = source.replace(/extit\{([^}]*)\}/g, "$1");
   for (const match of text.matchAll(ATTRIBUTE)) {
     const kind = (match[1] ?? "").toLowerCase();

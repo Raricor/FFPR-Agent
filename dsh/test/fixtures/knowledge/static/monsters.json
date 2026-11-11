@@ -21,8 +21,20 @@
       "boss": false,
       "scriptId": "sc_7",
       "moves": [
-        { "abilityId": 1, "name": "火", "blueMagic": false, "conditions": [], "rate": 0.5 },
-        { "abilityId": 2, "name": "毒针", "blueMagic": true, "conditions": ["中毒"], "rate": 0.25 }
+        {
+          "abilityId": 1,
+          "name": "火",
+          "blueMagic": false,
+          "conditions": [],
+          "rate": 0.5
+        },
+        {
+          "abilityId": 2,
+          "name": "毒针",
+          "blueMagic": true,
+          "conditions": ["中毒"],
+          "rate": 0.25
+        }
       ]
     },
     {
@@ -41,7 +53,13 @@
       "boss": true,
       "scriptId": null,
       "moves": [
-        { "abilityId": 3, "name": "水波", "blueMagic": true, "conditions": ["沉默"], "rate": null }
+        {
+          "abilityId": 3,
+          "name": "水波",
+          "blueMagic": true,
+          "conditions": ["沉默"],
+          "rate": null
+        }
       ]
     }
   ]

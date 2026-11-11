@@ -76,6 +76,7 @@ export {
 } from "./load.ts";
 
 export { areaKeys, buildKnowledge, mergeSources, normalizeName } from "./merge.ts";
+export { shopsOnMap, type MapShop, type MapShopProduct } from "./shops.ts";
 
 export type { TrilingualNames } from "./game-files.ts";
 

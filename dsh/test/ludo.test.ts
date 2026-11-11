@@ -40,7 +40,12 @@ void test("ludo parses the fire-powered-ship enemies and boss weaknesses", () =>
   const stats = new Map(
     chapter.monsters.map((monster) => [
       monster.name,
-      { book: monster.book, weak: monster.weak, absorb: monster.absorb, immune: monster.immune },
+      {
+        book: monster.book,
+        weak: monster.weak,
+        absorb: monster.absorb,
+        immune: monster.immune,
+      },
     ]),
   );
   assert.deepEqual(stats.get("Crew Dust"), {
@@ -81,7 +86,9 @@ void test("ludo chapter parses steps tips monsters", () => {
   );
   assert.deepEqual(soldier.weak, ["Fire"]);
   assert.equal(soldier.steal, "Mythril Sword, Potion");
-  assert.deepEqual(chapter.bosses, { "Castle Walse": ["Shiva, Ice Commander"] });
+  assert.deepEqual(chapter.bosses, {
+    "Castle Walse": ["Shiva, Ice Commander"],
+  });
 });
 
 void test("ludo slugs keep the index order without about or duplicates", () => {

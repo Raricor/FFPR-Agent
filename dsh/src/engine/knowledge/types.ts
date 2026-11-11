@@ -15,7 +15,7 @@ import type { Atlas } from "../atlas.ts";
 import type { Guide } from "../guide/kb.ts";
 import type { GameProfile } from "../profiles/types.ts";
 import type { CollisionStore } from "../regions.ts";
-import type { TrilingualNames } from "./game-files.ts";
+import type { GameMapFile, TrilingualNames } from "./game-files.ts";
 
 /**
  * `master` is the bridge export, `files` the extracted game files (task 121), `guide` a
@@ -330,6 +330,8 @@ export interface ChestKnowledge {
 export interface ShopProduct {
   readonly itemId: number | null;
   readonly name: string;
+  /** Guide/other-language names for the same product (11-11: Fire and 火炎). */
+  readonly aliases?: readonly string[];
   readonly price: number | null;
   readonly sources: readonly SourceRef[];
   readonly conflicts: readonly FactConflict[];
@@ -417,6 +419,8 @@ export interface Knowledge {
   readonly staticDir: string;
   /** `.deps/knowledge/<game>/files/`, when the extracted game files are present. */
   readonly filesDir: string | null;
+  /** The exported map files, kept for shops: clerk cells and map titles (11-11). */
+  readonly mapFiles?: readonly GameMapFile[];
   /** Table names that had a file; an absent table is an empty list, not an error. */
   readonly tables: readonly string[];
   readonly guide: Guide | null;

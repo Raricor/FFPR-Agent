@@ -199,6 +199,8 @@ export function parseMonsterSets(csvText: string): MonsterSetResource[] {
 export interface MonsterPartyResource {
   readonly id: number;
   readonly monsterIds: readonly number[];
+  /** `monster_party.csv` `get_ap`: ABP one battle with this party gives (task 150 follow-up). */
+  readonly getAp: number | null;
 }
 
 export function parseMonsterParties(csvText: string): MonsterPartyResource[] {
@@ -212,7 +214,7 @@ export function parseMonsterParties(csvText: string): MonsterPartyResource[] {
         monsterIds.push(monsterId);
       }
     }
-    return [{ id, monsterIds }];
+    return [{ id, monsterIds, getAp: integer(row.get_ap) }];
   });
 }
 
@@ -235,6 +237,58 @@ export function parseMonsterResources(csvText: string): MonsterResource[] {
       },
     ];
   });
+}
+
+/** Task 150: what one battle against the monster pays, from `Data/Master/monster.csv`. */
+export interface MonsterReward {
+  readonly exp: number | null;
+  readonly gil: number | null;
+  readonly abp: number | null;
+}
+
+/**
+ * Task 150: exp / gil / ABP by `monster.csv` id. The export's column names are not documented
+ * anywhere in this repo, so several spellings are accepted and a missing column stays null
+ * instead of guessing from another column.
+ */
+const REWARD_COLUMNS: Readonly<Record<keyof MonsterReward, readonly string[]>> = {
+  exp: ["exp", "experience", "exp_value", "experience_value", "exp_gained", "exp_gain"],
+  gil: ["gil", "gill", "gold", "gil_gained", "gill_gained", "gil_gain", "gold_gain"],
+  abp: ["abp", "ability_point", "ability_points", "job_exp", "job_experience", "abp_gain"],
+};
+
+/** The live `monster.csv` headers were not the hand-written guesses; match the family. */
+const REWARD_PATTERNS: Readonly<Record<keyof MonsterReward, RegExp>> = {
+  exp: /exp|経験/iu,
+  gil: /gil|gold|ギル/iu,
+  abp: /abp|ability.?point|job.?exp|アビリティ/iu,
+};
+
+function rewardValue(row: CsvRow, names: readonly string[], pattern: RegExp): number | null {
+  for (const [column, value] of Object.entries(row)) {
+    const key = column
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/gu, "_");
+    if (!names.includes(key) && !pattern.test(key)) continue;
+    const parsed = integer(value);
+    if (parsed !== null) return parsed;
+  }
+  return null;
+}
+
+export function parseMonsterRewards(csvText: string): Map<number, MonsterReward> {
+  const rewards = new Map<number, MonsterReward>();
+  for (const row of parseCsvTable(csvText)) {
+    const id = integer(row.id);
+    if (id === null || id <= 0) continue;
+    rewards.set(id, {
+      exp: rewardValue(row, REWARD_COLUMNS.exp, REWARD_PATTERNS.exp),
+      gil: rewardValue(row, REWARD_COLUMNS.gil, REWARD_PATTERNS.gil),
+      abp: rewardValue(row, REWARD_COLUMNS.abp, REWARD_PATTERNS.abp),
+    });
+  }
+  return rewards;
 }
 
 /** One `encount_area.csv` row: the encounter region and its per-foot monster sets. */
@@ -302,13 +356,58 @@ export interface GameMapPoint {
   readonly name: string;
 }
 
+/**
+ * Task 150: one hidden item spot. `script` is the `sc_*.json` name whose mnemonic grants the
+ * item (a pot, cabinet or invisible chest); null means the spot is a treasure object that
+ * `treasure_box.csv` marks as a hidden item. The item is a `content.csv` id, because a chest
+ * and the script command both spell an item by that id.
+ */
+export interface GameHiddenItem {
+  readonly cell: readonly [number, number];
+  readonly contentId: number;
+  readonly contentNum: number | null;
+  readonly flagId: number | null;
+  /** The script that gives the item; null for a hidden treasure object. */
+  readonly script: string | null;
+}
+
+/** A map's playable cell rectangle; cells outside it are not reachable examine spots. */
+export interface MapBounds {
+  readonly width: number;
+  readonly height: number;
+}
+
+/** An event object that starts a script: used when a script's item-granting entity is off-map. */
+export interface HiddenItemTrigger {
+  readonly scriptId: number;
+  readonly cell: readonly [number, number] | null;
+}
+
+/** A map NPC that may be a shop clerk: `shopId` is the product group the NPC opens. */
+export interface GameMapNpc {
+  readonly cell: readonly [number, number];
+  readonly name: string;
+  readonly shopId: number | null;
+}
+
 /** The fields `scripts/game-files.mts` writes to `.deps/knowledge/<game>/files/maps/`. */
 export interface GameMapFile {
   readonly id: number;
   readonly name: string;
+  /** The map's three-language title (task 133); shops use it for their kind. */
+  readonly title?: TrilingualNames | null;
   readonly areaId: number | null;
   readonly saveAvailable: boolean | null;
+  /** Map width/height; absent in exports made before task 150. */
+  readonly width?: number | null;
+  readonly height?: number | null;
   readonly chests: readonly GameMapChest[];
+  /** Task 150: examine spots and hidden treasures, from the entity scripts. */
+  readonly hiddenItems: readonly GameHiddenItem[];
+  /** Task 150: script items dropped because no cell could be placed inside the map. */
+  readonly hiddenItemSkipped?: number;
+  /** Task 150: clerk cells (task 144 links them to a shop's product group). */
+  readonly npcs: readonly GameMapNpc[];
   readonly savePoints: readonly GameMapPoint[];
   readonly restorePoints: readonly GameMapPoint[];
 }
@@ -344,6 +443,40 @@ function jsonPoints(value: unknown): GameMapPoint[] {
   });
 }
 
+function jsonHiddenItem(value: unknown): GameHiddenItem | null {
+  if (!isRecord(value)) return null;
+  const cell = jsonCell(value.cell);
+  const contentId = integer(value.contentId);
+  if (cell === null || contentId === null) return null;
+  return {
+    cell,
+    contentId,
+    contentNum: integer(value.contentNum),
+    flagId: integer(value.flagId),
+    script: text(value.script) ?? null,
+  };
+}
+
+function jsonNpc(value: unknown): GameMapNpc | null {
+  if (!isRecord(value)) return null;
+  const cell = jsonCell(value.cell);
+  if (cell === null) return null;
+  return {
+    cell,
+    name: text(value.name) ?? "",
+    shopId: integer(value.shopId),
+  };
+}
+
+function jsonTitle(value: unknown): TrilingualNames | null {
+  if (!isRecord(value)) return null;
+  return {
+    ja: text(value.ja) ?? null,
+    en: text(value.en) ?? null,
+    zhc: text(value.zhc) ?? null,
+  };
+}
+
 export function parseGameMapFile(value: unknown): GameMapFile | null {
   if (!isRecord(value)) return null;
   const id = integer(value.id);
@@ -351,12 +484,24 @@ export function parseGameMapFile(value: unknown): GameMapFile | null {
   return {
     id,
     name: text(value.name) ?? "",
+    title: jsonTitle(value.title),
     areaId: integer(value.areaId),
     saveAvailable: typeof value.saveAvailable === "boolean" ? value.saveAvailable : null,
+    width: integer(value.width),
+    height: integer(value.height),
     chests: records(value.chests).flatMap((chest) => {
       const parsed = jsonChest(chest);
       return parsed === null ? [] : [parsed];
     }),
+    hiddenItems: records(value.hiddenItems).flatMap((item) => {
+      const parsed = jsonHiddenItem(item);
+      return parsed === null ? [] : [parsed];
+    }),
+    npcs: records(value.npcs).flatMap((npc) => {
+      const parsed = jsonNpc(npc);
+      return parsed === null ? [] : [parsed];
+    }),
+    hiddenItemSkipped: integer(value.hiddenItemSkipped) ?? 0,
     savePoints: jsonPoints(value.savePoints),
     restorePoints: jsonPoints(value.restorePoints),
   };
@@ -774,6 +919,12 @@ export interface EventTrigger {
   readonly rect: CellRect | null;
   readonly scriptId: number | null;
   readonly objectType: number | null;
+  /** The `entity_default` object this event belongs to, when the file names it. */
+  readonly entityId: number | null;
+  /** `EncountBoss`/`Encount` group id from the object's script; null when absent. */
+  readonly encounterGroupId: number | null;
+  /** `monster_party.csv` monster ids for `encounterGroupId`; null when unknown. */
+  readonly monsterIds: readonly number[] | null;
 }
 
 export interface Npc {
@@ -806,9 +957,17 @@ export interface UnresolvedObject {
   readonly reason: string;
 }
 
+export interface ToLayer {
+  readonly cell: readonly [number, number];
+  /** The floor the cell changes to; null when the object did not say. */
+  readonly layer: number | null;
+}
+
 export interface EntityParse {
   readonly chests: readonly Treasure[];
   readonly exits: readonly Exit[];
+  /** Task 149 real-route check: game-file ToLayer cells, so the planner can change floors. */
+  readonly toLayers: readonly ToLayer[];
   readonly npcs: readonly Npc[];
   readonly savePoints: readonly Marker[];
   readonly restorePoints: readonly Marker[];
@@ -905,6 +1064,7 @@ export function parseEntity(
   const savePoints: Marker[] = [];
   const restorePoints: Marker[] = [];
   const moveAreas: MoveArea[] = [];
+  const toLayers: ToLayer[] = [];
 
   for (const object of objects) {
     const type = objectType(object);
@@ -947,6 +1107,8 @@ export function parseEntity(
         toPoint: null,
         kind: "world",
       });
+    } else if (type === 4 && cell !== null) {
+      toLayers.push({ cell, layer: integer(propertyValue(object, "layer")) });
     } else if (type === 6 || type === 17) {
       const npc = npcObject(object, "entity_default.json");
       if (npc !== null) npcs.push(npc);
@@ -971,6 +1133,7 @@ export function parseEntity(
     savePoints: dedupeMarkers(savePoints),
     restorePoints: dedupeMarkers(restorePoints),
     moveAreas,
+    toLayers,
     unresolved,
   };
 }
@@ -1021,7 +1184,53 @@ export function parseEventExits(
   return found;
 }
 
-export function parseEventFile(file: string, value: unknown): EventTrigger[] {
+/** The first `EncountBoss` / `Encount` group id in a script, or null. */
+function encounterGroupOf(value: unknown): number | null {
+  if (!isRecord(value)) return null;
+  for (const entry of records(value.Mnemonics)) {
+    if (!/^Encount/iu.test(text(entry.mnemonic) ?? "")) continue;
+    const operands = isRecord(entry.operands) ? entry.operands : {};
+    const group = list(operands.iValues)
+      .map((item) => integer(item) ?? 0)
+      .find((item) => item > 0);
+    if (group !== undefined) return group;
+  }
+  return null;
+}
+
+export interface EventScripts {
+  readonly scripts?: readonly { readonly file: string; readonly value: unknown }[];
+  readonly scriptNames?: ReadonlyMap<number, string>;
+  readonly monsterParties?: ReadonlyMap<number, readonly number[]>;
+}
+
+function encounterFor(
+  scriptId: number | null,
+  scripts: EventScripts | undefined,
+): {
+  readonly groupId: number | null;
+  readonly monsterIds: readonly number[] | null;
+} {
+  if (scriptId === null || scripts === undefined) return { groupId: null, monsterIds: null };
+  const name = scripts.scriptNames?.get(scriptId);
+  if (name === undefined) return { groupId: null, monsterIds: null };
+  const script = scripts.scripts?.find(
+    (entry) => entry.file === name || entry.file === `${name}.json`,
+  );
+  if (script === undefined) return { groupId: null, monsterIds: null };
+  const groupId = encounterGroupOf(script.value);
+  if (groupId === null) return { groupId: null, monsterIds: null };
+  return {
+    groupId,
+    monsterIds: scripts.monsterParties?.get(groupId) ?? null,
+  };
+}
+
+export function parseEventFile(
+  file: string,
+  value: unknown,
+  scripts?: EventScripts,
+): EventTrigger[] {
   const triggers: EventTrigger[] = [];
   for (const layer of tileLayers(value)) {
     for (const object of records(layer.objects)) {
@@ -1029,8 +1238,10 @@ export function parseEventFile(file: string, value: unknown): EventTrigger[] {
       const type = objectType(object);
       const scriptId = integer(propertyValue(object, "script_id"));
       const named = /^(?:sc_|ev_e_)/u.test(name);
-      if (!named && !(type === 2 && scriptId !== null && scriptId > 0)) continue;
-      if (name === "") continue;
+      const boss = type === 10;
+      if (!named && !boss && !(type === 2 && scriptId !== null && scriptId > 0)) continue;
+      if (name === "" && !boss) continue;
+      const encounter = encounterFor(scriptId, scripts);
       triggers.push({
         file,
         name,
@@ -1038,10 +1249,40 @@ export function parseEventFile(file: string, value: unknown): EventTrigger[] {
         rect: objectRect(object),
         scriptId,
         objectType: type,
+        entityId: integer(propertyValue(object, "entity_id")),
+        encounterGroupId: encounter.groupId,
+        monsterIds: encounter.monsterIds,
       });
     }
   }
   return triggers;
+}
+
+/**
+ * Task 150 follow-up: an `ev_e_*.json` object can be a stale duplicate of the real entity
+ * (map 193: `sc_e_0206:扉が開く` at (19,6), while `entity_default` has entity 11 at (22,6)).
+ * The event belongs to the entity with the same `entity_id` and name, so use its own x/y.
+ */
+export function alignEventTriggerCells(
+  events: readonly EventTrigger[],
+  entity: unknown,
+): EventTrigger[] {
+  const objects = entityObjects(entity).objects;
+  const byId = new Map<number, unknown[]>();
+  for (const object of objects) {
+    const id = integer(propertyValue(object, "entity_id"));
+    if (id !== null) byId.set(id, [...(byId.get(id) ?? []), object]);
+  }
+  const sameName = (objects: readonly unknown[], name: string): unknown[] =>
+    objects.filter((object) => objectName(object) === name);
+  return events.map((event) => {
+    if (event.entityId === null) return event;
+    const match = sameName(byId.get(event.entityId) ?? [], event.name)[0];
+    if (match === undefined) return event;
+    const cell = objectCell(match);
+    if (cell === null) return event;
+    return { ...event, cell, rect: objectRect(match) };
+  });
 }
 
 export function parseEventNpcs(file: string, value: unknown): Npc[] {
@@ -1055,6 +1296,280 @@ export function parseEventNpcs(file: string, value: unknown): Npc[] {
   return npcs;
 }
 
+/**
+ * Task 150: mnemonics that hand an item to the party. The FF5 PR script names are not in this
+ * repo (the extracted scripts stay in `.deps`), so the rule accepts the obvious spellings
+ * (`GetItem`, `AddItem`, `GetTreasure`, `GetContent`, ...) and rejects predicates such as
+ * `HasItem` / `GetItemCount`. A script command's first positive integer operand is the item id;
+ * the next positive one, when present, is the count. This is the one judgement the hidden-item
+ * count depends on, so the export also lists the matching scripts for a live check.
+ */
+const ITEM_GRANT_PATTERN =
+  /(?:get|add|give|receive|obtain|pick|take).*(?:item|treasure|content|present)|(?:item|treasure|content|present).*(?:get|add|give|receive|obtain|pick|take)/iu;
+const ITEM_GRANT_EXCLUDE =
+  /check|has|have|count|num|exist|select|use|sell|buy|menu|window|kind|name|info|condition|flag/iu;
+
+export function isItemGrantMnemonic(name: string): boolean {
+  return ITEM_GRANT_PATTERN.test(name) && !ITEM_GRANT_EXCLUDE.test(name);
+}
+
+interface ScriptItemGrant {
+  readonly contentId: number;
+  readonly contentNum: number | null;
+}
+
+/** Every item a script hands over, in instruction order; malformed commands are skipped. */
+export function scriptItemGrants(value: unknown): ScriptItemGrant[] {
+  const grants: ScriptItemGrant[] = [];
+  if (!isRecord(value)) return grants;
+  const seen = new Set<string>();
+  for (const entry of records(value.Mnemonics)) {
+    const mnemonic = text(entry.mnemonic) ?? "";
+    if (!isItemGrantMnemonic(mnemonic)) continue;
+    const operands = isRecord(entry.operands) ? entry.operands : {};
+    const values = list(operands.iValues).map((item) => integer(item) ?? 0);
+    const idIndex = values.findIndex((item) => item > 0);
+    if (idIndex < 0) continue;
+    const contentId = values[idIndex] ?? 0;
+    if (contentId <= 0) continue;
+    const next = values[idIndex + 1];
+    const contentNum = next !== undefined && next > 0 ? next : null;
+    const key = `${contentId}:${contentNum ?? "-"}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    grants.push({ contentId, contentNum });
+  }
+  return grants;
+}
+
+function scriptByName(
+  scripts: readonly { readonly file: string; readonly value: unknown }[],
+): Map<string, unknown> {
+  const byName = new Map<string, unknown>();
+  for (const script of scripts) {
+    byName.set(script.file, script.value);
+    if (script.file.endsWith(".json")) {
+      byName.set(script.file.slice(0, -".json".length), script.value);
+    }
+  }
+  return byName;
+}
+
+function mergeHiddenItems(items: readonly GameHiddenItem[]): GameHiddenItem[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = `${item.cell[0]},${item.cell[1]}:${item.contentId}:${item.script ?? ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
+ * Task 150: objects other than treasure boxes whose attached script gives an item (pots,
+ * cabinets, invisible chests). The object must be a normal entity with a `script_id`, the
+ * script name must resolve through `script.csv`, and the script must contain a grant mnemonic.
+ */
+/** The result of reading script-granted items, including the ones that had no usable cell. */
+export interface ScriptHiddenParse {
+  readonly items: GameHiddenItem[];
+  readonly skipped: number;
+}
+
+export type HiddenItemsParse = ScriptHiddenParse;
+
+function cellInside(cell: readonly [number, number], bounds: MapBounds | undefined): boolean {
+  if (bounds === undefined) return true;
+  return cell[0] >= 0 && cell[1] >= 0 && cell[0] < bounds.width && cell[1] < bounds.height;
+}
+
+/** The first tile layer's size; a map with no tile layer has no bounds to check. */
+export function mapSizeOf(value: unknown): MapBounds | null {
+  for (const layer of tileLayers(value)) {
+    const width = integer(layer.width);
+    const height = integer(layer.height);
+    if (width !== null && height !== null && width > 0 && height > 0) {
+      return { width, height };
+    }
+  }
+  return null;
+}
+
+/**
+ * In-map cells of every entity/event object carrying a script id. A script item whose own
+ * entity starts outside the map (the real export has (-1,4), (14,0), ...) is placed on the
+ * event object that actually starts the script, when one is inside the map.
+ */
+function scriptTriggerCells(
+  entity: unknown,
+  scriptNames: ReadonlyMap<number, string> | undefined,
+  extra: readonly HiddenItemTrigger[],
+): Map<string, (readonly [number, number])[]> {
+  const out = new Map<string, (readonly [number, number])[]>();
+  if (scriptNames === undefined) return out;
+  const add = (scriptId: number | null, cell: readonly [number, number] | null): void => {
+    if (scriptId === null || cell === null) return;
+    const name = scriptNames.get(scriptId);
+    if (name === undefined) return;
+    const found = out.get(name) ?? [];
+    if (!found.some((known) => known[0] === cell[0] && known[1] === cell[1])) found.push(cell);
+    out.set(name, found);
+  };
+  for (const object of entityObjects(entity).objects) {
+    add(integer(propertyValue(object, "script_id")), objectCell(object));
+  }
+  for (const trigger of extra) add(trigger.scriptId, trigger.cell);
+  return out;
+}
+
+/**
+ * Task 150 continuation: script-granted items are event rewards, not examine cells. Group by
+ * script + item; keep one in-map entity cell, else the script's in-map trigger cell, else drop
+ * and count. This removes the real export's duplicate per-map rows and off-map placeholders.
+ */
+export function parseScriptHiddenItemsDetailed(
+  entity: unknown,
+  scripts: readonly { readonly file: string; readonly value: unknown }[],
+  scriptNames: ReadonlyMap<number, string> | undefined,
+  bounds?: MapBounds,
+  triggers: readonly HiddenItemTrigger[] = [],
+): ScriptHiddenParse {
+  if (scriptNames === undefined) return { items: [], skipped: 0 };
+  const byName = scriptByName(scripts);
+  const triggerCells = scriptTriggerCells(entity, scriptNames, triggers);
+  const groups = new Map<
+    string,
+    {
+      readonly script: string;
+      readonly contentId: number;
+      readonly contentNum: number | null;
+      readonly cell: readonly [number, number];
+    }[]
+  >();
+  for (const object of entityObjects(entity).objects) {
+    if (objectType(object) === 7) continue;
+    const cell = objectCell(object);
+    const scriptId = integer(propertyValue(object, "script_id"));
+    if (cell === null || scriptId === null) continue;
+    const scriptName = scriptNames.get(scriptId);
+    if (scriptName === undefined) continue;
+    const value = byName.get(scriptName) ?? byName.get(`${scriptName}.json`);
+    if (value === undefined) continue;
+    for (const grant of scriptItemGrants(value)) {
+      const key = `${scriptName}\u0000${grant.contentId}`;
+      const group = groups.get(key) ?? [];
+      group.push({
+        script: scriptName,
+        contentId: grant.contentId,
+        contentNum: grant.contentNum,
+        cell,
+      });
+      groups.set(key, group);
+    }
+  }
+  const items: GameHiddenItem[] = [];
+  let skipped = 0;
+  for (const group of groups.values()) {
+    const first = group[0];
+    if (first === undefined) continue;
+    const inside = group.find((entry) => cellInside(entry.cell, bounds));
+    let cell = inside?.cell;
+    let contentNum = inside?.contentNum ?? first.contentNum;
+    if (cell === undefined) {
+      const trigger = (triggerCells.get(first.script) ?? []).find((entry) =>
+        cellInside(entry, bounds),
+      );
+      if (trigger !== undefined) {
+        cell = trigger;
+        contentNum = first.contentNum;
+      }
+    }
+    if (cell === undefined) {
+      skipped += 1;
+      continue;
+    }
+    items.push({
+      cell,
+      contentId: first.contentId,
+      contentNum,
+      flagId: null,
+      script: first.script,
+    });
+  }
+  return { items: mergeHiddenItems(items), skipped };
+}
+
+/** The old signature, without bounds or trigger cells; kept for callers that just need a read. */
+export function parseScriptHiddenItems(
+  entity: unknown,
+  scripts: readonly { readonly file: string; readonly value: unknown }[],
+  scriptNames: ReadonlyMap<number, string> | undefined,
+): GameHiddenItem[] {
+  return parseScriptHiddenItemsDetailed(entity, scripts, scriptNames).items;
+}
+
+/** Hidden treasure objects plus script-granted items, deduplicated and bounds-checked. */
+function hiddenItemsOf(
+  chests: readonly Treasure[],
+  entity: unknown,
+  scripts: readonly { readonly file: string; readonly value: unknown }[],
+  scriptNames: ReadonlyMap<number, string> | undefined,
+  bounds?: MapBounds,
+  triggers: readonly HiddenItemTrigger[] = [],
+): HiddenItemsParse {
+  let skipped = 0;
+  const hiddenChests = chests
+    .filter((chest) => chest.hidden)
+    .flatMap((chest) => {
+      if (!cellInside(chest.cell, bounds)) {
+        skipped += 1;
+        return [];
+      }
+      return [
+        {
+          cell: chest.cell,
+          contentId: chest.contentId,
+          contentNum: chest.contentNum,
+          flagId: chest.flagId,
+          script: null,
+        },
+      ];
+    });
+  const scriptItems = parseScriptHiddenItemsDetailed(
+    entity,
+    scripts,
+    scriptNames,
+    bounds,
+    triggers,
+  );
+  return {
+    items: mergeHiddenItems([...hiddenChests, ...scriptItems.items]),
+    skipped: skipped + scriptItems.skipped,
+  };
+}
+
+/** Hidden treasure objects plus script-granted items, with the unplaceable count. */
+export function parseHiddenItemsDetailed(
+  entity: unknown,
+  scripts: readonly { readonly file: string; readonly value: unknown }[],
+  scriptNames: ReadonlyMap<number, string> | undefined,
+  treasureTypes?: ReadonlyMap<number, number>,
+  bounds?: MapBounds,
+  triggers: readonly HiddenItemTrigger[] = [],
+): HiddenItemsParse {
+  const chests = parseEntity(entity, treasureTypes).chests;
+  return hiddenItemsOf(chests, entity, scripts, scriptNames, bounds, triggers);
+}
+
+/** Hidden treasure objects plus script-granted items, deduplicated by cell and item. */
+export function parseHiddenItems(
+  entity: unknown,
+  scripts: readonly { readonly file: string; readonly value: unknown }[],
+  scriptNames: ReadonlyMap<number, string> | undefined,
+  treasureTypes?: ReadonlyMap<number, number>,
+): GameHiddenItem[] {
+  return parseHiddenItemsDetailed(entity, scripts, scriptNames, treasureTypes).items;
+}
 
 /** One mnemonic reduced to what the jump reader needs: name, integer operands, label. */
 interface ScriptInstruction {
@@ -1180,8 +1695,8 @@ function jumpLayerRows(rows: readonly string[]): JumpLayer | null {
     components[start] = next;
     queue.length = 0;
     queue.push(start);
-    for (let head = 0; head < queue.length; head += 1) {
-      const index = queue[head] ?? 0;
+    // The array iterator sees items appended during the loop, so this is a growing BFS.
+    for (const index of queue) {
       const x = index % width;
       const y = Math.floor(index / width);
       for (const [dx, dy] of [
@@ -1254,7 +1769,9 @@ export function parseJumps(
   const jumps: MapJump[] = [];
   const skipped: JumpSkip[] = [];
   const seen = new Set<string>();
-  const layersReady = layers.map((layer) => jumpLayerRows(layer.rows)).filter((layer) => layer !== null);
+  const layersReady = layers
+    .map((layer) => jumpLayerRows(layer.rows))
+    .filter((layer) => layer !== null);
   if (layersReady.length === 0) return { jumps, skipped };
   for (const layer of tileLayers(entity)) {
     for (const object of records(layer.objects)) {
@@ -1285,6 +1802,12 @@ export function parseJumps(
         skip(`脚本 ${scriptName} 读不懂`);
         continue;
       }
+      // Most type 2/5 objects are doors, water currents and story props. Only a script that
+      // names the player puppet can be a jump; the rest are not jump candidates at all.
+      const movesPlayer = instructions.some(
+        (item) => item.mnemonic === "SetPuppet" && item.values[1] === -1001,
+      );
+      if (!movesPlayer) continue;
       const paths = playerPaths(instructions);
       if (paths.size === 0) {
         skip(`脚本 ${scriptName} 没有玩家的 Move`);
@@ -1351,6 +1874,8 @@ export interface MapFileSet {
   }[];
   /** Task 128: object `script_id` → `script.csv` name, for world-map event entrances. */
   readonly scriptNames?: ReadonlyMap<number, string>;
+  /** Task 150: `monster_party.csv` id → monster ids, for `Encount` event scripts. */
+  readonly monsterParties?: ReadonlyMap<number, readonly number[]>;
   /** Task 128: world-map package scripts (inline base64 already decoded by the caller). */
   readonly packageScripts?: readonly InlineScript[];
   readonly transportationGroups?: ReadonlyMap<number, ReadonlySet<number>>;
@@ -1360,6 +1885,13 @@ export interface MapFileSet {
 export interface ParsedMap extends EntityParse {
   readonly map: MapResource;
   readonly events: readonly EventTrigger[];
+  /** Task 150: examine spots and hidden treasure objects on this map. */
+  readonly hiddenItems: readonly GameHiddenItem[];
+  /** Task 150: script items dropped because no cell could be placed inside the map. */
+  readonly hiddenItemSkipped: number;
+  /** The map's cell size, from its first tile layer; absent when the files carry none. */
+  readonly width?: number;
+  readonly height?: number;
   /** Task 149: script-moved jumps, each already checked against the collision blocks. */
   readonly jumps: readonly MapJump[];
   /** Task 149: candidate objects whose script or landing could not be read. */
@@ -1377,8 +1909,38 @@ export function parseSubmap(files: MapFileSet): ParsedMap {
   const entity = parseEntity(files.entity, files.treasureTypes);
   const collision = parseCollisionLayers(files.collision);
   const jumpParse = parseJumps(files.entity, files.jumpScripts ?? [], files.scriptNames, collision);
-  const events = files.events.flatMap((event) => parseEventFile(event.file, event.value));
+  const events = alignEventTriggerCells(
+    files.events.flatMap((event) =>
+      parseEventFile(event.file, event.value, {
+        scripts: files.jumpScripts,
+        scriptNames: files.scriptNames,
+        monsterParties: files.monsterParties,
+      }),
+    ),
+    files.entity,
+  );
   const eventNpcs = files.events.flatMap((event) => parseEventNpcs(event.file, event.value));
+  const hiddenScripts = files.jumpScripts ?? files.scripts ?? [];
+  const bounds =
+    mapSizeOf(files.entity) ??
+    mapSizeOf(files.collision) ??
+    mapSizeOf(files.damage) ??
+    mapSizeOf(files.hiddenPassage) ??
+    null;
+  const triggers: HiddenItemTrigger[] = events.flatMap((event) => {
+    if (event.scriptId === null) return [];
+    const cell =
+      event.cell ?? (event.rect === null ? null : ([event.rect.x1, event.rect.y1] as const));
+    return [{ scriptId: event.scriptId, cell }];
+  });
+  const hidden = hiddenItemsOf(
+    entity.chests,
+    files.entity,
+    hiddenScripts,
+    files.scriptNames,
+    bounds ?? undefined,
+    triggers,
+  );
   const attribute = files.attribute;
   const groups = files.transportationGroups;
   const world =
@@ -1421,6 +1983,9 @@ export function parseSubmap(files: MapFileSet): ParsedMap {
     exits,
     npcs: dedupeNpcs([...entity.npcs, ...eventNpcs]),
     events,
+    hiddenItems: hidden.items,
+    hiddenItemSkipped: hidden.skipped,
+    ...(bounds === null ? {} : { width: bounds.width, height: bounds.height }),
     jumps: jumpParse.jumps,
     jumpSkipped: jumpParse.skipped,
     collision,

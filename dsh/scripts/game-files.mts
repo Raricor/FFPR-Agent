@@ -18,6 +18,7 @@ import {
   parseContentCsv,
   parseMapCsv,
   parseMessageTable,
+  parseMonsterParties,
   parseScriptNames,
   parseSubmap,
   parseTransportationGroups,
@@ -155,17 +156,22 @@ function mapForJson(
     titleKey: map.map.titleKey,
     areaId: map.map.areaId,
     saveAvailable: map.map.saveAvailable,
+    width: map.width ?? null,
+    height: map.height ?? null,
     chests: map.chests,
     exits: map.exits,
     events: map.events,
     jumps: map.jumps,
     npcs: map.npcs,
+    hiddenItems: map.hiddenItems,
+    hiddenItemSkipped: map.hiddenItemSkipped,
     savePoints: map.savePoints,
     restorePoints: map.restorePoints,
     moveAreas: map.moveAreas,
     collision: map.collision,
     damage: map.damage,
     hiddenPassages: map.hiddenPassages,
+    toLayers: map.toLayers,
     unresolved: map.unresolved,
     ...(map.world === undefined ? {} : { world: map.world }),
     ...(map.worldExits === undefined ? {} : { worldExits: map.worldExits }),
@@ -178,6 +184,7 @@ async function parseMap(
   transportationGroups: ReadonlyMap<number, ReadonlySet<number>>,
   worldIds: ReadonlySet<number>,
   scriptNames: ReadonlyMap<number, string>,
+  monsterParties: ReadonlyMap<number, readonly number[]>,
 ): Promise<ParsedMap | null> {
   const directory = join(FILES, "Res", "Map", map.packageName, map.name);
   const packageDirectory = join(FILES, "Res", "Map", map.packageName);
@@ -202,6 +209,7 @@ async function parseMap(
     scripts: worldScripts,
     jumpScripts: scripts,
     scriptNames,
+    monsterParties,
     packageScripts: isWorldMapResource(map)
       ? await readPackageScripts(packageDirectory)
       : undefined,
@@ -260,6 +268,11 @@ interface Summary {
   readonly unmappedSubmaps: readonly string[];
   readonly chests: number;
   readonly hiddenItems: number;
+  readonly hiddenChests: number;
+  readonly scriptHiddenItems: number;
+  readonly hiddenItemSkipped: number;
+  readonly bossTriggers: number;
+  readonly bossEncounters: number;
   readonly exits: number;
   readonly eventExits: number;
   readonly events: number;
@@ -310,7 +323,20 @@ function buildSummary(
     submapsOnDisk: disk.count,
     unmappedSubmaps: disk.unmapped,
     chests: sum(maps.map((map) => map.chests.length)),
-    hiddenItems: sum(maps.map((map) => map.chests.filter((chest) => chest.hidden).length)),
+    hiddenItems: sum(maps.map((map) => map.hiddenItems.length)),
+    hiddenChests: sum(
+      maps.map((map) => map.hiddenItems.filter((item) => item.script === null).length),
+    ),
+    scriptHiddenItems: sum(
+      maps.map((map) => map.hiddenItems.filter((item) => item.script !== null).length),
+    ),
+    hiddenItemSkipped: sum(maps.map((map) => map.hiddenItemSkipped)),
+    bossTriggers: sum(
+      maps.map((map) => map.events.filter((event) => event.objectType === 10).length),
+    ),
+    bossEncounters: sum(
+      maps.map((map) => map.events.filter((event) => event.encounterGroupId !== null).length),
+    ),
     exits: sum(maps.map((map) => map.exits.length)),
     eventExits: sum(maps.map((map) => map.exits.filter((exit) => exit.kind === "event").length)),
     events: sum(maps.map((map) => map.events.length)),
@@ -323,11 +349,13 @@ function buildSummary(
           .map((map) => [String(map.map.id), map.jumpSkipped.length]),
       ),
       examples: maps.flatMap((map) =>
-        map.jumpSkipped.slice(0, 2).map(
-          (entry) =>
-            `地图 ${map.map.id} ${entry.name || entry.scriptId} ` +
-            `(${entry.cell[0]}, ${entry.cell[1]}) ${entry.reason}`,
-        ),
+        map.jumpSkipped
+          .slice(0, 2)
+          .map(
+            (entry) =>
+              `地图 ${map.map.id} ${entry.name || entry.scriptId} ` +
+              `(${entry.cell[0]}, ${entry.cell[1]}) ${entry.reason}`,
+          ),
       ),
     },
     npcs: sum(maps.map((map) => map.npcs.length)),
@@ -355,7 +383,10 @@ function buildSummary(
 function printSummary(summary: Summary): void {
   console.log(
     `地图 ${summary.maps}/${summary.mapsInCsv} 张（磁盘 ${summary.submapsOnDisk} 张子图，` +
-      `${summary.unmappedSubmaps.length} 张无地图编号），宝箱 ${summary.chests} 个（隐藏 ${summary.hiddenItems}），` +
+      `${summary.unmappedSubmaps.length} 张无地图编号），宝箱 ${summary.chests} 个（隐藏道具 ${summary.hiddenItems} 个：` +
+      `不显示的宝箱 ${summary.hiddenChests}，脚本给道具 ${summary.scriptHiddenItems}，` +
+      `放不下丢掉 ${summary.hiddenItemSkipped}），首领触发 ${summary.bossTriggers} 个` +
+      `（带编组 ${summary.bossEncounters}），` +
       `出口 ${summary.exits} 个（其中事件入口 ${summary.eventExits}），` +
       `事件 ${summary.events} 个，跳石 ${summary.jumps} 个，NPC ${summary.npcs} 个，` +
       `存档点 ${summary.savePoints} 个，回复点 ${summary.restorePoints} 个`,
@@ -414,6 +445,11 @@ async function main(): Promise<void> {
   const scriptNames = parseScriptNames(
     (await readOptionalText(join(FILES, "Data", "Master", "script.csv"))) ?? "",
   );
+  const monsterParties = new Map(
+    parseMonsterParties(
+      (await readOptionalText(join(FILES, "Data", "Master", "monster_party.csv"))) ?? "",
+    ).map((party) => [party.id, party.monsterIds]),
+  );
   const worldIds = new Set(resources.filter(isWorldMapResource).map((resource) => resource.id));
   const messageTable = async (language: string): Promise<Map<string, string>> => {
     const text = await readOptionalText(join(FILES, "Data", "Message", `system_${language}.txt`));
@@ -430,7 +466,14 @@ async function main(): Promise<void> {
   const maps: ParsedMap[] = [];
   await mkdir(MAP_OUTPUT, { recursive: true });
   for (const resource of resources) {
-    const parsed = await parseMap(resource, treasureTypes, groups, worldIds, scriptNames);
+    const parsed = await parseMap(
+      resource,
+      treasureTypes,
+      groups,
+      worldIds,
+      scriptNames,
+      monsterParties,
+    );
     if (parsed === null) continue;
     maps.push(parsed);
     await writeFile(

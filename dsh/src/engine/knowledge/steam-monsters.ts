@@ -79,7 +79,10 @@ export function steamAreaTables(guide: Guide | null): SteamAreaTable[] {
       while (row < lines.length && clean(lines[row] ?? "") !== "EXP") row += 1;
       row += 1;
       const monsters: SteamAreaMonster[] = [];
-      const source: SourceRef = { kind: "guide", ref: `steam:${section.title}` };
+      const source: SourceRef = {
+        kind: "guide",
+        ref: `steam:${section.title}`,
+      };
       while (row + 5 < lines.length) {
         const bookText = clean(lines[row] ?? "");
         const name = clean(lines[row + 1] ?? "");

@@ -71,7 +71,9 @@ export async function fetch(
   signal?: AbortSignal,
 ): Promise<string> {
   await mkdir(home, { recursive: true });
-  const headers = { "User-Agent": "Mozilla/5.0 (FFPR-Agent guide cache; personal use)" };
+  const headers = {
+    "User-Agent": "Mozilla/5.0 (FFPR-Agent guide cache; personal use)",
+  };
 
   const get = async (name: string, url: string): Promise<string> => {
     const path = join(home, "pages", `${name}.html`);
@@ -81,7 +83,9 @@ export async function fetch(
       } catch (error) {
         if (!isMissingFile(error)) {
           signal?.throwIfAborted();
-          throw new Error(`读不了攻略缓存 ${path}:${describeError(error)}`, { cause: error });
+          throw new Error(`读不了攻略缓存 ${path}:${describeError(error)}`, {
+            cause: error,
+          });
         }
       }
     }
@@ -169,13 +173,17 @@ export class Guide {
     } catch (error) {
       if (isMissingFile(error)) return null;
       signal?.throwIfAborted();
-      throw new Error(`读不了攻略索引 ${path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不了攻略索引 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     let parsed: unknown;
     try {
       parsed = JSON.parse(body);
     } catch (error) {
-      throw new Error(`读不懂攻略索引 ${path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不懂攻略索引 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     if (!isRecord(parsed)) throw new Error(`攻略索引 ${path} 不是 JSON 对象`);
     const bestiary = new Map<number, string>();
@@ -207,7 +215,10 @@ export class Guide {
     const trimmed = query.trim().toLowerCase();
     // A game map name carries a room suffix ("卡纳克镇 旅店", "沃尔斯塔 １层"); match the
     // part before the first space as well. English names with spaces still match whole.
-    const queries = [...new Set([trimmed, trimmed.split(/\s+/, 1)[0] ?? trimmed])];
+    // The first word fallback is for "Tule - Pub" / "Walse Tower"; a short generic word
+    // ("Ship" in "Ship Graveyard - Sunken Shipwreck") used to pull in Fire-Powered Ship.
+    const first = trimmed.split(/\s+/, 1)[0] ?? trimmed;
+    const queries = [...new Set(codePointLength(first) >= 5 ? [trimmed, first] : [trimmed])];
     const exact: string[] = [];
     const loose: string[] = [];
     for (const [key, aliases] of Object.entries(AREAS)) {
@@ -517,7 +528,10 @@ function page(text: string, limit: number, part: number, source: string): string
 
 function readSections(value: unknown): SteamSection[] {
   return records(value).map((raw) => {
-    const section: SteamSection = { title: text(raw.title) ?? "", text: text(raw.text) ?? "" };
+    const section: SteamSection = {
+      title: text(raw.title) ?? "",
+      text: text(raw.text) ?? "",
+    };
     if (Array.isArray(raw.shops)) section.shops = records(raw.shops) as unknown as ShopTable[];
     if (Array.isArray(raw.treasures)) {
       section.treasures = records(raw.treasures) as unknown as Treasure[];
@@ -538,7 +552,9 @@ async function refreshLudoMonsters(chapters: Chapter[], signal?: AbortSignal): P
   } catch (error) {
     if (isMissingFile(error)) return;
     signal?.throwIfAborted();
-    throw new Error(`读不了攻略缓存目录 ${directory}:${describeError(error)}`, { cause: error });
+    throw new Error(`读不了攻略缓存目录 ${directory}:${describeError(error)}`, {
+      cause: error,
+    });
   }
   const pages = new Map(
     names
@@ -548,7 +564,10 @@ async function refreshLudoMonsters(chapters: Chapter[], signal?: AbortSignal): P
   for (const chapter of chapters) {
     const page = pages.get(chapter.slug);
     if (page === undefined) continue;
-    const html = await readFile(join(directory, page), { encoding: "utf8", signal });
+    const html = await readFile(join(directory, page), {
+      encoding: "utf8",
+      signal,
+    });
     chapter.monsters = ludo.parse(chapter.slug, html).monsters;
   }
 }

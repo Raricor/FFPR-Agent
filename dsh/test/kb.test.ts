@@ -164,7 +164,9 @@ function smallGuide(): Guide {
     ]),
     [parseLudo("walse-town-and-castle", LUDO_PAGE)],
     [],
-    { walkthrough: "https://steamcommunity.com/sharedfiles/filedetails/?id=2651014732" },
+    {
+      walkthrough: "https://steamcommunity.com/sharedfiles/filedetails/?id=2651014732",
+    },
   );
 }
 
@@ -302,7 +304,11 @@ void test("lookup by kind lists shops and treasures", () => {
   const withTables: SteamSection = {
     ...section,
     shops: [
-      { where: "Walse", kind: "旅店", goods: [{ name: "Rest", cost: 20, note: "" }] },
+      {
+        where: "Walse",
+        kind: "旅店",
+        goods: [{ name: "Rest", cost: 20, note: "" }],
+      },
       {
         where: "Walse",
         kind: "武器",
@@ -335,7 +341,9 @@ void test("lookup by kind lists shops and treasures", () => {
       },
     ],
   };
-  const guide = new Guide([withTables], new Map(), [], [], { walkthrough: "https://example" });
+  const guide = new Guide([withTables], new Map(), [], [], {
+    walkthrough: "https://example",
+  });
   const shopText = guide.lookup("沃尔斯城", 1, "shop");
   assert.ok(shopText.includes("魔法(Walse):Haste 320(Hastens"));
   assert.ok(shopText.includes("武器(Walse):Battle Axe 650"));

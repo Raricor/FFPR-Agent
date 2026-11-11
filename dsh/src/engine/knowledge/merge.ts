@@ -40,10 +40,19 @@ import type {
   SourceRef,
 } from "./types.ts";
 
-const MASTER_MONSTERS: SourceRef = { kind: "master", ref: "master:monsters.json" };
-const MASTER_ENCOUNTERS: SourceRef = { kind: "master", ref: "master:encounters.json" };
+const MASTER_MONSTERS: SourceRef = {
+  kind: "master",
+  ref: "master:monsters.json",
+};
+const MASTER_ENCOUNTERS: SourceRef = {
+  kind: "master",
+  ref: "master:encounters.json",
+};
 const MASTER_MAPS: SourceRef = { kind: "master", ref: "master:maps.json" };
-const MASTER_TREASURES: SourceRef = { kind: "master", ref: "master:treasures.json" };
+const MASTER_TREASURES: SourceRef = {
+  kind: "master",
+  ref: "master:treasures.json",
+};
 const MASTER_SHOPS: SourceRef = { kind: "master", ref: "master:shops.json" };
 const MASTER_ITEMS: SourceRef = { kind: "master", ref: "master:items.json" };
 const MASTER_MAGIC: SourceRef = { kind: "master", ref: "master:magic.json" };
@@ -51,7 +60,10 @@ const FILES_ENCOUNTERS: SourceRef = { kind: "files", ref: "files:encounters" };
 const FILES_TREASURES: SourceRef = { kind: "files", ref: "files:maps" };
 const FILES_ITEMS: SourceRef = { kind: "files", ref: "files:items.json" };
 const FILES_POINTS: SourceRef = { kind: "files", ref: "files:save-points" };
-const STEAM_BESTIARY: SourceRef = { kind: "guide", ref: "guide:steam-bestiary" };
+const STEAM_BESTIARY: SourceRef = {
+  kind: "guide",
+  ref: "guide:steam-bestiary",
+};
 const OBSERVED_ATLAS: SourceRef = { kind: "observed", ref: "atlas" };
 const SAVE_PROGRESS: SourceRef = { kind: "save", ref: "progress" };
 
@@ -922,7 +934,11 @@ function buildStaticChests(
     if (hit !== null) {
       used.add(hit);
       if (row.hidden !== null && (hit.treasure.kind === "hidden") !== hidden) {
-        conflicts.push({ field: "hidden", master: hidden, guide: hit.treasure.kind });
+        conflicts.push({
+          field: "hidden",
+          master: hidden,
+          guide: hit.treasure.kind,
+        });
       }
       const content = guideContent(hit.treasure.text, known);
       if (
@@ -1013,7 +1029,10 @@ function itemForContent(
   }
   if (best === null) return null;
   const leading = /\b(\d+)\b/u.exec(content);
-  return { id: best.id, count: leading?.[1] === undefined ? null : Number(leading[1]) };
+  return {
+    id: best.id,
+    count: leading?.[1] === undefined ? null : Number(leading[1]),
+  };
 }
 
 function guideMapIds(
@@ -1115,7 +1134,11 @@ function buildFileChests(input: LoadedKnowledge, maps: readonly MapKnowledge[]):
     if (chest === undefined) continue;
     const conflicts: FactConflict[] = [];
     if ((hit.treasure.kind === "hidden") !== chest.hidden) {
-      conflicts.push({ field: "hidden", master: chest.hidden, guide: hit.treasure.kind });
+      conflicts.push({
+        field: "hidden",
+        master: chest.hidden,
+        guide: hit.treasure.kind,
+      });
     }
     out[best] = {
       ...chest,
@@ -1257,34 +1280,110 @@ function kindKey(value: string | null): string {
   return normalizeName(SHOP_KINDS[value] ?? value);
 }
 
-function productMatches(master: string | null, guide: string): boolean {
+/** The same item's names in the game files' three languages, keyed by normalized name. */
+function itemAliases(input: LoadedKnowledge): Map<string, string> {
+  const aliases = new Map<string, string>();
+  const add = (names: readonly (string | null | undefined)[]): void => {
+    const normalized = names
+      .filter((name): name is string => name !== null && name !== undefined && name.trim() !== "")
+      .map((name) => normalizeName(name));
+    const key = normalized[0];
+    if (key === undefined) return;
+    for (const name of normalized) aliases.set(name, key);
+  };
+  for (const item of input.files?.items ?? []) add([item.names.ja, item.names.en, item.names.zhc]);
+  for (const item of input.static.items) add([item.name]);
+  for (const magic of input.static.magic) add([magic.name]);
+  return aliases;
+}
+
+function productMatches(
+  master: string | null,
+  guide: string,
+  aliases: ReadonlyMap<string, string>,
+): boolean {
   if (master === null) return false;
   const own = normalizeName(master);
   const other = normalizeName(guide);
+  if (own === "" || other === "") return false;
+  const ownKey = aliases.get(own) ?? own;
+  const otherKey = aliases.get(other) ?? other;
   return (
-    own !== "" && other !== "" && (own === other || own.includes(other) || other.includes(own))
+    ownKey === otherKey ||
+    own.includes(other) ||
+    other.includes(own) ||
+    ownKey.includes(otherKey) ||
+    otherKey.includes(ownKey)
   );
+}
+
+/** How many of a static shop's goods the guide's table also names. */
+function shopOverlap(
+  row: { readonly products: readonly { readonly name: string | null }[] },
+  candidate: GuideShop,
+  aliases: ReadonlyMap<string, string>,
+): number {
+  let score = 0;
+  for (const product of row.products) {
+    if (candidate.shop.goods.some((good) => productMatches(product.name, good.name, aliases))) {
+      score += 1;
+    }
+  }
+  return score;
 }
 
 function buildShops(input: LoadedKnowledge, maps: readonly MapKnowledge[]): ShopKnowledge[] {
   const guide = input.guide;
   const hits = guideShops(guide);
+  const aliases = itemAliases(input);
   const used = new Set<GuideShop>();
   const out: ShopKnowledge[] = [];
+  // Task 144/150: product groups are reused across towns, so the export's mapId/kind can be
+  // another town's. The clerk NPC on a map is the reliable place; use every clerk map's area
+  // when pairing the guide's shop table.
+  const clerkMaps = new Map<number, number[]>();
+  for (const mapFile of input.files?.maps ?? []) {
+    for (const npc of mapFile.npcs) {
+      if (npc.shopId === null) continue;
+      const found = clerkMaps.get(npc.shopId) ?? [];
+      if (!found.includes(mapFile.id)) found.push(mapFile.id);
+      clerkMaps.set(npc.shopId, found);
+    }
+  }
+  const byId = mapById(maps);
   for (const row of input.static.shops) {
-    const map = row.mapId === null ? undefined : mapById(maps).get(row.mapId);
+    const map = row.mapId === null ? undefined : byId.get(row.mapId);
     const areaName = row.areaName ?? map?.areaName ?? map?.name ?? null;
+    const areas = [
+      areaName,
+      map?.areaName ?? null,
+      map?.name ?? null,
+      ...(row.id === null
+        ? []
+        : (clerkMaps.get(row.id) ?? []).flatMap((id) => {
+            const clerkMap = byId.get(id);
+            return [clerkMap?.areaName ?? null, clerkMap?.name ?? null];
+          })),
+    ].filter((value): value is string => value !== null && value.trim() !== "");
+    const inArea = (candidate: GuideShop): boolean =>
+      areas.some((value) => areaMatches(candidate.section.title, value, guide));
+    // The export's kind is unreliable when a product group is reused (live: a 道具店 marked
+    // WhiteMagic). Goods overlap is stronger evidence than the label, so it comes first.
     const hit =
       hits.find(
         (candidate) =>
+          !used.has(candidate) && inArea(candidate) && shopOverlap(row, candidate, aliases) > 0,
+      ) ??
+      hits.find(
+        (candidate) =>
           !used.has(candidate) &&
-          areaMatches(candidate.section.title, areaName, guide) &&
+          inArea(candidate) &&
           kindKey(candidate.shop.kind) === kindKey(row.kind),
       ) ??
       hits.find(
         (candidate) =>
           !used.has(candidate) &&
-          areaMatches(candidate.section.title, areaName, guide) &&
+          inArea(candidate) &&
           (kindKey(candidate.shop.kind) === "" || kindKey(row.kind) === ""),
       ) ??
       null;
@@ -1297,7 +1396,7 @@ function buildShops(input: LoadedKnowledge, maps: readonly MapKnowledge[]): Shop
           ? -1
           : hit.shop.goods.findIndex(
               (good, goodIndex) =>
-                !usedGoods.has(goodIndex) && productMatches(product.name, good.name),
+                !usedGoods.has(goodIndex) && productMatches(product.name, good.name, aliases),
             );
       if (index < 0 || hit === null) {
         return {
@@ -1322,9 +1421,14 @@ function buildShops(input: LoadedKnowledge, maps: readonly MapKnowledge[]): Shop
           guide: good.cost,
         });
       }
+      const alias =
+        good !== undefined && normalizeName(good.name) !== normalizeName(product.name ?? "")
+          ? [good.name]
+          : [];
       return {
         itemId: product.itemId,
         name: product.name ?? good?.name ?? "未知道具",
+        ...(alias.length === 0 ? {} : { aliases: alias }),
         price: product.price,
         sources: mergeSources([MASTER_SHOPS], [guideSectionSource(hit.section.title)]),
         conflicts: [],
@@ -1346,7 +1450,7 @@ function buildShops(input: LoadedKnowledge, maps: readonly MapKnowledge[]): Shop
       id: row.id,
       mapId: row.mapId,
       areaName,
-      kind: row.kind,
+      kind: hit?.shop.kind ?? row.kind,
       products,
       guideWhere: hit?.shop.where ?? null,
       sources:
@@ -1542,6 +1646,7 @@ export function buildKnowledge(input: LoadedKnowledge): Knowledge {
     bridge: input.static.bridge,
     staticDir: input.static.dir,
     filesDir: input.files?.dir ?? null,
+    mapFiles: input.files?.maps ?? [],
     tables: input.static.tables,
     guide: input.guide,
     atlas: input.atlas,

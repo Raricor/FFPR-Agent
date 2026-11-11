@@ -175,7 +175,11 @@ export function shops(section: SteamSection, skip: ReadonlySet<string> = new Set
         const cost = lines[i + 1] ?? "";
         if (!(/^\d+$/.test(cost) || cost === "Cost") || TABLE_WORDS.has(name)) break;
         const note = width === 3 ? (lines[i + 2] ?? "") : "";
-        goods.push({ name, cost: /^\d+$/.test(cost) ? Number.parseInt(cost, 10) : null, note });
+        goods.push({
+          name,
+          cost: /^\d+$/.test(cost) ? Number.parseInt(cost, 10) : null,
+          note,
+        });
         i += width;
       }
       if (goods.length > 0) out.push({ where: place, kind: category, goods });
