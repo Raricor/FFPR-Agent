@@ -27,6 +27,7 @@ import type {
   LayerNode,
   LayeredGrid,
   ObservedMove,
+  PassageCell,
 } from "../nav.ts";
 import { isRecord, num, record, records, text, truthy, type Json } from "../values.ts";
 import { movesFromMovingGimmickMap } from "../atlas.ts";
@@ -70,6 +71,15 @@ type Say = (line: string) => void;
 export interface CarryBudget {
   readonly seen: Map<string, number>;
   total: number;
+}
+
+/**
+ * Task 129: what paging the story that interrupted a walk produced. `decision` is the
+ * Chinese choice/shop/boss handoff; absent means the party is free to walk again.
+ */
+export interface StoryAdvance {
+  readonly text: string;
+  readonly decision?: string;
 }
 
 /**
@@ -188,6 +198,17 @@ export interface MoveState {
    * window over it (task 56).
    */
   world?: WorldCache;
+  /**
+   * Task 129: hidden-passage cells from the game files, by map. `go` reads the live collision
+   * (which still has the wall) and merges these before planning.
+   */
+  passages?: (mapId: number) => readonly PassageCell[];
+  /**
+   * Task 129: page the story/dialog that stopped a walk, then let navigate replan from the
+   * current position. The Game wires this to advance_story; without it an interruption is
+   * handed back as before.
+   */
+  story?: (pilot: Pilot) => Promise<StoryAdvance>;
 }
 
 const EMPTY_CUT: ReadonlySet<string> = new Set<string>();
@@ -215,6 +236,12 @@ export const EVENT_TRY_WAIT_MS = 1_000;
  */
 export const CARRY_REPEAT_LIMIT = 2;
 export const CARRY_TOTAL_LIMIT = 4;
+
+/**
+ * Task 129: a story may interrupt the same walk three times; after that the call hands back
+ * instead of paging forever or counting each stop as a failed waypoint.
+ */
+export const STORY_INTERRUPT_LIMIT = 3;
 
 /*
  * Task 99 (11-10): Fire-Powered Ship 270's sliding floor is an entity, not a collision change,
@@ -338,6 +365,16 @@ const CONVEYOR_WORDS: readonly string[] = ["流される"];
 export function isConveyorEvent(name: string): boolean {
   const base = eventBaseName(name);
   return CONVEYOR_WORDS.some((word) => base.includes(word));
+}
+
+/**
+ * Task 125: a story trigger cell, the scene/event file the game runs when the party steps on
+ * it (`sc_e_0479_1:...`, `ev_e_...`). These are walked onto; only interaction entities (a
+ * chest, an NPC, a talk spot) are approached from a side. 11-11, West Valley 577: `route`'s
+ * move stop to a story cell reported "旁边没有能站的格子" instead of stepping in.
+ */
+export function isStoryTriggerEvent(name: string): boolean {
+  return /^(?:sc_e_|ev_e_)/iu.test(name.trim());
 }
 
 /**
@@ -840,6 +877,8 @@ interface Planned {
   readonly falls: ReadonlySet<string>;
   /** Danger cells the route has to step on; empty when another way was found. */
   readonly washed: readonly Cell[];
+  /** Task 129: hidden-passage cells the route has to step on; empty when ordinary floor works. */
+  readonly passages?: readonly Cell[];
   /**
    * Task 83: active Event cells of this map, keyed with cellKey, with their names. Used to
    * tell an event cell from a wall and to try a goal that is one.
@@ -1084,7 +1123,11 @@ async function plannedRoute(
     (danger) =>
       !sameCell(danger.cell, goal) && !forced.has(cellKey(danger.cell[0], danger.cell[1])),
   );
-  const grid = layeredGrid(collision, occupied, transitions, moves, risky);
+  // Task 129: the live collision has a wall on a hidden passage; the game files know the cell.
+  const mapId = mapNumber(map);
+  const passageCells = mapId === null ? [] : (state?.passages?.(mapId) ?? []);
+  const reply = passageCells.length === 0 ? collision : { ...collision, passages: passageCells };
+  const grid = layeredGrid(reply, occupied, transitions, moves, risky);
   const fallSet = new Set(falls.map((cell) => cellKey(cell[0], cell[1])));
   if (grid === null) {
     return {
@@ -1106,6 +1149,7 @@ async function plannedRoute(
   const reachable = eventGoal ? reachableCells(startGrid, cut, layerCut) : undefined;
   let nodes = route.path;
   let danger = route.danger;
+  let passage = route.passage;
   let suspects: ObservedMove[] | undefined;
   const last = nodes[nodes.length - 1];
   // 11-09: an old "走不过去" record may be one temporary block. When removing the untrusted
@@ -1133,6 +1177,7 @@ async function plannedRoute(
       if (sameCell(relaxedPath[relaxedPath.length - 1] ?? null, goal)) {
         nodes = relaxed.path;
         danger = relaxed.danger;
+        passage = relaxed.passage;
         suspects = untrusted.filter((move) => pathHasStep(relaxedPath, move.from, move.to));
         // In a one-way graph a removed record always appears on the new path; keep the list
         // whole if a loaded record duplicated another and the match missed.
@@ -1147,6 +1192,7 @@ async function plannedRoute(
     conveyors,
     falls: fallSet,
     washed: danger.map(([x, y]) => [x, y] as const),
+    ...(passage.length === 0 ? {} : { passages: passage.map(([x, y]) => [x, y] as const) }),
     events,
     entrances,
     goalBlocked: blocked.some((cell) => sameCell(cell, goal)),
@@ -2176,6 +2222,41 @@ export async function navigate(
     const where = [...washed.values()].map((cell) => cellText(cell)).join("、");
     return `(这条路上会踩到危险格 ${where},没有别的路,可能被水流冲走或被传送带带走)`;
   };
+  const passages = new Map<string, Cell>();
+  const notePassages = (cells: readonly Cell[]): void => {
+    for (const cell of cells) {
+      const key = cellKey(cell[0], cell[1]);
+      if (!passages.has(key)) passages.set(key, cell);
+    }
+  };
+  const passageNote = (): string => {
+    if (passages.size === 0) return "";
+    const where = [...passages.values()].map((cell) => cellText(cell)).join("、");
+    return `(这条路上要走暗道 ${where},没有普通路)`;
+  };
+  let storyStops = 0;
+  /**
+   * Task 129: page a story/dialog that stopped the walk and let the loop replan from the
+   * position it left. The limit counts interruptions of this one walk, not failed waypoints.
+   */
+  const resumeStory = async (at: Cell | null): Promise<"retry" | "decision" | "limit" | "none"> => {
+    if (state.story === undefined) return "none";
+    if (storyStops >= STORY_INTERRUPT_LIMIT) return "limit";
+    storyStops += 1;
+    say(`  在 ${cellText(at)} 剧情打断走路,先翻剧情(第 ${storyStops}/${STORY_INTERRUPT_LIMIT} 次)`);
+    const advanced = await state.story(pilot);
+    const first = advanced.text
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line !== "");
+    if (first !== undefined) say(`  ${first.length > 100 ? `${first.slice(0, 100)}…` : first}`);
+    if (advanced.decision !== undefined && advanced.decision.trim() !== "") {
+      say(`  ${advanced.decision}`);
+      return "decision";
+    }
+    // The third interruption is the limit: hand back instead of a fourth walk attempt.
+    return storyStops >= STORY_INTERRUPT_LIMIT ? "limit" : "retry";
+  };
   // Task 84: every carry of this go, in order, and the two loop limits. A cross-map carry
   // stops in leftStartMap now, so only same-map rides count here.
   const carried: string[] = [];
@@ -2351,6 +2432,7 @@ export async function navigate(
       remember(planned.suspects);
       const [here, initial] = [planned.here, planned.path];
       noteWashed(planned.washed);
+      notePassages(planned.passages ?? []);
       planHere = here;
       planLength = initial.length;
       planCuts = [];
@@ -2361,6 +2443,36 @@ export async function navigate(
         continue;
       }
       noteDistance(here, initial);
+      // Task 125: a story trigger cell is walked onto, not approached from a side. If a story
+      // is already playing (11-11, the jump event on (13,54)) and this plan cannot reach the
+      // goal yet, hand the story back instead of walking away or saying there is no side.
+      const eventName = planned.events?.get(cellKey(goal[0], goal[1]));
+      const storyGoal = eventName !== undefined && isStoryTriggerEvent(eventName);
+      const lastPlanned = initial[initial.length - 1] ?? null;
+      const storyState = text(pos.state) ?? "";
+      if (storyGoal && !sameCell(lastPlanned, goal)) {
+        if (storyState === "Event" || truthy(pos.dialog)) {
+          const outcome = await resumeStory(here);
+          if (outcome === "retry") {
+            noteReplan("剧情翻完,从当前位置重新规划");
+            freePlan = true;
+            continue;
+          }
+          if (outcome !== "none") {
+            endWalk("interrupted");
+            const marker =
+              outcome === "decision" ? "interrupted:story-decision" : "interrupted:story-limit";
+            return done(
+              false,
+              withCarried(`停在 ${cellText(here)}:${show(marker)}`),
+              "interrupted",
+            );
+          }
+          const marker = storyState === "Event" ? "interrupted:state:Event" : "interrupted:dialog";
+          endWalk("interrupted");
+          return done(false, withCarried(`停在 ${cellText(here)}:${show(marker)}`), "interrupted");
+        }
+      }
       if (sameCell(here, goal)) {
         endWalk("arrived");
         await forgetVerified();
@@ -2371,15 +2483,15 @@ export async function navigate(
         return done(
           true,
           entered === null
-            ? withCarried(`到达 ${cellText(goal)}${floor}${washedNote()}`)
+            ? withCarried(`到达 ${cellText(goal)}${floor}${washedNote()}${passageNote()}`)
             : withCarried(entered[1]),
           "arrived",
         );
       }
       // Task 83: an event cell is not a wall. Walk beside it and try stepping in from every
       // reachable side; a refusal there is a matter of timing (11-10, Fire-Powered Ship 265).
-      const eventName = planned.events?.get(cellKey(goal[0], goal[1]));
-      if (eventName !== undefined) {
+      // Task 125: story triggers are the exception — the route's endpoint is the cell itself.
+      if (eventName !== undefined && !storyGoal) {
         endWalk("event_goal");
         const [eventReached, eventText] = await stepOntoEventGoal(
           pilot,
@@ -2441,7 +2553,7 @@ export async function navigate(
           false,
           withCarried(
             `在 ${cellText(here)} ${how}走不过去${floor},这里已是离 ${cellText(goal)} 最近的地方` +
-              washedNote(),
+              `${washedNote()}${passageNote()}`,
           ),
           "blocked",
         );
@@ -2583,7 +2695,7 @@ export async function navigate(
               return done(
                 true,
                 entered === null
-                  ? withCarried(`到达 ${cellText(goal)}${floor}${washedNote()}`)
+                  ? withCarried(`到达 ${cellText(goal)}${floor}${washedNote()}${passageNote()}`)
                   : withCarried(entered[1]),
                 "arrived",
               );
@@ -2715,6 +2827,22 @@ export async function navigate(
             continue;
           }
           if (reason === "dialog" || reason.startsWith("state:")) {
+            const at = cellOf(current.cell) ?? where;
+            const outcome = await resumeStory(at);
+            if (outcome === "retry") {
+              noteReplan("剧情翻完,从当前位置重新规划");
+              freePlan = true;
+              continue;
+            }
+            if (outcome !== "none") {
+              const marker =
+                outcome === "decision" ? "interrupted:story-decision" : "interrupted:story-limit";
+              return done(
+                false,
+                withCarried(`停在 ${cellText(at)}:${show(marker)}`),
+                "interrupted",
+              );
+            }
             return done(
               false,
               withCarried(
@@ -2784,6 +2912,52 @@ export async function navigate(
         }
         if (truthy(result.ok)) continue;
         const current = record(result.pos);
+        // Task 125: the old closed-loop walk also stops on a story Event/dialog. Wait once
+        // for a short cutscene, then hand a still-playing story back with the marker the
+        // caller pages (instead of reporting the state as an unknown error).
+        const fallbackState = text(current.state) ?? "";
+        if (fallbackState === "Event" || truthy(current.dialog)) {
+          const settled = await settleWalkEvent(pilot, state);
+          if (settled.outcome === "clear") {
+            noteReplan("短事件结束,重新规划");
+            replanned = true;
+            break;
+          }
+          if (settled.outcome === "battle") {
+            const battle = await regular(pilot, state.battle ?? {}, say, state.saveSlot, {
+              flee: state.flee === true,
+            });
+            say(`  途中遇敌,${battle}`);
+            noteReplan("途中遇敌,打完继续");
+            freePlan = true;
+            replanned = true;
+            break;
+          }
+          const stoppedAt = cellOf(record(settled.pos).cell) ?? cellOf(current.cell) ?? where;
+          const outcome = await resumeStory(stoppedAt);
+          if (outcome === "retry") {
+            noteReplan("剧情翻完,从当前位置重新规划");
+            freePlan = true;
+            replanned = true;
+            break;
+          }
+          if (outcome !== "none") {
+            const marker =
+              outcome === "decision" ? "interrupted:story-decision" : "interrupted:story-limit";
+            endWalk("interrupted");
+            return done(
+              false,
+              withCarried(`停在 ${cellText(stoppedAt)}:${show(marker)}`),
+              "interrupted",
+            );
+          }
+          endWalk("interrupted");
+          return done(
+            false,
+            withCarried(`停在 ${show(stoppedAt)}:${show("interrupted:state:Event")}`),
+            "interrupted",
+          );
+        }
         // Stepping onto an entrance swaps the map: that is arriving, not failing.
         if (
           current.state === "ChangeMap" ||
@@ -2934,7 +3108,7 @@ export async function openAt(
   const firstHelp = await dismissFieldHelp(pilot);
   if (firstHelp === "stuck") return FIELD_HELP_STUCK;
   let helpNote = firstHelp === "closed" ? "关掉了操作提示\n" : "";
-  const [here] = await plan(pilot, target, false);
+  const [here] = await plan(pilot, target, false, EMPTY_CUT, state);
   if (here === null) return "地图还在切换,稍后再试";
   // plan() lets its goal through; a spot must not be an occupied cell.
   const taken = (await occupiedCells(pilot)).filter((cell) => !sameCell(cell, here));
@@ -2957,7 +3131,7 @@ export async function openAt(
       if (across !== (rank === 0)) continue;
       if (taken.some((cell) => sameCell(cell, spot))) continue;
       if (candidates.some((candidate) => sameCell(candidate.spot, spot))) continue;
-      const [, path] = await plan(pilot, spot, false);
+      const [, path] = await plan(pilot, spot, false, EMPTY_CUT, state);
       const reachable =
         sameCell(spot, here) || (path.length > 0 && sameCell(path[path.length - 1] ?? null, spot));
       if (reachable) candidates.push({ spot, path, direction, rank });

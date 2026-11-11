@@ -19,9 +19,18 @@ import type { RouteLeg, RoutePlan, UnreachableWaypoint, Waypoint, WaypointKind }
 export const DEFAULT_REPLAN_LIMIT = 5;
 export const DEFAULT_MAX_WAYPOINT_FAILURES = 2;
 export const DEFAULT_TIME_BUDGET_MS = 15 * 60 * 1000;
+/** Task 129: a station interrupted by the story this many times is handed back to the AI. */
+export const STORY_INTERRUPT_LIMIT = 3;
 
 /** `describe` keeps plans to 30 lines for the model; run reports do the same. */
 export const MAX_RESULT_LINES = 30;
+
+/** Task 129: a walk that stopped on a story/dialog, from any of the walkers' markers. */
+function interruptedByStory(text: string): boolean {
+  return (
+    /interrupted:(?:state:Event|dialog)/u.test(text) || /停在[^\n]*(?:Event|dialog)/u.test(text)
+  );
+}
 
 export interface RoutePorts {
   position(): Promise<{ map: number; cell: Cell } | null>;
@@ -44,6 +53,11 @@ export interface RoutePorts {
     rest: Waypoint[],
     end: Waypoint | null,
   ): Promise<RoutePlan>;
+  /**
+   * Task 129: page the story/dialog that stopped `goTo`, then the executor rereads the
+   * position and walks on. Omitted keeps the old "hand the interruption back" behaviour.
+   */
+  story?(): Promise<{ readonly text: string; readonly decision?: string }>;
   /** Task 89: countdown and the game-over popup, read together so one bridge call covers both. */
   watch?(): Promise<RouteWatch | null>;
   /** Task 89: seconds to walk to `stop` and then from it to `end`; null when unreadable. */
@@ -55,6 +69,9 @@ export interface RoutePorts {
   /** Task 89: record a waypoint the countdown made us skip (a chest becomes a debt). */
   skip?(stop: Waypoint): Promise<void>;
 }
+
+/** Task 117: what the executor did with one waypoint; the book progress file follows it. */
+export type WaypointEvent = "done" | "skipped" | "current";
 
 /** Bridge 0.14.3's `timer`, or null on an older bridge that does not report it. */
 export interface RouteTimer {
@@ -84,6 +101,8 @@ export interface RouteRunOptions {
    * the executor rebuilds waypoints from the plan's legs and unreachable entries.
    */
   readonly waypoints?: readonly Waypoint[];
+  /** Task 117: called after each waypoint, before the next one, for the book progress file. */
+  readonly onWaypoint?: (stop: Waypoint, event: WaypointEvent) => Promise<void> | void;
 }
 
 /** `resumeRoute` takes the same knobs except the file and the waypoints, which it reads. */
@@ -124,8 +143,18 @@ const KIND_NAMES: Readonly<Record<WaypointKind | "end", string>> = {
   boss: "首领",
   move: "移动",
   story: "剧情",
+  handoff: "交回",
   end: "终点",
 };
+
+async function reportWaypoint(
+  options: RouteRunOptions,
+  stop: Waypoint,
+  event: WaypointEvent,
+): Promise<void> {
+  if (options.onWaypoint === undefined) return;
+  await options.onWaypoint(stop, event);
+}
 
 interface RunSeed {
   readonly plan: RoutePlan;
@@ -296,6 +325,9 @@ async function run(
   let lastFailure = "";
   let attemptId: string | null = null;
   let attemptStarted = startedAt;
+  // Task 129: story interruptions of the current station; a different station starts at 0.
+  let storyId: string | null = null;
+  let storyStops = 0;
   let lastWatch: RouteWatch | null = null;
   const lines: string[] = [];
 
@@ -482,6 +514,7 @@ async function run(
         const dropped = pending.filter((waypoint) => ids.has(waypoint.id));
         pending = pending.filter((waypoint) => !ids.has(waypoint.id));
         legs = legs.filter((entry, index) => index < next || !ids.has(entry.waypoint));
+        for (const waypoint of dropped) await reportWaypoint(options, waypoint, "skipped");
         const left =
           timerNow.seconds === null
             ? "倒计时进行中"
@@ -528,6 +561,7 @@ async function run(
         for (const waypoint of dropped) {
           if (ports.skip !== undefined) await ports.skip(waypoint);
           skipped.push(waypoint);
+          await reportWaypoint(options, waypoint, "skipped");
         }
         pending = pending.filter((waypoint) => !optionalIds.has(waypoint.id));
         legs = legs.filter((entry, index) => index < next || !optionalIds.has(entry.waypoint));
@@ -540,9 +574,88 @@ async function run(
       }
     }
 
-    const went = await ports.goTo(target);
+    let went = await ports.goTo(target);
     if (signal?.aborted) {
       return halt("aborted", `走到「${target.label}」后收到取消信号`, "由 AI 决定是否继续");
+    }
+    // Task 129: navigate pages a story itself; these markers mean it hit the handoff limit
+    // or opened a choice, so the executor must not walk into it again.
+    if (!went.ok && went.text.includes("interrupted:story-decision")) {
+      lines.push(
+        `${completed.length + 1}. ${KIND_NAMES[target.kind]}「${target.label}」：` +
+          `路上出现剧情选项，${oneLine(went.text)}`,
+      );
+      return halt(
+        "decision",
+        `「${target.label}」路上出现剧情选项，交给 AI 选`,
+        "由 AI 选完剧情选项后重新 route",
+      );
+    }
+    if (!went.ok && went.text.includes("interrupted:story-limit")) {
+      lines.push(
+        `${completed.length + 1}. ${KIND_NAMES[target.kind]}「${target.label}」：` +
+          `剧情连续打断 ${STORY_INTERRUPT_LIMIT} 次，先交回`,
+      );
+      return halt(
+        "decision",
+        `「${target.label}」剧情连续打断 ${STORY_INTERRUPT_LIMIT} 次`,
+        "由 AI 翻完剧情后重新 route",
+      );
+    }
+    if (!went.ok && ports.story !== undefined && interruptedByStory(went.text)) {
+      if (storyId !== target.id) {
+        storyId = target.id;
+        storyStops = 0;
+      }
+      while (storyStops < STORY_INTERRUPT_LIMIT && !went.ok && interruptedByStory(went.text)) {
+        storyStops += 1;
+        const advanced = await ports.story();
+        if (signal?.aborted) {
+          return halt("aborted", `翻「${target.label}」路上的剧情时收到取消信号`, "由 AI 接手");
+        }
+        if (advanced.decision !== undefined && advanced.decision.trim() !== "") {
+          lines.push(
+            `${completed.length + 1}. ${KIND_NAMES[target.kind]}「${target.label}」：` +
+              `翻完剧情后需要决定，${oneLine(advanced.text)}`,
+          );
+          return halt(
+            "decision",
+            oneLine(advanced.decision),
+            `由 AI 决定：${oneLine(advanced.decision)}`,
+          );
+        }
+        const here = await ports.position();
+        if (
+          here !== null &&
+          (target.reach === "map"
+            ? here.map === target.map
+            : matchesPoint(here, target.map, target.cell))
+        ) {
+          went = { ok: true, text: "剧情翻完,已经在目标" };
+          break;
+        }
+        // The third interruption is the limit: do not start a fourth walk.
+        if (storyStops >= STORY_INTERRUPT_LIMIT) break;
+        went = await ports.goTo(target);
+        if (signal?.aborted) {
+          return halt(
+            "aborted",
+            `翻完「${target.label}」的剧情后收到取消信号`,
+            "由 AI 决定是否继续",
+          );
+        }
+      }
+      if (!went.ok && interruptedByStory(went.text)) {
+        lines.push(
+          `${completed.length + 1}. ${KIND_NAMES[target.kind]}「${target.label}」：` +
+            `剧情连续打断 ${STORY_INTERRUPT_LIMIT} 次，先交回`,
+        );
+        return halt(
+          "decision",
+          `「${target.label}」剧情连续打断 ${STORY_INTERRUPT_LIMIT} 次`,
+          "由 AI 翻完剧情后重新 route",
+        );
+      }
     }
     if (went.decision !== undefined && went.decision.trim() !== "") {
       lines.push(
@@ -590,7 +703,16 @@ async function run(
       );
     }
 
+    // Task 117: a route-book station with no coordinate stops here; the model does it and
+    // the next `route {}` records the handoff and walks on.
+    if (target.kind === "handoff") {
+      await reportWaypoint(options, target, "current");
+      lines.push(`${completed.length + 1}. 交回「${target.label}」：到了，交给 AI`);
+      return halt("decision", target.label, target.label);
+    }
+
     if (target.kind === "boss") {
+      await reportWaypoint(options, target, "current");
       lines.push(
         `${completed.length + 1}. 首领「${target.label}」：到了门口，没有开战，` +
           durationText(Date.now() - attemptStarted),
@@ -619,6 +741,7 @@ async function run(
       const dropped = pending.filter((waypoint) => ids.has(waypoint.id));
       pending = pending.filter((waypoint) => !ids.has(waypoint.id));
       legs = legs.filter((entry, index) => index < next || !ids.has(entry.waypoint));
+      for (const waypoint of dropped) await reportWaypoint(options, waypoint, "skipped");
       const left =
         timerAtAct.seconds === null
           ? "倒计时进行中"
@@ -637,6 +760,7 @@ async function run(
       return halt("gameover", gameoverAfterAct, "由 AI 决定读档还是继续");
     }
     if (acted.decision !== undefined && acted.decision.trim() !== "") {
+      await reportWaypoint(options, target, "current");
       lines.push(
         `${completed.length + 1}. ${KIND_NAMES[target.kind]}「${target.label}」：到了，` +
           (oneLine(acted.text) || "需要决定"),
@@ -661,10 +785,13 @@ async function run(
     failureId = null;
     failures = 0;
     attemptId = null;
+    storyId = null;
+    storyStops = 0;
     lines.push(
       `${completed.length}. ${KIND_NAMES[target.kind]}「${target.label}」：到了，` +
         `${oneLine(acted.text) || "完成"}，${durationText(Date.now() - attemptStarted)}`,
     );
+    await reportWaypoint(options, target, "done");
     await save();
 
     if (signal?.aborted) {

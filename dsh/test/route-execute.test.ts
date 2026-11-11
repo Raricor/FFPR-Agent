@@ -31,6 +31,7 @@ interface FakeState {
   went: string[];
   acted: string[];
   ground: string[];
+  stories: number;
   replans: { from: Point; rest: string[] }[];
 }
 
@@ -40,6 +41,7 @@ interface FakeHandlers {
   act?: (stop: Waypoint, state: FakeState) => Promise<ActResult | null>;
   replan?: (from: Point, rest: readonly Waypoint[], state: FakeState) => Promise<RoutePlan>;
   grind?: (stop: Waypoint, state: FakeState) => Promise<ActResult | null>;
+  story?: (state: FakeState) => Promise<{ text: string; decision?: string }>;
 }
 
 const START: Point = { map: 1, cell: [5, 5] };
@@ -120,11 +122,16 @@ function fakePorts(state: FakeState, handlers: FakeHandlers = {}): RoutePorts {
       const plan = await handlers.replan(from, rest, state);
       return plan;
     },
+    story: async () => {
+      state.stories += 1;
+      if (handlers.story !== undefined) return await handlers.story(state);
+      return { text: "翻了 1 页" };
+    },
   };
 }
 
 function newState(position: Point | null = START): FakeState {
-  return { position, went: [], acted: [], ground: [], replans: [] };
+  return { position, went: [], acted: [], ground: [], stories: 0, replans: [] };
 }
 
 async function inTemp(run: (dir: string) => Promise<void>): Promise<void> {
@@ -364,6 +371,83 @@ void test("the same waypoint failing twice stops the run", async () => {
     const saved = await readProgress(file);
     assert.equal(saved.next, 1);
     assert.deepEqual(saved.completed, ["a"]);
+  });
+});
+
+void test("a dialog stop pages the story and then keeps walking without a failure", async () => {
+  await inTemp(async (dir) => {
+    const file = join(dir, "route-progress.json");
+    const stops = [waypoint("a", "chest", 1, "宝箱 A")];
+    const state = newState();
+    let interruptions = 2;
+    const ports = fakePorts(state, {
+      goTo: (stop, current) => {
+        if (stop.id !== "a" || interruptions === 0) return Promise.resolve(null);
+        interruptions -= 1;
+        current.position = { map: stop.map, cell: [5, 5] };
+        return Promise.resolve({
+          ok: false,
+          text: '停在 (5, 5):"interrupted:dialog"',
+        });
+      },
+    });
+
+    const result = await executeRoute(planFrom(START, stops), ports, { progressFile: file });
+
+    assert.equal(result.reason, "completed");
+    assert.deepEqual(state.acted, ["a"]);
+    assert.equal(state.stories, 2, "each interruption pages once");
+    assert.doesNotMatch(result.text, /失败/);
+    assert.match(result.text, /完成/);
+  });
+});
+
+void test("three story interruptions hand the same waypoint back without a failure", async () => {
+  await inTemp(async (dir) => {
+    const file = join(dir, "route-progress.json");
+    const stops = [waypoint("a", "chest", 1, "宝箱 A")];
+    const state = newState();
+    const ports = fakePorts(state, {
+      goTo: (stop, current) => {
+        current.position = { map: stop.map, cell: [5, 5] };
+        return Promise.resolve({
+          ok: false,
+          text: '停在 (5, 5):"interrupted:state:Event"',
+        });
+      },
+    });
+
+    const result = await executeRoute(planFrom(START, stops), ports, { progressFile: file });
+
+    assert.equal(result.reason, "decision");
+    assert.equal(state.stories, 3);
+    assert.equal(state.went.length, 3, "the third interruption is handed back, not walked again");
+    assert.match(result.message, /3 次/);
+    assert.deepEqual(
+      result.remaining.map((entry) => entry.id),
+      ["a"],
+    );
+    const saved = await readProgress(file);
+    assert.deepEqual(saved.completed, []);
+    assert.deepEqual(saved.next, 0);
+  });
+});
+
+void test("a story choice after the dialog hands the decision back", async () => {
+  await inTemp(async (dir) => {
+    const file = join(dir, "route-progress.json");
+    const stops = [waypoint("a", "chest", 1, "宝箱 A")];
+    const state = newState();
+    const ports = fakePorts(state, {
+      goTo: () => Promise.resolve({ ok: false, text: '停在 (5, 5):"interrupted:dialog"' }),
+      story: () => Promise.resolve({ text: "翻了 2 页", decision: "路上出现了剧情选项" }),
+    });
+
+    const result = await executeRoute(planFrom(START, stops), ports, { progressFile: file });
+
+    assert.equal(result.reason, "decision");
+    assert.match(result.message, /剧情选项/);
+    assert.equal(state.stories, 1);
   });
 });
 

@@ -48,6 +48,16 @@ export interface DangerCell {
   readonly layer: number | null;
 }
 
+/**
+ * Task 129: a hidden-passage cell the game files mark. The live collision still says wall
+ * there, so the grid opens the cell on its own floor; a plan walks it only after ordinary
+ * ways fail.
+ */
+export interface PassageCell {
+  readonly cell: Cell;
+  readonly layer: number | null;
+}
+
 /** Integer-keyed heights keep the Python dict's insertion order, which BFS depends on. */
 export interface LayeredGrid {
   readonly heights: ReadonlyMap<number, readonly string[]>;
@@ -69,6 +79,12 @@ export interface LayeredGrid {
    * They are avoided when another way exists, not walls.
    */
   readonly dangers?: ReadonlyMap<string, number | null>;
+  /**
+   * Task 129: hidden-passage cells from the game files, by cell. A number is the height the
+   * passage opens; null means every height. They are walkable but a plan prefers ordinary
+   * floor and enters them only when that is the only way to the goal.
+   */
+  readonly passages?: ReadonlyMap<string, number | null>;
 }
 
 export function cellKey(x: number, y: number): string {
@@ -352,6 +368,7 @@ interface CollisionLayer {
 interface CollisionData {
   readonly layers: CollisionLayer[];
   readonly here: Cell | null;
+  readonly passages: PassageCell[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -378,6 +395,22 @@ function cellOrNull(value: unknown): Cell | null {
   return [value[0], value[1]];
 }
 
+/** Task 129: hidden-passage cells attached by regions.ts, never in an older bridge reply. */
+function passageCells(value: unknown): PassageCell[] {
+  const out: PassageCell[] = [];
+  for (const entry of Array.isArray(value) ? value : []) {
+    if (!isRecord(entry)) continue;
+    const cell = cellOrNull(entry.cell);
+    if (cell === null) continue;
+    const layer =
+      typeof entry.layer === "number" && Number.isFinite(entry.layer)
+        ? Math.trunc(entry.layer)
+        : null;
+    out.push({ cell, layer });
+  }
+  return out;
+}
+
 function collisionData(collision: unknown): CollisionData {
   if (!isRecord(collision)) throw new Error("碰撞回复不是对象");
   const layers: CollisionLayer[] = [];
@@ -388,7 +421,11 @@ function collisionData(collision: unknown): CollisionData {
       rows: stringRows(layer.rows),
     });
   }
-  return { layers, here: cellOrNull(collision.playerCell) };
+  return {
+    layers,
+    here: cellOrNull(collision.playerCell),
+    passages: passageCells(collision.passages),
+  };
 }
 
 function intOrZero(value: unknown): number {
@@ -462,7 +499,7 @@ export function layeredGrid(
   moves: readonly ObservedMove[] = [],
   dangers: Iterable<DangerCell> = [],
 ): LayeredGrid | null {
-  const { layers, here } = collisionData(collision);
+  const { layers, here, passages } = collisionData(collision);
   if (layers.length === 0 || !here) return null;
   const heights = new Map<number, readonly string[]>();
   layers.forEach((layer, index) => {
@@ -495,6 +532,10 @@ export function layeredGrid(
   for (const danger of dangers) {
     dangerCells.set(cellKey(danger.cell[0], danger.cell[1]), danger.layer);
   }
+  const passageCells = new Map<string, number | null>();
+  for (const passage of passages) {
+    passageCells.set(cellKey(passage.cell[0], passage.cell[1]), passage.layer);
+  }
   return {
     heights,
     center: here,
@@ -503,15 +544,23 @@ export function layeredGrid(
     transitions: transitionCells,
     moves: moveCells,
     dangers: dangerCells,
+    passages: passageCells,
   };
 }
 
 /** Conveyors and falls carry the party the moment it steps on the cell; a layer move is a
- * height change with no forced step. Records before task 44 only have `how`. */
+ * height change with no forced step. Records before task 44 only have `how`. Task 123: an
+ * "调查后跳" link is a same-map directed jump, so the region search must follow it (map 189);
+ * the walk still stops before the gap and the interact presses confirm. */
 function isTravelMove(move: ObservedMove): boolean {
   const kind = move.kind ?? "";
   if (kind === "conveyor" || kind === "fall" || kind === "layer") return true;
-  return move.how.includes("传送带") || move.how.includes("掉下去") || move.how.includes("换层");
+  return (
+    move.how.includes("传送带") ||
+    move.how.includes("掉下去") ||
+    move.how.includes("换层") ||
+    move.how.includes("调查后跳")
+  );
 }
 
 function forcedMove(move: ObservedMove): boolean {
@@ -528,6 +577,17 @@ function cellAt(grid: LayeredGrid, x: number, y: number, z: number): string {
   const start = x === grid.center[0] && y === grid.center[1];
   if (grid.blocked.has(cellKey(x, y)) && !start) return "1";
   const value = rows[y]?.[x] ?? "1";
+  // Task 129: the game files know a hidden passage where the live collision still has a
+  // wall. Open it on the floor its own layer names; a plan enters it only when no ordinary
+  // way reaches the goal.
+  const passageLayer = grid.passages?.get(cellKey(x, y));
+  if (
+    !OPEN.has(value) &&
+    passageLayer !== undefined &&
+    (passageLayer === null || passageLayer === z)
+  ) {
+    return "0";
+  }
   // 11-09: the party may stand on a cell the collision data calls a wall (a GotoMap or
   // PointIn door/landing; the game drops it there). That cell is walkable from the party's
   // side, or every search starting on it stayed put and called the goal unreachable.
@@ -551,6 +611,12 @@ export function isDangerNode(grid: LayeredGrid, node: LayerNode): boolean {
   return layer === undefined ? false : layer === null || layer === node[2];
 }
 
+/** Task 129: whether this node is a hidden passage; a passage with no layer applies everywhere. */
+export function isPassageNode(grid: LayeredGrid, node: LayerNode): boolean {
+  const layer = grid.passages?.get(cellKey(node[0], node[1]));
+  return layer === undefined ? false : layer === null || layer === node[2];
+}
+
 /**
  * Breadth-first over (x, y, height). Within a height, open cells connect to their
  * neighbours; a vertical step whose upper cell is a stair (3, 5), or a ToLayer cell, changes
@@ -568,6 +634,7 @@ export function layeredRoute(
   cut: ReadonlySet<string> = EMPTY_EDGES,
   layerCut: ReadonlyMap<number, ReadonlySet<string>> = EMPTY_LAYER_CUTS,
   allowDanger = false,
+  allowPassage = false,
 ): LayerNode[] {
   const start: LayerNode = [grid.center[0], grid.center[1], grid.z];
   const previous = new Map<string, LayerNode | null>();
@@ -625,6 +692,13 @@ export function layeredRoute(
           if (!allowDanger && isDangerNode(grid, nextNode) && !(nx === goal[0] && ny === goal[1])) {
             continue;
           }
+          if (
+            !allowPassage &&
+            isPassageNode(grid, nextNode) &&
+            !(nx === goal[0] && ny === goal[1])
+          ) {
+            continue;
+          }
           // A change of height through a plain step needs a stair cell. A ToLayer cell
           // names its target layer itself (11-03, Fire-Powered Ship 261). The stair is on
           // the upper floor: climbing needs the cell entered there to be a stair, going
@@ -644,6 +718,13 @@ export function layeredRoute(
       const there = cellAt(grid, tx, ty, nz);
       if (!OPEN.has(there) && !(tx === goal[0] && ty === goal[1])) continue;
       if (!allowDanger && isDangerNode(grid, [tx, ty, nz]) && !(tx === goal[0] && ty === goal[1])) {
+        continue;
+      }
+      if (
+        !allowPassage &&
+        isPassageNode(grid, [tx, ty, nz]) &&
+        !(tx === goal[0] && ty === goal[1])
+      ) {
         continue;
       }
       enqueue(node, [tx, ty, nz]);
@@ -681,7 +762,8 @@ export function layeredRoute(
  * split in two by its collision data can be planned as two nodes instead of one.
  *
  * With `allowDanger` false, cells that carry the party away are not entered (task 70); callers
- * ask a second time with true to find the blocks reachable only by stepping on one.
+ * ask a second time with true to find the blocks reachable only by stepping on one. Task 129
+ * does the same for hidden passages with `allowPassage`.
  * Returns nodeKey → component id; ids count up in scan order. The grid's center cell is open
  * like layeredRoute's start, so a live collision reply can place the party on a wall cell.
  */
@@ -690,6 +772,7 @@ export function layeredComponents(
   cut: ReadonlySet<string> = EMPTY_EDGES,
   layerCut: ReadonlyMap<number, ReadonlySet<string>> = EMPTY_LAYER_CUTS,
   allowDanger = false,
+  allowPassage = false,
 ): Map<string, number> {
   const blocks = new Map<string, number>();
   const transitions = grid.transitions ?? EMPTY_TRANSITIONS;
@@ -710,6 +793,7 @@ export function layeredComponents(
         const firstKey = nodeKey(first);
         if (blocks.has(firstKey) || !OPEN.has(cellAt(grid, x, y, z))) continue;
         if (!allowDanger && isDangerNode(grid, first)) continue;
+        if (!allowPassage && isPassageNode(grid, first)) continue;
         const id = next;
         next += 1;
         const queue: LayerNode[] = [];
@@ -747,6 +831,7 @@ export function layeredComponents(
                 if (!OPEN.has(there)) continue;
                 const nextNode: LayerNode = [nx, ny, nz];
                 if (!allowDanger && isDangerNode(grid, nextNode)) continue;
+                if (!allowPassage && isPassageNode(grid, nextNode)) continue;
                 const stair = nz > cz ? STAIRS.has(there) : STAIRS.has(here);
                 if (nz !== cz && change === undefined && !stair) continue;
                 if (halfWallBlocks(here, there, nx - cx, ny - cy)) continue;
@@ -759,6 +844,7 @@ export function layeredComponents(
             const nz = move.toLayer ?? cz;
             if (!OPEN.has(cellAt(grid, tx, ty, nz))) continue;
             if (!allowDanger && isDangerNode(grid, [tx, ty, nz])) continue;
+            if (!allowPassage && isPassageNode(grid, [tx, ty, nz])) continue;
             add([tx, ty, nz], id, queue);
           }
         }
@@ -769,25 +855,33 @@ export function layeredComponents(
 }
 
 /**
- * A route that keeps off conveyors and water currents when it can, and uses them only when
- * that is the only way to the goal. `danger` lists the dangerous nodes stepped on, so the
- * caller can say the party will be carried away (11-09, Walse Castle 54).
+ * A route that keeps off conveyors, water currents and hidden passages when it can, and uses
+ * them only when that is the only way to the goal. `danger` lists the dangerous nodes stepped
+ * on, so the caller can say the party will be carried away (11-09, Walse Castle 54); `passage`
+ * lists the hidden-passage nodes (task 129).
  */
 export function layeredRouteAvoiding(
   grid: LayeredGrid,
   goal: Cell,
   cut: ReadonlySet<string> = EMPTY_EDGES,
   layerCut: ReadonlyMap<number, ReadonlySet<string>> = EMPTY_LAYER_CUTS,
-): { path: LayerNode[]; danger: LayerNode[] } {
-  const safe = layeredRoute(grid, goal, cut, layerCut, false);
+): { path: LayerNode[]; danger: LayerNode[]; passage: LayerNode[] } {
+  const safe = layeredRoute(grid, goal, cut, layerCut, false, false);
   const safeEnd = safe.at(-1);
   if (safeEnd?.[0] === goal[0] && safeEnd[1] === goal[1]) {
-    return { path: safe, danger: [] };
+    return { path: safe, danger: [], passage: [] };
   }
-  const risky = layeredRoute(grid, goal, cut, layerCut, true);
+  // Task 129: ordinary ways first, then a hidden passage with no danger, and only then a
+  // passage that also steps on a conveyor or water current.
+  const through = layeredRoute(grid, goal, cut, layerCut, false, true);
+  const throughEnd = through.at(-1);
+  if (throughEnd?.[0] === goal[0] && throughEnd[1] === goal[1]) {
+    return { path: through, danger: [], passage: passageNodes(grid, through, goal) };
+  }
+  const risky = layeredRoute(grid, goal, cut, layerCut, true, true);
   const riskyEnd = risky.at(-1);
   if (riskyEnd?.[0] !== goal[0] || riskyEnd[1] !== goal[1]) {
-    return { path: safe, danger: [] };
+    return { path: safe, danger: [], passage: [] };
   }
   const danger = risky.filter((node, index) => {
     const last = index === risky.length - 1;
@@ -798,7 +892,20 @@ export function layeredRouteAvoiding(
       !(node[0] === goal[0] && node[1] === goal[1])
     );
   });
-  return { path: risky, danger };
+  return { path: risky, danger, passage: passageNodes(grid, risky, goal) };
+}
+
+/** The hidden-passage nodes a path steps on, excluding its start and goal cells. */
+function passageNodes(grid: LayeredGrid, path: readonly LayerNode[], goal: Cell): LayerNode[] {
+  return path.filter((node, index) => {
+    const last = index === path.length - 1;
+    return (
+      !last &&
+      index !== 0 &&
+      isPassageNode(grid, node) &&
+      !(node[0] === goal[0] && node[1] === goal[1])
+    );
+  });
 }
 /**
  * The cells of layeredRoute: the path, or the path to the reachable cell nearest the goal.
@@ -818,8 +925,9 @@ export const OPEN: ReadonlySet<string> = new Set(["0", "2", "3", "4", "5"]);
  * The layered grid drawn from where the player stands: per cell "." open on the player's
  * height, ":" open only on another height, "=" a ToLayer cell (a height change), ">" a "3"
  * half-wall (walled on its right), "<" a "5" (walled on its left), "^" a "2" (walled above),
- * "v" a "4" (walled below), "#" wall; as {"center", "rows"}. The party's own height is grid.z;
- * the rows show the other height as ":" so the model can tell a two-floor map from one.
+ * "v" a "4" (walled below), "+" a hidden passage on the party's height, "#" wall; as
+ * {"center", "rows"}. The party's own height is grid.z; the rows show the other height as ":"
+ * so the model can tell a two-floor map from one.
  *
  * 11-03, Fire-Powered Ship 261: the real walk was stopped at (8,22)→(7,22), (8,23)→(7,23)
  * and (17,23)→(18,23); those are the walled sides of 5 and 3, so the view names the side
@@ -841,8 +949,12 @@ export function layeredView(grid: LayeredGrid): { center: Cell; rows: string[] }
       for (const other of grid.heights.keys()) {
         if (other !== grid.z) others.push(cellAt(grid, x, y, other));
       }
+      const passage = grid.passages?.get(cellKey(x, y));
+      const passageHere = passage !== undefined && (passage === null || passage === grid.z);
       if (grid.transitions?.has(cellKey(x, y)) === true) {
         line.push("=");
+      } else if (passageHere) {
+        line.push("+");
       } else if (own === "3") {
         line.push(">");
       } else if (own === "5") {

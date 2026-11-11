@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -7,6 +7,7 @@ import type { TranscriptEntry } from "./fake-pilot.ts";
 import { FakePilot, recordedCalls, scriptReplies } from "./fake-pilot.ts";
 import type { Cell, CellGrid } from "../src/engine/nav.ts";
 import { Atlas } from "../src/engine/atlas.ts";
+import { CollisionStore } from "../src/engine/regions.ts";
 import {
   hasMovingGimmick,
   landHere,
@@ -1121,6 +1122,98 @@ void test("an old blocked record onto an event cell no longer closes the step", 
   }
 });
 
+void test("a story trigger cell is walked onto, not approached from a side", async () => {
+  // Task 125, West Valley 577: route's move stop to a `sc_e_` cell must walk in from far
+  // away. 11-11 it instead asked for a standable side because the plan could not reach the
+  // cell, and the report said "旁边没有能站的格子".
+  const goal: Cell = [5, 0];
+  const env = eventGoalPilot(["000000"], goal, "sc_e_0479_1:レナとガラフを探す（ゴブリン戦②）");
+  env.setHere([0, 0]);
+  let storyPolls = 1;
+  env.pilot.on("pos", () => {
+    if (storyPolls > 0) {
+      storyPolls -= 1;
+      return {
+        pos: {
+          map: 265,
+          cell: [goal[0], goal[1]],
+          state: "Event",
+          dialog: "剧情",
+        },
+      };
+    }
+    return { pos: { map: 265, cell: [...env.here()], state: "Player" } };
+  });
+  const walks: Cell[][] = [];
+  env.pilot.on("walkpath", (fields) => {
+    const path = fields.path as Cell[];
+    if (fields.goal === undefined) assert.fail("a story trigger must not be stepped into");
+    walks.push(path.map((cell) => [cell[0], cell[1]] as const));
+    const last = path[path.length - 1];
+    assert.ok(last);
+    env.setHere(last);
+    return {
+      ok: false,
+      reason: "state:Event",
+      index: path.length - 1,
+      steps: path.length - 1,
+      pos: { map: 265, cell: [last[0], last[1]], state: "Event" },
+      next: null,
+      turns: [],
+    };
+  });
+  assert.deepEqual(await navigate(env.pilot, goal, false, () => undefined, 8, { drake: null }), [
+    true,
+    "到达 (5, 0)",
+  ]);
+  assert.equal(walks.length, 1);
+  assert.deepEqual(walks[0]?.at(-1), goal, "the first walk goes all the way onto the cell");
+});
+
+void test("a story that stays open hands back as interrupted, not as a missing side", async () => {
+  const goal: Cell = [5, 0];
+  const env = eventGoalPilot(["000000"], goal, "sc_e_0479_1:レナとガラフを探す（ゴブリン戦②）");
+  env.setHere([0, 0]);
+  env.pilot.on("pos", () => ({
+    pos: { map: 265, cell: [goal[0], goal[1]], state: "Event", dialog: "剧情" },
+  }));
+  env.pilot.on("walkpath", (fields) => {
+    const path = fields.path as Cell[];
+    if (fields.goal === undefined) assert.fail("a story trigger must not be stepped into");
+    return {
+      ok: false,
+      reason: "state:Event",
+      index: path.length - 1,
+      steps: path.length - 1,
+      pos: { map: 265, cell: [goal[0], goal[1]], state: "Event" },
+      next: null,
+      turns: [],
+    };
+  });
+  const [reached, message] = await navigate(env.pilot, goal, false, () => undefined, 8, {
+    drake: null,
+  });
+  assert.equal(reached, false);
+  assert.match(message, /interrupted:state:Event/u);
+  assert.doesNotMatch(message, /旁边没有能站的格子/u);
+});
+
+void test("a story stop with no planned route hands back instead of walking away", async () => {
+  // The middle of the corridor is a wall, so the plan stops at (1,0). A story is already
+  // playing: the old side-tries reported "旁边没有能站的格子"; it must be handed back instead.
+  const env = eventGoalPilot(["0010111"], [4, 0], "sc_e_0479_1:レナとガラフを探す（ゴブリン戦②）");
+  env.setHere([0, 0]);
+  env.pilot.on("pos", () => ({
+    pos: { map: 265, cell: [0, 0], state: "Event", dialog: "剧情" },
+  }));
+  const [reached, message] = await navigate(env.pilot, [4, 0], false, () => undefined, 8, {
+    drake: null,
+  });
+  assert.equal(reached, false);
+  assert.match(message, /停在 \(0, 0\):"interrupted:state:Event"/u);
+  assert.doesNotMatch(message, /旁边没有能站的格子/u);
+});
+
 void test("off path is replanned from where the party is", async () => {
   let here: Cell = [0, 0];
   let sent = 0;
@@ -1259,7 +1352,9 @@ void test("a passive map change walks back when the atlas has a way", async () =
 void test("the same crossing to another map stops on its second try", async () => {
   const pilot = indoorPilot(() => [0, 0], 8);
   let map = 260;
-  pilot.on("pos", () => ({ pos: { map, cell: map === 260 ? [0, 0] : [5, 0] } }));
+  pilot.on("pos", () => ({
+    pos: { map, cell: map === 260 ? [0, 0] : [5, 0] },
+  }));
   pilot.on("walkpath", () => {
     map = 261;
     return {
@@ -1443,6 +1538,169 @@ void test("a state event that stays Event stops the walk with interrupted", asyn
   assert.match(text, /停在 \[2, 0\].*interrupted:state:Event/);
   // It watched the Event for the whole 2.5 s instead of returning on the first frame.
   assert.equal(pilot.now(), 2_500);
+});
+
+void test("a dialog in the middle of a walk is paged and the walk continues", async () => {
+  let here: Cell = [0, 0];
+  let storyOpen = false;
+  const pilot = indoorPilot(() => here, 8);
+  pilot.on("pos", () => ({
+    pos: {
+      map: 260,
+      cell: [here[0], here[1]],
+      ...(storyOpen ? { state: "Event", dialog: "剧情" } : { state: "Player" }),
+    },
+  }));
+  let sent = 0;
+  pilot.on("walkpath", (fields) => {
+    sent += 1;
+    const path = fields.path as Cell[];
+    const last = path[path.length - 1];
+    assert.ok(last);
+    if (sent === 1) {
+      here = [3, 0];
+      storyOpen = true;
+      return {
+        ok: false,
+        reason: "dialog",
+        index: 3,
+        steps: 3,
+        pos: { map: 260, cell: [3, 0], state: "Event", dialog: "剧情" },
+        next: null,
+        turns: [],
+      };
+    }
+    here = [last[0], last[1]];
+    return {
+      ok: true,
+      reason: "arrived",
+      index: path.length - 1,
+      steps: path.length - 1,
+      pos: { map: 260, cell: [here[0], here[1]], state: "Player" },
+      next: null,
+      turns: [],
+    };
+  });
+  let stories = 0;
+  const state: MoveState = {
+    drake: null,
+    walkpathEventWaitMs: 0,
+    story: () => {
+      stories += 1;
+      storyOpen = false;
+      return Promise.resolve({ text: "翻了 2 页" });
+    },
+  };
+  const said: string[] = [];
+  assert.deepEqual(await navigate(pilot, [6, 0], false, (line) => said.push(line), 8, state), [
+    true,
+    "到达 (6, 0)",
+  ]);
+  assert.equal(stories, 1);
+  assert.equal(sent, 2);
+  assert.ok(said.some((line) => line.includes("剧情打断")));
+});
+
+void test("three story interruptions in one walk hand it back", async () => {
+  let here: Cell = [0, 0];
+  const pilot = indoorPilot(() => here, 8);
+  pilot.on("pos", () => ({
+    pos: { map: 260, cell: [here[0], here[1]], state: "Event", dialog: "剧情" },
+  }));
+  let sent = 0;
+  pilot.on("walkpath", (fields) => {
+    sent += 1;
+    const path = fields.path as Cell[];
+    here = [3, 0];
+    return {
+      ok: false,
+      reason: "dialog",
+      index: path.length - 1,
+      steps: path.length - 1,
+      pos: { map: 260, cell: here, state: "Event", dialog: "剧情" },
+      next: null,
+      turns: [],
+    };
+  });
+  let stories = 0;
+  const state: MoveState = {
+    drake: null,
+    walkpathEventWaitMs: 0,
+    story: () => {
+      stories += 1;
+      return Promise.resolve({ text: "翻了 1 页" });
+    },
+  };
+  const [reached, text] = await navigate(pilot, [6, 0], false, () => undefined, 8, state);
+  assert.equal(reached, false, text);
+  assert.equal(stories, 3);
+  assert.equal(sent, 3, "the third interruption is handed back, not walked again");
+  assert.match(text, /interrupted:story-limit/u);
+});
+
+void test("a live collision wall is opened by the game files' hidden passage", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ffpr-passage-"));
+  try {
+    const maps = join(dir, "maps");
+    await mkdir(maps, { recursive: true });
+    const rows = ["00000", "11110", "00000"];
+    await writeFile(
+      join(maps, "30.json"),
+      JSON.stringify({
+        id: 30,
+        name: "图尔村",
+        collision: [{ name: "GroundCollision", rows }],
+        hiddenPassages: [{ name: "GroundHiddenPassage", cells: [[4, 1, 1]] }],
+        damage: [],
+        exits: [],
+      }),
+      "utf8",
+    );
+    const store = await CollisionStore.load(undefined, undefined, maps);
+    let here: Cell = [0, 0];
+    const pilot = indoorPilot(() => here, 5);
+    pilot.on("pos", () => ({ pos: { map: 30, cell: [here[0], here[1]] } }));
+    pilot.on("collision", () => ({
+      collision: {
+        searchLayer: 1,
+        playerCell: [here[0], here[1]],
+        layers: [{ name: "GroundCollision", rows }],
+      },
+    }));
+    pilot.on("walkpath", (fields) => {
+      const path = fields.path as Cell[];
+      const last = path[path.length - 1];
+      assert.ok(last);
+      here = [last[0], last[1]];
+      return {
+        ok: true,
+        reason: "arrived",
+        index: path.length - 1,
+        steps: path.length - 1,
+        pos: { map: 30, cell: [here[0], here[1]] },
+        next: null,
+        turns: [],
+      };
+    });
+    pilot.on("keys", { ok: true });
+    pilot.on("story", { pages: 1 });
+    const state: MoveState = {
+      drake: null,
+      passages: (mapId) => store.passages(mapId),
+    };
+    const [reached, text] = await navigate(pilot, [4, 2], false, () => undefined, 8, state);
+    assert.equal(reached, true);
+    assert.match(text, /暗道/u);
+    const paths = walkpathCalls(pilot);
+    assert.ok(
+      paths.some((path) => path.some(([x, y]) => x === 4 && y === 1)),
+      "the route did not walk the hidden passage",
+    );
+    const opened = await openAt(pilot, [4, 2], () => undefined, state);
+    assert.match(opened, /按了确认/u);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 void test("an old bridge falls back to the corner-by-corner walk", async () => {
@@ -1675,7 +1933,9 @@ void test("a world-map goal that cannot be walked onto keeps off a nearby entran
   const goal: Cell = [0, 4];
   const entrance: Cell = [0, 2];
   const pilot = new FakePilot();
-  pilot.on("pos", () => ({ pos: { map: 1, cell: [position.cell[0], position.cell[1]] } }));
+  pilot.on("pos", () => ({
+    pos: { map: 1, cell: [position.cell[0], position.cell[1]] },
+  }));
   pilot.on("cells", (fields) => {
     const r = typeof fields.r === "number" ? fields.r : 24;
     const at = fields.at;
@@ -1703,7 +1963,13 @@ void test("a world-map goal that cannot be walked onto keeps off a nearby entran
       ? {
           entities: {
             total: 1,
-            entities: [{ kind: "GotoMap", cell: [entrance[0], entrance[1]], active: true }],
+            entities: [
+              {
+                kind: "GotoMap",
+                cell: [entrance[0], entrance[1]],
+                active: true,
+              },
+            ],
           },
         }
       : { entities: { total: 0, entities: [] } },
@@ -1914,7 +2180,12 @@ void test("an entrance goal that refuses the step stops at the replan limit inst
   const pilot = indoorPilot(() => here, 8);
   pilot.on("entities", (fields) =>
     fields.kind === "GotoMap"
-      ? { entities: { total: 1, entities: [{ kind: "GotoMap", cell: [3, 0], active: true }] } }
+      ? {
+          entities: {
+            total: 1,
+            entities: [{ kind: "GotoMap", cell: [3, 0], active: true }],
+          },
+        }
       : { entities: { total: 0, entities: [] } },
   );
   pilot.on("walkpath", (fields) => {
