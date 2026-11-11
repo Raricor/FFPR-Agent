@@ -47,9 +47,16 @@ interface GambitFixture {
   readonly vocabulary: [string, string][];
   readonly targets: [string, string][];
   readonly statusZh: [string, string][];
-  readonly values: readonly { situation: SituationData; values: Record<string, number> }[];
+  readonly values: readonly {
+    situation: SituationData;
+    values: Record<string, number>;
+  }[];
   readonly statuses: readonly { unit: unknown; out: string[] }[];
-  readonly holds: readonly { condition: string | null; situation: SituationData; out: boolean }[];
+  readonly holds: readonly {
+    condition: string | null;
+    situation: SituationData;
+    out: boolean;
+  }[];
   readonly choose: readonly {
     rules: Json[];
     situation: SituationData;
@@ -57,8 +64,14 @@ interface GambitFixture {
     action: ActionData;
   }[];
   readonly check: readonly { table: unknown; problems: string[] }[];
-  readonly normalize: readonly { plan: unknown; out: Record<string, unknown[]> }[];
-  readonly defaultTable: readonly { party: unknown[]; out: Record<string, Json[]> }[];
+  readonly normalize: readonly {
+    plan: unknown;
+    out: Record<string, unknown[]>;
+  }[];
+  readonly defaultTable: readonly {
+    party: unknown[];
+    out: Record<string, Json[]>;
+  }[];
   readonly abilityCandidates: readonly { wanted: string; out: string[] }[];
   readonly cures: Record<string, [string | null, string]>;
   readonly families: Record<string, string[]>;
@@ -143,7 +156,10 @@ void test("status types read in Chinese", () => {
 void test("the first rule that holds and has a target wins", () => {
   for (const item of fixture.choose) {
     const action = choose(item.rules, situation(item.situation), new Set(item.skip));
-    assert.deepEqual(action, { ...item.action, enemy: item.action.enemy ?? null });
+    assert.deepEqual(action, {
+      ...item.action,
+      enemy: item.action.enemy ?? null,
+    });
   }
   const first = choose(fixture.rules, situation(fixture.situations[0] ?? assert.fail("missing")));
   assert.deepEqual(first, {
@@ -254,7 +270,9 @@ void test("items in conditions", () => {
   const revive = choose(tableOf("蕾娜"), s, new Set([1]));
   assert.deepEqual([revive.command, revive.ability, revive.whom], ["道具", "不死鸟之尾", "加拉夫"]);
   assert.deepEqual(
-    check({ 蕾娜: [{ if: "item.恢复药 > 0", do: "道具:恢复药" }, { do: "攻击" }] }),
+    check({
+      蕾娜: [{ if: "item.恢复药 > 0", do: "道具:恢复药" }, { do: "攻击" }],
+    }),
     [],
   );
 });
@@ -297,7 +315,14 @@ void test("best spell candidates", () => {
 void test("blindness is cured with eye drops by anyone", () => {
   const players: Json[] = [
     { name: "巴兹", hp: 197, maxHp: 197, mp: 19, jobName: "骑士" },
-    { name: "蕾娜", hp: 142, maxHp: 142, mp: 16, jobName: "白魔法师", status: ["Blind"] },
+    {
+      name: "蕾娜",
+      hp: 142,
+      maxHp: 142,
+      mp: 16,
+      jobName: "白魔法师",
+      status: ["Blind"],
+    },
     { name: "加拉夫", hp: 215, maxHp: 215, mp: 19, jobName: "武僧" },
     { name: "法利斯", hp: 140, maxHp: 140, mp: 2, jobName: "黑魔法师" },
   ];

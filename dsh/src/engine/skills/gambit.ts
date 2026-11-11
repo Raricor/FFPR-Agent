@@ -475,7 +475,14 @@ export function actionOf(rule: Json, index: number, situation: Situation): Actio
     if (!ailing) return null;
     whom = pyString(ailing.name);
   }
-  return { command: command.trim(), ability: ability.trim(), target, whom, enemy, rule: index };
+  return {
+    command: command.trim(),
+    ability: ability.trim(),
+    target,
+    whom,
+    enemy,
+    rule: index,
+  };
 }
 
 /**
@@ -494,7 +501,14 @@ export function choose(
     const action = actionOf(rule, index, situation);
     if (action) return action;
   }
-  return { command: "攻击", ability: "", target: ENEMY, whom: null, enemy: null, rule: 0 };
+  return {
+    command: "攻击",
+    ability: "",
+    target: ENEMY,
+    whom: null,
+    enemy: null,
+    rule: 0,
+  };
 }
 
 /**
