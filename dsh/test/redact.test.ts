@@ -6,7 +6,10 @@ import { MASK, Redactor, redactingLogger, type LogSink } from "../src/engine/red
 
 interface RedactFixture {
   readonly mask: string;
-  readonly redact: readonly { readonly text: string; readonly expected: string }[];
+  readonly redact: readonly {
+    readonly text: string;
+    readonly expected: string;
+  }[];
   readonly filter: {
     readonly format: string;
     readonly args: readonly string[];
