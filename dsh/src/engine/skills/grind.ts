@@ -802,6 +802,45 @@ async function grindTravel(
   return [result.reached, result.detail];
 }
 
+/**
+ * Task 152 follow-up: sleep at the inn the party is already standing in. `restAtInn` also
+ * travels there and back; the chapter executor has already walked to the counter, so it only
+ * needs the sleep itself. Returns `ok: false` when the innkeeper cannot be found or the party
+ * is not fully revived/healed afterwards.
+ */
+export async function sleepAtInn(
+  pilot: Pilot,
+  moveState: MoveState,
+  say: Say = () => undefined,
+): Promise<GrindInnResult> {
+  await pilot.send("wait", { timeout: 30_000 }, 40_000);
+  const before = await readSnapshot(pilot);
+  const keeper = await innKeeper(pilot);
+  if (keeper === null) return { ok: false, detail: "旅店里没找到店主" };
+  const keeperCell = cellOf(keeper.cell);
+  if (keeperCell === null) return { ok: false, detail: "店主没有格子坐标" };
+  const said = await openAt(pilot, keeperCell, say, moveState);
+  say(`  ${said}`);
+  const paid = await answerInn(pilot);
+  await pilot.send("wait", { timeout: 30_000 }, 40_000);
+  const after = await readSnapshot(pilot);
+  const deadBefore = before.members.filter((member) => (num(member.hp) ?? 0) <= 0).length;
+  const deadAfter = after.members.filter((member) => (num(member.hp) ?? 0) <= 0).length;
+  const recovered = deadAfter === 0 && after.minHpPct >= 99 && after.minMpPct >= 99;
+  if (!recovered) {
+    return {
+      ok: false,
+      detail:
+        `和店主说话后没有回满(${before.minHpPct.toFixed(0)}% → ` +
+        `${after.minHpPct.toFixed(0)}% HP,倒下 ${deadBefore}→${deadAfter} 人)`,
+    };
+  }
+  return {
+    ok: true,
+    detail: `在旅店住了一晚(${paid})，HP/MP 回满${deadBefore > 0 ? "，倒下的人都复活了" : ""}`,
+  };
+}
+
 /** Sleep at an inn, then walk back to the grind spot. */
 export async function restAtInn(
   pilot: Pilot,
