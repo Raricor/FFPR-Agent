@@ -40,6 +40,7 @@ import { tacticsView, type TacticsPanelView } from "../engine/tactics-view.ts";
 import { isRecord, num, record, records, text, truthy } from "../engine/values.ts";
 import { walkDisplay } from "../engine/walk-view.ts";
 import { currentGame, readAchievementView, type CommandPilotFactory } from "./commands.ts";
+import { defaultPlanFiles, planRoute, type PlanFilesOf } from "./plan-panel.ts";
 import { currentRoute, readCurrent, type CurrentSource } from "./current.ts";
 import { gameDefaults } from "./config.ts";
 import type { PlayerEngine } from "./player.ts";
@@ -51,6 +52,19 @@ export const PLAYER_ROUTE = "/api/ffpr/player";
 export const TACTICIAN_ROUTE = "/api/ffpr/tactician";
 export const WALK_ROUTE = "/api/ffpr/walk";
 export const BOOK_ROUTE = "/api/ffpr/book";
+export { PLAN_ROUTE, defaultPlanFiles, planRoute, readPlanPanel } from "./plan-panel.ts";
+export type {
+  PlanBattleGroupView,
+  PlanBossView,
+  PlanDroppedRowView,
+  PlanFiles,
+  PlanFilesOf,
+  PlanPanelView,
+  PlanReportView,
+  PlanRuleTableView,
+  PlanStationRowView,
+  PlanView,
+} from "./plan-panel.ts";
 
 /** The root panel entry's way to find the player preset that started one game's engine. */
 export type EngineLookup = (game: string) => PlayerEngine | undefined;
@@ -911,6 +925,7 @@ export function installPanel(
   bestiaryCache?: BestiaryAreaCache,
   current?: CurrentSource,
   bookFilesFor: BookFilesOf = defaultBookFiles,
+  planFilesFor: PlanFilesOf = defaultPlanFiles,
 ): void {
   ctx.inject(["connection"], (connectionCtx) => {
     if (current !== undefined) {
@@ -940,6 +955,9 @@ export function installPanel(
     );
     connectionCtx.effect(() =>
       connectionCtx.connection.fetch.register(bookRoute(current, bookFilesFor)),
+    );
+    connectionCtx.effect(() =>
+      connectionCtx.connection.fetch.register(planRoute(current, planFilesFor)),
     );
   });
 }

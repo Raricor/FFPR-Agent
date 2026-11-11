@@ -18,6 +18,7 @@ const OPENED_PREFIX = "ffpr-dsh.achievements.opened.";
 const TACTICS_OPENED_PREFIX = "ffpr-dsh.tactics.opened.";
 const PLAYER_OPENED_PREFIX = "ffpr-dsh.player.opened.";
 const BATTLE_OPENED_PREFIX = "ffpr-dsh.battle.opened.";
+const PLAN_OPENED_KEY = "ffpr-dsh.plan.opened";
 const ONLY_MISSING_KEY = "ffpr-dsh.achievements.onlyMissing";
 const PANEL_TAB_KEY = "ffpr-dsh.achievements.tab";
 const REFRESH_MS = 30_000;
@@ -219,6 +220,83 @@ interface BookPanelView {
   readonly totals: BookTableView | null;
 }
 
+interface PlanStationRowView {
+  readonly number: number;
+  readonly mapText: string;
+  readonly cellText: string;
+  readonly action: string;
+  readonly why: string;
+  readonly untilText: string;
+  readonly statusSymbol: string;
+  readonly statusText: string;
+  readonly note: string;
+  readonly current: boolean;
+}
+
+interface PlanDroppedRowView {
+  readonly number: number;
+  readonly mapText: string;
+  readonly cellText: string;
+  readonly action: string;
+  readonly why: string;
+}
+
+interface PlanRuleTableView {
+  readonly title: string;
+  readonly lines: readonly string[];
+}
+
+interface PlanBattleGroupView {
+  readonly title: string;
+  readonly tables: readonly PlanRuleTableView[];
+}
+
+interface PlanBossView {
+  readonly name: string;
+  readonly mapText: string;
+  readonly prepText: string;
+  readonly tables: readonly PlanRuleTableView[];
+  readonly notes: string;
+}
+
+interface PlanReportView {
+  readonly heading: string;
+  readonly lines: readonly string[];
+  readonly exceptionText: string | null;
+}
+
+interface PlanView {
+  readonly section: string;
+  readonly goalText: string;
+  readonly revisionText: string;
+  readonly statusText: string;
+  readonly startedText: string;
+  readonly updatedText: string;
+  readonly whyText: string | null;
+  readonly prep: readonly string[];
+  readonly prepEmptyText: string;
+  readonly stationHeaders: readonly string[];
+  readonly stations: readonly PlanStationRowView[];
+  readonly stationEmptyText: string;
+  readonly dropped: readonly PlanDroppedRowView[];
+  readonly droppedHeaders: readonly string[];
+  readonly battle: readonly PlanBattleGroupView[];
+  readonly boss: readonly PlanBossView[];
+  readonly turnBack: readonly string[];
+  readonly turnBackEmptyText: string;
+  readonly report: PlanReportView | null;
+  readonly reportEmptyText: string;
+  readonly notes: string | null;
+  readonly warnings: readonly string[];
+}
+
+interface PlanPanelView {
+  readonly title: string;
+  readonly status: string;
+  readonly message: string | null;
+  readonly plan: PlanView | null;
+}
+
 interface TacticianRuleLine {
   readonly text: string;
   readonly hits: number;
@@ -312,7 +390,7 @@ interface CurrentCard {
 interface ActivityEntry {
   readonly at: string;
   readonly game: string;
-  readonly kind: "tool" | "event" | "link" | "warn" | "error";
+  readonly kind: "tool" | "event" | "link" | "warn" | "error" | "plan";
   readonly text: string;
 }
 
@@ -718,6 +796,113 @@ function isBookView(value: unknown): value is BookPanelView {
   );
 }
 
+function isStringArray(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isPlanStationRow(value: unknown): value is PlanStationRowView {
+  return (
+    isRecord(value) &&
+    typeof value.number === "number" &&
+    typeof value.mapText === "string" &&
+    typeof value.cellText === "string" &&
+    typeof value.action === "string" &&
+    typeof value.why === "string" &&
+    typeof value.untilText === "string" &&
+    typeof value.statusSymbol === "string" &&
+    typeof value.statusText === "string" &&
+    typeof value.note === "string" &&
+    typeof value.current === "boolean"
+  );
+}
+
+function isPlanDroppedRow(value: unknown): value is PlanDroppedRowView {
+  return (
+    isRecord(value) &&
+    typeof value.number === "number" &&
+    typeof value.mapText === "string" &&
+    typeof value.cellText === "string" &&
+    typeof value.action === "string" &&
+    typeof value.why === "string"
+  );
+}
+
+function isPlanRuleTable(value: unknown): value is PlanRuleTableView {
+  return isRecord(value) && typeof value.title === "string" && isStringArray(value.lines);
+}
+
+function isPlanBattleGroup(value: unknown): value is PlanBattleGroupView {
+  return (
+    isRecord(value) &&
+    typeof value.title === "string" &&
+    Array.isArray(value.tables) &&
+    value.tables.every(isPlanRuleTable)
+  );
+}
+
+function isPlanBoss(value: unknown): value is PlanBossView {
+  return (
+    isRecord(value) &&
+    typeof value.name === "string" &&
+    typeof value.mapText === "string" &&
+    typeof value.prepText === "string" &&
+    Array.isArray(value.tables) &&
+    value.tables.every(isPlanRuleTable) &&
+    typeof value.notes === "string"
+  );
+}
+
+function isPlanReport(value: unknown): value is PlanReportView {
+  return (
+    isRecord(value) &&
+    typeof value.heading === "string" &&
+    isStringArray(value.lines) &&
+    (value.exceptionText === null || typeof value.exceptionText === "string")
+  );
+}
+
+function isPlanView(value: unknown): value is PlanView {
+  return (
+    isRecord(value) &&
+    typeof value.section === "string" &&
+    typeof value.goalText === "string" &&
+    typeof value.revisionText === "string" &&
+    typeof value.statusText === "string" &&
+    typeof value.startedText === "string" &&
+    typeof value.updatedText === "string" &&
+    (value.whyText === null || typeof value.whyText === "string") &&
+    isStringArray(value.prep) &&
+    typeof value.prepEmptyText === "string" &&
+    isStringArray(value.stationHeaders) &&
+    Array.isArray(value.stations) &&
+    value.stations.every(isPlanStationRow) &&
+    typeof value.stationEmptyText === "string" &&
+    Array.isArray(value.dropped) &&
+    value.dropped.every(isPlanDroppedRow) &&
+    isStringArray(value.droppedHeaders) &&
+    Array.isArray(value.battle) &&
+    value.battle.every(isPlanBattleGroup) &&
+    Array.isArray(value.boss) &&
+    value.boss.every(isPlanBoss) &&
+    isStringArray(value.turnBack) &&
+    typeof value.turnBackEmptyText === "string" &&
+    (value.report === null || isPlanReport(value.report)) &&
+    typeof value.reportEmptyText === "string" &&
+    (value.notes === null || typeof value.notes === "string") &&
+    isStringArray(value.warnings)
+  );
+}
+
+function isPlanPanelView(value: unknown): value is PlanPanelView {
+  return (
+    isRecord(value) &&
+    typeof value.title === "string" &&
+    typeof value.status === "string" &&
+    (value.message === null || typeof value.message === "string") &&
+    (value.plan === null || isPlanView(value.plan))
+  );
+}
+
 async function fetchBook(signal: AbortSignal, game: string): Promise<PollResult<BookPanelView>> {
   const response = await fetch(`api/ffpr/book?game=${encodeURIComponent(game)}`, {
     signal,
@@ -739,6 +924,29 @@ async function fetchBook(signal: AbortSignal, game: string): Promise<PollResult<
 
 async function loadBook(signal: AbortSignal, game: string): Promise<PollResult<BookPanelView>> {
   return await fetchBook(signal, game);
+}
+
+async function fetchPlan(signal: AbortSignal, game: string): Promise<PollResult<PlanPanelView>> {
+  const response = await fetch(`api/ffpr/plan?game=${encodeURIComponent(game)}`, {
+    signal,
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(`读不了段计划(HTTP ${response.status})，试试刷新网页`);
+  const body: unknown = await response.json();
+  if (!isRecord(body)) throw new Error("读不懂段计划");
+  const at = typeof body.at === "string" ? body.at : null;
+  if (body.ok !== true || !isPlanPanelView(body.view)) {
+    return {
+      value: null,
+      error: typeof body.error === "string" ? body.error : "读不了段计划",
+      at,
+    };
+  }
+  return { value: body.view, error: null, at };
+}
+
+async function loadPlan(signal: AbortSignal, game: string): Promise<PollResult<PlanPanelView>> {
+  return await fetchPlan(signal, game);
 }
 
 function isRuleLine(value: unknown): value is TacticianRuleLine {
@@ -894,7 +1102,8 @@ function isActivityEntry(value: unknown): value is ActivityEntry {
       value.kind === "event" ||
       value.kind === "link" ||
       value.kind === "warn" ||
-      value.kind === "error")
+      value.kind === "error" ||
+      value.kind === "plan")
   );
 }
 
@@ -1351,6 +1560,248 @@ function bookStationCell(row: BookStationRowView): unknown {
   );
 }
 
+function planStatusTone(status: string): Tone {
+  if (status === "完成") return "win";
+  if (status === "执行中") return "business";
+  if (status === "出例外") return "hard";
+  return "muted";
+}
+
+function planStationCell(row: PlanStationRowView): unknown {
+  const tone: Tone =
+    row.statusSymbol === "✓"
+      ? "win"
+      : row.statusSymbol === "▶"
+        ? "business"
+        : row.statusSymbol === "✗"
+          ? "hard"
+          : "muted";
+  const parts: unknown[] = [
+    h(
+      "span",
+      { style: { color: toneColor(tone), fontWeight: 600 } },
+      `${row.statusSymbol} ${row.statusText}`,
+    ),
+  ];
+  if (row.note !== "") {
+    parts.push(
+      h(
+        "div",
+        { style: { fontSize: 11, opacity: 0.7, marginTop: 2, overflowWrap: "anywhere" } },
+        row.note,
+      ),
+    );
+  }
+  return h("div", null, ...parts);
+}
+
+function planRuleTables(tables: readonly PlanRuleTableView[], keyPrefix: string): unknown[] {
+  return tables.map((table, index) =>
+    h(
+      "div",
+      { key: `${keyPrefix}-${index}`, style: { marginTop: 4 } },
+      h("div", { style: { fontSize: 11, fontWeight: 600, opacity: 0.8 } }, table.title),
+      ...table.lines.map((line, lineIndex) =>
+        h(
+          "div",
+          { key: lineIndex, style: { fontSize: 12, marginTop: 1, overflowWrap: "anywhere" } },
+          line,
+        ),
+      ),
+    ),
+  );
+}
+
+function planReportBlock(report: PlanReportView | null, emptyText: string): unknown {
+  if (report === null) return emptyLine(emptyText);
+  return h(
+    "div",
+    null,
+    ...report.lines.map((line, index) =>
+      h(
+        "div",
+        { key: `report-${index}`, style: { fontSize: 12, marginTop: index === 0 ? 0 : 1 } },
+        line,
+      ),
+    ),
+    report.exceptionText === null
+      ? null
+      : h(
+          "div",
+          { style: { fontSize: 12, color: toneColor("hard"), marginTop: 2 } },
+          report.exceptionText,
+        ),
+  );
+}
+
+function planBlock(view: PlanPanelView | null, error: string | null): unknown {
+  if (view === null) {
+    return card([sectionTitle("段计划"), emptyLine(error ?? "正在读取段计划…")]);
+  }
+  if (view.plan === null) {
+    return card([
+      sectionTitle(view.title),
+      h(
+        "div",
+        { style: { display: "flex", alignItems: "center", gap: 6, marginTop: 2 } },
+        tag(view.status, planStatusTone(view.status)),
+      ),
+      view.message === null ? null : emptyLine(view.message),
+    ]);
+  }
+  const plan = view.plan;
+  const open = readStorage(PLAN_OPENED_KEY) !== "0";
+  const onToggle = (event: unknown): void => {
+    if (!isRecord(event)) return;
+    const target = event.currentTarget;
+    if (isRecord(target) && typeof target.open === "boolean") {
+      writeStorage(PLAN_OPENED_KEY, target.open ? "1" : "0");
+    }
+  };
+  const children: unknown[] = [
+    h("div", { style: { fontWeight: 600, fontSize: 13, marginTop: 2 } }, plan.section),
+    h("div", { style: { fontSize: 12, marginTop: 2 } }, plan.goalText),
+    h(
+      "div",
+      { style: { fontSize: 11, opacity: 0.75, marginTop: 2 } },
+      `${plan.revisionText} · ${plan.startedText} · ${plan.updatedText}`,
+    ),
+  ];
+  if (plan.whyText !== null) {
+    children.push(
+      h(
+        "div",
+        {
+          style: {
+            fontSize: 12,
+            color: toneColor("business"),
+            marginTop: 2,
+            overflowWrap: "anywhere",
+          },
+        },
+        plan.whyText,
+      ),
+    );
+  }
+  for (const warning of plan.warnings) children.push(emptyLine(warning));
+  children.push(sectionTitle("准备"));
+  if (plan.prep.length === 0) children.push(emptyLine(plan.prepEmptyText));
+  else {
+    children.push(
+      h(
+        "div",
+        null,
+        ...plan.prep.map((line, index) =>
+          h("div", { key: `prep-${index}`, style: { fontSize: 12 } }, line),
+        ),
+      ),
+    );
+  }
+  children.push(sectionTitle("站点"));
+  if (plan.stations.length === 0) children.push(emptyLine(plan.stationEmptyText));
+  else {
+    children.push(
+      table(
+        plan.stationHeaders,
+        plan.stations.map((row) => [
+          row.number,
+          row.mapText,
+          row.cellText,
+          row.action,
+          row.why,
+          row.untilText,
+          planStationCell(row),
+        ]),
+        plan.stations.map((row) =>
+          row.current ? { background: "rgba(217, 130, 43, 0.14)" } : undefined,
+        ),
+      ),
+    );
+  }
+  if (plan.dropped.length > 0) {
+    children.push(sectionTitle("不做的站"));
+    children.push(
+      table(
+        plan.droppedHeaders,
+        plan.dropped.map((row) => [row.number, row.mapText, row.cellText, row.action, row.why]),
+      ),
+    );
+  }
+  children.push(sectionTitle("普通战斗表"));
+  if (plan.battle.length === 0) children.push(emptyLine("没有普通战斗表"));
+  else {
+    children.push(
+      ...plan.battle.map((group, index) =>
+        h(
+          "details",
+          { key: `battle-${index}`, style: { marginTop: 3 } },
+          h(
+            "summary",
+            { style: { cursor: "pointer", fontSize: 12, fontWeight: 600 } },
+            group.title,
+          ),
+          ...planRuleTables(group.tables, `battle-${index}`),
+        ),
+      ),
+    );
+  }
+  children.push(sectionTitle("首领"));
+  if (plan.boss.length === 0) children.push(emptyLine("没有首领"));
+  else {
+    children.push(
+      ...plan.boss.map((boss, index) =>
+        h(
+          "details",
+          { key: `boss-${index}`, style: { marginTop: 3 } },
+          h(
+            "summary",
+            { style: { cursor: "pointer", fontSize: 12, fontWeight: 600 } },
+            `${boss.name}（${boss.mapText}）`,
+          ),
+          h("div", { style: { fontSize: 12, marginTop: 2 } }, boss.prepText),
+          ...planRuleTables(boss.tables, `boss-${index}`),
+          boss.notes === ""
+            ? null
+            : h(
+                "div",
+                { style: { fontSize: 12, marginTop: 2, opacity: 0.8 } },
+                `备注：${boss.notes}`,
+              ),
+        ),
+      ),
+    );
+  }
+  children.push(sectionTitle("回头条件"));
+  if (plan.turnBack.length === 0) children.push(emptyLine(plan.turnBackEmptyText));
+  else {
+    children.push(
+      h(
+        "div",
+        null,
+        ...plan.turnBack.map((line, index) =>
+          h("div", { key: `turn-back-${index}`, style: { fontSize: 12 } }, line),
+        ),
+      ),
+    );
+  }
+  children.push(sectionTitle(plan.report?.heading ?? "最近一份报告"));
+  children.push(planReportBlock(plan.report, plan.reportEmptyText));
+  if (plan.notes !== null) {
+    children.push(sectionTitle("备注"), h("div", { style: { fontSize: 12 } }, plan.notes));
+  }
+  return h(
+    "details",
+    { style: CARD_STYLE, open, onToggle },
+    h(
+      "summary",
+      { style: { cursor: "pointer", fontSize: 12, fontWeight: 600 } },
+      "段计划",
+      h("span", { style: { marginLeft: 6 } }, tag(view.status, planStatusTone(view.status))),
+    ),
+    ...children,
+  );
+}
+
 function bookBlock(view: BookPanelView | null, error: string | null): unknown {
   const children: unknown[] = [sectionTitle(view?.title ?? "路线书")];
   if (view === null) {
@@ -1416,6 +1867,7 @@ function PlayerPanel(): unknown {
   const current = useCurrentGame();
   const poll = usePolling(loadPlayer, REFRESH_MS, current.game);
   const book = usePolling(loadBook, REFRESH_MS, current.game);
+  const plan = usePolling(loadPlan, REFRESH_MS, current.game);
   const view = poll.data;
   const children: unknown[] = [
     panelHeader(
@@ -1426,6 +1878,7 @@ function PlayerPanel(): unknown {
         current.reload();
         poll.reload();
         book.reload();
+        plan.reload();
       },
     ),
     h(
@@ -1437,6 +1890,7 @@ function PlayerPanel(): unknown {
   const error = poll.error ?? current.error;
   children.push(errorLine(error));
   if (view === null) {
+    children.push(planBlock(plan.data, plan.error));
     children.push(bookBlock(book.data, book.error));
     if (error === null) children.push(emptyLine("正在读取玩家记录…"));
     return h("div", { style: PANEL_STYLE }, ...children);
@@ -1462,6 +1916,7 @@ function PlayerPanel(): unknown {
       sectionTitle("现在"),
       view.now === "" ? emptyLine("AI 还没有说话") : h("div", null, view.now),
     ]),
+    planBlock(plan.data, plan.error),
     bookBlock(book.data, book.error),
     card([
       sectionTitle("笔记"),
@@ -2047,6 +2502,7 @@ function busySeconds(iso: string): number {
 function kindLabel(kind: string): string {
   if (kind === "tool") return "AI 操作";
   if (kind === "event") return "事件";
+  if (kind === "plan") return "计划";
   if (kind === "link") return "连接";
   if (kind === "warn") return "警告";
   if (kind === "error") return "报错";
@@ -2057,6 +2513,7 @@ function kindColor(kind: string): string {
   if (kind === "error") return toneColor("wipe");
   if (kind === "warn") return toneColor("hard");
   if (kind === "event") return toneColor("business");
+  if (kind === "plan") return toneColor("business");
   if (kind === "link") return toneColor("muted");
   return "var(--dsw-alias-label-secondary)";
 }
