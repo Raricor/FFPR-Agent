@@ -16,11 +16,12 @@ import type { Guide } from "../guide/kb.ts";
 import { SHOP_KINDS, type ShopTable, type SteamSection, type Treasure } from "../guide/steam.ts";
 import { toElement } from "../elements.ts";
 import { isRecord, text } from "../values.ts";
-import type { LoadedKnowledge } from "./load.ts";
+import type { FilesData, LoadedKnowledge } from "./load.ts";
 import { steamAreaTables, type SteamAreaMonster } from "./steam-monsters.ts";
 import type {
   ChestGuide,
   ChestKnowledge,
+  ContentItemKnowledge,
   EncounterKnowledge,
   FactConflict,
   ItemKnowledge,
@@ -31,6 +32,7 @@ import type {
   MonsterKnowledge,
   MonsterMoveRow,
   MoveKnowledge,
+  PointKnowledge,
   SaveProgress,
   ShopKnowledge,
   ShopProduct,
@@ -45,6 +47,10 @@ const MASTER_TREASURES: SourceRef = { kind: "master", ref: "master:treasures.jso
 const MASTER_SHOPS: SourceRef = { kind: "master", ref: "master:shops.json" };
 const MASTER_ITEMS: SourceRef = { kind: "master", ref: "master:items.json" };
 const MASTER_MAGIC: SourceRef = { kind: "master", ref: "master:magic.json" };
+const FILES_ENCOUNTERS: SourceRef = { kind: "files", ref: "files:encounters" };
+const FILES_TREASURES: SourceRef = { kind: "files", ref: "files:maps" };
+const FILES_ITEMS: SourceRef = { kind: "files", ref: "files:items.json" };
+const FILES_POINTS: SourceRef = { kind: "files", ref: "files:save-points" };
 const STEAM_BESTIARY: SourceRef = { kind: "guide", ref: "guide:steam-bestiary" };
 const OBSERVED_ATLAS: SourceRef = { kind: "observed", ref: "atlas" };
 const SAVE_PROGRESS: SourceRef = { kind: "save", ref: "progress" };
@@ -186,6 +192,22 @@ function buildMaps(input: LoadedKnowledge): MapKnowledge[] {
     conflicts: [],
   }));
   const ids = new Set(out.flatMap((map) => (map.id === null ? [] : [map.id])));
+  // The game files know every extracted map; the bridge export only has the maps it exported.
+  for (const map of input.files?.maps ?? []) {
+    if (ids.has(map.id)) continue;
+    ids.add(map.id);
+    const areaName = areaNameOf(map.areaId, out);
+    out.push({
+      id: map.id,
+      name: map.name,
+      areaId: map.areaId,
+      areaName,
+      areaType: null,
+      visited: visitedKnown ? visited.has(map.id) : null,
+      sources: mergeSources([FILES_TREASURES], saveSources),
+      conflicts: [],
+    });
+  }
   for (const [key, entry] of input.atlas?.maps ?? []) {
     const id = Number(key);
     if (!Number.isFinite(id) || ids.has(id)) continue;
@@ -207,25 +229,174 @@ function buildMaps(input: LoadedKnowledge): MapKnowledge[] {
 // ---------------------------------------------------------------------------------------------
 // Encounters
 
-function buildEncounters(
-  input: LoadedKnowledge,
+function buildStaticEncounters(
+  rows: LoadedKnowledge["static"]["encounters"],
   maps: readonly MapKnowledge[],
 ): EncounterKnowledge[] {
   const byMap = mapById(maps);
-  return input.static.encounters.map((row) => {
+  return rows.map((row) => {
     const map = row.mapId === null ? undefined : byMap.get(row.mapId);
     return {
       scope: row.scope,
       mapId: row.mapId,
       areaId: row.areaId,
+      encounterAreaId: null,
+      mapIds: row.mapId === null ? [] : [row.mapId],
       mapName: map?.name ?? null,
       areaName: row.areaId === null ? (map?.areaName ?? null) : areaNameOf(row.areaId, maps),
       groupId: row.groupId,
       weight: row.weight,
       monsterIds: row.monsterIds,
+      terrainSubdivided: null,
       sources: [MASTER_ENCOUNTERS],
     };
   });
+}
+
+function setMonsters(
+  setId: number,
+  sets: ReadonlyMap<number, { readonly slots: readonly { readonly partyId: number }[] }>,
+  parties: ReadonlyMap<number, { readonly monsterIds: readonly number[] }>,
+): number[] {
+  const set = sets.get(setId);
+  if (set === undefined) return [];
+  const ids: number[] = [];
+  for (const slot of set.slots) {
+    for (const id of parties.get(slot.partyId)?.monsterIds ?? []) {
+      if (!ids.includes(id)) ids.push(id);
+    }
+  }
+  return ids;
+}
+
+function setWeight(
+  setId: number,
+  sets: ReadonlyMap<number, { readonly slots: readonly { readonly rate: number | null }[] }>,
+): number | null {
+  const set = sets.get(setId);
+  if (set === undefined) return null;
+  const rates = set.slots.flatMap((slot) => (slot.rate === null ? [] : [slot.rate]));
+  return rates.length === 0 ? null : rates.reduce((sum, rate) => sum + rate, 0);
+}
+
+/** The encounter regions of one world grid: its `base_number` up to the next grid's. */
+function gridAreas(
+  gridId: number,
+  files: FilesData,
+): {
+  readonly grid: FilesData["encounterGrids"][number];
+  readonly areas: readonly { readonly id: number }[];
+} | null {
+  const grid = files.encounterGrids.find((item) => item.id === gridId);
+  if (grid === undefined) return null;
+  const bases = [...new Set(files.encounterGrids.map((item) => item.baseNumber))].sort(
+    (left, right) => left - right,
+  );
+  const next = bases.find((base) => base > grid.baseNumber) ?? Number.POSITIVE_INFINITY;
+  const areas = files.encounterAreas.filter(
+    (area) => area.gridNumber >= grid.baseNumber && area.gridNumber < next,
+  );
+  return { grid, areas };
+}
+
+/**
+ * Task 121: dungeon encounters come from each map's `monster_set_id`; world map encounters from
+ * `encount_area.csv`'s per-foot sets. Foot terrain is not read from the tilemap yet, so a world
+ * region lists every set any foot type can use and says `terrainSubdivided: false`.
+ */
+function buildFileEncounters(
+  files: FilesData,
+  maps: readonly MapKnowledge[],
+): EncounterKnowledge[] {
+  const byMap = mapById(maps);
+  const sets = new Map(files.monsterSets.map((set) => [set.id, set]));
+  const parties = new Map(files.monsterParties.map((party) => [party.id, party]));
+  const out: EncounterKnowledge[] = [];
+  for (const resource of files.resources) {
+    if (resource.monsterSetId === null || resource.monsterSetId <= 0) continue;
+    const set = sets.get(resource.monsterSetId);
+    if (set === undefined) continue;
+    const map = byMap.get(resource.id);
+    for (const slot of set.slots) {
+      const monsterIds = parties.get(slot.partyId)?.monsterIds ?? [];
+      if (monsterIds.length === 0) continue;
+      out.push({
+        scope: "map",
+        mapId: resource.id,
+        areaId: resource.areaId,
+        encounterAreaId: null,
+        mapIds: [resource.id],
+        mapName: map?.name ?? resource.name,
+        areaName: map?.areaName ?? areaNameOf(resource.areaId, maps),
+        groupId: resource.monsterSetId,
+        weight: slot.rate,
+        monsterIds,
+        terrainSubdivided: null,
+        sources: [FILES_ENCOUNTERS],
+      });
+    }
+  }
+
+  const mapIdsByGrid = new Map<number, number[]>();
+  const gridAreaIds = new Map<number, number | null>();
+  for (const resource of files.resources) {
+    if (resource.encountAreaGridId === null || resource.encountAreaGridId <= 0) continue;
+    mapIdsByGrid.set(resource.encountAreaGridId, [
+      ...(mapIdsByGrid.get(resource.encountAreaGridId) ?? []),
+      resource.id,
+    ]);
+    if (!gridAreaIds.has(resource.encountAreaGridId)) {
+      gridAreaIds.set(resource.encountAreaGridId, resource.areaId);
+    }
+  }
+  for (const [gridId, mapIds] of mapIdsByGrid) {
+    const found = gridAreas(gridId, files);
+    if (found === null) continue;
+    const areaId = gridAreaIds.get(gridId) ?? null;
+    const areaLabel = areaNameOf(areaId, maps) ?? "世界地图";
+    const map = mapIds[0] === undefined ? undefined : byMap.get(mapIds[0]);
+    for (const area of found.areas) {
+      for (const setId of files.encounterAreas.find((item) => item.id === area.id)?.footSetIds ??
+        []) {
+        const monsterIds = setMonsters(setId, sets, parties);
+        if (monsterIds.length === 0) continue;
+        const foundArea = files.encounterAreas.find((item) => item.id === area.id);
+        const footCount =
+          foundArea?.footSetIds.filter((candidate) => candidate === setId).length ?? 0;
+        const footTotal = foundArea?.footSetIds.length ?? 0;
+        const baseWeight = setWeight(setId, sets);
+        // Without reading the terrain underfoot, give each of a region's foot sets the share
+        // of its foot types; the set weights then sum to one region, not one per terrain.
+        const weight =
+          baseWeight === null || footTotal <= 0
+            ? null
+            : Math.round((baseWeight * footCount) / footTotal);
+        out.push({
+          scope: "world",
+          mapId: null,
+          areaId,
+          encounterAreaId: area.id,
+          mapIds: [...mapIds],
+          mapName: map?.name ?? null,
+          areaName: `${areaLabel} 遇敌区 ${area.id}`,
+          groupId: setId,
+          weight,
+          monsterIds,
+          terrainSubdivided: false,
+          sources: [FILES_ENCOUNTERS],
+        });
+      }
+    }
+  }
+  return out;
+}
+
+function buildEncounters(
+  input: LoadedKnowledge,
+  maps: readonly MapKnowledge[],
+): EncounterKnowledge[] {
+  if (input.files) return buildFileEncounters(input.files, maps);
+  return buildStaticEncounters(input.static.encounters, maps);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -725,7 +896,10 @@ function openedChest(
   return false;
 }
 
-function buildChests(input: LoadedKnowledge, maps: readonly MapKnowledge[]): ChestKnowledge[] {
+function buildStaticChests(
+  input: LoadedKnowledge,
+  maps: readonly MapKnowledge[],
+): ChestKnowledge[] {
   const guide = input.guide;
   const mapsById = mapById(maps);
   const hits = guideTreasures(guide);
@@ -773,7 +947,9 @@ function buildChests(input: LoadedKnowledge, maps: readonly MapKnowledge[]): Che
       hidden,
       contentId: row.contentId,
       contentName: row.contentName,
+      contentNames: null,
       count: row.count,
+      flagId: null,
       flag: row.flag,
       opened: openedChest(input.progress, row.id, row.flag),
       guide: hit === null ? null : chestGuide(hit),
@@ -800,7 +976,9 @@ function buildChests(input: LoadedKnowledge, maps: readonly MapKnowledge[]): Che
       hidden: hit.treasure.kind === "hidden",
       contentId: null,
       contentName: guideContent(hit.treasure.text, known),
+      contentNames: null,
       count: null,
+      flagId: null,
       flag: null,
       opened: null,
       guide: chestGuide(hit),
@@ -810,6 +988,179 @@ function buildChests(input: LoadedKnowledge, maps: readonly MapKnowledge[]): Che
     });
   }
   return addObservedChests(out, input, maps);
+}
+
+function englishNames(files: FilesData): string[] {
+  return files.items
+    .flatMap((item) => (item.names.en === null ? [] : [item.names.en]))
+    .sort((left, right) => Array.from(right).length - Array.from(left).length);
+}
+
+function itemForContent(
+  files: FilesData,
+  content: string,
+): { id: number; count: number | null } | null {
+  const wanted = normalizeName(content);
+  if (wanted === "") return null;
+  let best: { id: number; length: number } | null = null;
+  for (const item of files.items) {
+    if (item.names.en === null) continue;
+    const name = normalizeName(item.names.en);
+    if (name === "" || !wanted.includes(name)) continue;
+    if (best === null || Array.from(name).length > best.length) {
+      best = { id: item.id, length: Array.from(name).length };
+    }
+  }
+  if (best === null) return null;
+  const leading = /\b(\d+)\b/u.exec(content);
+  return { id: best.id, count: leading?.[1] === undefined ? null : Number(leading[1]) };
+}
+
+function guideMapIds(
+  hit: GuideTreasure,
+  maps: readonly MapKnowledge[],
+  guide: Guide | null,
+): Set<number> {
+  const ids = new Set<number>();
+  for (const label of [hit.treasure.where, hit.section.title]) {
+    for (const map of mapsForSection(maps, guide, label)) {
+      if (map.id !== null) ids.add(map.id);
+    }
+    if (ids.size > 0) break;
+  }
+  return ids;
+}
+
+/**
+ * Task 121: chest position and content come from the map files. A guide treasure is matched by
+ * the English item name to `items.json` and then to a chest in that guide step's maps; the map
+ * record's Japanese name only breaks ties when the same item appears more than once.
+ */
+function buildFileChests(input: LoadedKnowledge, maps: readonly MapKnowledge[]): ChestKnowledge[] {
+  const files = input.files;
+  if (files === null || files === undefined) return [];
+  const guide = input.guide;
+  const mapsById = mapById(maps);
+  const byId = new Map(files.items.map((item) => [item.id, item]));
+  const out: ChestKnowledge[] = [];
+  for (const mapFile of files.maps) {
+    const map = mapsById.get(mapFile.id);
+    for (const chest of mapFile.chests) {
+      const item = byId.get(chest.contentId);
+      const contentName =
+        item?.names.en ??
+        item?.names.zhc ??
+        item?.names.ja ??
+        (chest.name === "" ? null : chest.name);
+      const flag = chest.flagId === null ? null : String(chest.flagId);
+      out.push({
+        id: null,
+        areaId: mapFile.areaId,
+        areaName: map?.areaName ?? areaNameOf(mapFile.areaId, maps),
+        mapId: mapFile.id,
+        mapName: map?.name ?? mapFile.name,
+        cell: chest.cell,
+        hidden: chest.hidden,
+        contentId: chest.contentId,
+        contentName,
+        contentNames: item?.names ?? null,
+        count: chest.contentNum,
+        flagId: chest.flagId,
+        flag,
+        opened: openedChest(input.progress, null, flag),
+        guide: null,
+        observed: false,
+        sources: [
+          FILES_TREASURES,
+          ...(input.progress.openedChestsKnown === true ? [SAVE_PROGRESS] : []),
+        ],
+        conflicts: [],
+      });
+    }
+  }
+
+  const known = englishNames(files);
+  const used = new Set<number>();
+  const hitMap = new Map<number, GuideTreasure>();
+  const hits = guideTreasures(guide);
+  for (const hit of hits) {
+    const content = guideContent(hit.treasure.text, known);
+    if (content === null) continue;
+    const item = itemForContent(files, content);
+    if (item === null) continue;
+    const mapIds = guideMapIds(hit, maps, guide);
+    let best: number | null = null;
+    let bestScore = 0;
+    for (const [index, chest] of out.entries()) {
+      if (used.has(index) || chest.contentId !== item.id) continue;
+      if (mapIds.size > 0 && (chest.mapId === null || !mapIds.has(chest.mapId))) continue;
+      let score = 1;
+      if (item.count !== null && chest.count === item.count) score += 4;
+      if ((hit.treasure.kind === "hidden") === chest.hidden) score += 2;
+      if (
+        chest.contentNames?.ja !== null &&
+        chest.contentNames?.ja === byId.get(item.id)?.names.ja
+      ) {
+        score += 1;
+      }
+      if (score > bestScore) {
+        best = index;
+        bestScore = score;
+      }
+    }
+    if (best === null) continue;
+    used.add(best);
+    hitMap.set(best, hit);
+    const chest = out[best];
+    if (chest === undefined) continue;
+    const conflicts: FactConflict[] = [];
+    if ((hit.treasure.kind === "hidden") !== chest.hidden) {
+      conflicts.push({ field: "hidden", master: chest.hidden, guide: hit.treasure.kind });
+    }
+    out[best] = {
+      ...chest,
+      guide: chestGuide(hit),
+      conflicts,
+      sources: mergeSources(chest.sources, [guideSectionSource(hit.section.title)]),
+    };
+  }
+
+  for (const hit of hits) {
+    if ([...hitMap.values()].includes(hit)) continue;
+    // A guide chest with no game-file match has no position: putting it on the only map the
+    // guide section names would invent a treasure the map does not contain.
+    const content = guideContent(hit.treasure.text, known);
+    const item = content === null ? null : itemForContent(files, content);
+    out.push({
+      id: null,
+      areaId: null,
+      areaName: hit.section.title,
+      mapId: null,
+      mapName: null,
+      cell: null,
+      hidden: hit.treasure.kind === "hidden",
+      contentId: item?.id ?? null,
+      contentName:
+        item === null
+          ? content
+          : (byId.get(item.id)?.names.en ?? byId.get(item.id)?.names.zhc ?? content),
+      contentNames: item === null ? null : (byId.get(item.id)?.names ?? null),
+      count: item?.count ?? null,
+      flagId: null,
+      flag: null,
+      opened: null,
+      guide: chestGuide(hit),
+      observed: false,
+      sources: [guideSectionSource(hit.section.title)],
+      conflicts: [],
+    });
+  }
+  return addObservedChests(out, input, maps);
+}
+
+function buildChests(input: LoadedKnowledge, maps: readonly MapKnowledge[]): ChestKnowledge[] {
+  if (input.files) return buildFileChests(input, maps);
+  return buildStaticChests(input, maps);
 }
 
 /** Atlas chests found by walking: enrich a known chest, else add an observed-only one. */
@@ -858,7 +1209,9 @@ function addObservedChests(
         hidden: false,
         contentId: null,
         contentName: name,
+        contentNames: null,
         count: null,
+        flagId: null,
         flag: null,
         opened: null,
         guide: null,
@@ -1054,19 +1407,84 @@ function buildMagic(input: LoadedKnowledge): MagicKnowledge[] {
   }));
 }
 
+function buildContentItems(input: LoadedKnowledge): ContentItemKnowledge[] {
+  const files = input.files;
+  if (files === null || files === undefined) return [];
+  return files.items.map((item) => ({
+    id: item.id,
+    kind: item.kind,
+    names: item.names,
+    sources: [FILES_ITEMS],
+  }));
+}
+
+function buildPoints(
+  input: LoadedKnowledge,
+  maps: readonly MapKnowledge[],
+  kind: "savePoints" | "restorePoints",
+): PointKnowledge[] {
+  const files = input.files;
+  if (files === null || files === undefined) return [];
+  const byId = mapById(maps);
+  return files.maps.flatMap((mapFile) => {
+    const map = byId.get(mapFile.id);
+    return mapFile[kind].map((point) => ({
+      mapId: mapFile.id,
+      mapName: map?.name ?? mapFile.name,
+      areaId: mapFile.areaId,
+      areaName: map?.areaName ?? areaNameOf(mapFile.areaId, maps),
+      cell: point.cell,
+      name: point.name,
+      sources: [FILES_POINTS],
+    }));
+  });
+}
+
 // ---------------------------------------------------------------------------------------------
 // Assembly
 
+// 11-11: the route book asks the same area/place names thousands of times while building the
+// whole walkthrough. `areasFor` scans every alias, so cache its answer per guide instance and
+// query; the guide is immutable once loaded.
+const AREAS_FOR_CACHE = new WeakMap<Guide, Map<string, readonly string[]>>();
+const AREA_KEYS_CACHE = new WeakMap<Guide, Map<string, readonly string[]>>();
+
+function areasForCached(guide: Guide, value: string): readonly string[] {
+  let cache = AREAS_FOR_CACHE.get(guide);
+  if (cache === undefined) {
+    cache = new Map();
+    AREAS_FOR_CACHE.set(guide, cache);
+  }
+  const cached = cache.get(value);
+  if (cached !== undefined) return cached;
+  const found = guide.areasFor(value);
+  cache.set(value, found);
+  return found;
+}
+
 /** The area keys a query means: its own normalized name plus the guide's English aliases. */
 export function areaKeys(guide: Guide | null, value: string): string[] {
+  if (guide === null) {
+    const own = normalizeName(value);
+    return own === "" ? [] : [own];
+  }
+  let cache = AREA_KEYS_CACHE.get(guide);
+  if (cache === undefined) {
+    cache = new Map();
+    AREA_KEYS_CACHE.set(guide, cache);
+  }
+  const cached = cache.get(value);
+  if (cached !== undefined) return [...cached];
   const keys = new Set<string>();
   const own = normalizeName(value);
   if (own !== "") keys.add(own);
-  for (const alias of guide?.areasFor(value) ?? []) {
+  for (const alias of areasForCached(guide, value)) {
     const key = normalizeName(alias);
     if (key !== "") keys.add(key);
   }
-  return [...keys];
+  const found = [...keys];
+  cache.set(value, found);
+  return [...found];
 }
 
 function attachEncounterGroups(
@@ -1094,8 +1512,12 @@ export function buildKnowledge(input: LoadedKnowledge): Knowledge {
   const shops = buildShops(input, maps);
   const items = buildItems(input);
   const magic = buildMagic(input);
+  const contentItems = buildContentItems(input);
+  const savePoints = buildPoints(input, maps, "savePoints");
+  const restorePoints = buildPoints(input, maps, "restorePoints");
   const allSources = mergeSources(
     input.static.sources,
+    input.files?.sources ?? [],
     guideSources(input.guide),
     input.progress.openedChestsKnown === true || input.progress.visitedMapsKnown === true
       ? [SAVE_PROGRESS]
@@ -1119,6 +1541,7 @@ export function buildKnowledge(input: LoadedKnowledge): Knowledge {
     build: input.static.build,
     bridge: input.static.bridge,
     staticDir: input.static.dir,
+    filesDir: input.files?.dir ?? null,
     tables: input.static.tables,
     guide: input.guide,
     atlas: input.atlas,
@@ -1132,6 +1555,9 @@ export function buildKnowledge(input: LoadedKnowledge): Knowledge {
     shops,
     items,
     magic,
+    contentItems,
+    savePoints,
+    restorePoints,
     sources: allSources,
     conflicts,
   };

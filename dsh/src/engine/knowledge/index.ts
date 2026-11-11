@@ -6,8 +6,10 @@
  * Three layers:
  * - game data (same for every save, per game and game build): maps, monsters (moves, the
  *   statuses they inflict, blue magic), encounter tables, chests (place, content, flag), shops,
- *   items, equipment and magic. Sources are `master` (the bridge plugin's export) and `guide`
- *   (the Steam walkthrough and ludo.guide).
+ *   items, equipment and magic. Sources are `master` (the bridge plugin's export), `files`
+ *   (the extracted game files, task 121) and `guide` (the Steam walkthrough and ludo.guide).
+ *   `files` wins for encounters, chests and positions: `master:encounters.json` mixed map areas
+ *   with the separate world-map encounter regions (task 121), so it is only a fallback now.
  * - this save's progress: opened chests, registered bestiary numbers, learned blue magic,
  *   visited maps. Source `save`.
  * - what walking found: landings, conveyors, drops, lifts, "cannot get through" records (with
@@ -44,6 +46,10 @@
  *     blueMagicSources(knowledge, { learned: ["青魔法 id"] });
  *     chestsIn(knowledge, { mapIds: [252], opened: false });
  *     chestsIn(knowledge, { areaName: "火力船" }); // before any areaId/mapId export
+ *     monstersIn(knowledge, { encounterAreaIds: [65] }); // a world encounter region
+ *     contentName(knowledge, 4); // {ja, en, zhc}
+ *     contentByName(knowledge, "Potion");
+ *     savePointsIn(knowledge, { mapIds: [30] });
  *     shopsNear(knowledge, "沃尔斯城");
  *     itemsThatCure(knowledge, "中毒");
  *     missablesAfter(knowledge, "scenario_5");
@@ -60,7 +66,9 @@ export {
   defaultFiles,
   loadInputs,
   loadKnowledge,
+  readGameFiles,
   readStatic,
+  type FilesData,
   type KnowledgeOptions,
   type LoadedKnowledge,
   type StaticData,
@@ -69,19 +77,27 @@ export {
 
 export { areaKeys, buildKnowledge, mergeSources, normalizeName } from "./merge.ts";
 
+export type { TrilingualNames } from "./game-files.ts";
+
 export {
   blueMagicSources,
   bossMapIds,
   chestsIn,
+  contentByName,
+  contentItemsNamed,
+  contentName,
   itemsThatCure,
   missablesAfter,
   monstersIn,
+  restorePointsIn,
+  savePointsIn,
   shopsNear,
   statusThreats,
   type BlueMagicOptions,
   type BossMapQuery,
   type ChestFilter,
   type MonsterFilter,
+  type PointFilter,
 } from "./query.ts";
 
 export type {
@@ -90,6 +106,7 @@ export type {
   ChestGuide,
   ChestKnowledge,
   ConflictValue,
+  ContentItemKnowledge,
   CureKnowledge,
   EncountersRow,
   EncounterKnowledge,
@@ -110,6 +127,7 @@ export type {
   MonsterMoveRow,
   MonstersRow,
   MoveKnowledge,
+  PointKnowledge,
   SaveProgress,
   SaveProgressInput,
   ShopKnowledge,

@@ -62,6 +62,7 @@ const POINT_COORDINATES = /[[(（]\s*(\d{1,3})\s*[,，]\s*(\d{1,3})\s*[\])）]/g
 
 const SOURCE_LABELS: Readonly<Record<SourceRef["kind"], string>> = {
   master: "游戏数据",
+  files: "游戏文件",
   guide: "攻略",
   save: "存档",
   observed: "记录",

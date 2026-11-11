@@ -15,8 +15,13 @@ import type { Atlas } from "../atlas.ts";
 import type { Guide } from "../guide/kb.ts";
 import type { GameProfile } from "../profiles/types.ts";
 import type { CollisionStore } from "../regions.ts";
+import type { TrilingualNames } from "./game-files.ts";
 
-export type SourceKind = "master" | "guide" | "save" | "observed";
+/**
+ * `master` is the bridge export, `files` the extracted game files (task 121), `guide` a
+ * walkthrough, `save` this save's progress and `observed` what walking recorded.
+ */
+export type SourceKind = "master" | "files" | "guide" | "save" | "observed";
 
 /** One origin: the export file, a guide section, a save record or the atlas. */
 export interface SourceRef {
@@ -188,14 +193,25 @@ export interface MapKnowledge {
 }
 
 export interface EncounterKnowledge {
-  readonly scope: "map" | "area" | null;
+  /**
+   * `map` is one dungeon map's monster set, `world` is one world map encounter region. The old
+   * `area` scope came from the bridge export, which mixed map areas and encounter areas.
+   */
+  readonly scope: "map" | "area" | "world" | null;
   readonly mapId: number | null;
+  /** The map's `area_id` (a dungeon's area, or the world map area). */
   readonly areaId: number | null;
+  /** `encount_area.csv` id; null for dungeon rows and for the old bridge rows. */
+  readonly encounterAreaId: number | null;
+  /** Every map this row applies to (a world region covers both halves of its world map). */
+  readonly mapIds: readonly number[];
   readonly mapName: string | null;
   readonly areaName: string | null;
   readonly groupId: number | null;
   readonly weight: number | null;
   readonly monsterIds: readonly number[];
+  /** World map rows: false when all foot sets are merged because the terrain was not read. */
+  readonly terrainSubdivided: boolean | null;
   readonly sources: readonly SourceRef[];
 }
 
@@ -296,7 +312,11 @@ export interface ChestKnowledge {
   readonly hidden: boolean;
   readonly contentId: number | null;
   readonly contentName: string | null;
+  /** `contentId` in Japanese, English and Simplified Chinese, from `files/items.json`. */
+  readonly contentNames: TrilingualNames | null;
   readonly count: number | null;
+  /** The game file's numeric flag, kept beside the string form the old export used. */
+  readonly flagId: number | null;
   readonly flag: string | null;
   /** true / false from this save, null when the save has not said. */
   readonly opened: boolean | null;
@@ -347,6 +367,24 @@ export interface MagicKnowledge {
   readonly conflicts: readonly FactConflict[];
 }
 
+export interface ContentItemKnowledge {
+  readonly id: number;
+  readonly kind: string | null;
+  readonly names: TrilingualNames;
+  readonly sources: readonly SourceRef[];
+}
+
+/** A save point or a restore point read from a map file. */
+export interface PointKnowledge {
+  readonly mapId: number | null;
+  readonly mapName: string | null;
+  readonly areaId: number | null;
+  readonly areaName: string | null;
+  readonly cell: readonly [number, number];
+  readonly name: string;
+  readonly sources: readonly SourceRef[];
+}
+
 export interface CureKnowledge {
   readonly kind: "item" | "magic";
   readonly id: number | null;
@@ -377,6 +415,8 @@ export interface Knowledge {
   readonly bridge: string | null;
   /** The static export directory actually read, for diagnostics. */
   readonly staticDir: string;
+  /** `.deps/knowledge/<game>/files/`, when the extracted game files are present. */
+  readonly filesDir: string | null;
   /** Table names that had a file; an absent table is an empty list, not an error. */
   readonly tables: readonly string[];
   readonly guide: Guide | null;
@@ -391,6 +431,10 @@ export interface Knowledge {
   readonly shops: readonly ShopKnowledge[];
   readonly items: readonly ItemKnowledge[];
   readonly magic: readonly MagicKnowledge[];
+  /** `contentId` → three-language name, from the game files (empty before task 121 data). */
+  readonly contentItems: readonly ContentItemKnowledge[];
+  readonly savePoints: readonly PointKnowledge[];
+  readonly restorePoints: readonly PointKnowledge[];
   readonly sources: readonly SourceRef[];
   readonly conflicts: readonly FactConflict[];
 }

@@ -11,11 +11,13 @@ import type {
   BlueMagicMonster,
   BlueMagicSource,
   ChestKnowledge,
+  ContentItemKnowledge,
   CureKnowledge,
   EncounterKnowledge,
   Knowledge,
   MissableKnowledge,
   MonsterKnowledge,
+  PointKnowledge,
   ShopKnowledge,
   SourceRef,
   StatusMoveThreat,
@@ -26,6 +28,8 @@ import { areaKeys, mergeSources, normalizeName } from "./merge.ts";
 export interface MonsterFilter {
   readonly mapIds?: readonly number[];
   readonly areaIds?: readonly number[];
+  /** World map `encount_area.csv` ids, distinct from a map's `area_id`. */
+  readonly encounterAreaIds?: readonly number[];
   /** Match by area name (Chinese, Japanese or the guide's English), as `shopsNear` does. */
   readonly areaName?: string;
 }
@@ -49,18 +53,29 @@ function includesNumber(values: readonly number[] | undefined, value: number | n
 }
 
 function encounterMatches(encounter: EncounterKnowledge, filter: MonsterFilter): boolean {
-  const byMap = filter.mapIds === undefined ? null : includesNumber(filter.mapIds, encounter.mapId);
-  const byArea =
-    filter.areaIds === undefined ? null : includesNumber(filter.areaIds, encounter.areaId);
+  const selected: boolean[] = [];
+  if (filter.mapIds !== undefined) {
+    selected.push(
+      includesNumber(filter.mapIds, encounter.mapId) ||
+        encounter.mapIds.some((id) => filter.mapIds?.includes(id) === true),
+    );
+  }
+  if (filter.areaIds !== undefined) selected.push(includesNumber(filter.areaIds, encounter.areaId));
+  if (filter.encounterAreaIds !== undefined) {
+    selected.push(includesNumber(filter.encounterAreaIds, encounter.encounterAreaId));
+  }
   // "these maps or these areas": an area-scoped row has no mapId, so requiring both would cut
-  // every area row as soon as an area name resolved to both its area id and its maps.
-  if (byMap !== null && byArea !== null) return byMap || byArea;
-  return byMap ?? byArea ?? true;
+  // every area row as soon as an area name resolved to both its area id and its maps. The same
+  // OR applies to encounter regions (task 121).
+  return selected.length === 0 || selected.some(Boolean);
 }
 
 function otherAreaFiltered(filter: MonsterFilter): boolean {
   return (
-    filter.mapIds !== undefined || filter.areaIds !== undefined || filter.areaName !== undefined
+    filter.mapIds !== undefined ||
+    filter.areaIds !== undefined ||
+    filter.encounterAreaIds !== undefined ||
+    filter.areaName !== undefined
   );
 }
 
@@ -159,7 +174,11 @@ function resolveAreaName(knowledge: Knowledge, filter: MonsterFilter): MonsterFi
     if (map.id !== null) mapIds.add(map.id);
     if (map.areaId !== null) areaIds.add(map.areaId);
   }
-  return { mapIds: [...mapIds], areaIds: [...areaIds] };
+  return {
+    mapIds: [...mapIds],
+    areaIds: [...areaIds],
+    ...(filter.encounterAreaIds === undefined ? {} : { encounterAreaIds: filter.encounterAreaIds }),
+  };
 }
 
 /** Which monster a boss lookup is for; a name or the bestiary number is enough. */
@@ -192,6 +211,11 @@ export function bossMapIds(knowledge: Knowledge, query: BossMapQuery): number[] 
       // A map-scoped row is the precise answer; expanding it to the whole area would put the
       // table on every floor of a dungeon.
       ids.add(encounter.mapId);
+      continue;
+    }
+    if (encounter.mapIds.length > 0) {
+      // A world encounter region knows which world maps it covers (task 121).
+      for (const mapId of encounter.mapIds) ids.add(mapId);
       continue;
     }
     if (encounter.areaId === null) continue;
@@ -514,6 +538,69 @@ export function itemsThatCure(knowledge: Knowledge, status: string): CureKnowled
     }
   }
   return out;
+}
+
+/** The three-language name of a `contentId` from the game files (task 121). */
+export function contentName(
+  knowledge: Knowledge,
+  contentId: number | null,
+): ContentItemKnowledge["names"] | null {
+  if (contentId === null) return null;
+  return knowledge.contentItems.find((item) => item.id === contentId)?.names ?? null;
+}
+
+/** Every content row whose Japanese, English or Chinese name matches (game files only). */
+export function contentItemsNamed(knowledge: Knowledge, name: string): ContentItemKnowledge[] {
+  const wanted = normalizeName(name);
+  if (wanted === "") return [];
+  return knowledge.contentItems.filter((item) =>
+    [item.names.ja, item.names.en, item.names.zhc].some(
+      (candidate) => candidate !== null && normalizeName(candidate) === wanted,
+    ),
+  );
+}
+
+/** The first content row named in any of the three languages, or null. */
+export function contentByName(knowledge: Knowledge, name: string): ContentItemKnowledge | null {
+  return contentItemsNamed(knowledge, name)[0] ?? null;
+}
+
+export interface PointFilter {
+  readonly mapIds?: readonly number[];
+  readonly areaIds?: readonly number[];
+  readonly areaName?: string;
+}
+
+function pointsIn(
+  points: readonly PointKnowledge[],
+  knowledge: Knowledge,
+  filter: PointFilter,
+): PointKnowledge[] {
+  const keys = filter.areaName === undefined ? [] : areaKeys(knowledge.guide, filter.areaName);
+  return points.filter((point) => {
+    if (filter.mapIds !== undefined && !includesNumber(filter.mapIds, point.mapId)) return false;
+    if (filter.areaIds !== undefined && !includesNumber(filter.areaIds, point.areaId)) return false;
+    if (filter.areaName !== undefined) {
+      const map = knowledge.maps.find((item) => item.id === point.mapId);
+      if (
+        !matchesArea(knowledge, point.areaName, filter.areaName, keys) &&
+        !matchesArea(knowledge, map?.name ?? null, filter.areaName, keys)
+      ) {
+        return false;
+      }
+    }
+    return true;
+  });
+}
+
+/** Save points from the game files, filtered by map, area or area name. */
+export function savePointsIn(knowledge: Knowledge, filter: PointFilter = {}): PointKnowledge[] {
+  return pointsIn(knowledge.savePoints, knowledge, filter);
+}
+
+/** Inn-like restore points from the game files (map id + cell), for the fact sheet and route book. */
+export function restorePointsIn(knowledge: Knowledge, filter: PointFilter = {}): PointKnowledge[] {
+  return pointsIn(knowledge.restorePoints, knowledge, filter);
 }
 
 function storyOrder(knowledge: Knowledge, api: string): number {

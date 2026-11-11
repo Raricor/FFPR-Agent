@@ -14,7 +14,7 @@
  */
 
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Atlas } from "../atlas.ts";
 import { AtlasSave } from "../atlas-save.ts";
 import { BestiarySave } from "../bestiary-save.ts";
@@ -25,6 +25,24 @@ import { profileFor } from "../profiles/index.ts";
 import type { GameProfile } from "../profiles/types.ts";
 import { CollisionStore } from "../regions.ts";
 import { isRecord, list, num, records, text } from "../values.ts";
+import {
+  parseEncounterAreaGrids,
+  parseEncounterAreas,
+  parseGameMapFile,
+  parseMapCsv,
+  parseMessageTable,
+  parseMonsterParties,
+  parseMonsterResources,
+  parseMonsterSets,
+  type EncounterAreaGridResource,
+  type EncounterAreaResource,
+  type GameItem,
+  type GameMapFile,
+  type MapResource,
+  type MonsterPartyResource,
+  type MonsterSetResource,
+  type TrilingualNames,
+} from "./game-files.ts";
 import { buildKnowledge } from "./merge.ts";
 import type {
   EncountersRow,
@@ -73,9 +91,26 @@ export interface StaticData {
   readonly sources: readonly SourceRef[];
 }
 
+/** The extracted game files (task 121): every map's chests and points, plus the CSVs. */
+export interface FilesData {
+  readonly dir: string;
+  readonly maps: readonly GameMapFile[];
+  readonly resources: readonly MapResource[];
+  readonly items: readonly GameItem[];
+  readonly monsterSets: readonly MonsterSetResource[];
+  readonly monsterParties: readonly MonsterPartyResource[];
+  /** English monster name by `monster.csv` id, for ids the bridge export does not know. */
+  readonly monsterNames: ReadonlyMap<number, string>;
+  readonly encounterAreas: readonly EncounterAreaResource[];
+  readonly encounterGrids: readonly EncounterAreaGridResource[];
+  readonly sources: readonly SourceRef[];
+}
+
 /** The inputs `merge.ts` joins; `loadKnowledge` returns the merged `Knowledge` instead. */
 export interface LoadedKnowledge {
   readonly static: StaticData;
+  /** Present only when `.deps/knowledge/<game>/files/` exists; null means use `static`. */
+  readonly files?: FilesData | null;
   readonly guide: Guide | null;
   readonly atlas: Atlas | null;
   readonly collisions: CollisionStore | null;
@@ -88,6 +123,8 @@ export interface KnowledgeOptions {
   /** `.deps/knowledge/<game>`; the static files are `<home>/static/*.json`. */
   readonly home?: string;
   readonly staticDir?: string;
+  /** Extracted game files; default `<home>/files`, a missing directory falls back to static. */
+  readonly filesDir?: string | null;
   /** Reuse an already loaded guide; null means no guide, undefined loads from `guidePath`. */
   readonly guide?: Guide | null;
   readonly guidePath?: string | null;
@@ -110,6 +147,7 @@ export function defaultFiles(game = "ff5"): {
   readonly home: string;
   readonly guide: string;
   readonly staticDir: string;
+  readonly filesDir: string;
   readonly atlas: string;
   readonly collisions: string;
   readonly bestiary: string;
@@ -120,6 +158,7 @@ export function defaultFiles(game = "ff5"): {
     home,
     guide: join(home, "guide.json"),
     staticDir: join(home, "static"),
+    filesDir: join(home, "files"),
     atlas: join(DEPS, "ds", `atlas-${game}.json`),
     collisions: join(DEPS, "ds", `collision-${game}`),
     bestiary: join(DEPS, "ds", `bestiary-save-${game}.json`),
@@ -314,6 +353,165 @@ function emptyStatic(game: string, dir: string): StaticData {
   };
 }
 
+function fileSource(ref: string): SourceRef {
+  return { kind: "files", ref };
+}
+
+async function readOptionalText(path: string, signal?: AbortSignal): Promise<string | null> {
+  try {
+    return await readFile(path, { encoding: "utf8", signal });
+  } catch (error) {
+    if (isMissingFile(error)) return null;
+    signal?.throwIfAborted();
+    throw new Error(`读不了游戏文件 ${path}:${describeError(error)}`, { cause: error });
+  }
+}
+
+async function firstText(
+  directories: readonly string[],
+  name: string,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  for (const directory of directories) {
+    const body = await readOptionalText(join(directory, name), signal);
+    if (body !== null) return body;
+  }
+  return null;
+}
+
+function parseItemNames(value: unknown): TrilingualNames {
+  const raw = isRecord(value) ? value : {};
+  return {
+    ja: textOrNull(raw.ja),
+    en: textOrNull(raw.en),
+    zhc: textOrNull(raw.zhc),
+  };
+}
+
+function parseFileItem(value: unknown, fallbackId: number): GameItem | null {
+  if (!isRecord(value)) return null;
+  const id = numberOrNull(value.id) ?? fallbackId;
+  if (id <= 0) return null;
+  return {
+    id,
+    kind: (text(value.kind) ?? "other") as GameItem["kind"],
+    typeId: numberOrNull(value.typeId),
+    typeValue: numberOrNull(value.typeValue),
+    nameKey: textOrNull(value.nameKey),
+    names: parseItemNames(value.names),
+  };
+}
+
+async function readFileItems(dir: string, signal?: AbortSignal): Promise<GameItem[]> {
+  const body = await readOptionalText(join(dir, "items.json"), signal);
+  if (body === null) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch (error) {
+    throw new Error(`读不懂物品文件 ${join(dir, "items.json")}:${describeError(error)}`, {
+      cause: error,
+    });
+  }
+  if (!isRecord(parsed)) throw new Error(`物品文件 ${join(dir, "items.json")} 不是 JSON 对象`);
+  const items: GameItem[] = [];
+  for (const [key, value] of Object.entries(parsed)) {
+    const item = parseFileItem(value, numberOrNull(key) ?? 0);
+    if (item !== null) items.push(item);
+  }
+  return items;
+}
+
+async function readFileMaps(dir: string, signal?: AbortSignal): Promise<GameMapFile[]> {
+  const mapsDir = join(dir, "maps");
+  let names: string[];
+  try {
+    names = await readdir(mapsDir);
+  } catch (error) {
+    if (isMissingFile(error)) return [];
+    signal?.throwIfAborted();
+    throw new Error(`读不了地图文件目录 ${mapsDir}:${describeError(error)}`, { cause: error });
+  }
+  const maps: GameMapFile[] = [];
+  const files = names
+    .filter((name) => name.endsWith(".json"))
+    .sort((left, right) => {
+      const a = Number(left.slice(0, -".json".length));
+      const b = Number(right.slice(0, -".json".length));
+      return Number.isFinite(a) && Number.isFinite(b) ? a - b : left.localeCompare(right);
+    });
+  for (const name of files) {
+    const path = join(mapsDir, name);
+    const body = await readOptionalText(path, signal);
+    if (body === null) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(body);
+    } catch (error) {
+      throw new Error(`读不懂地图文件 ${path}:${describeError(error)}`, { cause: error });
+    }
+    const map = parseGameMapFile(parsed);
+    if (map !== null) maps.push(map);
+  }
+  return maps;
+}
+
+/**
+ * Read `.deps/knowledge/<game>/files/`. The map JSON and `items.json` come from task 120's
+ * export; the encounter CSVs and message tables are read from a `master/` and `message/`
+ * directory beside them (tests) or from the raw extracted game files (the dev box). A missing
+ * `maps/` directory means the game files are not available, so the caller keeps using `static`.
+ */
+export async function readGameFiles(
+  dir: string,
+  game = "ff5",
+  signal?: AbortSignal,
+): Promise<FilesData | null> {
+  const maps = await readFileMaps(dir, signal);
+  if (maps.length === 0) return null;
+  const masterDirs = [join(dir, "master"), join(DEPS, game, "files", "Data", "Master")];
+  const messageDirs = [join(dir, "message"), join(DEPS, game, "files", "Data", "Message")];
+  const readMaster = (name: string): Promise<string | null> => firstText(masterDirs, name, signal);
+  const mapText = await readMaster("map.csv");
+  const setText = await readMaster("monster_set.csv");
+  const partyText = await readMaster("monster_party.csv");
+  const monsterText = await readMaster("monster.csv");
+  const areaText = await readMaster("encount_area.csv");
+  const gridText = await readMaster("encount_area_grid.csv");
+  const english = await firstText(messageDirs, "system_en.txt", signal);
+  const messages = english === null ? new Map<string, string>() : parseMessageTable(english);
+  const monsterNames = new Map<number, string>();
+  const resources = mapText === null ? [] : parseMapCsv(mapText);
+  const monsters = monsterText === null ? [] : parseMonsterResources(monsterText);
+  for (const monster of monsters) {
+    const name = monster.nameKey === null ? undefined : messages.get(monster.nameKey);
+    if (name !== undefined && name !== "") monsterNames.set(monster.id, name);
+  }
+  const items = await readFileItems(dir, signal);
+  const sources: SourceRef[] = [
+    fileSource("files:maps"),
+    fileSource("files:items.json"),
+    ...(mapText === null ? [] : [fileSource("files:map.csv")]),
+    ...(setText === null ? [] : [fileSource("files:monster_set.csv")]),
+    ...(partyText === null ? [] : [fileSource("files:monster_party.csv")]),
+    ...(monsterText === null ? [] : [fileSource("files:monster.csv")]),
+    ...(areaText === null ? [] : [fileSource("files:encount_area.csv")]),
+    ...(gridText === null ? [] : [fileSource("files:encount_area_grid.csv")]),
+  ];
+  return {
+    dir,
+    maps,
+    resources,
+    items,
+    monsterSets: setText === null ? [] : parseMonsterSets(setText),
+    monsterParties: partyText === null ? [] : parseMonsterParties(partyText),
+    monsterNames,
+    encounterAreas: areaText === null ? [] : parseEncounterAreas(areaText),
+    encounterGrids: gridText === null ? [] : parseEncounterAreaGrids(gridText),
+    sources,
+  };
+}
+
 /**
  * Every table file under `dir`, merged into one `StaticData`. A missing directory gives the
  * empty export; a malformed file is an error (the caller cannot tell a bad export from no
@@ -467,6 +665,11 @@ export async function loadInputs(options: KnowledgeOptions = {}): Promise<Loaded
   const home = options.home ?? defaults.home;
   const staticDir = options.staticDir ?? join(home, "static");
   const staticData = await readStatic(staticDir, game, options.signal);
+  // A caller overriding `staticDir` (the tests) must not accidentally fall back to the dev
+  // box's real game files: the sibling `files` directory is used instead.
+  const filesDir =
+    options.filesDir === null ? null : (options.filesDir ?? join(dirname(staticDir), "files"));
+  const files = filesDir === null ? null : await readGameFiles(filesDir, game, options.signal);
 
   let guide: Guide | null;
   if (options.guide !== undefined) {
@@ -514,6 +717,7 @@ export async function loadInputs(options: KnowledgeOptions = {}): Promise<Loaded
   };
   return {
     static: staticData,
+    files,
     guide,
     atlas,
     collisions,
