@@ -162,7 +162,10 @@ export function analyzeRoute(input: RouteInput, givenWorld: RouteWorld): RoutePl
   });
   const world: RouteWorld =
     givenWorld.regions === undefined && givenWorld.collisions !== undefined
-      ? { ...givenWorld, regions: RegionIndex.create(givenWorld.atlas, givenWorld.collisions) }
+      ? {
+          ...givenWorld,
+          regions: RegionIndex.create(givenWorld.atlas, givenWorld.collisions),
+        }
       : givenWorld;
   const battleSeconds = world.battleSeconds ?? FALLBACK_BATTLE_SECONDS;
 

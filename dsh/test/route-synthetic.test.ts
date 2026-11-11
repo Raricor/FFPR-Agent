@@ -39,7 +39,14 @@ function waypoint(
   cell: Cell | null,
   after: readonly string[] = [],
 ): Waypoint {
-  return { id, kind, map, cell, label: id, ...(after.length === 0 ? {} : { after }) };
+  return {
+    id,
+    kind,
+    map,
+    cell,
+    label: id,
+    ...(after.length === 0 ? {} : { after }),
+  };
 }
 
 void test("a directed edge makes 10 → 11 shorter than 11 → 10", () => {

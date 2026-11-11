@@ -164,7 +164,9 @@ void test("four waypoints run in order and the progress file grows after each", 
       },
     });
 
-    const result = await executeRoute(planFrom(START, stops), ports, { progressFile: file });
+    const result = await executeRoute(planFrom(START, stops), ports, {
+      progressFile: file,
+    });
 
     assert.equal(result.reason, "completed");
     assert.deepEqual(state.acted, ["a", "b", "c"]);
@@ -244,7 +246,9 @@ void test("a position change after waypoint two replans from there and follows t
       },
     });
 
-    const result = await executeRoute(planFrom(START, stops), ports, { progressFile: file });
+    const result = await executeRoute(planFrom(START, stops), ports, {
+      progressFile: file,
+    });
 
     assert.equal(result.reason, "completed");
     assert.deepEqual(state.acted, ["a", "b", "d", "c"]);
@@ -297,7 +301,9 @@ void test("an act decision such as a shop without a list is handed back to the A
         }),
     });
 
-    const result = await executeRoute(planFrom(START, stops), ports, { progressFile: file });
+    const result = await executeRoute(planFrom(START, stops), ports, {
+      progressFile: file,
+    });
 
     assert.equal(result.reason, "decision");
     assert.match(result.message, /采购单/);
@@ -340,7 +346,9 @@ void test("when every remaining waypoint becomes unreachable the run stops and l
         }),
     });
 
-    const result = await executeRoute(planFrom(START, stops), ports, { progressFile: file });
+    const result = await executeRoute(planFrom(START, stops), ports, {
+      progressFile: file,
+    });
 
     assert.equal(result.reason, "unreachable");
     assert.match(result.message, /卡纳克宝箱/);
@@ -362,7 +370,9 @@ void test("the same waypoint failing twice stops the run", async () => {
       goTo: (stop) => Promise.resolve(stop.id === "b" ? { ok: false, text: "路被挡住" } : null),
     });
 
-    const result = await executeRoute(planFrom(START, stops), ports, { progressFile: file });
+    const result = await executeRoute(planFrom(START, stops), ports, {
+      progressFile: file,
+    });
 
     assert.equal(result.reason, "failed");
     assert.deepEqual(state.went, ["a", "b", "b"]);
@@ -435,7 +445,9 @@ void test("a dialog stop pages the story and then keeps walking without a failur
       },
     });
 
-    const result = await executeRoute(planFrom(START, stops), ports, { progressFile: file });
+    const result = await executeRoute(planFrom(START, stops), ports, {
+      progressFile: file,
+    });
 
     assert.equal(result.reason, "completed");
     assert.deepEqual(state.acted, ["a"]);
@@ -460,7 +472,9 @@ void test("three story interruptions hand the same waypoint back without a failu
       },
     });
 
-    const result = await executeRoute(planFrom(START, stops), ports, { progressFile: file });
+    const result = await executeRoute(planFrom(START, stops), ports, {
+      progressFile: file,
+    });
 
     assert.equal(result.reason, "decision");
     assert.equal(state.stories, 3);
@@ -482,11 +496,17 @@ void test("a story choice after the dialog hands the decision back", async () =>
     const stops = [waypoint("a", "chest", 1, "宝箱 A")];
     const state = newState();
     const ports = fakePorts(state, {
-      goTo: () => Promise.resolve({ ok: false, text: '停在 (5, 5):"interrupted:dialog"' }),
+      goTo: () =>
+        Promise.resolve({
+          ok: false,
+          text: '停在 (5, 5):"interrupted:dialog"',
+        }),
       story: () => Promise.resolve({ text: "翻了 2 页", decision: "路上出现了剧情选项" }),
     });
 
-    const result = await executeRoute(planFrom(START, stops), ports, { progressFile: file });
+    const result = await executeRoute(planFrom(START, stops), ports, {
+      progressFile: file,
+    });
 
     assert.equal(result.reason, "decision");
     assert.match(result.message, /剧情选项/);
@@ -503,11 +523,17 @@ void test("a grind waypoint walks there, calls grind with until, then walks on",
     const ports = fakePorts(state, {
       grind: (stop) => {
         seen = stop;
-        return Promise.resolve({ ok: true, done: true, text: "刷了 3 场;停打满 3 场" });
+        return Promise.resolve({
+          ok: true,
+          done: true,
+          text: "刷了 3 场;停打满 3 场",
+        });
       },
     });
 
-    const result = await executeRoute(planFrom(START, stops), ports, { progressFile: file });
+    const result = await executeRoute(planFrom(START, stops), ports, {
+      progressFile: file,
+    });
 
     assert.equal(result.reason, "completed");
     assert.deepEqual(state.went, ["g", "b"]);
@@ -533,7 +559,9 @@ void test("a running countdown skips every grind waypoint and keeps walking", as
         }),
     };
 
-    const result = await executeRoute(planFrom(START, stops), ports, { progressFile: file });
+    const result = await executeRoute(planFrom(START, stops), ports, {
+      progressFile: file,
+    });
 
     assert.equal(result.reason, "completed");
     assert.deepEqual(state.ground, []);

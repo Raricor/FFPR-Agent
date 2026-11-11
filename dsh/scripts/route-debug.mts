@@ -102,7 +102,13 @@ async function planStops(file: string): Promise<PlanStop[]> {
     const to = text(entry.to);
     if (to === undefined || to === "") return [];
     const action = text(entry.do);
-    return [{ to, ...(action === undefined ? {} : { do: action }), until: entry.until }];
+    return [
+      {
+        to,
+        ...(action === undefined ? {} : { do: action }),
+        until: entry.until,
+      },
+    ];
   });
 }
 
@@ -174,7 +180,10 @@ async function main(): Promise<void> {
   if (options.pairs) {
     const points: RoutePoint[] = [
       start,
-      ...planned.map((waypoint) => ({ map: waypoint.map, cell: waypoint.cell })),
+      ...planned.map((waypoint) => ({
+        map: waypoint.map,
+        cell: waypoint.cell,
+      })),
       ...(end === null ? [] : [end]),
     ];
     const names = [

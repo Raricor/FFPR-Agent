@@ -21,9 +21,27 @@ void test("the Fire-Powered Ship fixture plans finite legs that match mapPath", 
   const collisions = await CollisionStore.load(join(DIR, "collision"));
   const regions = RegionIndex.create(atlas, collisions);
   const waypoints: Waypoint[] = [
-    { id: "chest-a", kind: "chest", map: 261, cell: [13, 27], label: "261 的宝箱 A" },
-    { id: "chest-b", kind: "chest", map: 261, cell: [7, 8], label: "261 的宝箱 B" },
-    { id: "move-265", kind: "move", map: 265, cell: [10, 11], label: "265 的落脚点" },
+    {
+      id: "chest-a",
+      kind: "chest",
+      map: 261,
+      cell: [13, 27],
+      label: "261 的宝箱 A",
+    },
+    {
+      id: "chest-b",
+      kind: "chest",
+      map: 261,
+      cell: [7, 8],
+      label: "261 的宝箱 B",
+    },
+    {
+      id: "move-265",
+      kind: "move",
+      map: 265,
+      cell: [10, 11],
+      label: "265 的落脚点",
+    },
   ];
   const plan = analyzeRoute(
     {

@@ -24,6 +24,10 @@ export interface GrindUntil {
   readonly battles?: number;
   /** Stop after this many minutes. */
   readonly minutes?: number;
+  /** Task 152: stop when the lowest party level reaches this. */
+  readonly level?: number;
+  /** Task 152: stop when the gil in hand reaches this. */
+  readonly gil?: number;
 }
 
 /** Task 117: the route book's station carried with a waypoint while it executes. */

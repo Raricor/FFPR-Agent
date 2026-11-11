@@ -174,7 +174,13 @@ interface RunSeed {
 
 function waypointFromLeg(leg: RouteLeg): Waypoint {
   if (leg.kind === "end") {
-    return { id: leg.waypoint, kind: "move", map: leg.map, cell: leg.cell, label: leg.label };
+    return {
+      id: leg.waypoint,
+      kind: "move",
+      map: leg.map,
+      cell: leg.cell,
+      label: leg.label,
+    };
   }
   return {
     id: leg.waypoint,
