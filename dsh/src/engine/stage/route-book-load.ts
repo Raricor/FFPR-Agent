@@ -11,15 +11,23 @@
 import { access, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Atlas } from "../atlas.ts";
-import { areaKeys, normalizeName, type Knowledge, type MapKnowledge } from "../knowledge/index.ts";
+import {
+  areaKeys,
+  normalizeName,
+  type Knowledge,
+  type MapKnowledge,
+  type TrilingualNames,
+} from "../knowledge/index.ts";
 import type { Cell } from "../nav.ts";
 import { DEPS } from "../paths.ts";
 import { describeError, isMissingFile } from "../errors.ts";
 import { isRecord, list, num, records, text } from "../values.ts";
 import { parseWalkthrough } from "./guide-steps.ts";
+import { bookSectionDigest } from "./book-version.ts";
 import type { GuideSection } from "./guide-types.ts";
 import {
   buildRouteBookAsync,
+  openedChest,
   type RouteBook,
   type RouteBookFiles,
   type RouteBookSave,
@@ -49,6 +57,8 @@ export interface RouteBookRuntime {
   readonly book: RouteBook;
   readonly sectionIndex: number;
   readonly section: RouteSection;
+  /** Task 131: save-independent digest of the section the plan is built from. */
+  readonly digest: string;
 }
 
 export interface RouteBookLoadOptions {
@@ -139,6 +149,7 @@ export async function readRouteBookFiles(
     });
   const events: RouteStoryEvent[] = [];
   const npcs: RouteNpc[] = [];
+  const titles = new Map<number, TrilingualNames>();
   for (const name of names) {
     const path = join(mapsDir, name);
     let parsed: unknown;
@@ -153,9 +164,24 @@ export async function readRouteBookFiles(
     if (mapId === undefined || mapId <= 0) continue;
     events.push(...eventsOf(Math.trunc(mapId), parsed.events));
     npcs.push(...npcsOf(Math.trunc(mapId), parsed.npcs));
+    const title = mapTitleOf(parsed.title);
+    if (title !== null) titles.set(Math.trunc(mapId), title);
   }
-  if (events.length === 0 && npcs.length === 0) return null;
-  return { events, npcs };
+  if (events.length === 0 && npcs.length === 0 && titles.size === 0) return null;
+  return { events, npcs, ...(titles.size === 0 ? {} : { titles }) };
+}
+
+function mapTitleOf(value: unknown): TrilingualNames | null {
+  if (!isRecord(value)) return null;
+  const ja = text(value.ja);
+  const en = text(value.en);
+  const zhc = text(value.zhc);
+  if (ja === undefined && en === undefined && zhc === undefined) return null;
+  return {
+    ja: ja ?? null,
+    en: en ?? null,
+    zhc: zhc ?? null,
+  };
 }
 
 function eventCell(value: unknown): Cell | null {
@@ -475,6 +501,19 @@ function recountBook(book: RouteBook, sections: readonly RouteSection[]): RouteB
  * progress section, or the next one, is used. `preferred` wins when it exists because a running
  * plan may have started in a town before its dungeon.
  */
+export function sectionFinished(section: RouteSection, save: RouteBookSave): boolean {
+  // A section with neither collection nor a boss has no readable completion signal; never skip
+  // it just because there is nothing to check.
+  if (section.chests.length === 0 && section.bosses.length === 0) return false;
+  // Task 135: the chest's game-file flag decides; the old cell set is only the fallback.
+  const chestsDone = section.chests.every(
+    (chest) =>
+      chest.opened === true || openedChest(save, chest.mapId, chest.cell, chest.flag) === true,
+  );
+  if (!chestsDone) return false;
+  return section.bosses.every((boss) => boss.registered === true);
+}
+
 export function selectSectionIndex(
   book: RouteBook,
   mapId: number | null,
@@ -482,6 +521,8 @@ export function selectSectionIndex(
     readonly preferredSection?: string;
     readonly preferredMapId?: number | null;
     readonly previous?: { readonly title: string; readonly finished: boolean } | null;
+    /** Task 133: sections this save has already completed, by title. */
+    readonly finished?: (section: RouteSection) => boolean;
   } = {},
 ): number | null {
   const sections = book.sections;
@@ -497,15 +538,34 @@ export function selectSectionIndex(
     if (target >= 0) return target;
   }
   if (mapId !== null) {
-    const exact = sections.findIndex((section) => section.maps.some((map) => map.mapId === mapId));
-    if (exact >= 0) {
-      const previous = indexOf(options.previous?.title);
-      // A finished section moves on even when the party is still on one of its maps; a map
-      // belonging to a later section is already where the walkthrough is.
-      if (options.previous?.finished === true && previous >= 0 && exact <= previous) {
-        return Math.min(previous + 1, sections.length - 1);
+    const containing = sections.flatMap((section, index) =>
+      section.maps.some((map) => map.mapId === mapId) ? [index] : [],
+    );
+    if (containing.length > 0) {
+      // Task 133: overlapping maps (Tule belongs to the town and the canal section) must not
+      // flip the plan back and forth. Take the earliest section still unfinished; a section
+      // whose chests are all open and whose bosses are registered never starts again.
+      if (options.finished === undefined) {
+        const exact = containing[0];
+        const previous = indexOf(options.previous?.title);
+        // A finished section moves on even when the party is still on one of its maps.
+        if (
+          exact !== undefined &&
+          options.previous?.finished === true &&
+          previous >= 0 &&
+          exact <= previous
+        ) {
+          return Math.min(previous + 1, sections.length - 1);
+        }
+        if (exact !== undefined) return exact;
+      } else {
+        const unfinished = containing.find((index) => {
+          const section = sections[index];
+          return section !== undefined && !options.finished?.(section);
+        });
+        if (unfinished !== undefined) return unfinished;
+        return null;
       }
-      return exact;
     }
   }
   const previous = indexOf(options.previous?.title);
@@ -638,6 +698,9 @@ export async function loadRouteBook(
     signal?.throwIfAborted();
     throw new Error(`路线书没有生成:${describeError(error)}`, { cause: error });
   }
+  // Task 131: digest before learned points and the position trim change the station list, so a
+  // running plan is not made stale by walking or by learning a handoff cell.
+  const digests = new Map(book.sections.map((item) => [item.title, bookSectionDigest(item)]));
   book = applyLearnedPoints(book, options.learned ?? []);
   book = recountBook(
     book,
@@ -654,9 +717,15 @@ export async function loadRouteBook(
       : { preferredSection: options.preferredSection }),
     ...(options.preferredMapId === undefined ? {} : { preferredMapId: options.preferredMapId }),
     ...(options.previous === undefined ? {} : { previous: options.previous }),
+    finished: (section) => sectionFinished(section, options.save),
   });
   if (sectionIndex === null) return null;
   const section = book.sections[sectionIndex];
   if (section === undefined) return null;
-  return { book, sectionIndex, section };
+  return {
+    book,
+    sectionIndex,
+    section,
+    digest: digests.get(section.title) ?? bookSectionDigest(section),
+  };
 }

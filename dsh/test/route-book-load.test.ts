@@ -15,6 +15,7 @@ import {
   loadRouteBook,
   readLearnedPoints,
   readRouteBookFiles,
+  sectionFinished,
   selectSectionIndex,
   trimSectionStart,
   writeLearnedPoint,
@@ -71,6 +72,7 @@ function chestStation(
   mapId: number,
   cell: [number, number],
   opened: boolean | null,
+  flag: string | null = null,
 ): RouteStation {
   return {
     ...station(index, mapId, cell),
@@ -87,6 +89,7 @@ function chestStation(
       mapName: "",
       cell,
       opened,
+      flag,
       match: "name",
       note: "",
       candidates: [],
@@ -252,6 +255,7 @@ void test("game-file events and NPCs are read with their map id and cell", async
       join(maps, "10.json"),
       JSON.stringify({
         id: 10,
+        title: { ja: "酒場", en: "Pub", zhc: "酒馆" },
         events: [
           {
             file: "ev_e_0021.json",
@@ -274,6 +278,7 @@ void test("game-file events and NPCs are read with their map id and cell", async
     assert.equal(event.name, "sc_e_0021:测试之家前");
     assert.deepEqual(event.rect, { x1: 5, y1: 5, x2: 7, y2: 5 });
     assert.deepEqual(npc.cell, [7, 8]);
+    assert.deepEqual(files.titles?.get(10), { ja: "酒場", en: "Pub", zhc: "酒馆" });
     assert.equal(await readRouteBookFiles("ff5", join(directory, "missing")), null);
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -390,4 +395,37 @@ void test("a zero budget stops the build and warns; the plan falls back to no bo
   assert.equal(warnings.length, 1);
   assert.match(warnings[0] ?? "", /路线书构建超过 0ms/u);
   assert.match(warnings[0] ?? "", /已经建好的 0 节/u);
+});
+
+void test("sectionFinished and section selection read the game-file treasure flag", () => {
+  const chestStationValue = chestStation(0, 10, [1, 2], false, "77");
+  const done: RouteSection = {
+    ...section("图尔村", 0, 10, [chestStationValue]),
+    chests: chestStationValue.chest === null ? [] : [chestStationValue.chest],
+    bosses: [
+      {
+        bookId: 3,
+        name: "首领",
+        guideName: null,
+        boss: true,
+        registered: true,
+        missable: false,
+        missableUntil: null,
+        maps: [10],
+        note: "",
+      },
+    ],
+  };
+  const save = { bestiary: null, blueMagic: null, jobs: null, openedChests: null };
+  assert.equal(sectionFinished(done, { ...save, treasureFlags: new Map([[77, true]]) }), true);
+  assert.equal(sectionFinished(done, { ...save, treasureFlags: new Map([[77, false]]) }), false);
+  assert.equal(sectionFinished(done, { ...save, treasureFlags: new Map([[77, null]]) }), false);
+  // The old fallback still works when the bridge has no flag table.
+  assert.equal(sectionFinished(done, { ...save, openedChests: new Set(["10:1,2"]) }), true);
+  assert.equal(
+    selectSectionIndex(book([done]), 10, {
+      finished: (item) => sectionFinished(item, { ...save, treasureFlags: new Map([[77, true]]) }),
+    }),
+    null,
+  );
 });
