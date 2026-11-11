@@ -29,6 +29,7 @@ void test("Config defaults point at FF5's deployment paths and slot", () => {
   assert.equal(config.routeBookProgressFile, join(DEPS, "ds", "routebook-progress-ff5.json"));
   assert.equal(config.routeBookLearnedFile, join(DEPS, "ds", "routebook-learned-ff5.json"));
   assert.equal(config.planMode, true);
+  assert.equal(config.chapterMode, true);
   assert.equal(config.segmentPlanFile, join(DEPS, "ds", "segment-plan-ff5.json"));
   assert.equal(config.segmentReportFile, join(DEPS, "ds", "segment-report-ff5.json"));
   assert.equal(config.scoutDir, join(DEPS, "ds"));

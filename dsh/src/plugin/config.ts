@@ -180,6 +180,8 @@ const RawConfig = Schema.object({
   routeBookLearnedFile: Schema.string(),
   /** Task 139: the player writes a plan and code executes it instead of step-by-step tools. */
   planMode: Schema.boolean().default(true),
+  /** Task 153: one guide chapter per rule file; on overrides `planMode` (11-11). */
+  chapterMode: Schema.boolean().default(true),
   /** Task 139: one current segment plan and its versions per game. */
   segmentPlanFile: Schema.string(),
   /** Task 139: the last segment report, so plan_status survives a restart. */
@@ -220,6 +222,8 @@ const RawConfig = Schema.object({
   saveTimerMinSeconds: Schema.number().default(300),
   /** Task 91: stop waiting when the screen has not changed for this many seconds. */
   storyStuckSeconds: Schema.number().default(60),
+  /** Task 162: minutes a story station may explore toward a direction for its trigger. */
+  storyExploreMinutes: Schema.number().default(3),
   /** How often to retry the bridge while it is down. */
   checkEveryMs: Schema.number().default(DEFAULT_CHECK_EVERY_MS),
   /** Task 78: while a command waits, how often to check the pilot agent's pid is still alive. */
@@ -292,6 +296,8 @@ export const Config = Schema.transform(RawConfig, (config) => {
     routeBookProgressFile: config.routeBookProgressFile ?? defaults.routeBookProgressFile,
     routeBookLearnedFile: config.routeBookLearnedFile ?? defaults.routeBookLearnedFile,
     planMode: config.planMode ?? true,
+    // 11-11: chapters.ts and the cached walkthrough exist for FF5 only; other games keep plan mode.
+    chapterMode: (config.chapterMode ?? true) && defaults.game.key === "ff5",
     segmentPlanFile: config.segmentPlanFile ?? defaults.segmentPlanFile,
     segmentReportFile: config.segmentReportFile ?? defaults.segmentReportFile,
     scoutDir: config.scoutDir ?? join(DEPS, "ds"),
@@ -312,6 +318,7 @@ export const Config = Schema.transform(RawConfig, (config) => {
     battleFleeOnTimer: config.battleFleeOnTimer ?? DEFAULT_FLEE_ON_TIMER,
     saveTimerMinSeconds: config.saveTimerMinSeconds ?? 300,
     storyStuckSeconds: config.storyStuckSeconds ?? 60,
+    storyExploreMinutes: config.storyExploreMinutes ?? 3,
     checkEveryMs: config.checkEveryMs ?? DEFAULT_CHECK_EVERY_MS,
     agentCheckMs: config.agentCheckMs ?? DEFAULT_AGENT_CHECK_MS,
     detectCacheMs: config.detectCacheMs ?? DEFAULT_DETECT_CACHE_MS,
