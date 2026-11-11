@@ -220,12 +220,18 @@ export class Elements implements ElementLearner {
     const data: Record<string, Json> = {};
     for (const entry of this.byKey.values()) {
       if (entry.absorb.length === 0) continue;
-      data[entry.key] = { name: entry.name, book: entry.book, absorb: entry.absorb };
+      data[entry.key] = {
+        name: entry.name,
+        book: entry.book,
+        absorb: entry.absorb,
+      };
     }
     try {
       await writeFile(this.path, JSON.stringify(data, null, 1), "utf8");
     } catch (error) {
-      throw new Error(`写不了属性知识 ${this.path}:${describeError(error)}`, { cause: error });
+      throw new Error(`写不了属性知识 ${this.path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
   }
 
@@ -237,13 +243,17 @@ export class Elements implements ElementLearner {
     } catch (error) {
       if (isMissingFile(error)) return;
       signal?.throwIfAborted();
-      throw new Error(`读不了属性知识 ${this.path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不了属性知识 ${this.path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     let parsed: unknown;
     try {
       parsed = JSON.parse(body);
     } catch (error) {
-      throw new Error(`读不懂属性知识 ${this.path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不懂属性知识 ${this.path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     if (!isRecord(parsed)) throw new Error(`属性知识 ${this.path} 不是 JSON 对象`);
     for (const [key, raw] of Object.entries(parsed)) {

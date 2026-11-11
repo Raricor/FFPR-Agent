@@ -202,13 +202,17 @@ export class StagePlanStore {
     } catch (error) {
       if (isMissingFile(error)) return store;
       signal?.throwIfAborted();
-      throw new Error(`读不了阶段计划 ${path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不了阶段计划 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     let parsed: unknown;
     try {
       parsed = JSON.parse(body);
     } catch (error) {
-      throw new Error(`读不懂阶段计划 ${path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不懂阶段计划 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     store.current = readStageRecord(parsed);
     return store;
@@ -228,7 +232,9 @@ export class StagePlanStore {
     try {
       await writeFile(this.path, JSON.stringify(record, null, 1), "utf8");
     } catch (error) {
-      throw new Error(`写不了阶段计划 ${this.path}:${describeError(error)}`, { cause: error });
+      throw new Error(`写不了阶段计划 ${this.path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
   }
 

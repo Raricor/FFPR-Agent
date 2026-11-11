@@ -77,13 +77,17 @@ async function readCursor(path: string, signal?: AbortSignal): Promise<Json> {
   } catch (error) {
     signal?.throwIfAborted();
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return {};
-    throw new Error(`读不了状态游标 ${path}:${describeError(error)}`, { cause: error });
+    throw new Error(`读不了状态游标 ${path}:${describeError(error)}`, {
+      cause: error,
+    });
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch (error) {
-    throw new Error(`读不懂状态游标 ${path}:${describeError(error)}`, { cause: error });
+    throw new Error(`读不懂状态游标 ${path}:${describeError(error)}`, {
+      cause: error,
+    });
   }
   return isRecord(parsed) ? parsed : {};
 }

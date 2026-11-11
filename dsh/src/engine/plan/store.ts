@@ -91,13 +91,17 @@ export class SegmentPlanStore {
     } catch (error) {
       if (isMissingFile(error)) return store;
       signal?.throwIfAborted();
-      throw new Error(`读不了段计划 ${path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不了段计划 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     let parsed: unknown;
     try {
       parsed = JSON.parse(body);
     } catch (error) {
-      throw new Error(`读不懂段计划 ${path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不懂段计划 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     if (!isRecord(parsed)) throw new Error(`段计划 ${path} 不是 JSON 对象`);
     if (parsed.current !== undefined && parsed.current !== null) {
@@ -138,7 +142,9 @@ export class SegmentPlanStore {
     try {
       await writeFile(this.path, `${JSON.stringify(file, null, 2)}\n`, "utf8");
     } catch (error) {
-      throw new Error(`写不了段计划 ${this.path}:${describeError(error)}`, { cause: error });
+      throw new Error(`写不了段计划 ${this.path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
   }
 }
@@ -169,13 +175,17 @@ export async function readSegmentProgress(
   } catch (error) {
     if (isMissingFile(error)) return null;
     signal?.throwIfAborted();
-    throw new Error(`读不了段进度 ${path}:${describeError(error)}`, { cause: error });
+    throw new Error(`读不了段进度 ${path}:${describeError(error)}`, {
+      cause: error,
+    });
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);
   } catch (error) {
-    throw new Error(`读不懂段进度 ${path}:${describeError(error)}`, { cause: error });
+    throw new Error(`读不懂段进度 ${path}:${describeError(error)}`, {
+      cause: error,
+    });
   }
   if (!isRecord(parsed)) throw new Error(`段进度 ${path} 不是 JSON 对象`);
   if (typeof parsed.section !== "string" || typeof parsed.revision !== "number") {
@@ -195,6 +205,8 @@ export async function writeSegmentProgress(
   try {
     await writeFile(path, `${JSON.stringify(progress, null, 2)}\n`, "utf8");
   } catch (error) {
-    throw new Error(`写不了段进度 ${path}:${describeError(error)}`, { cause: error });
+    throw new Error(`写不了段进度 ${path}:${describeError(error)}`, {
+      cause: error,
+    });
   }
 }

@@ -279,13 +279,17 @@ export async function readProgress(file: string): Promise<RouteProgress> {
     if (isMissingFile(error)) {
       throw new Error(`没有路线进度文件 ${file}`, { cause: error });
     }
-    throw new Error(`读不了路线进度 ${file}:${describeError(error)}`, { cause: error });
+    throw new Error(`读不了路线进度 ${file}:${describeError(error)}`, {
+      cause: error,
+    });
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);
   } catch (error) {
-    throw new Error(`读不懂路线进度 ${file}:${describeError(error)}`, { cause: error });
+    throw new Error(`读不懂路线进度 ${file}:${describeError(error)}`, {
+      cause: error,
+    });
   }
   return progressOf(parsed, file);
 }
