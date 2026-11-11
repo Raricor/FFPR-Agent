@@ -5,7 +5,9 @@ import { wrapClientModule } from "../scripts/bundle-client.mjs";
 
 interface Loaded {
   readonly id: string;
-  readonly factory: (require: (name: string) => unknown) => { readonly answer?: number };
+  readonly factory: (require: (name: string) => unknown) => {
+    readonly answer?: number;
+  };
 }
 
 void test("the browser bundle uses the module-loader envelope and keeps the package id", () => {
