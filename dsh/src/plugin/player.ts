@@ -5,7 +5,7 @@
  * named with its package.
  */
 
-import { readdir } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { Context } from "@deepseek-ai/cordis";
 import type { Agent, PreStepDecision } from "@deepseek-ai/dsh-agent";
@@ -19,7 +19,7 @@ import { BridgeLink } from "../engine/bridge.ts";
 import { readEnvFile } from "../engine/env.ts";
 import { describeError, isMissingFile } from "../engine/errors.ts";
 import { KeyEvents, WINDOWS, Watcher } from "../engine/events.ts";
-import { Game } from "../engine/game.ts";
+import { Game, INTERNAL_CHAPTER_RUN, describeChapterReport } from "../engine/game.ts";
 import { cleanIconTags } from "../engine/icons.ts";
 import { messageText, PlayerJournal } from "../engine/player-log.ts";
 import { HealthWaiter } from "../engine/gate.ts";
@@ -31,8 +31,14 @@ import { AsyncLock } from "../engine/lock.ts";
 import { DEPS } from "../engine/paths.ts";
 import { createPilot, ensureAgent } from "../engine/link-pilot.ts";
 import type { Pilot } from "../engine/pilot.ts";
-import type { ToolDefinition } from "@deepseek-ai/dsh-tools";
+import type { ToolDefinition, ToolGuard } from "@deepseek-ai/dsh-tools";
+import type { ChapterPlan } from "../engine/plan/chapter-types.ts";
 import { DEFAULT_SEGMENT_BUDGET_MS } from "../engine/plan/execute.ts";
+import {
+  CHAPTER_TOOL_DEFINITIONS,
+  chapterBusyText,
+  type ChapterOwner,
+} from "../engine/plan/chapter-tools.ts";
 import { PLAN_FACTS_TOOL, SUBMIT_PLAN_TOOL } from "../engine/plan/tools.ts";
 import { systemPrompt, EXECUTE_PLAN_TOOL, PLAN_STATUS_TOOL, SCOUT_TOOL } from "../engine/prompt.ts";
 import { configureInstinct } from "../engine/strategy/execute.ts";
@@ -44,6 +50,7 @@ import { formatNotes, formatTactician, notesContext, tacticianContext } from "./
 import {
   ProgressWatchdog,
   type GoalServiceLike,
+  type GoalViewLike,
   type ProgressBuffer,
 } from "./progress-watchdog.ts";
 import { registerPresetMount } from "./preset-hooks.ts";
@@ -62,6 +69,7 @@ declare module "@deepseek-ai/dsh-llm" {
   interface MessageSourceMap {
     "ffpr-opening": { kind: "ffpr-opening" } & ContextFormed;
     "ffpr-notice": { kind: "ffpr-notice" } & ContextFormed;
+    "ffpr-chapter": { kind: "ffpr-chapter" } & ContextFormed;
   }
 }
 
@@ -83,6 +91,51 @@ export const PLAN_MODE_PLAN_TOOLS: readonly string[] = [
   "execute_plan",
   "plan_status",
 ];
+
+/** Task 153: the chapter tools, in the order the model reads them. Task 155 removed the
+ * executor tool: submitting the rule file is the handoff, and code runs the chapter. */
+export const CHAPTER_MODE_PLAN_TOOLS: readonly string[] = [
+  ...CHAPTER_TOOL_DEFINITIONS.map((tool) => tool.name),
+];
+
+/** Task 155: the tools that may not change the rule file while the executor owns the chapter. */
+export const CHAPTER_EDIT_TOOLS: ReadonlySet<string> = new Set([
+  "chapter_draft_segment",
+  "chapter_draft_meta",
+  "submit_chapter_plan",
+]);
+
+/**
+ * Task 160: the plugin's view of who owns the chapter. `chapter` is set while the executor is
+ * running or waiting for repair; the optional status keeps the old test/constructor shape
+ * (`{ chapter: 4 }`) meaning "running".
+ */
+export interface ChapterGate {
+  chapter: number | null;
+  status?: "running" | "blocked" | null;
+}
+
+/** The ownership a gate currently means, or null when the model may act again. */
+export function chapterOwnerOf(gate: ChapterGate): ChapterOwner | null {
+  if (gate.chapter === null) return null;
+  return {
+    chapter: gate.chapter,
+    status: gate.status === "blocked" ? "blocked" : "running",
+  };
+}
+
+/**
+ * Task 160: the model's tool guard while the executor owns the chapter. Everything is refused
+ * except the read-only `chapter_status`; the returned string is the one Chinese sentence the
+ * model sees, so a stale round cannot create a goal, edit the draft, submit again or press keys.
+ */
+export function chapterToolGuard(chapter: () => ChapterOwner | null): ToolGuard {
+  return (execution) => {
+    if (execution.name === "chapter_status") return undefined;
+    const owner = chapter();
+    return owner === null ? undefined : chapterBusyText(owner);
+  };
+}
 
 /**
  * Task 139: the only game tools plan mode keeps. Each is a read-only query: guide and atlas
@@ -167,8 +220,13 @@ export function createPlayerLog(
 }
 
 /** The system prompt text, with the Python placeholders filled for dsh. */
-export function buildSystemPrompt(game: string, saveSlot?: number, planMode = false): string {
-  return systemPrompt(game, saveSlot, planMode)
+export function buildSystemPrompt(
+  game: string,
+  saveSlot?: number,
+  planMode = false,
+  chapterMode = false,
+): string {
+  return systemPrompt(game, saveSlot, planMode, chapterMode)
     .replace("目标:{goal}", "目标:用户在对话里给你的目标;用户没说就接着之前的进度玩。")
     .replace("{hint}", "");
 }
@@ -363,6 +421,7 @@ export async function startEngine(
       healFullPercent: config.healFullPercent,
       saveTimerMinSeconds: config.saveTimerMinSeconds,
       storyStuckSeconds: config.storyStuckSeconds,
+      storyExploreMinutes: config.storyExploreMinutes,
       tacticianBoss: config.tacticianBoss,
       tacticianIntervalMinutes: config.tacticianIntervalMinutes,
       travelMaxHops: config.travelMaxHops,
@@ -694,6 +753,36 @@ function planToolDefinitions(
   return specs.map((spec) => hostedPlanTool(host, activity, spec));
 }
 
+/**
+ * Task 153/155: the chapter tools' dsh definitions. `execute_chapter` is deliberately absent:
+ * a passed `submit_chapter_plan` starts the executor in the background, so the model never runs
+ * the chapter itself.
+ */
+function chapterToolDefinitions(
+  host: GameToolHost,
+  activity: ActivitySource | undefined,
+): ToolDefinition[] {
+  const specs: readonly PlanToolSpec[] = CHAPTER_TOOL_DEFINITIONS.map((tool) => ({
+    ...tool,
+    timeoutMs: DEFAULT_TIMEOUT_MS,
+  }));
+  return specs.map((spec) => hostedPlanTool(host, activity, spec));
+}
+
+/**
+ * Task 160: the engine's success line gets the model-facing handoff in the wording the task
+ * fixed. The engine still owns the run; this only makes the result say "stop now, no goal".
+ */
+function withChapterHandoff(result: string): string {
+  if (!result.includes("规则文件已定稿")) return result;
+  if (result.includes("不要再调用任何工具")) return result;
+  const chapter = /执行器接管第 (\d+) 章/u.exec(result)?.[1] ?? "当前";
+  return (
+    `${result}\n\n规则文件已定稿，执行器接管第 ${chapter} 章。` +
+    "你这一轮现在就结束，不要再调用任何工具（包括建目标）。"
+  );
+}
+
 function hostedPlanTool(
   host: GameToolHost,
   activity: ActivitySource | undefined,
@@ -707,7 +796,10 @@ function hostedPlanTool(
     output: {
       schema: { type: "string" },
       render: (_args, value) => [
-        { type: "text", text: typeof value === "string" ? value : JSON.stringify(value) },
+        {
+          type: "text",
+          text: typeof value === "string" ? value : JSON.stringify(value),
+        },
       ],
     },
     async execute(args, exec) {
@@ -728,7 +820,7 @@ function hostedPlanTool(
           "tool",
           `${spec.name} ${firstChars(JSON.stringify(fields), 120)} → ${summary}(${seconds} 秒)`,
         );
-        return result;
+        return spec.name === "submit_chapter_plan" ? withChapterHandoff(result) : result;
       } catch (error) {
         exec.signal.throwIfAborted();
         const message = describeError(error);
@@ -751,12 +843,19 @@ export function playerToolDefinitions(
   activity?: ActivitySource,
 ): ToolDefinition[] {
   const all = gameToolDefinitions(host, config.game, config.saveSlot, activity);
-  const gameTools = config.planMode
+  // Task 153: chapter mode overrides plan mode. Both keep only read-only game tools; chapter
+  // mode replaces the four plan tools with the seven chapter tools and drops scout.
+  const planOnly = config.chapterMode || config.planMode;
+  const gameTools = planOnly
     ? all.filter((tool) => PLAN_MODE_READONLY_TOOLS.includes(tool.name))
     : all;
-  const planTools = config.planMode ? planToolDefinitions(host, activity) : [];
+  const planTools = config.chapterMode
+    ? chapterToolDefinitions(host, activity)
+    : config.planMode
+      ? planToolDefinitions(host, activity)
+      : [];
   const scout =
-    !config.planMode && byKey(config.game).key === "ff5"
+    !planOnly && byKey(config.game).key === "ff5"
       ? [
           scoutToolDefinition(host, config.scoutMinutes * 60_000 + 120_000, () =>
             typeof activity === "function" ? activity() : activity,
@@ -781,6 +880,7 @@ export function gameToolHost(
   slot: EngineSlot,
   prepare: (engine: PlayerEngine) => void = () => undefined,
   bind: (binding: TacticianBinding | null) => void = () => undefined,
+  chapterOwner: () => ChapterOwner | null = () => null,
 ): GameToolHost {
   const lock = new AsyncLock();
   const engineOf = (): PlayerEngine => {
@@ -803,6 +903,13 @@ export function gameToolHost(
     },
     run: async (name, args, pilot, signal, agent) => {
       signal.throwIfAborted();
+      // Task 155/160: while the executor owns the chapter (running or waiting for repair), a
+      // model turn must not edit the rule file. Reject before the game lock so the call answers
+      // immediately instead of waiting hours behind the executor.
+      const owner = chapterOwner();
+      if (owner !== null && CHAPTER_EDIT_TOOLS.has(name)) {
+        return chapterBusyText(owner);
+      }
       return lock.run(async () => {
         signal.throwIfAborted();
         const engine = engineOf();
@@ -818,6 +925,314 @@ export function gameToolHost(
           engine.activity.endTool();
         }
       });
+    },
+  };
+}
+
+/** Task 155: one accepted chapter run, in the web process, with the goal round driver gated. */
+export interface ChapterRunner {
+  readonly game: string;
+  /** Called from `submit_chapter_plan`; disarms auto rounds, then runs the chapter in the background. */
+  start(plan: ChapterPlan, agent?: Agent): Promise<void>;
+  /** Operator route: continue the same rule file from the progress file. */
+  resume(
+    signal: AbortSignal,
+    agent?: Agent,
+  ): Promise<{ readonly chapter: number; readonly text: string }>;
+  /** Operator route: stop this run and hand planning back to the model. */
+  abandon(signal: AbortSignal): Promise<string>;
+  /** Task 160: running while the executor runs, blocked while it waits, null when the model owns it. */
+  state(): ChapterOwner | null;
+  /** Task 160: keep an armed goal from starting another round while the chapter is owned. */
+  disarmGoal(agent: Agent): void;
+  runningChapter(): number | null;
+}
+
+/** The process-local half of `ctx.goals` task 155 needs (dsh-goal README.zh 「驱动生命周期」). */
+export interface ChapterGoalService {
+  get(agent: Agent): (GoalViewLike & { readonly activation?: "armed" | "disarmed" }) | undefined;
+  disarm(agent: Agent): unknown;
+  resume(
+    agent: Agent,
+    ref: { readonly id: GoalViewLike["id"]; readonly revision: number },
+  ): unknown;
+}
+
+interface ChapterGoalRef {
+  readonly agent: Agent;
+  readonly id: GoalViewLike["id"];
+  readonly revision: number;
+}
+
+export interface ChapterRunnerDeps {
+  readonly slot: EngineSlot;
+  readonly host: Pick<GameToolHost, "pilot" | "run">;
+  /** Shared with gameToolHost: non-null while the executor owns the chapter. */
+  readonly gate: ChapterGate;
+  readonly goals: () => ChapterGoalService | undefined;
+  readonly log: Pick<PlayerLog, "warn">;
+}
+
+const CHAPTER_RUNNERS = Symbol.for("@local/ffpr-dsh/chapter-runners");
+const runnerHolder = globalThis as unknown as Record<symbol, unknown>;
+
+function runnerTable(): Map<string, ChapterRunner> {
+  const existing = runnerHolder[CHAPTER_RUNNERS];
+  if (existing instanceof Map) return existing as Map<string, ChapterRunner>;
+  const created = new Map<string, ChapterRunner>();
+  runnerHolder[CHAPTER_RUNNERS] = created;
+  return created;
+}
+
+/** The root panel entry and a player preset may be different module instances; use globalThis. */
+export function registerChapterRunner(runner: ChapterRunner): () => void {
+  const game = runner.game.toLowerCase();
+  runnerTable().set(game, runner);
+  return () => {
+    if (runnerTable().get(game) === runner) runnerTable().delete(game);
+  };
+}
+
+export function chapterRunnerFor(game: string): ChapterRunner | undefined {
+  return runnerTable().get(game.toLowerCase());
+}
+
+/** Abort a background run when its engine unloads; the returned cleanup is idempotent. */
+function linkAbort(source: AbortSignal, controller: AbortController): () => void {
+  if (source.aborted) {
+    controller.abort();
+    return () => undefined;
+  }
+  const abort = (): void => {
+    controller.abort();
+  };
+  source.addEventListener("abort", abort, { once: true });
+  return () => {
+    source.removeEventListener("abort", abort);
+  };
+}
+
+function chapterDoneText(report: NonNullable<PlayerEngine["game"]["lastChapterReport"]>): string {
+  return (
+    `第 ${report.chapter} 章已跑完，报告如下：\n\n` +
+    `${describeChapterReport(report)}\n\n` +
+    `请规划第 ${report.chapter + 1} 章。`
+  );
+}
+
+function chapterAbandonText(chapter: number): string {
+  return (
+    `操作员已结束第 ${chapter} 章的自动执行，规划权交回你。` +
+    "只有操作员主动结束本章（不是执行器出例外）才会发生这种情况。" +
+    "请先 chapter_status 看进度和报告，再决定是否重新规划；" +
+    "规则文件确实要改时，改好后用 submit_chapter_plan 重新提交，执行器会接手重跑。"
+  );
+}
+
+/**
+ * Task 155: the chapter executor's home in the web process. dsh's goal round driver starts a new
+ * model round only when the agent is idle and the goal is `active` + `armed`; `start` calls
+ * `ctx.goals.disarm(agent)` before the submit tool result returns, so the driver is not drivable
+ * while the chapter runs. A done run rearms the goal and queues the fixed next-chapter prompt.
+ * A blocked run stays disarmed: the operator repairs it with `scripts/chapter-resume.mjs`.
+ */
+export function createChapterRunner(deps: ChapterRunnerDeps): ChapterRunner {
+  const game = deps.slot.game;
+  let running: Promise<void> | null = null;
+  let controller: AbortController | null = null;
+  let agent: Agent | undefined;
+  let goalRef: ChapterGoalRef | null = null;
+  let abandoned = false;
+
+  const goals = (): ChapterGoalService | undefined => {
+    try {
+      return deps.goals();
+    } catch (error) {
+      deps.log.warn(`读目标服务失败:${describeError(error)}`);
+      return undefined;
+    }
+  };
+
+  const disarm = (owner: Agent | undefined): void => {
+    if (owner === undefined) return;
+    const service = goals();
+    if (service === undefined) return;
+    try {
+      const view = service.get(owner);
+      if (view?.phase !== "active") return;
+      // Only an armed goal would auto-continue after this turn. An already disarmed goal (for
+      // example after a session resume) stays off; the operator keeps that authority.
+      if (view.activation === "armed") {
+        service.disarm(owner);
+        goalRef = { agent: owner, id: view.id, revision: view.revision };
+      }
+    } catch (error) {
+      deps.log.warn(`执行期间停自动续轮失败:${describeError(error)}`);
+    }
+  };
+
+  const clearGate = (): void => {
+    deps.gate.chapter = null;
+    deps.gate.status = null;
+  };
+
+  const blockGate = (chapter: number): void => {
+    deps.gate.chapter = chapter;
+    deps.gate.status = "blocked";
+  };
+
+  const rearm = (owner: Agent | undefined): void => {
+    const ref = goalRef;
+    if (ref === null || owner === undefined || ref.agent !== owner) return;
+    const service = goals();
+    if (service === undefined) return;
+    try {
+      service.resume(owner, { id: ref.id, revision: ref.revision });
+      goalRef = null;
+    } catch (error) {
+      deps.log.warn(`章跑完后恢复自动续轮失败:${describeError(error)}`);
+    }
+  };
+
+  const followup = (owner: Agent | undefined, text: string): void => {
+    if (owner === undefined) {
+      deps.slot.current()?.activity.record("event", "章跑完,但没有可叫的模型会话;请在新会话里继续");
+      return;
+    }
+    try {
+      owner.followup(
+        createUserMessage({
+          content: [{ type: "text", text }],
+          source: {
+            kind: "ffpr-chapter",
+            form: "snapshot",
+            sections: [{ name: "ffpr:chapter", text }],
+          },
+        }),
+      );
+    } catch (error) {
+      deps.log.warn(`章跑完后叫模型失败:${describeError(error)}`);
+    }
+  };
+
+  const settle = (engine: PlayerEngine, owner: Agent | undefined): void => {
+    const report = engine.game.lastChapterReport;
+    if (abandoned) return;
+    if (report === null) {
+      // Task 160: without a report the chapter is not finished; keep the model out and tell
+      // the operator to inspect it instead of letting a stale round take over again.
+      const chapter = engine.game.chapterPlans.current?.chapter;
+      if (chapter !== undefined) blockGate(chapter);
+      engine.activity.record("event", "章执行结束,但没有报告;请用续跑命令检查");
+      return;
+    }
+    if (report.status === "done") {
+      clearGate();
+      engine.activity.record("event", `第 ${report.chapter} 章跑完,叫模型规划下一章`);
+      rearm(owner);
+      followup(owner, chapterDoneText(report));
+      return;
+    }
+    if (report.status === "blocked" || report.status === "exception") {
+      // Task 160: waiting for repair still means the executor owns the chapter. Keep the gate
+      // closed so a resumed/new goal or a stale turn cannot submit the plan again.
+      blockGate(report.chapter);
+      engine.activity.record(
+        "error",
+        report.blockedText ?? `第 ${report.chapter} 章等待修复;执行器停着,没有叫模型`,
+      );
+      return;
+    }
+    clearGate();
+    engine.activity.record("event", `第 ${report.chapter} 章中止;没有叫模型`);
+  };
+
+  const launch = (engine: PlayerEngine, owner: Agent | undefined): void => {
+    const stop = new AbortController();
+    controller = stop;
+    const unlink = linkAbort(engine.stop.signal, stop);
+    const run = (async () => {
+      try {
+        const pilot = deps.host.pilot(stop.signal);
+        await deps.host.run(INTERNAL_CHAPTER_RUN, {}, pilot, stop.signal, owner);
+      } catch (error) {
+        if (!stop.signal.aborted) deps.log.warn(`章执行出错:${describeError(error)}`);
+      } finally {
+        unlink();
+        controller = null;
+        running = null;
+        // The gate is settled by `settle` (done clears it, blocked keeps it) so a blocked
+        // chapter cannot be stolen by the next model round.
+        settle(engine, owner);
+      }
+    })();
+    running = run;
+  };
+
+  return {
+    game,
+    runningChapter: () => {
+      const owner = chapterOwnerOf(deps.gate);
+      return owner?.status === "running" ? owner.chapter : null;
+    },
+    state: () => chapterOwnerOf(deps.gate),
+    disarmGoal: (owner) => {
+      disarm(owner);
+    },
+    start(plan, owner): Promise<void> {
+      if (running !== null) throw new Error(`第 ${deps.gate.chapter ?? "?"} 章还在执行`);
+      const engine = deps.slot.current();
+      if (engine === undefined) throw new Error(`${byKey(game).label} 没在运行`);
+      agent = owner;
+      abandoned = false;
+      disarm(owner);
+      deps.gate.chapter = plan.chapter;
+      deps.gate.status = "running";
+      engine.activity.record("event", `规则文件定稿,执行器接管第 ${plan.chapter} 章`);
+      launch(engine, owner);
+      return Promise.resolve();
+    },
+    async resume(signal, owner) {
+      if (running !== null) {
+        return {
+          chapter: deps.gate.chapter ?? 0,
+          text: "执行器已经在跑这一章",
+        };
+      }
+      const engine = await deps.slot.ensure(signal);
+      const plan = engine.game.chapterPlans.current;
+      if (plan === null) throw new Error("没有存盘的章计划,没法续跑;先让模型提交规则文件");
+      const target = owner ?? agent;
+      agent = target;
+      abandoned = false;
+      if (goalRef === null) disarm(target);
+      deps.gate.chapter = plan.chapter;
+      deps.gate.status = "running";
+      engine.activity.record("event", `续跑第 ${plan.chapter} 章(从章进度接着跑)`);
+      launch(engine, target);
+      return { chapter: plan.chapter, text: `已开始续跑第 ${plan.chapter} 章` };
+    },
+    async abandon(signal) {
+      const engine = await deps.slot.ensure(signal);
+      abandoned = true;
+      controller?.abort();
+      if (running !== null) {
+        try {
+          await running;
+        } catch {
+          // launch already reports the failure; abandon only needs the run to stop.
+        }
+      }
+      const plan = engine.game.chapterPlans.current;
+      if (plan === null) throw new Error("没有存盘的章计划,没有可放弃的章");
+      const text = await engine.game.abandonChapter(
+        `操作员用 --abandon 结束第 ${plan.chapter} 章执行`,
+      );
+      clearGate();
+      engine.activity.record("event", text);
+      rearm(agent);
+      followup(agent, chapterAbandonText(plan.chapter));
+      return text;
     },
   };
 }
@@ -906,11 +1321,22 @@ export function installPlayer(
   // because the tool's own signal is cancelled when that call ends. dsh only honours the
   // signal until it publishes the child (dsh-subagent README.zh 「失败与恢复」).
   let lastAgent: Agent | undefined = undefined;
+  const chapterGate: ChapterGate = { chapter: null, status: null };
+  const chapterRunner: { current: ChapterRunner | undefined } = { current: undefined };
   const prepare = (engine: PlayerEngine): void => {
+    // Task 155: a passed submit is the handoff. The runner disarms goal rounds and starts the
+    // executor in the background; direct engine tests leave the callback unset.
+    engine.game.onChapterAccepted = config.chapterMode
+      ? (plan) => {
+          const runner = chapterRunner.current;
+          if (runner === undefined) throw new Error("章执行器还没装好");
+          return runner.start(plan, binding?.agent ?? lastAgent);
+        }
+      : undefined;
     // Task 145 follow-up: plan mode must make no model calls at all. The plan's own tables are
     // the battle rules; a tactician/stage-officer child started after a plan tool was the
     // repeated child session the user saw in the dsh session directories.
-    if (config.planMode) {
+    if (config.chapterMode || config.planMode) {
       engine.game.setTactician(undefined);
       engine.game.setStageOfficer(undefined);
       return;
@@ -949,10 +1375,57 @@ export function installPlayer(
       return await callStageOfficer(ctx.subagents, agent, signal, facts, factsText);
     });
   };
-  const host = gameToolHost(slot, prepare, (call) => {
-    binding = call;
-    if (call?.agent !== undefined) lastAgent = call.agent;
+  const host = gameToolHost(
+    slot,
+    prepare,
+    (call) => {
+      binding = call;
+      if (call?.agent !== undefined) lastAgent = call.agent;
+    },
+    () => chapterOwnerOf(chapterGate),
+  );
+  const runner = createChapterRunner({
+    slot,
+    host,
+    gate: chapterGate,
+    goals: () => {
+      if (typeof ctx.get !== "function") return undefined;
+      return ctx.get("goals") as ChapterGoalService | undefined;
+    },
+    log,
   });
+  chapterRunner.current = runner;
+  ctx.effect(() => registerChapterRunner(runner));
+  // Task 160: while the executor owns the chapter, every model tool except chapter_status is
+  // refused before it runs. The guard is mounted on the agent scope, so it also covers the
+  // inherited goal tools (create_goal/update_goal).
+  const guard = chapterToolGuard(() => runner.state());
+  // Task 160: after a web/dsh restart the in-memory gate is gone but the progress file still
+  // says running/blocked. Adopt it at the next first step so the model cannot take over.
+  const adoptSavedChapter = async (
+    engine: PlayerEngine,
+    agent: Agent,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    if (chapterGate.chapter !== null) return;
+    const path = engine.game.chapterProgressFile;
+    if (path === undefined) return;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await readFile(path, { encoding: "utf8", signal }));
+    } catch (error) {
+      if (isMissingFile(error)) return;
+      signal.throwIfAborted();
+      log.warn(`读章进度失败:${describeError(error)}`);
+      return;
+    }
+    if (!isRecord(parsed) || typeof parsed.chapter !== "number") return;
+    if (parsed.status !== "running" && parsed.status !== "blocked") return;
+    chapterGate.chapter = parsed.chapter;
+    chapterGate.status = parsed.status;
+    // A chapter restored from an earlier process still owns the round driver; keep its goal off.
+    runner.disarmGoal(agent);
+  };
   // Task 107: the round's new activity-log and key-event lines feed the no-progress watchdog.
   const progressBuffer = (): ProgressBuffer | undefined => {
     const engine = slot.current();
@@ -986,7 +1459,12 @@ export function installPlayer(
     config,
     () => slot.current()?.activity,
   );
-  const personaText = buildSystemPrompt(config.game, config.saveSlot, config.planMode);
+  const personaText = buildSystemPrompt(
+    config.game,
+    config.saveSlot,
+    config.planMode,
+    config.chapterMode,
+  );
   const disposers = new Map<string, () => Promise<void>>();
 
   ctx.on("session/event", (_session, event) => {
@@ -1029,7 +1507,7 @@ export function installPlayer(
     // Agent.id is a SessionId (dsh-agent types), the same key agent-preset/selected carries.
     if (disposers.has(agent.id)) return;
     try {
-      disposers.set(agent.id, registerAgent(agent, tools, personaText));
+      disposers.set(agent.id, registerAgent(agent, tools, personaText, guard));
     } catch (error) {
       log.warn(
         `给会话 ${agent.id} 挂 ${byKey(config.game).label} 的工具失败:${describeError(error)}`,
@@ -1118,11 +1596,18 @@ export function installPlayer(
     } catch (error) {
       log.warn(`检查目标进展失败:${describeError(error)}`);
     }
+    // Task 160: the handoff must hold even if a goal was created/resumed before the guard was
+    // mounted. Disarm at the round boundary so dsh cannot start a new round over the executor.
+    if (chapterRunner.current?.state() !== null) runner.disarmGoal(agent);
   });
 
   ctx.on("agent/pre-step", async ({ agent, step, signal }, next) => {
     // Task 107: capture this round's starting point before the model acts.
-    if (step === 1) watchdog.begin(agent);
+    if (step === 1) {
+      watchdog.begin(agent);
+      // Task 160: a blocked chapter restored from disk must keep this round's goal disarmed.
+      if (chapterRunner.current?.state() !== null) runner.disarmGoal(agent);
+    }
     // 11-02 real machine: after select, the new preset's plugin did not receive
     // agent-preset/selected (the registry emits on the host layer and dsh-scope filters it out
     // of the preset composition). This is only a fallback: the step's prompt and tool list are
@@ -1174,6 +1659,7 @@ export function installPlayer(
       );
     }
     prepare(engine);
+    await adoptSavedChapter(engine, agent, signal);
     // Kept from the spike: a step waits for the bridge instead of losing the user's message.
     await engine.waiter.wait(signal);
     signal.throwIfAborted();
@@ -1205,16 +1691,22 @@ export function registerAgent(
   agent: Agent,
   tools: ReturnType<typeof gameToolDefinitions>,
   personaText: string,
+  guard?: ToolGuard,
 ): () => Promise<void> {
   return agent.ctx.effect(() => {
     const owned: (() => void)[] = [];
     for (const tool of tools) owned.push(agent.ctx.tools.register(tool));
+    // Task 160: a monotonic guard denies every tool (including inherited goal tools) while the
+    // chapter executor owns this agent; only chapter_status passes inside the guard itself.
+    if (guard !== undefined) owned.push(agent.ctx.tools.guard(guard));
     // The goal tools are inherited from the preset's dsh-tool-goal; keep exactly those and hide
     // every other inherited tool (task 111). A preset without dsh-tool-goal has none of these
     // names, and restrict() rejects unknown names, so filter against what this agent can see.
     const visible = new Set(agent.ctx.tools.schemas(agent).map((tool) => tool.name));
     owned.push(
-      agent.ctx.tools.restrict({ allow: GOAL_TOOL_NAMES.filter((name) => visible.has(name)) }),
+      agent.ctx.tools.restrict({
+        allow: GOAL_TOOL_NAMES.filter((name) => visible.has(name)),
+      }),
     );
     // dsh-persona's own registration, inlined: the preset's complete persona is the system
     // prompt, and optional runtime facts stay out of it (10-27: the model called

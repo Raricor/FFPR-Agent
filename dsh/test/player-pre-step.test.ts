@@ -71,6 +71,7 @@ function fakeAgent(): Agent {
     tools: {
       register: () => () => undefined,
       restrict: () => () => undefined,
+      guard: () => () => undefined,
       schemas: () => [],
     },
     systemPrompt: {
@@ -172,7 +173,10 @@ async function withFakeSsh(run: () => Promise<void>): Promise<void> {
     const config = join(directory, "fake-ssh.json");
     await writeFile(
       config,
-      JSON.stringify({ responses: [{ stdout: "alive" }], default: { stdout: '{"ok":true}\n' } }),
+      JSON.stringify({
+        responses: [{ stdout: "alive" }],
+        default: { stdout: '{"ok":true}\n' },
+      }),
       "utf8",
     );
     await chmod(config, 0o600);
@@ -186,7 +190,10 @@ async function withFakeSsh(run: () => Promise<void>): Promise<void> {
 
 void test("the laptop runs this preset's game: start it and add the opening", async () => {
   await withFakeSsh(async () => {
-    const { decision, slot } = await step("ff5", { ok: true, running: ["ff5"] });
+    const { decision, slot } = await step("ff5", {
+      ok: true,
+      running: ["ff5"],
+    });
     assert.equal(slot.starts, 1);
     const message = messageOf(decision);
     assert.equal(message.kind, "ffpr-opening");
@@ -216,7 +223,10 @@ void test("another game is open: no engine, name it and suggest its session", as
 });
 
 void test("two games are open: no engine, explain one at a time", async () => {
-  const { decision, slot } = await step("ff5", { ok: true, running: ["ff3", "ff5"] });
+  const { decision, slot } = await step("ff5", {
+    ok: true,
+    running: ["ff3", "ff5"],
+  });
   assert.equal(slot.starts, 0);
   const message = messageOf(decision);
   assert.equal(message.kind, "ffpr-notice");

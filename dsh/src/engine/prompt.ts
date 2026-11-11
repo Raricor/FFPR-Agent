@@ -238,7 +238,8 @@ const PLAN_MODE_RULES = `- 计划模式:你不直接操作游戏,只写计划和
      - grind 站的 until 至少写一项:bestiary(怪名或图鉴号)、blueMagic(青魔法名)、
        battles(场数)、minutes(分钟)。
      - turnBack:走路途中的回头条件,when 写 party.lowest_hp_pct < N、party.mp_pct < N、
-       party.dead >= N 或 item.道具名 < N;then 写 heal-and-continue 或 replan。
+       party.dead >= N 或 item.道具名 < N;then 只能写 heal-and-continue:整章模式执行期间
+       不会再叫你,回头条件只能是 heal-and-continue。
   3. 用 submit_plan 交整份计划。不通过就按返回的问题改,再交;通过了会存盘。
   4. 用 execute_plan 执行当前存盘的计划。它一直跑到这一段做完或出例外才返回,执行期间不叫你;
      返回中文摘要和结构化 JSON 报告,报告同时存盘。
@@ -257,6 +258,64 @@ const PLAN_MODE_RULES = `- 计划模式:你不直接操作游戏,只写计划和
 - 计划要覆盖这一段的所有必经站;不确定的站写 optional: true,走不到时代码会跳过。
 - 这一节所有没开的宝箱和还没打过的首领都要写进计划;确实不做的写进 dropped 并写原因。
 - 路线书没有覆盖这一段时 plan_facts 会说明:先把情况告诉用户,不要绕开计划直接操作游戏。`;
+
+/**
+ * Chapter mode's "how to play" block (task 153, 11-11): one guide chapter becomes one rule file,
+ * code executes it and resumes from the chapter progress. Only the loop and the field formats
+ * live here; chest routes, boss tables and grinding spots are the model's to plan from facts.
+ */
+const CHAPTER_MODE_RULES = `- 整章模式:你不直接操作游戏,只写一整章的规则文件和改它,执行全交给代码。
+- 按这个循环走:
+  1. 用 chapter_facts 取当前这一章(或带 chapter 取指定章)的事实:每节的事实、隐藏道具、
+     商店、每张图的遇敌和图鉴/青魔法缺口、队伍和金钱。
+  2. 按事实逐节用 read_guide 读本章攻略原文(小节名或它在攻略里的序号)。
+  3. 对本章每个还没完成的节用 chapter_draft_segment 写一段(本章第一个节是 0,按顺序写),
+     每段一次写全:
+     - stations:按执行顺序写走路和开箱,以及 save(存档)、heal(回复)、talk(对话)、
+       switch(机关)、story(剧情触发)、choose(选项)、grind(刷怪)、boss(首领)、
+       buy(按 items 买东西);to 和 go 的写法一样(地图号、地图名、坐标或「地图号:x,y」)。
+       boss 站要写「地图号:x,y」,坐标用事实表里该首领的触发点。
+     - prep:出发前要换的职业和技能、要买的东西和数量、前后排;equip 写 optimize 或 keep。
+     - battle:普通战斗的规则表;maps 写适用地图号(空数组表示整节),tables 写 1–3 套。
+     - bosses:每个首领写 name、map、healFirst、saveFirst、tables 和 notes。
+     - grind 站的 until 至少写一项:bestiary(怪名或图鉴号)、blueMagic(青魔法名)、
+       battles(场数)、minutes(分钟)。
+     - turnBack:走路途中的回头条件,when 写 party.lowest_hp_pct < N、party.mp_pct < N、
+       party.dead >= N 或 item.道具名 < N;then 只能写 heal-and-continue:整章模式执行期间
+       不会再叫你,回头条件只能是 heal-and-continue。
+  4. 用 chapter_draft_meta 写 chapter、goal、growth(在第几段之前刷到等级/金钱)、
+     fallback(重试次数、首领失败后练几级再打几次、可选站跳过、低血量补血线)和 skipped。
+  5. 用 submit_chapter_plan 交整章。不通过就按返回的每条问题改受影响的段,再交。
+     提交通过 = 规则文件定稿:代码立刻在后台接管这一章,从章进度接着跑,已完成的段和站跳过。
+     工具结果会告诉你「规则文件已定稿,执行器接管第 N 章」;这一轮现在就结束,不要再调用
+     任何工具(包括 get_goal/create_goal/update_goal)。
+  6. 执行期间你不参与:工具全被挡(只有 chapter_status 还能看),也不会有新的模型轮次来改规则。
+     你不用等、也不用再交计划;执行器跑完整章或兜底都失败才停。
+  7. 一章跑完,代码会主动叫你,并附上报告:读报告,chapter_facts 规划下一章,回到第 1 步。
+     如果执行器兜底都失败,章状态变成 blocked,代码停在那里等开发修复;修复后由开发用
+     续跑命令接着跑。执行中你不参与,跑完才叫你,不会为了让你改计划而叫你。
+     只有操作员主动用 --abandon 结束本章执行后,规划权才交回你;那时按 chapter_status 的
+     进度和报告重新规划,规则文件确实要改时再 submit_chapter_plan。
+     改计划是修订同一份计划:上一份还没做的站要保留,只改出问题的那部分;确实不做的站写进
+     dropped,每项写 to、do、why。
+- 规则文件要覆盖本章事实里所有该拿的东西:
+  - 每个没开的宝箱和隐藏道具(调查点、罐子、看不见的宝物)写进 stations;
+  - 每张图的图鉴缺口和青魔法缺口:该刷的写 grind 站的 until,不该刷的写进 skipped;
+  - 城镇采购:需要买的东西写进 prep.buy 或 buy 站,数量按本章要用多少写;
+  - 长线练级和攒钱:写进 growth,where 写「地图号:x,y」或「地图号」,maxMinutes 写上限;
+  - 首领:每场首领的触发点、开打前的回复和存档、规则表写进 bosses;
+  - 兜底:fallback 写重试、首领失败后练级重打、可选站跳过和低血量补血线。
+- 本章故意不拿的收集目标(图鉴、青魔法、隐藏道具、宝箱、商店、首领)必须逐项写进
+  chapter_draft_meta 的 skipped,每项写 kind、name、where(有地点时)和 why,不能悄悄丢掉。
+- 任何一步想确认进度时用 chapter_status 看草稿和当前章计划的摘要。
+- 不能直接走路、开箱、对话、战斗、刷怪、买卖、换职业或存档:这些全部写进计划。
+- 整章模式下只有这些查询工具:guide(查攻略)、atlas(地图记录)、inventory(背包)、
+  look_around / terrain / entrances(当前地图的实体、地形和入口)。它们只读,不按键、不移动、
+  不改游戏状态。
+- tables 的格式和以前的战斗规则表一样:角色名 → 规则列表,也接受策略 2.0。
+- 坐标是格子坐标:x 向右增大,y 向下增大。
+- 每次只调用一个工具。行动前用一两句话说明你的打算。
+- 路线书没有覆盖本章时 chapter_facts 会说明:先把情况告诉用户,不要绕开计划直接操作游戏。`;
 
 /** The goal-tool paragraph shared by both modes; plan mode keeps it after the plan loop. */
 const PLAN_MODE_GOAL_RULES = `- 这个会话有一个长期目标:人会在对话里要求你用目标工具创建(比如「通关 FF5」),它跨轮次保留。
@@ -358,6 +417,17 @@ function planModeSystemPrompt(game: string, saveSlot: number): string {
   return body.replace("{hint}", `${planSaveSlotHint(saveSlot)}\n{hint}`);
 }
 
+/** The chapter-mode persona: the plan-only header, the chapter loop and the goal paragraph. */
+function chapterModeSystemPrompt(game: string, saveSlot: number): string {
+  const info = byKey(game);
+  const name = GAME_NAMES[info.key];
+  if (name === undefined) throw new Error(`没有 ${info.label} 的玩家提示词`);
+  const head =
+    `你在玩《${name} 像素重制版》(中文版),通过整章计划和执行工具操作游戏。\n\n` + "目标:{goal}\n\n";
+  const body = `${head}规则:\n${CHAPTER_MODE_RULES}\n\n${PLAN_MODE_GOAL_RULES}\n{hint}`;
+  return body.replace("{hint}", `${planSaveSlotHint(saveSlot)}\n{hint}`);
+}
+
 function fiveGameSystemPrompt(name: string, points: string, saveSlot: number): string {
   let text = SYSTEM_PROMPT_FF5.replace(
     "你在玩《最终幻想5 像素重制版》(中文版),通过工具操作游戏。",
@@ -382,8 +452,15 @@ function saveSlotFor(game: string): number {
 }
 
 /** The first layer's persona for one game; FF5's text only gains the new-game hint. */
-export function systemPrompt(game: string, saveSlot = saveSlotFor(game), planMode = false): string {
+export function systemPrompt(
+  game: string,
+  saveSlot = saveSlotFor(game),
+  planMode = false,
+  chapterMode = false,
+): string {
   const info = byKey(game);
+  // Task 153: chapter mode overrides plan mode when both are on.
+  if (chapterMode) return chapterModeSystemPrompt(info.key, saveSlot);
   if (planMode) return planModeSystemPrompt(info.key, saveSlot);
   if (info.key === "ff5") return withSaveSlotHint(SYSTEM_PROMPT_FF5, saveSlot);
   const name = GAME_NAMES[info.key];
@@ -635,7 +712,10 @@ const TOOLS_BASE = [
       parameters: {
         type: "object",
         properties: {
-          query: { type: "string", description: "地区名、怪物英文名或图鉴编号" },
+          query: {
+            type: "string",
+            description: "地区名、怪物英文名或图鉴编号",
+          },
           part: { type: "integer", description: "第几段,默认 1" },
           kind: {
             type: "string",
@@ -840,12 +920,18 @@ const TOOLS_BASE = [
         type: "object",
         properties: {
           until_gold: { type: "integer", description: "钱攒到多少就停" },
-          until_level: { type: "integer", description: "全队最低等级到几级就停" },
+          until_level: {
+            type: "integer",
+            description: "全队最低等级到几级就停",
+          },
           until_bestiary: {
             type: "boolean",
             description: "true:刷到本图(世界地图是当前区域)的怪都进本档图鉴",
           },
-          max_minutes: { type: "number", description: "最多刷多少分钟,默认 20" },
+          max_minutes: {
+            type: "number",
+            description: "最多刷多少分钟,默认 20",
+          },
           rest_hp_pct: {
             type: "number",
             description: "全队最低 HP 百分比低于多少就回店,默认 40",
@@ -1254,7 +1340,10 @@ export const FLOOR_MARKS: ReadonlyMap<string, readonly [string, string]> = new M
  * entities stand. `marks` is keyed with nav.cellKey.
  */
 export function renderFloor(
-  view: { readonly center: readonly [number, number]; readonly rows: readonly string[] },
+  view: {
+    readonly center: readonly [number, number];
+    readonly rows: readonly string[];
+  },
   radius: number,
   marks: ReadonlyMap<string, string>,
 ): string {

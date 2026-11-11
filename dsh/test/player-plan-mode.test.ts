@@ -55,7 +55,9 @@ async function visibleTools(config: Config): Promise<{
       for (const name of ["get_goal", "create_goal", "update_goal", "bash"]) {
         ctx.tools.register(inheritedTool(name));
       }
-      const agent = { id: "plan-visibility" } as unknown as Agent & { ctx: Context };
+      const agent = { id: "plan-visibility" } as unknown as Agent & {
+        ctx: Context;
+      };
       const scope = createScope(ctx, agent);
       (agent as { ctx: Context }).ctx = scope.ctx;
       const game = playerToolDefinitions(host(), config);
@@ -75,7 +77,9 @@ async function visibleTools(config: Config): Promise<{
 }
 
 void test("plan mode keeps only the plan tools, read-only queries and goal tools", async () => {
-  const { visible, game, timeouts } = await visibleTools(Config({ game: "ff5" }));
+  const { visible, game, timeouts } = await visibleTools(
+    Config({ game: "ff5", chapterMode: false }),
+  );
   const expected = [...PLAN_MODE_READONLY_TOOLS, ...PLAN_MODE_PLAN_TOOLS];
   assert.deepEqual([...game].sort(), [...expected].sort());
   for (const name of expected) {
@@ -105,7 +109,9 @@ void test("plan mode keeps only the plan tools, read-only queries and goal tools
 });
 
 void test("plan mode off restores the old tool set and has no plan tools", async () => {
-  const { visible, game } = await visibleTools(Config({ game: "ff5", planMode: false }));
+  const { visible, game } = await visibleTools(
+    Config({ game: "ff5", planMode: false, chapterMode: false }),
+  );
   for (const name of ["go", "route", "interact", "advance_story", "fight", "set_tactics"]) {
     assert.ok(visible.includes(name), `兼容模式应该看得见 ${name}`);
   }
@@ -119,7 +125,7 @@ void test("plan mode off restores the old tool set and has no plan tools", async
 });
 
 void test("a plan-mode session for another game still keeps the shared read-only tools", async () => {
-  const { visible, game } = await visibleTools(Config({ game: "ff6" }));
+  const { visible, game } = await visibleTools(Config({ game: "ff6", chapterMode: false }));
   assert.ok(visible.includes("terrain"));
   assert.ok(visible.includes("atlas"));
   assert.ok(visible.includes("inventory"));

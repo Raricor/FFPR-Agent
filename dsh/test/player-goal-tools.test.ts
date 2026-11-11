@@ -44,7 +44,9 @@ async function visibleTools(inherited: readonly string[]): Promise<{
   try {
     await root.inject(["tools", "systemPrompt"], async (ctx) => {
       for (const name of inherited) ctx.tools.register(inheritedTool(name));
-      const agent = { id: "goal-visibility" } as unknown as Agent & { ctx: Context };
+      const agent = { id: "goal-visibility" } as unknown as Agent & {
+        ctx: Context;
+      };
       const scope = createScope(ctx, agent);
       (agent as { ctx: Context }).ctx = scope.ctx;
       const game = gameToolDefinitions(host());

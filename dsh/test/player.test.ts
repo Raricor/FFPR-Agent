@@ -148,7 +148,9 @@ void test("the prompt has the dsh goal text and no placeholders", async () => {
   assert.equal(opened.messages.length, 1);
   assert.equal(withOpening(decision, 2, "开始。"), decision); // only the first step of a turn
   assert.equal(withOpening(decision, 1, ""), decision);
-  assert.deepEqual(withOpening({ kind: "reject" }, 1, "开始。"), { kind: "reject" });
+  assert.deepEqual(withOpening({ kind: "reject" }, 1, "开始。"), {
+    kind: "reject",
+  });
 });
 
 void test("a tool call logs one activity line with its first result line", async () => {

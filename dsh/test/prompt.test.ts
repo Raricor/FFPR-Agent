@@ -33,7 +33,10 @@ interface PromptFixture {
   readonly tools: unknown;
   readonly terrain: {
     readonly entries: [number, [string, string]][];
-    readonly cases: readonly { readonly cells: RawCells; readonly text: string }[];
+    readonly cases: readonly {
+      readonly cells: RawCells;
+      readonly text: string;
+    }[];
   };
   readonly floor: {
     readonly marks: [string, [string, string]][];
@@ -41,7 +44,10 @@ interface PromptFixture {
       readonly name: string;
       readonly view: FloorView;
       readonly radius: number;
-      readonly marks: { readonly cell: [number, number]; readonly mark: string }[];
+      readonly marks: {
+        readonly cell: [number, number];
+        readonly mark: string;
+      }[];
       readonly text: string;
     }[];
   };
@@ -76,6 +82,10 @@ const ff5Tactician = await readFile(
 );
 const ff5PlanMode = await readFile(
   join(import.meta.dirname, "fixtures", "prompt", "system-prompt-ff5-plan.txt"),
+  "utf8",
+);
+const ff5ChapterMode = await readFile(
+  join(import.meta.dirname, "fixtures", "prompt", "system-prompt-ff5-chapter.txt"),
   "utf8",
 );
 
@@ -118,6 +128,56 @@ void test("plan mode replaces the old how-to-play text with the plan loop", () =
     "普通战斗的策略由战术官自动写好",
   ]) {
     assert.equal(text.includes(old), false, `计划模式提示词不该有:${old}`);
+  }
+  assert.equal(text.includes("save_game"), false);
+  assert.ok(text.includes("存档只写 20 号存档位"));
+  assert.ok(text.includes("计划里写 save 站"));
+  assert.ok(text.includes("{hint}"));
+});
+
+void test("chapter mode replaces the plan loop with the chapter loop", () => {
+  const text = systemPrompt("ff5", 20, false, true);
+  assert.equal(text, ff5ChapterMode);
+  // Chapter mode overrides plan mode when both are on.
+  assert.equal(systemPrompt("ff5", 20, true, true), ff5ChapterMode);
+  for (const step of [
+    "chapter_facts",
+    "read_guide",
+    "chapter_draft_segment",
+    "chapter_draft_meta",
+    "submit_chapter_plan",
+    "chapter_status",
+    "规则文件已定稿",
+    "执行器接管",
+    "blocked",
+    "续跑",
+  ]) {
+    assert.ok(text.includes(step), `整章模式提示词应该提到 ${step}`);
+  }
+  for (const covered of [
+    "宝箱",
+    "隐藏道具",
+    "图鉴",
+    "青魔法",
+    "城镇采购",
+    "growth",
+    "bosses",
+    "fallback",
+    "skipped",
+  ]) {
+    assert.ok(text.includes(covered), `整章规则要覆盖 ${covered}`);
+  }
+  for (const oldTool of ["plan_facts", "submit_plan", "execute_plan", "plan_status"]) {
+    assert.equal(text.includes(oldTool), false, `整章模式不该提到 ${oldTool}`);
+  }
+  assert.equal(text.includes("execute_chapter"), false, "整章模式不该再让模型执行本章");
+  for (const old of [
+    "一段路上要去的地方已经清楚时",
+    "宝箱用 interact",
+    "剧情对话用 advance_story",
+    "普通战斗的策略由战术官自动写好",
+  ]) {
+    assert.equal(text.includes(old), false, `整章模式提示词不该有:${old}`);
   }
   assert.equal(text.includes("save_game"), false);
   assert.ok(text.includes("存档只写 20 号存档位"));
@@ -319,7 +379,9 @@ void test("the model-facing prompt and tools use go, not the three old movement 
     );
   }
   // Every model-facing string and comment in src/ has moved to the one tool (task 58).
-  const files = await readdir(join(import.meta.dirname, "..", "src"), { recursive: true });
+  const files = await readdir(join(import.meta.dirname, "..", "src"), {
+    recursive: true,
+  });
   for (const file of files) {
     if (!file.endsWith(".ts")) continue;
     // Task 64: metrics.ts reads old session logs, so it must still recognize the old names.
