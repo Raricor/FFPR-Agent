@@ -154,6 +154,7 @@ async function temporaryGame(
     laptop: LAPTOP,
     game: "ff5",
     saveSlot: 20,
+    gameFilesDir: null,
     atlasFile,
     collisionDir: join(directory, "collision"),
     tacticsFile: join(directory, "tactics.json"),

@@ -358,6 +358,7 @@ async function makeGame(directory: string): Promise<Game> {
     stagePlanFile: join(directory, "stage-ff5.json"),
     scoutDir: directory,
     scoutMinutes: 20,
+    gameFilesDir: null,
   });
   game.atlas.maps.clear();
   for (const [key, map] of Object.entries(MAPS)) {

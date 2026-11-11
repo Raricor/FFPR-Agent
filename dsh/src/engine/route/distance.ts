@@ -8,10 +8,10 @@
  * `unreachable` and lets the AI explore it later.
  */
 
-import { LAYER_Z, layeredGrid, layeredRoute } from "../nav.ts";
+import { LAYER_Z, layeredGrid, layeredRouteAvoiding } from "../nav.ts";
 import type { Cell } from "../nav.ts";
-import type { CollisionSnapshot } from "../regions.ts";
-import { mapExits, mapPath } from "../skills/travel.ts";
+import type { CollisionSnapshot, CollisionStore, WorldMode } from "../regions.ts";
+import { isWorldMap, mapExits, mapPath } from "../skills/travel.ts";
 import type { Atlas } from "../atlas.ts";
 import type { PairEstimate, RoutePoint, RouteWorld } from "./types.ts";
 
@@ -26,6 +26,15 @@ export const ROUTE_SECONDS_PER_CELL = 0.22;
 export const ROUTE_SECONDS_PER_MAP_CHANGE = 8;
 /** Walking estimate for one map that has no cached collision. */
 export const ROUTE_CELLS_PER_MAP_HOP = 12;
+
+/**
+ * 11-11: route analysis has no live vehicle state, so it assumes every surface vehicle the
+ * party may be riding, plus walking after dismounting. A chocobo (or a ship at the coast) is a
+ * transfer, not a different world: leaving it out made the start cell's world block differ from
+ * the one execution used and every pair came back null. Flying vehicles are left out because
+ * their landing cell is not known here; travel passes the live modes when it plans a hop.
+ */
+export const ROUTE_SURFACE_WORLD_MODES: readonly WorldMode[] = ["walk", "chocobo", "ship"];
 
 type WalkResult = { readonly ok: true; readonly cells: number } | { readonly ok: false } | null;
 
@@ -88,7 +97,7 @@ function walkCells(world: RouteWorld, mapId: number, from: Cell, to: Cell): Walk
       [],
     );
     if (grid === null) continue;
-    const path = layeredRoute(grid, to);
+    const path = layeredRouteAvoiding(grid, to).path;
     const end = path.at(-1);
     if (end?.[0] !== to[0] || end[1] !== to[1]) continue;
     const cells = path.length - 1;
@@ -101,6 +110,7 @@ function walkCells(world: RouteWorld, mapId: number, from: Cell, to: Cell): Walk
 function landingOf(
   atlas: Atlas,
   hop: HopLike,
+  source: CollisionStore | undefined,
 ): { readonly cell: Cell | null; readonly layer: number | null } {
   if (hop.kind === "ride") {
     const ride = atlas
@@ -115,7 +125,9 @@ function landingOf(
       ? { cell: null, layer: null }
       : { cell: ride.land, layer: ride.landLayer ?? null };
   }
-  const exit = mapExits(atlas, hop.from).find(
+  // 11-11: the exit may come from the game files, not the atlas; without the same source the
+  // landing is lost and every later walk falls back to the per-map constant.
+  const exit = mapExits(atlas, hop.from, source).find(
     (candidate) => sameCell(candidate.cell, hop.cell) && candidate.to === hop.to,
   );
   return exit === undefined
@@ -127,7 +139,11 @@ function landingOf(
 function noPathReason(world: RouteWorld, from: RoutePoint, to: RoutePoint): string {
   if (!world.atlas.maps.has(String(from.map))) return `地图记录里没有地图 ${from.map}`;
   if (!world.atlas.maps.has(String(to.map))) return `地图记录里没有地图 ${to.map}`;
-  const plain = mapPath(world.atlas, from.map, to.map, new Set(), true, { start: from.cell });
+  const plain = mapPath(world.atlas, from.map, to.map, new Set(), true, {
+    start: from.cell,
+    collisions: world.collisions,
+    worldModes: world.worldModes ?? ROUTE_SURFACE_WORLD_MODES,
+  });
   if (plain === null) {
     return `地图记录里没有从地图 ${from.map} 到地图 ${to.map} 的出口路线`;
   }
@@ -165,10 +181,20 @@ function crossMapResult(world: RouteWorld, from: RoutePoint, to: RoutePoint): Pa
   if (!world.atlas.maps.has(String(to.map))) {
     return { ok: false, reason: `地图记录里没有地图 ${to.map}` };
   }
-  const path = mapPath(world.atlas, from.map, to.map, new Set(), true, {
-    regions: world.regions,
-    start: from.cell,
-  });
+  const modes = world.worldModes ?? ROUTE_SURFACE_WORLD_MODES;
+  const pathFor = (start: Cell | null): HopLike[] | null =>
+    mapPath(world.atlas, from.map, to.map, new Set(), true, {
+      regions: world.regions,
+      collisions: world.collisions,
+      start,
+      worldModes: modes,
+    });
+  let path = pathFor(from.cell);
+  // 11-11: a world-map entrance is often an event on the map, not an exported exit cell, so
+  // the collision grid says the start block cannot walk to the exit that the game actually
+  // uses. When the exact block has no route, plan the world map as one node again (task 75's
+  // fallback for an unrecorded landing) instead of calling every waypoint unreachable.
+  if (path === null && isWorldMap(from.map) && from.cell !== null) path = pathFor(null);
   if (path === null) return { ok: false, reason: noPathReason(world, from, to) };
 
   let cells = 0;
@@ -183,7 +209,7 @@ function crossMapResult(world: RouteWorld, from: RoutePoint, to: RoutePoint): Pa
       // wall, so fall back to the per-map constant instead of making the waypoint unreachable.
       cells += !walk?.ok ? ROUTE_CELLS_PER_MAP_HOP : walk.cells;
     }
-    const landing = landingOf(world.atlas, hop);
+    const landing = landingOf(world.atlas, hop, world.collisions);
     currentMap = hop.to;
     currentCell = landing.cell;
   }

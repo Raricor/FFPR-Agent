@@ -14,8 +14,14 @@
 import type { Atlas, Ride } from "../atlas.ts";
 import type { Cell } from "../nav.ts";
 import type { Pilot } from "../pilot.ts";
-import { isRecord, num, record, records, text, type Json } from "../values.ts";
-import { RegionIndex, type CollisionStore, type RegionBlock } from "../regions.ts";
+import { num, record, records, text } from "../values.ts";
+import {
+  RegionIndex,
+  SURFACE_WORLD_MODES,
+  type CollisionStore,
+  type RegionBlock,
+  type WorldMode,
+} from "../regions.ts";
 import { RIDES } from "../view.ts";
 import {
   canReach,
@@ -107,6 +113,9 @@ interface RawMapExit {
   readonly cell: Cell;
   readonly to: number | null;
   readonly name: string;
+  /** Task 123: where the game files' target point lands, when it could be resolved. */
+  readonly land?: Cell;
+  readonly landLayer?: number;
 }
 
 export function isWorldMap(mapId: unknown): boolean {
@@ -124,46 +133,87 @@ function sameCell(left: Cell | null, right: Cell | null): boolean {
 }
 
 /** Every recorded exit, including ones whose `to` the atlas could not read. */
-function rawExits(atlas: Atlas, mapId: number): RawMapExit[] {
+function rawExits(atlas: Atlas, mapId: number, source?: CollisionStore): RawMapExit[] {
   const entry = atlas.maps.get(String(mapId));
-  return records(entry?.exits).flatMap((exit): RawMapExit[] => {
+  const saved = records(entry?.exits).flatMap((exit): RawMapExit[] => {
     const cell = cellOf(exit.cell);
     if (cell === null) return [];
     const to = num(exit.to);
-    return [{ cell, to: to === undefined ? null : Math.trunc(to), name: text(exit.name) ?? "" }];
+    const land = cellOf(exit.land);
+    const landLayer = num(exit.landLayer);
+    return [
+      {
+        cell,
+        to: to === undefined ? null : Math.trunc(to),
+        name: text(exit.name) ?? "",
+        ...(land === null ? {} : { land }),
+        ...(landLayer === undefined ? {} : { landLayer: Math.trunc(landLayer) }),
+      },
+    ];
   });
+  if (source === undefined) return saved;
+  // Task 123: the atlas only knows exits the party has seen. A file exit fills a missing map,
+  // or a cell this visit never recorded; a cell the atlas did read keeps its observed target.
+  // A saved world-map exit usually has no landing (the game puts the party at a scripted
+  // point), so the file's arrival point fills that gap even though the exit itself wins.
+  const merged = [...saved];
+  const savedIndex = new Map<string, number>();
+  for (const [index, exit] of merged.entries()) {
+    if (exit.to !== null) {
+      savedIndex.set(`${exit.cell[0]},${exit.cell[1]}:${exit.to}`, index);
+    }
+  }
+  const knownCells = new Set(
+    saved.flatMap((exit) => (exit.to === null ? [] : [`${exit.cell[0]},${exit.cell[1]}`])),
+  );
+  for (const exit of source.exits(mapId)) {
+    const cellKey = `${exit.cell[0]},${exit.cell[1]}`;
+    const savedAt = savedIndex.get(`${cellKey}:${exit.to}`);
+    if (savedAt !== undefined) {
+      const existing = merged[savedAt];
+      if (existing !== undefined && existing.land === undefined) {
+        const landing = source.exitLanding(mapId, exit);
+        if (landing !== null) {
+          merged[savedAt] = {
+            ...existing,
+            land: landing.cell,
+            ...(landing.layer === null ? {} : { landLayer: landing.layer }),
+          };
+        }
+      }
+      continue;
+    }
+    if (knownCells.has(cellKey)) continue;
+    const landing = source.exitLanding(mapId, exit);
+    merged.push({
+      cell: exit.cell,
+      to: exit.to,
+      name: exit.name,
+      ...(landing === null ? {} : { land: landing.cell, landLayer: landing.layer ?? undefined }),
+    });
+  }
+  return merged;
 }
 
 /** The exits a route may use: those with a known destination. */
-export function mapExits(atlas: Atlas, mapId: number): MapExit[] {
-  const entry = atlas.maps.get(String(mapId));
-  const savedExits = new Map<string, Json>();
-  for (const exit of Array.isArray(entry?.exits) ? entry.exits : []) {
-    if (!isRecord(exit)) continue;
-    const cell = cellOf(exit.cell);
-    const to = num(exit.to);
-    if (cell !== null && to !== undefined) savedExits.set(`${cell[0]},${cell[1]}:${to}`, exit);
-  }
-  return rawExits(atlas, mapId).flatMap((exit) => {
+export function mapExits(atlas: Atlas, mapId: number, source?: CollisionStore): MapExit[] {
+  return rawExits(atlas, mapId, source).flatMap((exit) => {
     if (exit.to === null) return [];
-    const saved = savedExits.get(`${exit.cell[0]},${exit.cell[1]}:${exit.to}`);
-    const land = cellOf(saved?.land);
-    const landLayer = num(saved?.landLayer);
     return [
       {
         cell: exit.cell,
         to: exit.to,
         name: exit.name,
-        ...(land === null ? {} : { land }),
-        ...(landLayer === undefined ? {} : { landLayer: Math.trunc(landLayer) }),
+        ...(exit.land === undefined ? {} : { land: exit.land }),
+        ...(exit.landLayer === undefined ? {} : { landLayer: exit.landLayer }),
       },
     ];
   });
 }
 
 /** Exits whose destination this save has not visited yet (or whose `to` was never read). */
-export function unknownExits(atlas: Atlas, mapId: number): RawMapExit[] {
-  return rawExits(atlas, mapId).filter(
+export function unknownExits(atlas: Atlas, mapId: number, source?: CollisionStore): RawMapExit[] {
+  return rawExits(atlas, mapId, source).filter(
     (exit) => exit.to === null || (!isWorldMap(exit.to) && !atlas.visited(exit.to)),
   );
 }
@@ -244,6 +294,32 @@ function landingBlocks(
   return blocks.length === 0 ? null : blocks;
 }
 
+/** One world-map node: a connected block under a set of vehicles (task 123). */
+interface WorldNode {
+  readonly zone: number;
+  readonly modes: readonly WorldMode[];
+}
+
+/** The world block a landing starts in; null when the export knows the cell but no mode crosses it. */
+function worldNodeFor(
+  source: CollisionStore | undefined,
+  mapId: number,
+  cell: Cell | null,
+  modes: readonly WorldMode[],
+): WorldNode | null | undefined {
+  if (source === undefined || cell === null || !source.hasWorld(mapId)) return undefined;
+  const zone = source.worldZone(mapId, modes, cell);
+  return zone === null ? null : { zone, modes };
+}
+
+function routeNodeKey(
+  mapId: number,
+  blocks: readonly RegionBlock[] | null,
+  world: WorldNode | undefined,
+): string {
+  return world === undefined ? nodeKey(mapId, blocks) : `${mapId}@world:${world.zone}`;
+}
+
 /** Whether this block of the map can walk to or ride from the cell. */
 function blockReaches(
   regions: RegionIndex | undefined,
@@ -272,6 +348,16 @@ export interface MapPathOptions {
   readonly landings?: ReadonlyMap<string, ObservedLanding>;
   /** Task 75: cached collision regions; absent keeps the plain map-to-map planner. */
   readonly regions?: RegionIndex;
+  /**
+   * Task 123: the collision store loaded with the game files' map directory. It supplies
+   * exits for maps (or cells) the atlas never recorded; without it only saved exits count.
+   */
+  readonly collisions?: CollisionStore;
+  /**
+   * Task 123: what can cross the world map now. Defaults to walking plus a ship; a chocobo,
+   * drake or airship is passed by travel from the live `moveState`.
+   */
+  readonly worldModes?: readonly WorldMode[];
 }
 
 /**
@@ -297,43 +383,97 @@ export function mapPath(
   if (from === to) return [];
   if (!viaWorld && (isWorldMap(from) || isWorldMap(to))) return null;
   const regions = options.regions;
+  // Task 123: the region index was built from the collision store, so it already names the
+  // game-file source; callers that pass only `regions` still get file exits.
+  const source = options.collisions ?? regions?.source;
+  const worldModes = options.worldModes ?? SURFACE_WORLD_MODES;
   const start = options.start ?? null;
-  const startBlocks = landingBlocks(regions, from, start, options.startLayer ?? null);
+  const startWorld =
+    isWorldMap(from) && start !== null
+      ? (worldNodeFor(source, from, start, worldModes) ?? undefined)
+      : undefined;
+  const startBlocks =
+    startWorld === undefined
+      ? landingBlocks(regions, from, start, options.startLayer ?? null)
+      : null;
   const queue: {
     readonly id: number;
     readonly path: MapHop[];
     readonly land: Cell | null;
     readonly blocks: readonly RegionBlock[] | null;
-  }[] = [{ id: from, path: [], land: start, blocks: startBlocks }];
-  const seen = new Set<string>([nodeKey(from, startBlocks)]);
+    readonly world?: WorldNode;
+  }[] = [
+    {
+      id: from,
+      path: [],
+      land: start,
+      blocks: startBlocks,
+      ...(startWorld === undefined ? {} : { world: startWorld }),
+    },
+  ];
+  const seen = new Set<string>([routeNodeKey(from, startBlocks, startWorld)]);
   while (queue.length > 0) {
     const item = queue.shift();
     if (item === undefined) break;
     const region = item.land;
-    for (const exit of mapExits(atlas, item.id)) {
+    const here = item.world;
+    for (const exit of mapExits(atlas, item.id, source)) {
       if (!viaWorld && isWorldMap(exit.to)) continue;
-      // Task 58: the last hop may enter a map this save has never recorded.
-      if (!atlas.maps.has(String(exit.to)) && exit.to !== to) continue;
+      // Task 58: the last hop may enter a map this save has never recorded. Task 123: an
+      // intermediate map the game files know is a normal hop, so long unvisited routes work.
+      if (
+        !atlas.maps.has(String(exit.to)) &&
+        exit.to !== to &&
+        source?.hasFile(exit.to) !== true &&
+        !(viaWorld && isWorldMap(exit.to))
+      ) {
+        continue;
+      }
       if (unavailable.has(hopKey(item.id, region, exit.cell, exit.to))) continue;
-      if (!blockReaches(regions, item.id, item.blocks, exit.cell)) continue;
+      // On a world map, the same island/sea block is the only part this vehicle can cross.
+      if (here !== undefined) {
+        const zone = source?.worldZone(item.id, here.modes, exit.cell) ?? null;
+        if (zone === null || zone !== here.zone) continue;
+      } else if (!blockReaches(regions, item.id, item.blocks, exit.cell)) {
+        continue;
+      }
       const hop: MapHop = { from: item.id, to: exit.to, cell: exit.cell, kind: "exit" };
       if (exit.to === to) return [...item.path, hop];
       const observed = options.landings?.get(edgeKey(item.id, exit.cell, exit.to));
       const land = observed === undefined ? (exit.land ?? null) : observed.cell;
       const layer = observed === undefined ? (exit.landLayer ?? null) : observed.layer;
-      const blocks = landingBlocks(regions, exit.to, land, layer);
-      const key = nodeKey(exit.to, blocks);
+      const world = isWorldMap(exit.to)
+        ? worldNodeFor(source, exit.to, land, worldModes)
+        : undefined;
+      // The export knows this world map and this landing, but no selected vehicle can stand
+      // there. Do not fall back to "the whole world map is one block".
+      if (world === null) continue;
+      const blocks = world === undefined ? landingBlocks(regions, exit.to, land, layer) : null;
+      const key = routeNodeKey(exit.to, blocks, world);
       if (seen.has(key)) continue;
       seen.add(key);
-      queue.push({ id: exit.to, path: [...item.path, hop], land, blocks });
+      queue.push({
+        id: exit.to,
+        path: [...item.path, hop],
+        land,
+        blocks,
+        ...(world === undefined ? {} : { world }),
+      });
     }
     // A lift changes the map by pressing, not by walking onto an exit (task 71). Exits are
     // tried first so a normal door still wins on an equal path.
     for (const ride of mapRides(atlas, item.id)) {
       if (!viaWorld && isWorldMap(ride.to)) continue;
-      if (!atlas.maps.has(String(ride.to)) && ride.to !== to) continue;
+      if (!atlas.maps.has(String(ride.to)) && ride.to !== to && source?.hasFile(ride.to) !== true) {
+        continue;
+      }
       if (unavailable.has(hopKey(item.id, region, ride.cell, ride.to, "ride"))) continue;
-      if (!blockReaches(regions, item.id, item.blocks, ride.cell)) continue;
+      if (here !== undefined) {
+        const zone = source?.worldZone(item.id, here.modes, ride.cell) ?? null;
+        if (zone === null || zone !== here.zone) continue;
+      } else if (!blockReaches(regions, item.id, item.blocks, ride.cell)) {
+        continue;
+      }
       const hop: MapHop = {
         from: item.id,
         to: ride.to,
@@ -343,11 +483,24 @@ export function mapPath(
         press: ride.press,
       };
       if (ride.to === to) return [...item.path, hop];
-      const blocks = landingBlocks(regions, ride.to, ride.land, ride.landLayer ?? null);
-      const key = nodeKey(ride.to, blocks);
+      const world = isWorldMap(ride.to)
+        ? worldNodeFor(source, ride.to, ride.land, worldModes)
+        : undefined;
+      if (world === null) continue;
+      const blocks =
+        world === undefined
+          ? landingBlocks(regions, ride.to, ride.land, ride.landLayer ?? null)
+          : null;
+      const key = routeNodeKey(ride.to, blocks, world);
       if (seen.has(key)) continue;
       seen.add(key);
-      queue.push({ id: ride.to, path: [...item.path, hop], land: ride.land, blocks });
+      queue.push({
+        id: ride.to,
+        path: [...item.path, hop],
+        land: ride.land,
+        blocks,
+        ...(world === undefined ? {} : { world }),
+      });
     }
   }
   return null;
@@ -394,7 +547,7 @@ function explainNoPath(
     const id = Number(key);
     if (!Number.isFinite(id) || isWorldMap(id) || id === target) continue;
     const rides = atlas.rides(id);
-    const exits = mapExits(atlas, id);
+    const exits = mapExits(atlas, id, regions.source);
     if (exits.length === 0 && rides.length === 0) continue;
     if (!regions.has(id)) missingCache.push(id);
     for (const exit of exits) {
@@ -402,7 +555,10 @@ function explainNoPath(
       missingLand.push(`地图 ${id} (${exit.cell[0]}, ${exit.cell[1]})→地图 ${exit.to}`);
     }
   }
-  const plain = mapPath(atlas, from, target, new Set(), true, { start });
+  const plain = mapPath(atlas, from, target, new Set(), true, {
+    start,
+    collisions: regions.source,
+  });
   const lines: string[] = ["规划失败的原因:"];
   if (plain === null) lines.push(`  地图记录本身就没有从 ${from} 到 ${target} 的出口路线`);
   else lines.push("  地图记录本身是通的,但按 (地图, 块) 走不到;落点或碰撞缓存可能过时");
@@ -565,6 +721,16 @@ export async function rideState(pilot: Pilot): Promise<string> {
 interface WorldRide {
   readonly flying: boolean;
   readonly stop: string | null;
+}
+
+/** Task 123: which world-map terrain grids the live ride state can cross. */
+async function worldModesFor(pilot: Pilot): Promise<readonly WorldMode[] | undefined> {
+  const state = await rideState(pilot);
+  if (state === "LowFlying") return ["walk", "drake"];
+  if (state === "HighFlying") return ["walk", "airship"];
+  if (state === "Chocobo") return ["walk", "chocobo"];
+  if (state === "Ship") return ["walk", "ship"];
+  return undefined; // walking/unknown: the default surface network (walk + ship)
 }
 
 /**
@@ -743,11 +909,14 @@ export async function travelToMap(
         cell,
       });
     }
+    const worldModes = isWorldMap(current) ? await worldModesFor(pilot) : undefined;
     const path = mapPath(atlas, current, target, unavailable, true, {
       start: cell,
       startLayer: layer,
       landings,
       regions,
+      collisions: context.collisions,
+      ...(worldModes === undefined ? {} : { worldModes }),
     });
     if (path === null) {
       const hint = explainNoPath(atlas, regions, current, cell, target);
@@ -1050,7 +1219,7 @@ async function detourSources(
     if (!Number.isFinite(id) || id === target) continue;
     const inBlock: MapExit[] = [];
     const unrecorded: MapExit[] = [];
-    for (const exit of mapExits(context.atlas, id)) {
+    for (const exit of mapExits(context.atlas, id, context.collisions)) {
       if (exit.to !== target) continue;
       const match = landingMatch(regions, target, targetBlocks, exit);
       if (match === "in-block") inBlock.push(exit);
@@ -1064,6 +1233,7 @@ async function detourSources(
       const path = mapPath(context.atlas, target, id, unavailable, true, {
         start: startCell,
         regions,
+        collisions: context.collisions,
       });
       const first = path?.[0];
       if (path === null || first === undefined) break;
@@ -1310,7 +1480,7 @@ async function nearestUnknownExit(
   mapId: number,
 ): Promise<ExitChoice | null> {
   let best: ExitChoice | null = null;
-  for (const exit of unknownExits(context.atlas, mapId)) {
+  for (const exit of unknownExits(context.atlas, mapId, context.collisions)) {
     const [here, path] = await plan(
       pilot,
       exit.cell,
@@ -1329,13 +1499,17 @@ async function nearestUnknownExit(
 }
 
 /** The atlas map nearest by map hops that still has an unknown exit. */
-function nearestMapWithUnknownExits(atlas: Atlas, from: number): number | null {
+function nearestMapWithUnknownExits(
+  atlas: Atlas,
+  from: number,
+  source?: CollisionStore,
+): number | null {
   let best: { id: number; hops: number } | null = null;
   for (const [key] of atlas.maps) {
     const id = Number(key);
     if (!Number.isFinite(id) || id === from || isWorldMap(id)) continue;
-    if (unknownExits(atlas, id).length === 0) continue;
-    const path = mapPath(atlas, from, id, new Set(), true);
+    if (unknownExits(atlas, id, source).length === 0) continue;
+    const path = mapPath(atlas, from, id, new Set(), true, { collisions: source });
     if (path === null) continue;
     if (best === null || path.length < best.hops || (path.length === best.hops && id < best.id)) {
       best = { id, hops: path.length };
@@ -1375,7 +1549,7 @@ export async function explore(
     if (isWorldMap(current)) {
       return { found: false, mapId: current, text: noUnknownExitText() };
     }
-    const next = nearestMapWithUnknownExits(atlas, current);
+    const next = nearestMapWithUnknownExits(atlas, current, context.collisions);
     if (next === null) return { found: false, mapId: current, text: noUnknownExitText() };
     const travelled = await travelToMap(pilot, context, next, context.say ?? (() => undefined), {
       guard: context.guard,
