@@ -25,10 +25,19 @@ import {
 } from "../src/engine/laptop.ts";
 
 interface LaptopFixture {
-  readonly ps_quote: readonly { readonly text: string; readonly expected: string }[];
-  readonly encode_ps: readonly { readonly script: string; readonly expected: string }[];
+  readonly ps_quote: readonly {
+    readonly text: string;
+    readonly expected: string;
+  }[];
+  readonly encode_ps: readonly {
+    readonly script: string;
+    readonly expected: string;
+  }[];
   readonly prelude: string;
-  readonly decode_clixml: readonly { readonly input: string; readonly expected: string }[];
+  readonly decode_clixml: readonly {
+    readonly input: string;
+    readonly expected: string;
+  }[];
   readonly session_request: readonly {
     readonly file: string;
     readonly args: readonly string[];

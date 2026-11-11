@@ -214,7 +214,13 @@ export function sessionRequest(
   cwd: string | null,
   wait: boolean,
 ): SessionRequest {
-  return { id: randomUUID().replaceAll("-", "").slice(0, 12), file, args, cwd, wait };
+  return {
+    id: randomUUID().replaceAll("-", "").slice(0, 12),
+    file,
+    args,
+    cwd,
+    wait,
+  };
 }
 
 /** Run a PowerShell script on the laptop; the SSH child is killed when the signal aborts. */
@@ -392,7 +398,9 @@ export async function fetchProbeLogs(
   );
   const destination = join(DEPS, game.key, "probe");
   await mkdir(destination, { recursive: true });
-  await runScp(laptop, `${target(laptop)}:${staged}/*`, destination, { signal });
+  await runScp(laptop, `${target(laptop)}:${staged}/*`, destination, {
+    signal,
+  });
   return result.stdout.trim();
 }
 
@@ -439,7 +447,12 @@ function runProcess(command: readonly string[], options: RunOptions = {}): Promi
     child.stderr?.on("data", (chunk: Buffer) => stderr.push(chunk));
     child.on("error", (error) => {
       if (options.signal?.aborted) reject(abortReason(options.signal));
-      else reject(new Error(`启动 ${executable} 失败:${describeError(error)}`, { cause: error }));
+      else
+        reject(
+          new Error(`启动 ${executable} 失败:${describeError(error)}`, {
+            cause: error,
+          }),
+        );
     });
     child.on("close", (code) => {
       const result: ProcessResult = {
