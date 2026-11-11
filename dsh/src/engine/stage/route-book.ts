@@ -78,7 +78,11 @@ export interface RouteNpc {
   readonly mapId: number;
   readonly name: string;
   readonly cell: Cell;
-  readonly names?: { readonly ja?: string; readonly en?: string; readonly zhc?: string } | null;
+  readonly names?: {
+    readonly ja?: string;
+    readonly en?: string;
+    readonly zhc?: string;
+  } | null;
 }
 
 /** One event/NPC handed to the model when a story station cannot be paired (task 133). */
@@ -462,7 +466,9 @@ export async function buildRouteBookAsync(
   timeBudgetMs: number,
   signal?: AbortSignal,
 ): Promise<BuildOutcome> {
-  const budget: BuildBudget = { deadline: Date.now() + Math.max(0, timeBudgetMs) };
+  const budget: BuildBudget = {
+    deadline: Date.now() + Math.max(0, timeBudgetMs),
+  };
   const steps = buildRouteBookSteps(input, budget, false);
   let step = steps.next();
   while (!step.done) {
@@ -1166,7 +1172,10 @@ function titleMatch(
     const contains = !exact && keys.some((key) => key.includes(own) || own.includes(key));
     const score = exact ? 2 : contains ? 1 : 0;
     if (score > best.score) {
-      best = { score, label: language === "en" ? value : `${value}(${language})` };
+      best = {
+        score,
+        label: language === "en" ? value : `${value}(${language})`,
+      };
     }
   }
   return best;
@@ -2249,14 +2258,23 @@ function matchNpc(
         // One-character names would match almost any sentence; two is already weak but the
         // NPC data has many "兵士（青）"-style names, whose distinctive part is longer.
         if (Array.from(key).length < 2 || !wanted.includes(key)) continue;
-        const candidate = { mapId, cell: npc.cell, name: npc.name, length: key.length };
+        const candidate = {
+          mapId,
+          cell: npc.cell,
+          name: npc.name,
+          length: key.length,
+        };
         if (best === null || candidate.length > best.length) best = candidate;
       }
     }
   }
   return best === null
     ? null
-    : { mapId: best.mapId, cell: best.cell, basis: `游戏文件：NPC ${best.name}` };
+    : {
+        mapId: best.mapId,
+        cell: best.cell,
+        basis: `游戏文件：NPC ${best.name}`,
+      };
 }
 
 /** Task 133: exit/entrance-looking events are never story stations. */
@@ -2317,7 +2335,12 @@ function matchStoryEvent(
     const key = eventKey(event);
     byKey.set(key, [...(byKey.get(key) ?? []), event]);
   }
-  const matches: { key: string; events: RouteStoryEvent[]; basis: string; score: number }[] = [];
+  const matches: {
+    key: string;
+    events: RouteStoryEvent[];
+    basis: string;
+    score: number;
+  }[] = [];
   for (const [key, events] of byKey) {
     const first = events[0];
     if (first === undefined) continue;
@@ -2477,7 +2500,10 @@ function storyEventDone(event: RouteStoryEvent, save: RouteBookSave): boolean {
  * without collision data the first cell is the best the book can say.
  */
 function eventTriggerCell(
-  event: { readonly mapId: number; readonly events: readonly RouteStoryEvent[] },
+  event: {
+    readonly mapId: number;
+    readonly events: readonly RouteStoryEvent[];
+  },
   ctx: BuildContext,
 ): Cell | null {
   const cells: Cell[] = [];
@@ -2818,7 +2844,11 @@ function missableInfo(
     return { missable: true, until: rule, note: `错过就没了(${rule})` };
   }
   if (onlyHere) {
-    return { missable: true, until: "只在这一段出现", note: "只在这一段出现,错过就没了" };
+    return {
+      missable: true,
+      until: "只在这一段出现",
+      note: "只在这一段出现,错过就没了",
+    };
   }
   return { missable: false, until: null, note: "" };
 }
@@ -2937,7 +2967,12 @@ function blueTeachers(
     const key = `book:${guideMonster.id}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ monster: guideMonster.name, bookId: guideMonster.id, maps, allMaps });
+    out.push({
+      monster: guideMonster.name,
+      bookId: guideMonster.id,
+      maps,
+      allMaps,
+    });
   }
   return out;
 }
@@ -3413,7 +3448,11 @@ function buildRevisit(
 function revisitStation(
   index: number,
   mapId: number,
-  text: { readonly action: string; readonly text: string; readonly basis: string },
+  text: {
+    readonly action: string;
+    readonly text: string;
+    readonly basis: string;
+  },
   grind: RouteStationGrind,
 ): RouteStation {
   return {
@@ -3542,7 +3581,11 @@ function bestSpot(
   name: string,
   ctx: BuildContext,
 ): { mapId: number; weight: number | null; chance: number | null } | null {
-  let best: { mapId: number; weight: number | null; chance: number | null } | null = null;
+  let best: {
+    mapId: number;
+    weight: number | null;
+    chance: number | null;
+  } | null = null;
   for (const mapId of mapIds) {
     const found = monstersIn(ctx.knowledge, { mapIds: [mapId] }).find((monster) =>
       monsterIdentityMatches(monster, bookId, name),
@@ -3550,7 +3593,11 @@ function bestSpot(
     const candidate =
       found === undefined
         ? areaScopedSpot(mapId, bookId, name, ctx)
-        : { mapId, weight: found.encounterWeight, chance: found.encounterChance };
+        : {
+            mapId,
+            weight: found.encounterWeight,
+            chance: found.encounterChance,
+          };
     if (candidate === null) continue;
     if (
       best === null ||

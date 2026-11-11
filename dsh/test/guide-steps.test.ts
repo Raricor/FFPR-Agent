@@ -125,7 +125,12 @@ void test("a bestiary table yields monsters with blue magic and no table steps",
   );
   assert.deepEqual(section.monsters, [
     { id: 5, name: "Killer Bee", blueMagic: null, where: "Cave - 1F" },
-    { id: 8, name: "Black Goblin", blueMagic: "Goblin Punch", where: "Cave - 1F" },
+    {
+      id: 8,
+      name: "Black Goblin",
+      blueMagic: "Goblin Punch",
+      where: "Cave - 1F",
+    },
   ]);
   assert.deepEqual(
     section.steps.map((step) => step.kind),

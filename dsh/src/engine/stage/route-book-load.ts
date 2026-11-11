@@ -82,7 +82,10 @@ export interface RouteBookLoadOptions {
   /** A plan's target map, when it is not the current map (plan_stage before departure). */
   readonly preferredMapId?: number | null;
   /** The section in the progress file, and whether it already finished. */
-  readonly previous?: { readonly title: string; readonly finished: boolean } | null;
+  readonly previous?: {
+    readonly title: string;
+    readonly finished: boolean;
+  } | null;
   /** Task 124: build this many sections from the current one (Config, default 4). */
   readonly aheadSections?: number;
   /** Task 124: stop building after this long and keep the finished sections (Config). */
@@ -108,13 +111,17 @@ export async function readGuideSections(
   } catch (error) {
     if (isMissingFile(error)) return null;
     signal?.throwIfAborted();
-    throw new Error(`读不了攻略 ${path}:${describeError(error)}`, { cause: error });
+    throw new Error(`读不了攻略 ${path}:${describeError(error)}`, {
+      cause: error,
+    });
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);
   } catch (error) {
-    throw new Error(`读不懂攻略 ${path}:${describeError(error)}`, { cause: error });
+    throw new Error(`读不懂攻略 ${path}:${describeError(error)}`, {
+      cause: error,
+    });
   }
   if (!isRecord(parsed)) throw new Error(`攻略 ${path} 不是 JSON 对象`);
   return parseWalkthrough(parsed.walkthrough);
@@ -157,7 +164,9 @@ export async function readRouteBookFiles(
       parsed = JSON.parse(await readFile(path, { encoding: "utf8", signal }));
     } catch (error) {
       signal?.throwIfAborted();
-      throw new Error(`读不懂游戏文件地图 ${path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不懂游戏文件地图 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     if (!isRecord(parsed)) continue;
     const mapId = num(parsed.id);
@@ -191,9 +200,12 @@ function eventCell(value: unknown): Cell | null {
   return x === undefined || y === undefined ? null : [Math.trunc(x), Math.trunc(y)];
 }
 
-function eventRect(
-  value: unknown,
-): { readonly x1: number; readonly y1: number; readonly x2: number; readonly y2: number } | null {
+function eventRect(value: unknown): {
+  readonly x1: number;
+  readonly y1: number;
+  readonly x2: number;
+  readonly y2: number;
+} | null {
   if (!isRecord(value)) return null;
   const x1 = num(value.x1);
   const y1 = num(value.y1);
@@ -229,9 +241,11 @@ function eventsOf(mapId: number, value: unknown): RouteStoryEvent[] {
   });
 }
 
-function npcNames(
-  value: unknown,
-): { readonly ja?: string; readonly en?: string; readonly zhc?: string } | null {
+function npcNames(value: unknown): {
+  readonly ja?: string;
+  readonly en?: string;
+  readonly zhc?: string;
+} | null {
   if (!isRecord(value)) return null;
   const ja = text(value.ja);
   const en = text(value.en);
@@ -324,7 +338,9 @@ export async function readLearnedPoints(
   } catch (error) {
     if (isMissingFile(error)) return [];
     signal?.throwIfAborted();
-    throw new Error(`读不了路线书学会坐标 ${path}:${describeError(error)}`, { cause: error });
+    throw new Error(`读不了路线书学会坐标 ${path}:${describeError(error)}`, {
+      cause: error,
+    });
   }
   let parsed: unknown;
   try {
@@ -520,7 +536,10 @@ export function selectSectionIndex(
   options: {
     readonly preferredSection?: string;
     readonly preferredMapId?: number | null;
-    readonly previous?: { readonly title: string; readonly finished: boolean } | null;
+    readonly previous?: {
+      readonly title: string;
+      readonly finished: boolean;
+    } | null;
     /** Task 133: sections this save has already completed, by title. */
     readonly finished?: (section: RouteSection) => boolean;
   } = {},
@@ -604,6 +623,24 @@ function sectionNamesMap(section: GuideSection, map: MapKnowledge, knowledge: Kn
       [...keys].some((key) => candidateMatches(candidate, key)),
     );
   });
+}
+
+/**
+ * Task 153 follow-up: the guide section whose maps cover `mapId`, by the same knowledge/guide
+ * names `startingSectionIndex` uses. It does not need a built route book, so a chapter lookup
+ * works on a story map the book cannot place; null means "no guide section owns this map".
+ */
+export function guideSectionForMap(
+  sections: readonly GuideSection[],
+  knowledge: Knowledge,
+  mapId: number | null,
+): { readonly index: number; readonly section: GuideSection } | null {
+  if (mapId === null) return null;
+  const map = knowledge.maps.find((item) => item.id === mapId);
+  if (map === undefined) return null;
+  const index = sections.findIndex((section) => sectionNamesMap(section, map, knowledge));
+  const section = index < 0 ? undefined : sections[index];
+  return section === undefined ? null : { index, section };
 }
 
 /**

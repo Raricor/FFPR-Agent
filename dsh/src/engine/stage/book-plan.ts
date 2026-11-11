@@ -309,7 +309,10 @@ function chestStops(
   book: StageBookPoint,
   mapFallback: number | null,
 ): StagePlan["route"][number][] {
-  const candidates: { readonly mapId: number; readonly cell: readonly [number, number] }[] = [];
+  const candidates: {
+    readonly mapId: number;
+    readonly cell: readonly [number, number];
+  }[] = [];
   const seen = new Set<string>();
   const add = (mapId: number | null, cell: readonly [number, number] | null): void => {
     if (mapId === null || cell === null) return;
@@ -589,13 +592,17 @@ export class BookProgressStore {
     } catch (error) {
       if (isMissingFile(error)) return store;
       signal?.throwIfAborted();
-      throw new Error(`读不了路线书进度 ${path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不了路线书进度 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     let parsed: unknown;
     try {
       parsed = JSON.parse(body);
     } catch (error) {
-      throw new Error(`读不懂路线书进度 ${path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不懂路线书进度 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     store.current = progressOf(parsed, game);
     return store;
@@ -607,7 +614,9 @@ export class BookProgressStore {
     try {
       await writeFile(this.path, `${JSON.stringify(this.current, null, 2)}\n`, "utf8");
     } catch (error) {
-      throw new Error(`写不了路线书进度 ${this.path}:${describeError(error)}`, { cause: error });
+      throw new Error(`写不了路线书进度 ${this.path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
   }
 
@@ -701,7 +710,12 @@ function advanceTiming(stats: BookSectionStats, startedAt: string, at: Date): Bo
   const last = Date.parse(stats.lastToolAt ?? startedAt);
   const gap = Number.isFinite(last) ? Math.max(0, at.getTime() - last) : 0;
   const activeMs = (stats.activeMs ?? 0) + Math.min(gap, IDLE_GAP_MS);
-  return { ...stats, activeMs, lastToolAt: at.toISOString(), minutes: minutesOf({ activeMs }) };
+  return {
+    ...stats,
+    activeMs,
+    lastToolAt: at.toISOString(),
+    minutes: minutesOf({ activeMs }),
+  };
 }
 
 function minutesOf(stats: { readonly activeMs?: number }): number {
@@ -713,7 +727,9 @@ function currentMinutes(progress: BookProgress, at: Date): number {
   if (progress.finishedAt !== null) return progress.stats.minutes;
   const last = Date.parse(progress.stats.lastToolAt ?? progress.startedAt);
   const gap = Number.isFinite(last) ? Math.max(0, at.getTime() - last) : 0;
-  return minutesOf({ activeMs: (progress.stats.activeMs ?? 0) + Math.min(gap, IDLE_GAP_MS) });
+  return minutesOf({
+    activeMs: (progress.stats.activeMs ?? 0) + Math.min(gap, IDLE_GAP_MS),
+  });
 }
 
 /** The acceptance line task 117 puts in the activity log and at the end of `route`. */

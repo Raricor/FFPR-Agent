@@ -27,7 +27,12 @@ import { ROUTE_BOOK_PLAN_VERSION } from "../src/engine/stage/book-version.ts";
 import type { StagePlan } from "../src/engine/stage/types.ts";
 import { FakePilot } from "./fake-pilot.ts";
 
-const LAPTOP: Laptop = { host: "laptop", user: "player", key: "/tmp/key", root: "C:/ffpr" };
+const LAPTOP: Laptop = {
+  host: "laptop",
+  user: "player",
+  key: "/tmp/key",
+  root: "C:/ffpr",
+};
 
 const MAP = 71;
 const MAP_NAME = "测试洞窟";
@@ -107,7 +112,12 @@ function pilotFor(value: World): FakePilot {
     collision: {
       searchLayer: 1,
       playerCell: [value.cell[0], value.cell[1]],
-      layers: [{ name: "GroundCollision", rows: Array.from({ length: 20 }, () => "0".repeat(20)) }],
+      layers: [
+        {
+          name: "GroundCollision",
+          rows: Array.from({ length: 20 }, () => "0".repeat(20)),
+        },
+      ],
     },
   }));
   pilot.on("entities", (fields) => ({
@@ -179,7 +189,13 @@ function pilotFor(value: World): FakePilot {
     },
   });
   pilot.onQuery("encounters", {
-    encounters: { monsterSet: null, parties: [], region: null, regions: [], enabled: false },
+    encounters: {
+      monsterSet: null,
+      parties: [],
+      region: null,
+      regions: [],
+      enabled: false,
+    },
   });
   pilot.onQuery("shop", { shop: { open: false, products: [] } });
   pilot.on("wait", { ok: true });
@@ -297,7 +313,11 @@ async function makeGame(
   bookValue: RouteBook,
   officer?: StageOfficerRunner,
   extraAtlas: Record<string, unknown> = {},
-): Promise<{ readonly game: Game; readonly progressFile: string; readonly learnedFile: string }> {
+): Promise<{
+  readonly game: Game;
+  readonly progressFile: string;
+  readonly learnedFile: string;
+}> {
   const atlasFile = join(directory, "atlas.json");
   await writeFile(
     atlasFile,
@@ -341,7 +361,12 @@ async function makeGame(
   const collision = {
     searchLayer: 1,
     playerCell: [1, 5] as Cell,
-    layers: [{ name: "GroundCollision", rows: Array.from({ length: 20 }, () => "0".repeat(20)) }],
+    layers: [
+      {
+        name: "GroundCollision",
+        rows: Array.from({ length: 20 }, () => "0".repeat(20)),
+      },
+    ],
   };
   await game.collisions.remember(MAP, collision);
   game.settle = () => Promise.resolve("");
@@ -532,7 +557,13 @@ void test("a cell-less handoff stops, learns the model's cell, and the next rout
     const handled = await game.run("interact", { x: 3, y: 5 }, pilotFor(value));
     assert.doesNotMatch(handled, /阶段计划拦下/);
     const learned = JSON.parse(await readFile(join(dir, "routebook-learned-ff5.json"), "utf8")) as {
-      points: { section: string; station: number; mapId: number; cell: number[]; at: string }[];
+      points: {
+        section: string;
+        station: number;
+        mapId: number;
+        cell: number[];
+        at: string;
+      }[];
     };
     const point = learned.points[0];
     assert.ok(point);
@@ -610,8 +641,18 @@ void test("go walks normally when the book plan has no executable station left",
           [near, far],
           {
             maps: [
-              { mapId: MAP, name: MAP_NAME, areaName: MAP_NAME, reasons: ["test"] },
-              { mapId: 72, name: "下一站", areaName: "下一站", reasons: ["test"] },
+              {
+                mapId: MAP,
+                name: MAP_NAME,
+                areaName: MAP_NAME,
+                reasons: ["test"],
+              },
+              {
+                mapId: 72,
+                name: "下一站",
+                areaName: "下一站",
+                reasons: ["test"],
+              },
             ],
           },
         ),
@@ -828,7 +869,14 @@ void test("moving into the next section settles the old plan and builds the new 
       title: "第二段",
       order: 1,
       areaName: "第二地区",
-      maps: [{ mapId: 72, name: "第二洞窟", areaName: "第二地区", reasons: ["test"] }],
+      maps: [
+        {
+          mapId: 72,
+          name: "第二洞窟",
+          areaName: "第二地区",
+          reasons: ["test"],
+        },
+      ],
     });
     const { game } = await makeGame(dir, bookOf([first, second]), undefined, {
       "72": { name: "第二洞窟", exits: [], chests: [] },

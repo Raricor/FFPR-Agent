@@ -62,8 +62,14 @@ const NON_PLACES: ReadonlySet<string> = new Set([
 ]);
 
 /** Keyword table for the prose lines; earlier kinds win when a line names several. */
-const KIND_WORDS: readonly { readonly kind: GuideStepKind; readonly pattern: RegExp }[] = [
-  { kind: "talk", pattern: /\b(?:speak|talk|answer|say|reply|respond|tell)\b/i },
+const KIND_WORDS: readonly {
+  readonly kind: GuideStepKind;
+  readonly pattern: RegExp;
+}[] = [
+  {
+    kind: "talk",
+    pattern: /\b(?:speak|talk|answer|say|reply|respond|tell)\b/i,
+  },
   {
     kind: "switch",
     pattern: /\b(?:switch|lever|push|secret passage|mechanism)\b/i,
@@ -438,13 +444,34 @@ function markAtEnd(line: string, mark: RefMark): boolean {
 /** How many containers a line names ("both chests", "all three pots"). */
 function containerCount(line: string): number | null {
   const plural = String.raw`(?:chests|pots|barrels|boxes|crates|sacks)`;
-  const patterns: readonly { readonly count: number; readonly pattern: RegExp }[] = [
-    { count: 2, pattern: new RegExp(String.raw`\bboth\b[^.!?]{0,40}\b${plural}\b`, "i") },
-    { count: 2, pattern: new RegExp(String.raw`\btwo\b[^.!?]{0,40}\b${plural}\b`, "i") },
-    { count: 3, pattern: new RegExp(String.raw`\bthree\b[^.!?]{0,40}\b${plural}\b`, "i") },
-    { count: 4, pattern: new RegExp(String.raw`\bfour\b[^.!?]{0,40}\b${plural}\b`, "i") },
-    { count: 5, pattern: new RegExp(String.raw`\bfive\b[^.!?]{0,40}\b${plural}\b`, "i") },
-    { count: 6, pattern: new RegExp(String.raw`\bsix\b[^.!?]{0,40}\b${plural}\b`, "i") },
+  const patterns: readonly {
+    readonly count: number;
+    readonly pattern: RegExp;
+  }[] = [
+    {
+      count: 2,
+      pattern: new RegExp(String.raw`\bboth\b[^.!?]{0,40}\b${plural}\b`, "i"),
+    },
+    {
+      count: 2,
+      pattern: new RegExp(String.raw`\btwo\b[^.!?]{0,40}\b${plural}\b`, "i"),
+    },
+    {
+      count: 3,
+      pattern: new RegExp(String.raw`\bthree\b[^.!?]{0,40}\b${plural}\b`, "i"),
+    },
+    {
+      count: 4,
+      pattern: new RegExp(String.raw`\bfour\b[^.!?]{0,40}\b${plural}\b`, "i"),
+    },
+    {
+      count: 5,
+      pattern: new RegExp(String.raw`\bfive\b[^.!?]{0,40}\b${plural}\b`, "i"),
+    },
+    {
+      count: 6,
+      pattern: new RegExp(String.raw`\bsix\b[^.!?]{0,40}\b${plural}\b`, "i"),
+    },
   ];
   for (const candidate of patterns) {
     if (candidate.pattern.test(line)) return candidate.count;

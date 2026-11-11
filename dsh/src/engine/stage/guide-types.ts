@@ -45,7 +45,10 @@ export interface GuideStep {
   /** The guide line as written (English), trimmed. */
   readonly text: string;
   /** A [n/225] chest or {n/46} hidden item reference on this line. */
-  readonly ref: { readonly kind: "chest" | "hidden"; readonly n: number } | null;
+  readonly ref: {
+    readonly kind: "chest" | "hidden";
+    readonly n: number;
+  } | null;
   /** The item the line names for a chest/hidden step ("Tent", "150 Gil"); null when unclear. */
   readonly item: string | null;
   /** Set on a boss step. */
@@ -61,5 +64,7 @@ export interface GuideSection {
   readonly places: readonly string[];
   readonly steps: readonly GuideStep[];
   /** Bestiary rows of the section, each with the sub-location header it was listed under. */
-  readonly monsters: readonly (GuideMonster & { readonly where: string | null })[];
+  readonly monsters: readonly (GuideMonster & {
+    readonly where: string | null;
+  })[];
 }

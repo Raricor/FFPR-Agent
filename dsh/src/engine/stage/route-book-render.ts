@@ -35,7 +35,10 @@ export function renderRouteBook(book: RouteBook): string {
   const story = book.sections.reduce(
     (sum, section) => {
       const counts = storyCounts(section);
-      return { located: sum.located + counts.located, total: sum.total + counts.total };
+      return {
+        located: sum.located + counts.located,
+        total: sum.total + counts.total,
+      };
     },
     { located: 0, total: 0 },
   );
@@ -253,7 +256,10 @@ function renderGrindRows(lines: string[], rows: readonly RouteGrind[], emptyText
 }
 
 /** Task 122: cutscene/dialog/mechanism stations, and how many already have a real cell. */
-function storyCounts(section: RouteSection): { located: number; total: number } {
+function storyCounts(section: RouteSection): {
+  located: number;
+  total: number;
+} {
   const stations = section.stations.filter(
     (station) =>
       station.kind === "cutscene" || station.kind === "talk" || station.kind === "switch",

@@ -127,7 +127,10 @@ void test("a plan for the cave starts at the cave, not at the earlier meteorite"
     ],
     stations: [station(0, 10, [1, 1]), station(1, 10, [2, 2]), station(2, 11, [3, 3])],
   };
-  const trimmed = trimSectionStart(value, { currentMapId: null, targetMapId: 11 });
+  const trimmed = trimSectionStart(value, {
+    currentMapId: null,
+    targetMapId: 11,
+  });
   assert.deepEqual(
     trimmed.stations.map((item) => item.index),
     [2],
@@ -149,7 +152,10 @@ void test("an unopened chest on a map the plan still visits is kept; an opened o
       station(3, 11, [4, 4]),
     ],
   };
-  const trimmed = trimSectionStart(value, { currentMapId: 12, targetMapId: 12 });
+  const trimmed = trimSectionStart(value, {
+    currentMapId: 12,
+    targetMapId: 12,
+  });
   assert.deepEqual(
     trimmed.stations.map((item) => item.index),
     [0, 2, 3],
@@ -168,7 +174,10 @@ void test("the current map is the start even when the plan's target is later", (
     ],
     stations: [station(0, 10, [1, 1]), station(1, 11, [2, 2]), station(2, 12, [3, 3])],
   };
-  const trimmed = trimSectionStart(value, { currentMapId: 11, targetMapId: 12 });
+  const trimmed = trimSectionStart(value, {
+    currentMapId: 11,
+    targetMapId: 12,
+  });
   assert.deepEqual(
     trimmed.stations.map((item) => item.index),
     [1, 2],
@@ -181,8 +190,20 @@ void test("a learned cell fills the matching station only", () => {
     section("另一段", 1, 72, [station(0, 72, null)]),
   ]);
   const filled = applyLearnedPoints(value, [
-    { section: "洞窟", station: 0, mapId: 71, cell: [9, 8], at: "2026-11-11T00:00:00.000Z" },
-    { section: "另一段", station: 0, mapId: 72, cell: [4, 4], at: "2026-11-11T00:00:00.000Z" },
+    {
+      section: "洞窟",
+      station: 0,
+      mapId: 71,
+      cell: [9, 8],
+      at: "2026-11-11T00:00:00.000Z",
+    },
+    {
+      section: "另一段",
+      station: 0,
+      mapId: 72,
+      cell: [4, 4],
+      at: "2026-11-11T00:00:00.000Z",
+    },
   ]);
   const firstSection = filled.sections[0];
   const secondSection = filled.sections[1];
@@ -230,12 +251,24 @@ void test("learned points are written and read back with their key", async () =>
   try {
     await writeLearnedPoint(
       "ff5",
-      { section: "洞窟", station: 2, mapId: 71, cell: [3, 4], at: "2026-11-11T00:00:00.000Z" },
+      {
+        section: "洞窟",
+        station: 2,
+        mapId: 71,
+        cell: [3, 4],
+        at: "2026-11-11T00:00:00.000Z",
+      },
       file,
     );
     await writeLearnedPoint(
       "ff5",
-      { section: "洞窟", station: 2, mapId: 71, cell: [5, 6], at: "2026-11-11T01:00:00.000Z" },
+      {
+        section: "洞窟",
+        station: 2,
+        mapId: 71,
+        cell: [5, 6],
+        at: "2026-11-11T01:00:00.000Z",
+      },
       file,
     );
     const points = await readLearnedPoints("ff5", file);
@@ -278,7 +311,11 @@ void test("game-file events and NPCs are read with their map id and cell", async
     assert.equal(event.name, "sc_e_0021:测试之家前");
     assert.deepEqual(event.rect, { x1: 5, y1: 5, x2: 7, y2: 5 });
     assert.deepEqual(npc.cell, [7, 8]);
-    assert.deepEqual(files.titles?.get(10), { ja: "酒場", en: "Pub", zhc: "酒馆" });
+    assert.deepEqual(files.titles?.get(10), {
+      ja: "酒場",
+      en: "Pub",
+      zhc: "酒馆",
+    });
     assert.equal(await readRouteBookFiles("ff5", join(directory, "missing")), null);
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -296,7 +333,13 @@ function syntheticSections(count: number): {
   for (let index = 0; index < count; index += 1) {
     const mapId = 700 + index;
     const title = `合成区域 ${index}`;
-    maps.push({ id: mapId, name: `${title} １层`, areaId: mapId, areaName: title, areaType: "1" });
+    maps.push({
+      id: mapId,
+      name: `${title} １层`,
+      areaId: mapId,
+      areaName: title,
+      areaType: "1",
+    });
     atlas.maps.set(String(mapId), {
       name: `${title} １层`,
       exits: index + 1 < count ? [{ cell: [1, 1], to: 701 + index, name: "GotoMap" }] : [],
@@ -416,7 +459,12 @@ void test("sectionFinished and section selection read the game-file treasure fla
       },
     ],
   };
-  const save = { bestiary: null, blueMagic: null, jobs: null, openedChests: null };
+  const save = {
+    bestiary: null,
+    blueMagic: null,
+    jobs: null,
+    openedChests: null,
+  };
   assert.equal(sectionFinished(done, { ...save, treasureFlags: new Map([[77, true]]) }), true);
   assert.equal(sectionFinished(done, { ...save, treasureFlags: new Map([[77, false]]) }), false);
   assert.equal(sectionFinished(done, { ...save, treasureFlags: new Map([[77, null]]) }), false);
@@ -424,7 +472,11 @@ void test("sectionFinished and section selection read the game-file treasure fla
   assert.equal(sectionFinished(done, { ...save, openedChests: new Set(["10:1,2"]) }), true);
   assert.equal(
     selectSectionIndex(book([done]), 10, {
-      finished: (item) => sectionFinished(item, { ...save, treasureFlags: new Map([[77, true]]) }),
+      finished: (item) =>
+        sectionFinished(item, {
+          ...save,
+          treasureFlags: new Map([[77, true]]),
+        }),
     }),
     null,
   );

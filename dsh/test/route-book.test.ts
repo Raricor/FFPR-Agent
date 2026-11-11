@@ -64,7 +64,15 @@ function monsterRow(
     moves:
       blue === null
         ? []
-        : [{ abilityId: null, name: blue, blueMagic: true, conditions: [], rate: null }],
+        : [
+            {
+              abilityId: null,
+              name: blue,
+              blueMagic: true,
+              conditions: [],
+              rate: null,
+            },
+          ],
   };
 }
 
@@ -140,10 +148,17 @@ function makeKnowledge(spec: KnowledgeSpec, guide: Guide | null = null): Knowled
 
 interface AtlasEntrySpec {
   readonly name: string;
-  readonly exits?: readonly { cell: [number, number]; to: number; name: string }[];
+  readonly exits?: readonly {
+    cell: [number, number];
+    to: number;
+    name: string;
+  }[];
   readonly chests?: readonly { cell: [number, number]; name: string }[];
   readonly savePoints?: readonly (readonly [number, number])[];
-  readonly recoveryPoints?: readonly { cell: [number, number]; label: string }[];
+  readonly recoveryPoints?: readonly {
+    cell: [number, number];
+    label: string;
+  }[];
 }
 
 function makeAtlas(spec: Readonly<Record<number, AtlasEntrySpec>>): Atlas {
@@ -167,7 +182,16 @@ function step(
   text: string,
   extra: Partial<GuideStep> = {},
 ): GuideStep {
-  return { index, where, kind, text, ref: null, item: null, boss: null, ...extra };
+  return {
+    index,
+    where,
+    kind,
+    text,
+    ref: null,
+    item: null,
+    boss: null,
+    ...extra,
+  };
 }
 
 function section(
@@ -308,7 +332,10 @@ void test("alignment by exits: a floorless side room joins its same-area neighbo
       name: "试验迷宫 小房间",
       exits: [{ cell: [1, 1], to: 10, name: "２层" }],
     },
-    20: { name: "试验迷宫 ４层", exits: [{ cell: [2, 2], to: 10, name: "２层" }] },
+    20: {
+      name: "试验迷宫 ４层",
+      exits: [{ cell: [2, 2], to: 10, name: "２层" }],
+    },
   });
   const book = buildRouteBook(
     input(
@@ -672,7 +699,9 @@ void test("amount names match by number: 150 Gil equals 150ギル", () => {
 });
 
 void test("save/heal lines need a real point; potions and quick-save stay guide notes", () => {
-  const knowledge = makeKnowledge({ maps: [mapRow(10, "试验迷宫 １层", "试验迷宫")] });
+  const knowledge = makeKnowledge({
+    maps: [mapRow(10, "试验迷宫 １层", "试验迷宫")],
+  });
   const atlas = makeAtlas({
     10: {
       name: "试验迷宫 １层",
@@ -808,7 +837,14 @@ void test("without a Blue Mage the spell says nobody can learn it and where else
           "试验迷宫",
           [],
           [step(0, "move", null, "Walk.")],
-          [{ id: 8, name: "Black Goblin", blueMagic: "Goblin Punch", where: null }],
+          [
+            {
+              id: 8,
+              name: "Black Goblin",
+              blueMagic: "Goblin Punch",
+              where: null,
+            },
+          ],
         ),
       ],
       knowledge,
@@ -973,7 +1009,10 @@ void test("a missed missable monster gets a bestiary return trip even without bl
     encounters: [encounter(10, 9, 100)],
   });
   const atlas = makeAtlas({
-    10: { name: "洞窟 １层", exits: [{ cell: [1, 1], to: 1, name: "世界地图" }] },
+    10: {
+      name: "洞窟 １层",
+      exits: [{ cell: [1, 1], to: 1, name: "世界地图" }],
+    },
     20: { name: "下一站" },
   });
   const book = buildRouteBook(
@@ -1000,7 +1039,9 @@ void test("a missed missable monster gets a bestiary return trip even without bl
 });
 
 void test("story stations pair by event/NPC names and dialog stations take an NPC", () => {
-  const knowledge = makeKnowledge({ maps: [mapRow(10, "试验洞窟", "试验洞窟")] });
+  const knowledge = makeKnowledge({
+    maps: [mapRow(10, "试验洞窟", "试验洞窟")],
+  });
   const atlas = makeAtlas({ 10: { name: "试验洞窟" } });
   const files: RouteBookFiles = {
     events: [
@@ -1081,7 +1122,10 @@ void test("an exported map title wins over the area's neighbouring rooms", () =>
   });
   const atlas = makeAtlas({
     10: { name: "图尔村", exits: [{ cell: [1, 1], to: 11, name: "Door" }] },
-    11: { name: "图尔村 酒馆", exits: [{ cell: [2, 1], to: 12, name: "Door" }] },
+    11: {
+      name: "图尔村 酒馆",
+      exits: [{ cell: [2, 1], to: 12, name: "Door" }],
+    },
     12: { name: "图尔村 佐克家", exits: [] },
   });
   const book = buildRouteBook(
@@ -1110,7 +1154,9 @@ void test("an exported map title wins over the area's neighbouring rooms", () =>
 });
 
 void test("exit/entrance events are never story coordinates", () => {
-  const knowledge = makeKnowledge({ maps: [mapRow(10, "试验洞窟", "试验洞窟")] });
+  const knowledge = makeKnowledge({
+    maps: [mapRow(10, "试验洞窟", "试验洞窟")],
+  });
   const atlas = makeAtlas({ 10: { name: "试验洞窟" } });
   const files: RouteBookFiles = {
     events: [
@@ -1141,7 +1187,9 @@ void test("exit/entrance events are never story coordinates", () => {
 });
 
 void test("an unmatched story handoff lists the map's events and NPCs with three-language names", () => {
-  const knowledge = makeKnowledge({ maps: [mapRow(10, "试验洞窟", "试验洞窟")] });
+  const knowledge = makeKnowledge({
+    maps: [mapRow(10, "试验洞窟", "试验洞窟")],
+  });
   const atlas = makeAtlas({ 10: { name: "试验洞窟" } });
   const files: RouteBookFiles = {
     events: [
@@ -1188,7 +1236,9 @@ void test("an unmatched story handoff lists the map's events and NPCs with three
 });
 
 void test("a save point and a spring use the knowledge module's real cells", () => {
-  const base = makeKnowledge({ maps: [mapRow(10, "试验洞窟 １层", "试验洞窟")] });
+  const base = makeKnowledge({
+    maps: [mapRow(10, "试验洞窟 １层", "试验洞窟")],
+  });
   const point = (
     cell: readonly [number, number],
     name: string,
@@ -1328,7 +1378,13 @@ void test("real FF5 data: the hand-written Wind Shrine section aligns 202-207 an
         item: "Broadsword",
       }),
       step(6, "boss", "Wind Shrine - 3F", "Fight the Wing Raptor by the stairs.", {
-        boss: { name: "Wing Raptor", hp: 250, weak: [], resist: [], absorb: [] },
+        boss: {
+          name: "Wing Raptor",
+          hp: 250,
+          weak: [],
+          resist: [],
+          absorb: [],
+        },
       }),
       step(7, "chest", "Wind Shrine - 4F", "Open the chest at the end for a Staff.", {
         ref: { kind: "chest", n: 9 },
@@ -1336,10 +1392,30 @@ void test("real FF5 data: the hand-written Wind Shrine section aligns 202-207 an
       }),
     ],
     [
-      { id: 8, name: "Black Goblin", blueMagic: "Goblin Punch", where: "Wind Shrine - 2F" },
-      { id: 9, name: "White Serpent", blueMagic: null, where: "Wind Shrine - 2F" },
-      { id: 10, name: "Moldwynd", blueMagic: "Aero", where: "Wind Shrine - 2F" },
-      { id: 11, name: "Mani Wizard", blueMagic: null, where: "Wind Shrine - 2F" },
+      {
+        id: 8,
+        name: "Black Goblin",
+        blueMagic: "Goblin Punch",
+        where: "Wind Shrine - 2F",
+      },
+      {
+        id: 9,
+        name: "White Serpent",
+        blueMagic: null,
+        where: "Wind Shrine - 2F",
+      },
+      {
+        id: 10,
+        name: "Moldwynd",
+        blueMagic: "Aero",
+        where: "Wind Shrine - 2F",
+      },
+      {
+        id: 11,
+        name: "Mani Wizard",
+        blueMagic: null,
+        where: "Wind Shrine - 2F",
+      },
     ],
   );
   const book = buildRouteBook(input([windShrine], knowledge, atlas));

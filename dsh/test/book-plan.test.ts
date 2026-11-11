@@ -487,9 +487,18 @@ void test("without a boss, heal/save stops keep the guide's order instead of joi
 });
 
 void test("Note/Optional/Trivia lines never become stations", () => {
-  const note: RouteStation = { ...station(0, "talk", null), text: "Note: this step is required" };
-  const optional: RouteStation = { ...station(1, "piano", null), text: "Optional: play later" };
-  const trivia: RouteStation = { ...station(2, "cutscene", null), text: "Trivia: the pub is old" };
+  const note: RouteStation = {
+    ...station(0, "talk", null),
+    text: "Note: this step is required",
+  };
+  const optional: RouteStation = {
+    ...station(1, "piano", null),
+    text: "Optional: play later",
+  };
+  const trivia: RouteStation = {
+    ...station(2, "cutscene", null),
+    text: "Trivia: the pub is old",
+  };
   const route = routeOf(section({ stations: [note, optional, trivia] }));
   assert.deepEqual(route, []);
 });
@@ -516,7 +525,13 @@ void test("a story on a visited map before the first unopened chest is already p
   const route = routeOf(
     section({
       maps: [
-        { mapId: 71, name: "测试洞窟", areaName: "测试洞窟", reasons: ["test"], visited: true },
+        {
+          mapId: 71,
+          name: "测试洞窟",
+          areaName: "测试洞窟",
+          reasons: ["test"],
+          visited: true,
+        },
       ],
       stations: [past, station(1, "chest", [2, 5], chestValue), future],
       chests: [chestValue],
