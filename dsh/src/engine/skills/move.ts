@@ -14,6 +14,7 @@ import {
   layeredComponents,
   layeredGrid,
   layeredRouteAvoiding,
+  OPEN,
   pathToward,
   search,
   terrainRule,
@@ -32,8 +33,10 @@ import type {
 import { isRecord, num, record, records, text, truthy, type Json } from "../values.ts";
 import { movesFromMovingGimmickMap } from "../atlas.ts";
 import {
+  isJumpMove,
   jumpMoves,
   jumpStand,
+  jumpsFromObserved,
   splitFeatures,
   type MapFeatures,
   type MapJump,
@@ -1166,14 +1169,10 @@ async function plannedRoute(
   // Task 149: the same game-file callback also carries the map's jump edges.
   const mapId = mapNumber(map);
   const features =
-    mapId === null
-      ? { passages: [], jumps: [] }
-      : splitFeatures(state?.passages?.(mapId) ?? []);
+    mapId === null ? { passages: [], jumps: [] } : splitFeatures(state?.passages?.(mapId) ?? []);
   const passageCells = features.passages;
-  const jumpLinks = features.jumps;
   // A conveyor or fall whose landing we have seen is a directed edge; until then it stays a
   // danger cell, so the party does not walk onto it blind but can when there is no other way.
-  const jumps = jumpMoves(jumpLinks);
   const forced = new Set(
     moves
       .filter(
@@ -1190,8 +1189,28 @@ async function plannedRoute(
     (danger) =>
       !sameCell(danger.cell, goal) && !forced.has(cellKey(danger.cell[0], danger.cell[1])),
   );
+  // Task 149 follow-up: atlas links learned as "调查后跳" are touch jumps too. The link may
+  // start on a cell the party cannot stand on, so convert it to the neighbouring stand cell
+  // and give the walk the same MapJump shape the exported stones use.
+  const collisionLayers = records(collision.layers).flatMap((layer) =>
+    Array.isArray(layer.rows)
+      ? [
+          {
+            rows: layer.rows.filter((row): row is string => typeof row === "string"),
+          },
+        ]
+      : [],
+  );
+  const walkable = (cell: Cell): boolean =>
+    !occupied.some((blockedCell) => sameCell(blockedCell, cell)) &&
+    (collisionLayers.length === 0 ||
+      collisionLayers.some((layer) => OPEN.has(layer.rows[cell[1]]?.[cell[0]] ?? "")));
+  const jumpSeeds = moves.filter((move) => move.kind !== "jump" && move.how.includes("调查后跳"));
+  const jumpLinks = [...features.jumps, ...jumpsFromObserved(jumpSeeds, walkable)];
+  const jumps = jumpMoves(jumpLinks);
+  const walkMoves = moves.filter((move) => !isJumpMove(move));
   const reply = passageCells.length === 0 ? collision : { ...collision, passages: passageCells };
-  const grid = layeredGrid(reply, occupied, transitions, [...moves, ...jumps], risky);
+  const grid = layeredGrid(reply, occupied, transitions, [...walkMoves, ...jumps], risky);
   const fallSet = new Set(falls.map((cell) => cellKey(cell[0], cell[1])));
   if (grid === null) {
     return {
@@ -1822,9 +1841,9 @@ export interface RideOutcome {
   readonly detail: string;
 }
 
-
-/** Task 149: how long a jump script may run before the walk calls it failed. */
-export const JUMP_TIMEOUT_MS = 8_000;
+/** Task 149: how long a jump script may run before the walk calls it failed. A timer-start
+ * chain waits for a `SetTimer` plus several chained jump stones; 8 s was too tight. */
+export const JUMP_TIMEOUT_MS = 20_000;
 export const JUMP_POLL_MS = 250;
 /** Turn without moving, then press confirm on a touch stone. */
 export const JUMP_FACE_MS = 60;
@@ -1913,8 +1932,13 @@ export async function takeJump(
     ];
   }
   const facing = JUMP_FACING_TEXT[jump.facing];
-  const keys = jump.kind === "step" ? [`${jump.facing}:${JUMP_STEP_MS}`] : [`${jump.facing}:${JUMP_FACE_MS}`, "Enter"];
-  say(`  在 ${cellText(stand)} 面朝${facing}${jump.kind === "step" ? "走上" : "按确认"}跳石,到 ${cellText(jump.land)}`);
+  const keys =
+    jump.kind === "step"
+      ? [`${jump.facing}:${JUMP_STEP_MS}`]
+      : [`${jump.facing}:${JUMP_FACE_MS}`, "Enter"];
+  say(
+    `  在 ${cellText(stand)} 面朝${facing}${jump.kind === "step" ? "走上" : "按确认"}跳石,到 ${cellText(jump.land)}`,
+  );
   const pressed = await pilot.send("keys", { keys, gap: 250 });
   if (!truthy(pressed.ok)) {
     return [false, `在 ${cellText(stand)} 用跳石时按键没成功:${show(pressed.error)}`];
@@ -1926,7 +1950,10 @@ export async function takeJump(
   while (pilot.now() < deadline) {
     const state = text(position.state) ?? "";
     const moving = truthy(position.moving);
-    if (!moving && state !== "Event" && state !== "ChangeMap" && !sameCell(cell, stand)) {
+    // Task 149 follow-up: a touch jump may land on a step stone and continue. Do not stop at
+    // that intermediate cell; wait for the exported final landing (or the timeout, where a
+    // cell in the same block is still accepted).
+    if (!moving && state !== "Event" && state !== "ChangeMap" && sameCell(cell, jump.land)) {
       stable += 1;
       if (stable >= 2) break;
     } else {

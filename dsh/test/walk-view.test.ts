@@ -159,7 +159,14 @@ void test("walk.start, progress and end move the view and a wrong walkSeq is ign
   view =
     applyWalkPush(
       view,
-      { type: "walk.end", walkSeq: 12, reason: "arrived", index: 5, steps: 5, cell: [9, 9] },
+      {
+        type: "walk.end",
+        walkSeq: 12,
+        reason: "arrived",
+        index: 5,
+        steps: 5,
+        cell: [9, 9],
+      },
       "2026-11-05T05:12:13.120Z",
     ) ?? view;
   assert.equal(view.index, 5);
@@ -216,7 +223,13 @@ void test("the display lines name the state event and the elapsed time in Chines
   const view = beginWalk(base, PATH, [9, 9], "go", STARTED);
   const stopped = updateWalkFromReply(
     view,
-    { ok: false, reason: "state:Event", index: 5, steps: 5, pos: { cell: [9, 9] } },
+    {
+      ok: false,
+      reason: "state:Event",
+      index: 5,
+      steps: 5,
+      pos: { cell: [9, 9] },
+    },
     "2026-11-05T05:13:03.120Z",
   );
   assert.ok(stopped);
@@ -232,7 +245,13 @@ void test("the event stream forwards live walk pushes to the walk listener", () 
   const seen: string[] = [];
   events.onWalk((record) => seen.push(String(record.type)));
   events.feed({ type: "hello", t: "2026-11-05T05:00:00Z", seq: 0 });
-  events.feed({ type: "walk.start", seq: 1, walkSeq: 1, path: PATH, goal: [9, 9] });
+  events.feed({
+    type: "walk.start",
+    seq: 1,
+    walkSeq: 1,
+    path: PATH,
+    goal: [9, 9],
+  });
   events.feed({ type: "sample", seq: 2 });
   events.feed({ type: "walk.end", seq: 3, walkSeq: 1, reason: "arrived" });
   assert.deepEqual(seen, ["walk.start", "walk.end"]);
@@ -246,7 +265,13 @@ void test("a walk push keeps the stream's own seq, so a later walk number is not
   events.onWalk((record) => seen.push(record.walkSeq));
   events.feed({ type: "hello", t: "2026-11-05T05:00:00Z", seq: 0 });
   events.feed({ type: "sample", seq: 900 });
-  events.feed({ type: "walk.start", seq: 901, walkSeq: 2, path: PATH, goal: [9, 9] });
+  events.feed({
+    type: "walk.start",
+    seq: 901,
+    walkSeq: 2,
+    path: PATH,
+    goal: [9, 9],
+  });
   events.feed({ type: "walk.end", seq: 902, walkSeq: 2, reason: "arrived" });
   assert.deepEqual(seen, [2, 2]);
 });
