@@ -152,7 +152,10 @@ export async function buy(pilot: Pilot, product: string, count = 1): Promise<[bo
   for (let i = 0; i < 20; i++) {
     const now = num(trade.count);
     if (now === undefined || now === count) break;
-    await pilot.send("keys", { keys: [now < count ? "Right" : "Left"], gap: 120 });
+    await pilot.send("keys", {
+      keys: [now < count ? "Right" : "Left"],
+      gap: 120,
+    });
     trade = record((await shopState(pilot)).trade);
   }
   await pilot.send("keys", { keys: ["Enter"], gap: 500 });
@@ -262,7 +265,10 @@ export async function sell(pilot: Pilot, item: string, count = 1): Promise<[bool
   for (let i = 0; i < 60; i++) {
     const now = num(trade.count);
     if (now === undefined || now === count) break;
-    await pilot.send("keys", { keys: [now < count ? "Right" : "Left"], gap: 110 });
+    await pilot.send("keys", {
+      keys: [now < count ? "Right" : "Left"],
+      gap: 110,
+    });
     trade = record((await shopState(pilot)).trade);
   }
   await pilot.send("keys", { keys: ["Enter"], gap: 500 });
