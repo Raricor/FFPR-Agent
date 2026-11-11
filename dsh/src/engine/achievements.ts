@@ -178,7 +178,10 @@ const HIDDEN_ITEMS_ACHIEVEMENT = "get_hidden_item";
  * An API name split into its stat and tier. Steam's tiered achievements share one stat row per
  * tier in the master: total_gil_100000 is the row total_gil with Value 100000 (10-27 live dump).
  */
-function statOf(api: string): { readonly stat: string; readonly tier: number | null } {
+function statOf(api: string): {
+  readonly stat: string;
+  readonly tier: number | null;
+} {
   const match = /^(.*)_(\d+)$/.exec(api);
   const stat = match?.[1];
   const digits = match?.[2];

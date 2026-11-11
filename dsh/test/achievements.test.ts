@@ -116,13 +116,62 @@ const DEFS = [
 ];
 
 const ACCOUNT = [
-  { api: "scenario_1", achieved: true, current: 1, max: 1, name: "旅行的决心", description: "" },
-  { api: "scenario_2", achieved: false, current: 0, max: 1, name: "", description: "" },
-  { api: "treasure_box_21", achieved: true, current: 21, max: 21, name: "", description: "" },
-  { api: "treasure_box_112", achieved: true, current: 112, max: 112, name: "", description: "" },
-  { api: "picture_book_30", achieved: true, current: 45, max: 30, name: "", description: "" },
-  { api: "monster_hunt_100", achieved: false, current: 312, max: 100, name: "", description: "" },
-  { api: "all_achievement", achieved: false, current: 4, max: 38, name: "", description: "" },
+  {
+    api: "scenario_1",
+    achieved: true,
+    current: 1,
+    max: 1,
+    name: "旅行的决心",
+    description: "",
+  },
+  {
+    api: "scenario_2",
+    achieved: false,
+    current: 0,
+    max: 1,
+    name: "",
+    description: "",
+  },
+  {
+    api: "treasure_box_21",
+    achieved: true,
+    current: 21,
+    max: 21,
+    name: "",
+    description: "",
+  },
+  {
+    api: "treasure_box_112",
+    achieved: true,
+    current: 112,
+    max: 112,
+    name: "",
+    description: "",
+  },
+  {
+    api: "picture_book_30",
+    achieved: true,
+    current: 45,
+    max: 30,
+    name: "",
+    description: "",
+  },
+  {
+    api: "monster_hunt_100",
+    achieved: false,
+    current: 312,
+    max: 100,
+    name: "",
+    description: "",
+  },
+  {
+    api: "all_achievement",
+    achieved: false,
+    current: 4,
+    max: 38,
+    name: "",
+    description: "",
+  },
 ];
 
 const SAVE = {
@@ -285,7 +334,10 @@ function liveShape(): Record<string, unknown> {
         steam(27, "total_gil", "SlotTotalGil", 100000),
         steam(28, "total_gil", "SlotTotalGil", 500000),
         steam(38, "get_hidden_item", "HiddenItems", 1),
-        { ...steam(66, "ff5PR_achievement26", "SlotTotalGil", 10000), platform: 3 },
+        {
+          ...steam(66, "ff5PR_achievement26", "SlotTotalGil", 10000),
+          platform: 3,
+        },
       ],
       account: [
         { api: "all_achievement", achieved: true, current: 0, max: 0 },
@@ -452,7 +504,11 @@ function slotWithoutEngine(): EngineSlot {
 /** A bridge whose only job is the hello record currentGame reads (product null = title screen). */
 function linkWith(product: string | null = "FINAL FANTASY V"): BridgeLink {
   return {
-    health: () => Promise.resolve({ ok: true, hello: product === null ? null : { product } }),
+    health: () =>
+      Promise.resolve({
+        ok: true,
+        hello: product === null ? null : { product },
+      }),
   } as unknown as BridgeLink;
 }
 
@@ -480,7 +536,9 @@ function fakeContext(): { ctx: Context; registered: Registered } {
 }
 
 function invocation(): CommandInvocation {
-  return { signal: new AbortController().signal } as unknown as CommandInvocation;
+  return {
+    signal: new AbortController().signal,
+  } as unknown as CommandInvocation;
 }
 
 void test("/ach registers on ctx and answers with the formatted table", async () => {

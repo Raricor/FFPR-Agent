@@ -65,7 +65,13 @@ void test("achievementView carries the table, notes and treasure as data", () =>
   if ("message" in view.treasure) return;
   assert.equal(view.treasure.header, "宝箱和隐藏道具(按地点) 宝箱 3 / 5 · 隐藏道具 0 / 1");
   assert.deepEqual(view.treasure.places, [
-    { name: "卡纳克城", chests: "3 / 5", hidden: "0 / 1", lost: "—", done: false },
+    {
+      name: "卡纳克城",
+      chests: "3 / 5",
+      hidden: "0 / 1",
+      lost: "—",
+      done: false,
+    },
   ]);
   assert.equal(formatAchievements(data, FF5), formatAchievements(view));
 });
@@ -103,7 +109,12 @@ void test("one number in two areas is counted in both", () => {
       count: "1 / 2",
       done: false,
       monsters: [
-        { label: "No.010 风形魔", registered: false, status: null, details: [] },
+        {
+          label: "No.010 风形魔",
+          registered: false,
+          status: null,
+          details: [],
+        },
         { label: "No.012 哥布林", registered: true, status: null, details: [] },
       ],
     },
@@ -111,7 +122,14 @@ void test("one number in two areas is counted in both", () => {
       name: "卡纳克城",
       count: "0 / 1",
       done: false,
-      monsters: [{ label: "No.010 风形魔", registered: false, status: null, details: [] }],
+      monsters: [
+        {
+          label: "No.010 风形魔",
+          registered: false,
+          status: null,
+          details: [],
+        },
+      ],
     },
     {
       name: "沃尔斯",
@@ -119,7 +137,12 @@ void test("one number in two areas is counted in both", () => {
       done: true,
       monsters: [
         { label: "No.020 陆行鸟", registered: true, status: null, details: [] },
-        { label: "No.021 黑陆行鸟", registered: true, status: null, details: [] },
+        {
+          label: "No.021 黑陆行鸟",
+          registered: true,
+          status: null,
+          details: [],
+        },
       ],
     },
   ]);
@@ -175,7 +198,14 @@ void test("area 0 without a name is the world map", () => {
       name: "世界地图",
       count: "0 / 1",
       done: false,
-      monsters: [{ label: "No.005 杀人蜂", registered: false, status: null, details: [] }],
+      monsters: [
+        {
+          label: "No.005 杀人蜂",
+          registered: false,
+          status: null,
+          details: [],
+        },
+      ],
     },
   ]);
 });
@@ -290,7 +320,13 @@ void test("FF6's profile lists all 37 achievements under its own title", () => {
   if ("message" in view.treasure) return;
   assert.equal(view.treasure.header, "宝箱和隐藏道具(按地点) 宝箱 2 / 5 · 隐藏道具 1 / 1");
   assert.deepEqual(view.treasure.places, [
-    { name: "南费加罗镇", chests: "2 / 5", hidden: "1 / 1 ✓", lost: "—", done: false },
+    {
+      name: "南费加罗镇",
+      chests: "2 / 5",
+      hidden: "1 / 1 ✓",
+      lost: "—",
+      done: false,
+    },
   ]);
   assert.ok(!("message" in view.bestiary));
   if ("message" in view.bestiary) return;
