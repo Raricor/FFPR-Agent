@@ -9,7 +9,12 @@ import { advanceStory, pressKeys } from "../src/engine/skills/screens.ts";
 import { gameToolSchemas } from "../src/plugin/tools.ts";
 import { FakePilot } from "./fake-pilot.ts";
 
-const LAPTOP: Laptop = { host: "laptop", user: "player", key: "/tmp/key", root: "C:/ffpr" };
+const LAPTOP: Laptop = {
+  host: "laptop",
+  user: "player",
+  key: "/tmp/key",
+  root: "C:/ffpr",
+};
 
 function firstKey(fields: Record<string, unknown>): string {
   const keys = fields.keys;
@@ -23,7 +28,11 @@ void test("advance_story closes FieldHelp and pages the dialog it was hiding", a
   pilot.on("pos", () => ({ pos: { state, map: 3 } }));
   pilot.onQuery("textinput", { textinput: { open: false, fields: [] } });
   pilot.onQuery("sample", () => ({
-    sample: { dialog: { open: dialogOpen, lines: ["……"] }, choice: {}, battle: { active: false } },
+    sample: {
+      dialog: { open: dialogOpen, lines: ["……"] },
+      choice: {},
+      battle: { active: false },
+    },
   }));
   pilot.on("keys", (fields) => {
     const key = firstKey(fields);
@@ -113,7 +122,10 @@ void test("FF5's advance_story keeps the default name its story op stops on", as
     let stories = 0;
     pilot.on("pos", { pos: { state: "Player", map: 3 } });
     pilot.onQuery("textinput", () => ({
-      textinput: { open: focused, fields: [{ name: "InputField", text: "泰拉", focused }] },
+      textinput: {
+        open: focused,
+        fields: [{ name: "InputField", text: "泰拉", focused }],
+      },
     }));
     pilot.on("keys", (fields) => {
       if (firstKey(fields) === "TextEnter") focused = false;
@@ -146,7 +158,10 @@ void test("FF5's advance_story keeps the default name its story op stops on with
     let stories = 0;
     pilot.on("pos", { pos: { state: "Player", map: 3 } });
     pilot.onQuery("textinput", () => ({
-      textinput: { open: focused, fields: [{ name: "InputField", text: "巴兹", focused }] },
+      textinput: {
+        open: focused,
+        fields: [{ name: "InputField", text: "巴兹", focused }],
+      },
     }));
     pilot.on("keys", (fields) => {
       if (firstKey(fields) === "TextEnter") focused = false;
@@ -175,7 +190,10 @@ void test("FF5's advance_story keeps the default name its story op stops on with
 void test("an old bridge without textinput is skipped without an error", async () => {
   const pilot = new FakePilot();
   pilot.on("pos", { pos: { state: "Player", map: 3 } });
-  pilot.onQuery("textinput", { ok: false, error: "bridge_error:unknown_op:textinput" });
+  pilot.onQuery("textinput", {
+    ok: false,
+    error: "bridge_error:unknown_op:textinput",
+  });
   pilot.onQuery("sample", { sample: { dialog: { open: false }, choice: {} } });
 
   const outcome = await advanceStory(pilot);
@@ -188,7 +206,10 @@ void test("advance_story stops after 60 seconds with the same screen", async () 
   pilot.on("pos", { pos: { state: "Field", map: 3 } });
   pilot.onQuery("textinput", { textinput: { open: false, fields: [] } });
   pilot.onQuery("sample", {
-    sample: { dialog: { open: true, lines: ["???", "???", "???"] }, choice: {} },
+    sample: {
+      dialog: { open: true, lines: ["???", "???", "???"] },
+      choice: {},
+    },
   });
   pilot.on("keys", { ok: true });
 

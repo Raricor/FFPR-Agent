@@ -113,7 +113,12 @@ export async function advanceStory(
     if (state === "FieldHelp") {
       const help = await dismissFieldHelp(pilot);
       if (help === "stuck") {
-        return { pages, notes, stop: "fieldhelp", detail: await screenDetail(pilot, pos) };
+        return {
+          pages,
+          notes,
+          stop: "fieldhelp",
+          detail: await screenDetail(pilot, pos),
+        };
       }
       if (help === "closed") notes.push("关掉了操作提示");
       continue;
@@ -143,7 +148,12 @@ export async function advanceStory(
         eventSince = pilot.now();
       }
       if (pilot.now() - eventSince >= stuckMs) {
-        return { pages, notes, stop: "stuck", detail: stuckText(stuckMs, pos, dialog) };
+        return {
+          pages,
+          notes,
+          stop: "stuck",
+          detail: stuckText(stuckMs, pos, dialog),
+        };
       }
       await pilot.sleep(EVENT_POLL_MS);
       continue;
@@ -154,7 +164,12 @@ export async function advanceStory(
       previous = key;
       previousAt = pilot.now();
     } else if (pilot.now() - previousAt >= stuckMs) {
-      return { pages, notes, stop: "stuck", detail: stuckText(stuckMs, pos, dialog) };
+      return {
+        pages,
+        notes,
+        stop: "stuck",
+        detail: stuckText(stuckMs, pos, dialog),
+      };
     }
     await pilot.sleep(pageMs);
     const result = await pilot.send("keys", { keys: ["Enter"], gap: 250, via: "game" }, 10_000);
