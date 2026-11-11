@@ -23,7 +23,10 @@ interface TacticsFixture {
     readonly has?: boolean;
   }[];
   readonly final: Json;
-  readonly reloaded: { readonly current: Json | null; readonly describe: string };
+  readonly reloaded: {
+    readonly current: Json | null;
+    readonly describe: string;
+  };
 }
 
 const fixture = JSON.parse(

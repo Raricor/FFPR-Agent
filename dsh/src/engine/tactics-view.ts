@@ -17,7 +17,10 @@ import { encounterMonsters, formationLines, type EncounterTable } from "./encoun
 export interface RuleTableView {
   readonly title: string;
   readonly inUse: boolean;
-  readonly members: readonly { readonly name: string; readonly rules: readonly string[] }[];
+  readonly members: readonly {
+    readonly name: string;
+    readonly rules: readonly string[];
+  }[];
 }
 
 export interface EnemyView {
@@ -71,9 +74,11 @@ export interface TacticsViewInput {
   readonly inBattle: boolean;
   readonly tactics: Tactics;
   readonly mapNameOf: (mapId: number) => string;
-  readonly tacticianInfoFor: (
-    mapId: number,
-  ) => { readonly mapId: number; readonly walkerNotes: string; readonly askUp: string } | null;
+  readonly tacticianInfoFor: (mapId: number) => {
+    readonly mapId: number;
+    readonly walkerNotes: string;
+    readonly askUp: string;
+  } | null;
   readonly lastBossPlan: () => BossPlanRecord | null;
   readonly encountered: (mapId: number) => readonly string[];
   readonly monsters: readonly MonsterInfo[] | null;
@@ -309,7 +314,11 @@ function enemyPlans(
   if (table === null) {
     return enemies.map(({ number, name }) => {
       const info = infoByNumber.get(number ?? -1) ?? infoByName.get(name);
-      return { label: enemyLabel(number, name), facts: enemyFacts(info, names), plan: [] };
+      return {
+        label: enemyLabel(number, name),
+        facts: enemyFacts(info, names),
+        plan: [],
+      };
     });
   }
   return enemies.map(({ number, name }) => {

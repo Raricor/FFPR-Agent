@@ -151,7 +151,12 @@ function tableView(
     const members = new Map<string, TacticianRuleLine[]>();
     for (const rule of strategy.rules) {
       const lines = members.get(rule.who) ?? [];
-      lines.push({ text: describe(rule), hits: 0, skipText: "", skipped: false });
+      lines.push({
+        text: describe(rule),
+        hits: 0,
+        skipText: "",
+        skipped: false,
+      });
       members.set(rule.who, lines);
     }
     return {

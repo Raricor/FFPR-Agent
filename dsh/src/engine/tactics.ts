@@ -132,13 +132,17 @@ export class Tactics {
     } catch (error) {
       if (isMissingFile(error)) return tactics;
       signal?.throwIfAborted();
-      throw new Error(`读不了战术记录 ${path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不了战术记录 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     let parsed: unknown;
     try {
       parsed = JSON.parse(body);
     } catch (error) {
-      throw new Error(`读不懂战术记录 ${path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不懂战术记录 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     if (!isRecord(parsed)) throw new Error(`战术记录 ${path} 不是 JSON 对象`);
     for (const [mapId, raw] of Object.entries(parsed)) {
@@ -180,7 +184,11 @@ export class Tactics {
     party?: readonly PartySnapshotMember[],
   ): Promise<void> {
     const previous = this.maps.get(String(mapId));
-    const entry: TacticsEntry = { tables: [...tables], current: 0, results: [] };
+    const entry: TacticsEntry = {
+      tables: [...tables],
+      current: 0,
+      results: [],
+    };
     if (monsters !== undefined) entry.monsters = [...monsters];
     if (party !== undefined) entry.party = [...party];
     else if (previous?.party !== undefined) entry.party = previous.party;
@@ -240,7 +248,11 @@ export class Tactics {
   /** Keep the tactician's words even for a boss-only call with no new regular table. */
   async setNote(mapId: unknown, note: TacticianNote): Promise<void> {
     const existing = this.maps.get(String(mapId));
-    const entry: TacticsEntry = existing ?? { tables: [], current: 0, results: [] };
+    const entry: TacticsEntry = existing ?? {
+      tables: [],
+      current: 0,
+      results: [],
+    };
     entry.walkerNotes = note.walkerNotes;
     entry.askUp = note.askUp;
     entry.writtenAt = note.writtenAt;
@@ -295,7 +307,11 @@ export class Tactics {
 
   async setBoss(mapId: unknown, boss: BossRecord): Promise<void> {
     const existing = this.maps.get(String(mapId));
-    const entry: TacticsEntry = existing ?? { tables: [], current: 0, results: [] };
+    const entry: TacticsEntry = existing ?? {
+      tables: [],
+      current: 0,
+      results: [],
+    };
     entry.boss = boss;
     this.maps.set(String(mapId), entry);
     await this.save();
@@ -369,7 +385,9 @@ export class Tactics {
     try {
       await writeFile(this.path, JSON.stringify(data, null, 1), "utf8");
     } catch (error) {
-      throw new Error(`写不了战术记录 ${this.path}:${describeError(error)}`, { cause: error });
+      throw new Error(`写不了战术记录 ${this.path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
   }
 }

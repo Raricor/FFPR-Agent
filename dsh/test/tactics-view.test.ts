@@ -15,11 +15,18 @@ const FF5 = profileFor("ff5");
 
 const TABLE_A: Json = {
   巴兹: [
-    { if: "ally.dead >= 1 and item.不死鸟之尾 >= 1", do: "道具:不死鸟之尾", target: "倒下的同伴" },
+    {
+      if: "ally.dead >= 1 and item.不死鸟之尾 >= 1",
+      do: "道具:不死鸟之尾",
+      target: "倒下的同伴",
+    },
   ],
   蕾娜: [{ do: "攻击" }],
 };
-const TABLE_B: Json = { 巴兹: [{ if: "enemy.boss", do: "防御" }], 蕾娜: [{ do: "攻击" }] };
+const TABLE_B: Json = {
+  巴兹: [{ if: "enemy.boss", do: "防御" }],
+  蕾娜: [{ do: "攻击" }],
+};
 
 function tacticsWith(entries: Record<string, TacticsEntry>): Tactics {
   const tactics = new Tactics();
@@ -91,7 +98,11 @@ void test("rules show the condition, action and optional target", () => {
 void test("the current map shows its table in use and the rest collapsed", () => {
   const view = tacticsView(
     input({
-      tacticianInfoFor: () => ({ mapId: 64, walkerNotes: "先开开关", askUp: "缺眼药" }),
+      tacticianInfoFor: () => ({
+        mapId: 64,
+        walkerNotes: "先开开关",
+        askUp: "缺眼药",
+      }),
     }),
   );
   assert.equal(view.status, "当前地图：火力船 机房");
@@ -115,7 +126,11 @@ void test("results are newest first and capped at eight", () => {
     detail: `第 ${index + 1} 场`,
   }));
   const view = tacticsView(
-    input({ tactics: tacticsWith({ "64": { tables: [TABLE_A], current: 0, results } }) }),
+    input({
+      tactics: tacticsWith({
+        "64": { tables: [TABLE_A], current: 0, results },
+      }),
+    }),
   );
   assert.ok(view.current);
   assert.equal(view.current.results.length, 8);
@@ -310,7 +325,11 @@ void test("the world map does not use the area list", () => {
       areaId: 0,
       encountered: () => [],
       tactics: tacticsWith({
-        "1": { tables: [{ 法利斯: [{ do: "攻击" }] }], current: 0, results: [] },
+        "1": {
+          tables: [{ 法利斯: [{ do: "攻击" }] }],
+          current: 0,
+          results: [],
+        },
       }),
       bestiaryEntries: [{ number: 41, name: "丁怪", areas: [0] }],
     }),
@@ -349,7 +368,11 @@ void test("a monster without static data keeps only its label", () => {
       monsters: [],
       bestiaryEntries: [{ number: 99, name: "无名怪", areas: [12] }],
       tactics: tacticsWith({
-        "64": { tables: [{ 法利斯: [{ do: "攻击" }] }], current: 0, results: [] },
+        "64": {
+          tables: [{ 法利斯: [{ do: "攻击" }] }],
+          current: 0,
+          results: [],
+        },
       }),
     }),
   );
@@ -383,8 +406,14 @@ void test("a game without an AI player shows only the encounter table and the fa
       strategy: false,
       placeName: "纳尔什",
       bestiaryEntries: [],
-      tactics: tacticsWith({ "64": { tables: [], current: 0, results: [], monsters: ["丙怪"] } }),
-      tacticianInfoFor: () => ({ mapId: 64, walkerNotes: "先开开关", askUp: "缺眼药" }),
+      tactics: tacticsWith({
+        "64": { tables: [], current: 0, results: [], monsters: ["丙怪"] },
+      }),
+      tacticianInfoFor: () => ({
+        mapId: 64,
+        walkerNotes: "先开开关",
+        askUp: "缺眼药",
+      }),
       lastBossPlan: () => ({
         mapId: 64,
         table: TABLE_B,
@@ -394,7 +423,14 @@ void test("a game without an AI player shows only the encounter table and the fa
       encounters: {
         monsterSet: 3,
         regions: [],
-        parties: [{ id: 67, rate: 1000, notEscape: false, monsters: [{ name: "甲怪", book: 38 }] }],
+        parties: [
+          {
+            id: 67,
+            rate: 1000,
+            notEscape: false,
+            monsters: [{ name: "甲怪", book: 38 }],
+          },
+        ],
         enabled: null,
         vehicle: null,
         map: null,
@@ -414,7 +450,11 @@ void test("a game without an AI player shows only the encounter table and the fa
   assert.equal(view.current.enemyNote, "");
   assert.deepEqual(view.current.enemies, [
     // FF6 names its elements in its own data; this fixture has no sentence, so no FF5 names.
-    { label: "No.038 甲怪", facts: "HP 240 · 弱：属性 1 · 吸收：属性 2", plan: [] },
+    {
+      label: "No.038 甲怪",
+      facts: "HP 240 · 弱：属性 1 · 吸收：属性 2",
+      plan: [],
+    },
   ]);
 });
 
@@ -426,7 +466,11 @@ void test("the game's encounter table leads the enemy list, on the world map too
       areaId: 0,
       encountered: () => [],
       tactics: tacticsWith({
-        "1": { tables: [{ 法利斯: [{ do: "攻击" }] }], current: 0, results: [] },
+        "1": {
+          tables: [{ 法利斯: [{ do: "攻击" }] }],
+          current: 0,
+          results: [],
+        },
       }),
       encounters: {
         monsterSet: 3,
@@ -435,7 +479,12 @@ void test("the game's encounter table leads the enemy list, on the world map too
         vehicle: null,
         map: null,
         parties: [
-          { id: 67, rate: 350, notEscape: false, monsters: [{ name: "乙怪", book: 39 }] },
+          {
+            id: 67,
+            rate: 350,
+            notEscape: false,
+            monsters: [{ name: "乙怪", book: 39 }],
+          },
           {
             id: 66,
             rate: 230,
@@ -446,7 +495,12 @@ void test("the game's encounter table leads the enemy list, on the world map too
               { name: "乙怪", book: 39 },
             ],
           },
-          { id: 67, rate: 350, notEscape: false, monsters: [{ name: "乙怪", book: 39 }] },
+          {
+            id: 67,
+            rate: 350,
+            notEscape: false,
+            monsters: [{ name: "乙怪", book: 39 }],
+          },
         ],
       },
     }),

@@ -9,11 +9,32 @@ import type { Laptop } from "../src/engine/laptop.ts";
 import { num, text, type Json } from "../src/engine/values.ts";
 import { FakePilot } from "./fake-pilot.ts";
 
-const LAPTOP: Laptop = { host: "laptop", user: "player", key: "/tmp/key", root: "C:/ffpr" };
+const LAPTOP: Laptop = {
+  host: "laptop",
+  user: "player",
+  key: "/tmp/key",
+  root: "C:/ffpr",
+};
 const DIALOG = "如果在合并翅膀的时候进行攻击,可是会遭到利爪的反击哦!!";
 const PARTY: readonly Json[] = [
-  { name: "巴兹", jobName: "骑士", lv: 10, hp: 200, maxHp: 200, mp: 20, maxMp: 20 },
-  { name: "蕾娜", jobName: "白魔法师", lv: 10, hp: 180, maxHp: 180, mp: 30, maxMp: 30 },
+  {
+    name: "巴兹",
+    jobName: "骑士",
+    lv: 10,
+    hp: 200,
+    maxHp: 200,
+    mp: 20,
+    maxMp: 20,
+  },
+  {
+    name: "蕾娜",
+    jobName: "白魔法师",
+    lv: 10,
+    hp: 180,
+    maxHp: 180,
+    mp: 30,
+    maxMp: 30,
+  },
 ];
 const WINGS: readonly Json[] = [
   { name: "巨翼猛禽", book: 229, id: 281, hp: 500, maxHp: 500, boss: true },

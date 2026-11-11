@@ -48,7 +48,11 @@ function records(): readonly BattleRecord[] {
     {
       table: { kind: "map", mapId: 64, table: 0 },
       turns: [
-        { actor: "巴兹", rule: 1, skipped: [{ rule: 2, condition: "", why: "没有这个指令" }] },
+        {
+          actor: "巴兹",
+          rule: 1,
+          skipped: [{ rule: 2, condition: "", why: "没有这个指令" }],
+        },
       ],
     },
   ] as unknown as BattleRecord[];

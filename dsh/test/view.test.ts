@@ -23,7 +23,10 @@ import type { ObservedMove } from "../src/engine/nav.ts";
 interface ViewFixture {
   readonly items: { readonly input: unknown; readonly text: string };
   readonly entities: { readonly input: unknown; readonly text: string };
-  readonly namedObjects: { readonly input: unknown; readonly out: Record<string, unknown> };
+  readonly namedObjects: {
+    readonly input: unknown;
+    readonly out: Record<string, unknown>;
+  };
   readonly parseTail: { readonly text: string; readonly out: unknown[] };
   readonly marks: readonly { readonly unit: unknown; readonly out: string }[];
   readonly summarize: readonly {
@@ -41,7 +44,10 @@ void test("describeItems strips icon tags and empty-slot placeholders", () => {
   assert.equal(describeItems(fixture.items.input), fixture.items.text);
   assert.ok(PLACEHOLDER_ITEMS.has("空手"));
   assert.equal(
-    describeItems({ normal: [{ name: "<IC_X>恢复药", count: 2 }], important: [] }),
+    describeItems({
+      normal: [{ name: "<IC_X>恢复药", count: 2 }],
+      important: [],
+    }),
     "道具:恢复药×2\n贵重物品:无",
   );
 });
@@ -107,7 +113,15 @@ void test("summarize shows the party, dialog, choice and battle state", () => {
     battle: { active: false },
     dialog: { open: true, speaker: "巴兹", lines: ["好，我们出发吧！！"] },
   };
-  const events = [{ seq: 1, type: "dialog.play", ids: ["E0012"], speaker: "巴兹", lines: ["好"] }];
+  const events = [
+    {
+      seq: 1,
+      type: "dialog.play",
+      ids: ["E0012"],
+      speaker: "巴兹",
+      lines: ["好"],
+    },
+  ];
   const text = summarize(sample, events);
   assert.ok(text.includes("MainGame/Player · 地图 198 海盗船 · 格子 20,10 · 非战斗 · 金钱 1360"));
   assert.ok(text.includes("对话框打开 【巴兹】好，我们出发吧！！"));
@@ -116,7 +130,9 @@ void test("summarize shows the party, dialog, choice and battle state", () => {
 
 void test("summarize shows choice labels with the cursor", () => {
   const sample = {
-    choice: { select: { open: true, options: [], labels: ["是", "否"], cursor: 1 } },
+    choice: {
+      select: { open: true, options: [], labels: ["是", "否"], cursor: 1 },
+    },
   };
   assert.ok(summarize(sample, []).includes("选项(select):是 / [否]"));
 });
@@ -143,7 +159,15 @@ void test("summarize renders the ride and the battle sides", () => {
 
 void test("summarize dumps unknown events like Python's json.dumps", () => {
   const text = summarize(null, [
-    { seq: 3, t: "now", frame: 4, type: "map.change", from: 0, to: 1, toCell: [2, 3] },
+    {
+      seq: 3,
+      t: "now",
+      frame: 4,
+      type: "map.change",
+      from: 0,
+      to: 1,
+      toCell: [2, 3],
+    },
   ]);
   assert.equal(text, '  + map.change {"from": 0, "to": 1, "toCell": [2, 3]}');
 });
@@ -157,8 +181,20 @@ const map261 = JSON.parse(
 
 void test("describeMechanisms names doors, target layers and landing spots", () => {
   const moves: ObservedMove[] = [
-    { from: [13, 23], to: [13, 22], how: "传送带", kind: "conveyor", toLayer: 1 },
-    { from: [15, 19], to: [15, 19], how: "换层到第 2 层", kind: "layer", toLayer: 2 },
+    {
+      from: [13, 23],
+      to: [13, 22],
+      how: "传送带",
+      kind: "conveyor",
+      toLayer: 1,
+    },
+    {
+      from: [15, 19],
+      to: [15, 19],
+      how: "换层到第 2 层",
+      kind: "layer",
+      toLayer: 2,
+    },
     { from: [13, 26], to: [16, 27], how: "掉下去", kind: "fall", toLayer: 1 },
   ];
   const text = describeMechanisms(map261.entities.entities, moves);
