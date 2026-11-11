@@ -23,8 +23,20 @@ function testAtlas(): Atlas {
     ],
     chests: [],
     links: [
-      { from: [6, 6], to: [7, 6], how: "走不过去", count: 1, at: "2026-11-10T00:00:00Z" },
-      { from: [6, 7], to: [7, 7], how: "走不过去", count: 2, at: "2026-11-10T00:00:00Z" },
+      {
+        from: [6, 6],
+        to: [7, 6],
+        how: "走不过去",
+        count: 1,
+        at: "2026-11-10T00:00:00Z",
+      },
+      {
+        from: [6, 7],
+        to: [7, 7],
+        how: "走不过去",
+        count: 2,
+        at: "2026-11-10T00:00:00Z",
+      },
       { from: [5, 8], to: [4, 2], how: "跳下去", kind: "fall" },
     ],
     entities: [
@@ -36,7 +48,12 @@ function testAtlas(): Atlas {
       },
       { kind: "Event", name: "剧情触发", cell: [9, 9] },
       { kind: "TresureBox", name: "宝箱", cell: [9, 1] },
-      { kind: "DefaultEntity", name: "已经试过的门", cell: [3, 3], tried: true },
+      {
+        kind: "DefaultEntity",
+        name: "已经试过的门",
+        cell: [3, 3],
+        tried: true,
+      },
     ],
   });
   atlas.maps.set("11", { name: "北边小房间", exits: [], chests: [] });
@@ -102,7 +119,12 @@ void test("a collision block no recorded entrance reaches is a target even when 
       true,
     );
     const atlas = new Atlas();
-    atlas.maps.set("20", { name: "分叉洞窟", exits: [], chests: [], links: [] });
+    atlas.maps.set("20", {
+      name: "分叉洞窟",
+      exits: [],
+      chests: [],
+      links: [],
+    });
     const plan = planScout({
       atlas,
       collisions,
@@ -128,8 +150,18 @@ void test("the same object supplied twice is planned once", () => {
     start: { map: 10, cell: [5, 5] },
     scope: [10],
     entities: [
-      { map: 10, cell: [8, 3], kind: "DefaultEntity", name: "トルナ運河の開錠_右扉" },
-      { map: 10, cell: [8, 3], kind: "DefaultEntity", name: "トルナ運河の開錠_右扉" },
+      {
+        map: 10,
+        cell: [8, 3],
+        kind: "DefaultEntity",
+        name: "トルナ運河の開錠_右扉",
+      },
+      {
+        map: 10,
+        cell: [8, 3],
+        kind: "DefaultEntity",
+        name: "トルナ運河の開錠_右扉",
+      },
     ],
   });
   assert.equal(plan.targets.filter((target) => target.label.includes("右扉")).length, 1);

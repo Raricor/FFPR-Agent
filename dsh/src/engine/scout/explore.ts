@@ -62,7 +62,11 @@ export interface ScoutTarget {
   /** The exit's destination map, for a landing target. */
   readonly toMap?: number;
   /** The step a blocked target asks the scout to try again. */
-  readonly step?: { readonly from: Cell; readonly to: Cell; readonly layer: number | null };
+  readonly step?: {
+    readonly from: Cell;
+    readonly to: Cell;
+    readonly layer: number | null;
+  };
 }
 
 export interface ScoutPhasePlan {
@@ -187,7 +191,11 @@ interface TargetSeed {
   readonly label: string;
   readonly action: ScoutAction;
   readonly toMap?: number;
-  readonly step?: { readonly from: Cell; readonly to: Cell; readonly layer: number | null };
+  readonly step?: {
+    readonly from: Cell;
+    readonly to: Cell;
+    readonly layer: number | null;
+  };
 }
 
 function waypointOf(id: string, seed: TargetSeed): Waypoint {
@@ -464,7 +472,11 @@ export function planScout(input: ScoutInput): ScoutPlan {
       );
     }
     minutes += plan.total.minutes;
-    phases.push({ kind, targets: ordered.filter((target) => target.kind === kind), route: plan });
+    phases.push({
+      kind,
+      targets: ordered.filter((target) => target.kind === kind),
+      route: plan,
+    });
   }
 
   return {

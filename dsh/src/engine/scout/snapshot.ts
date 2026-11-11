@@ -259,7 +259,9 @@ export async function restoreSnapshot(snapshotDir: string): Promise<RestoreRepor
       info = await stat(backup);
     } catch (error) {
       if (isMissingFile(error)) throw entryError(root, `备份文件不见了:${entry.backup}`);
-      throw new Error(`读不了快照备份 ${backup}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不了快照备份 ${backup}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     if (!info.isFile()) throw entryError(root, `备份不是普通文件:${entry.backup}`);
     await mkdir(dirname(target), { recursive: true });
@@ -271,7 +273,9 @@ export async function restoreSnapshot(snapshotDir: string): Promise<RestoreRepor
         if (!Number.isNaN(time.valueOf())) await utimes(target, time, time);
       }
     } catch (error) {
-      throw new Error(`还原不了 ${target}:${describeError(error)}`, { cause: error });
+      throw new Error(`还原不了 ${target}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     restored.push(target);
   }
@@ -334,13 +338,17 @@ export class ScoutWindows {
       body = await readFile(path, { encoding: "utf8" });
     } catch (error) {
       if (isMissingFile(error)) return new ScoutWindows(game, path, []);
-      throw new Error(`读不了侦察时间记录 ${path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不了侦察时间记录 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     let parsed: unknown;
     try {
       parsed = JSON.parse(body);
     } catch (error) {
-      throw new Error(`读不懂侦察时间记录 ${path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不懂侦察时间记录 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     if (!isRecord(parsed)) throw new Error(`侦察时间记录 ${path} 不是 JSON 对象`);
     const windows: ScoutWindow[] = [];
