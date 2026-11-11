@@ -39,6 +39,13 @@ import {
 import { isMissingFile } from "./errors.ts";
 import { BLOCKED_TRUST_COUNT } from "./skills/move.ts";
 import { isRecord, records, text, type Json } from "./values.ts";
+import {
+  JUMP_DELTAS,
+  isJumpMove,
+  jumpMoves,
+  type MapJump,
+  type PassageFeatures,
+} from "./knowledge/jumps.ts";
 
 /** One collision reply reduced to what a region needs: layer names, rows and the start floor. */
 export interface CollisionSnapshot {
@@ -48,6 +55,8 @@ export interface CollisionSnapshot {
   /** Task 129: hidden-passage cells from the game files, attached to every source. */
   readonly passages?: readonly PassageCell[];
 }
+
+const EMPTY_EVENT_CELLS: ReadonlySet<string> = new Set();
 
 /** Keep a bridge collision reply, or null when it has no usable layer. */
 export function collisionSnapshot(value: unknown): CollisionSnapshot | null {
@@ -134,6 +143,13 @@ interface GameMapValueLayer {
   readonly cells: readonly GameMapValueCell[];
 }
 
+/** One story/event trigger from the game file export (task 143). */
+interface GameMapEvent {
+  readonly cell: Cell;
+  readonly name: string;
+  readonly file: string;
+}
+
 /**
  * The task 120 export of one map. Only the fields the route needs are kept: collision rows
  * (raw values 0-7), exits with their target point, damage and hidden-passage cells.
@@ -145,6 +161,9 @@ interface GameMapFile {
   readonly hiddenPassages: readonly GameMapValueLayer[];
   readonly exits: readonly GameMapExit[];
   readonly points: readonly GameMapPoint[];
+  readonly events: readonly GameMapEvent[];
+  /** Task 149: script-moved jumps from the map export. */
+  readonly jumps: readonly MapJump[];
   readonly world?: GameWorldMap;
   readonly worldExits: readonly GameWorldExit[];
 }
@@ -224,6 +243,21 @@ function gamePoints(value: unknown): GameMapPoint[] {
   return points;
 }
 
+/** Story/event trigger cells; any of them may be walked over, so they must not be walls. */
+function gameEvents(value: unknown): GameMapEvent[] {
+  const events: GameMapEvent[] = [];
+  for (const entry of records(value)) {
+    const cell = readCell(entry.cell);
+    if (cell === null) continue;
+    events.push({
+      cell,
+      name: text(entry.name) ?? "",
+      file: text(entry.file) ?? "",
+    });
+  }
+  return events;
+}
+
 function gameWorld(value: unknown): GameWorldMap | undefined {
   if (!isRecord(value)) return undefined;
   const width = integer(value.width);
@@ -261,6 +295,28 @@ function gameWorldExits(value: unknown): GameWorldExit[] {
   return exits;
 }
 
+function gameJumps(value: unknown): MapJump[] {
+  const jumps: MapJump[] = [];
+  for (const entry of records(value)) {
+    const cell = readCell(entry.cell);
+    const land = readCell(entry.land);
+    const kind = text(entry.kind);
+    const facing = text(entry.facing) ?? "";
+    const script = text(entry.script) ?? "";
+    if (
+      cell === null ||
+      land === null ||
+      (kind !== "step" && kind !== "touch") ||
+      facing === "" ||
+      !(facing in JUMP_DELTAS)
+    ) {
+      continue;
+    }
+    jumps.push({ cell, land, kind, facing: facing as keyof typeof JUMP_DELTAS, script });
+  }
+  return jumps;
+}
+
 function gameMapFile(value: unknown, fallbackId: number): GameMapFile | null {
   if (!isRecord(value)) return null;
   const id = integer(value.id) ?? fallbackId;
@@ -273,6 +329,8 @@ function gameMapFile(value: unknown, fallbackId: number): GameMapFile | null {
     hiddenPassages: gameValueLayers(value.hiddenPassages),
     exits: gameExits(value.exits),
     points: gamePoints(value),
+    events: gameEvents(value.events),
+    jumps: gameJumps(value.jumps),
     ...(world === undefined ? {} : { world }),
     worldExits: gameWorldExits(value.worldExits),
   };
@@ -526,7 +584,7 @@ export class CollisionStore {
   private readonly files = new Map<number, GameMapFile>();
   private readonly fileSnapshots = new Map<number, CollisionSnapshot | null>();
   private readonly zones = new Map<string, WorldZoneData | null>();
-  private readonly passageCache = new Map<number, readonly PassageCell[]>();
+  private readonly passageCache = new Map<number, PassageFeatures>();
 
   private constructor(dir?: string, gameDir?: string) {
     this.dir = dir;
@@ -681,17 +739,32 @@ export class CollisionStore {
     return this.files.get(mapId)?.exits ?? [];
   }
 
+  /** Task 149: script-moved jumps from the map export (empty without one). */
+  jumps(mapId: number): readonly MapJump[] {
+    return this.files.get(mapId)?.jumps ?? [];
+  }
+
+  /** Story/event trigger cells from the game files (task 143), as cellKey strings. */
+  eventCells(mapId: number): ReadonlySet<string> {
+    const events = this.files.get(mapId)?.events;
+    if (events === undefined || events.length === 0) return EMPTY_EVENT_CELLS;
+    return new Set(events.map((event) => cellKey(event.cell[0], event.cell[1])));
+  }
+
   /**
    * Task 129: hidden-passage cells with their floor, from the game files. These are merged
    * into every collision source: live replies and cache rows still have the wall there.
    */
-  passages(mapId: number): readonly PassageCell[] {
+  passages(mapId: number): PassageFeatures {
     const found = this.passageCache.get(mapId);
     if (found !== undefined) return found;
     const file = this.files.get(mapId);
     const cells = file === undefined ? [] : passageCells(file);
-    this.passageCache.set(mapId, cells);
-    return cells;
+    // Task 149: the walk receives the map's jumps through this same callback. It is the one
+    // game-file hook game.ts already wires into MoveState, so no new hook is needed.
+    const features = Object.assign(cells, { jumps: this.jumps(mapId) }) as PassageFeatures;
+    this.passageCache.set(mapId, features);
+    return features;
   }
 
   /** Hidden-passage cells the game files mark on a map, for callers that want to show them. */
@@ -818,11 +891,16 @@ function hazardCells(moves: readonly ObservedMove[]): DangerCell[] {
 /**
  * Task 73: only a "走不过去" record hit `trust` times is a wall. The untrusted ones are still
  * walked through, so they must not split a map into two blocks.
+ *
+ * Task 143: a refusal while standing on a story event is the event starting, not a wall.
+ * The game's event cells (`ev_e_` / `sc_e_`, or any Event with a script) may always be walked
+ * over; only recorded refusals elsewhere split the map.
  */
 function trustedCuts(
   moves: readonly ObservedMove[],
   grid: LayeredGrid,
   trust: number,
+  eventCells: ReadonlySet<string> = EMPTY_EVENT_CELLS,
 ): Map<number, Set<string>> {
   const cuts = new Map<number, Set<string>>();
   let base: number | null = null;
@@ -831,8 +909,15 @@ function trustedCuts(
     break;
   }
   if (base === null) return cuts;
+  const center = cellKey(grid.center[0], grid.center[1]);
   for (const move of moves) {
     if (move.how !== "走不过去" || (move.count ?? 1) < trust) continue;
+    const from = cellKey(move.from[0], move.from[1]);
+    const to = cellKey(move.to[0], move.to[1]);
+    // The cell the party stands on is always part of its block, and an event trigger under
+    // its feet is a story start, not a wall.
+    if (from === center || to === center) continue;
+    if (eventCells.has(from) || eventCells.has(to)) continue;
     const layer = move.layer ?? base;
     if (!grid.heights.has(layer)) continue;
     const set = cuts.get(layer) ?? new Set<string>();
@@ -985,6 +1070,8 @@ function buildRegion(
   moves: readonly ObservedMove[],
   trust: number,
   dangers: readonly DangerCell[] = [],
+  eventCells: ReadonlySet<string> = EMPTY_EVENT_CELLS,
+  jumps: readonly MapJump[] = [],
 ): Region | null {
   const reply: Json = {
     ...collision,
@@ -995,15 +1082,16 @@ function buildRegion(
   // "调查后跳" link is directed, so it must not merge two components; it is added as a
   // directed component edge instead, or the jump would look walkable both ways.
   const hazards = [...hazardCells(moves), ...dangers];
-  const jumps = moves.filter((move) => move.how.includes("调查后跳"));
-  const walkMoves = moves.filter((move) => !move.how.includes("调查后跳"));
-  const grid = layeredGrid(reply, [], [], walkMoves, hazards);
+  const allMoves = [...moves, ...jumpMoves(jumps)];
+  const jumpLinks = allMoves.filter(isJumpMove);
+  const walkMoves = allMoves.filter((move) => !isJumpMove(move));
+  const grid = layeredGrid(reply, [], [], walkMoves, hazards, eventCells);
   if (grid === null) return null;
-  const cuts = trustedCuts(moves, grid, trust);
+  const cuts = trustedCuts(moves, grid, trust, eventCells);
   const safe = layeredComponents(grid, new Set(), cuts, false, false);
   const passage = layeredComponents(grid, new Set(), cuts, false, true);
   const risky = layeredComponents(grid, new Set(), cuts, true, true);
-  return new Region(mapId, grid, safe, passage, risky, jumps);
+  return new Region(mapId, grid, safe, passage, risky, jumpLinks);
 }
 
 /**
@@ -1047,6 +1135,8 @@ export class RegionIndex {
       this.atlas.moves(mapId),
       this.trust,
       this.source?.dangers(mapId) ?? [],
+      this.source?.eventCells(mapId) ?? EMPTY_EVENT_CELLS,
+      this.source?.jumps(mapId) ?? [],
     );
     if (region !== null) this.regions.set(mapId, region);
     return region ?? undefined;
@@ -1064,6 +1154,8 @@ export class RegionIndex {
       this.atlas.moves(mapId),
       this.trust,
       this.source?.dangers(mapId) ?? [],
+      this.source?.eventCells(mapId) ?? EMPTY_EVENT_CELLS,
+      this.source?.jumps(mapId) ?? [],
     );
     if (region === null) return this.regions.get(mapId) ?? null;
     this.regions.set(mapId, region);

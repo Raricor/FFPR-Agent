@@ -7,8 +7,9 @@
  * map it leaves.
  * `explore` finds the nearest exit whose destination this save has not visited yet, walking
  * inside the current map first and travelling to another map only when this one has none.
- * The world map is an ordinary hop (task 57): walking or the wind drake; a ship or chocobo
- * stops the route because it cannot enter a town.
+ * The world map is an ordinary hop (task 57): walking, the wind drake, or a ship (sail to
+ * the nearest coast cell, then walk ashore); a chocobo still stops the route. Task 143 adds
+ * the other half: on foot, walk to the parked ship/chocobo cell first and board it.
  */
 
 import type { Atlas, Ride } from "../atlas.ts";
@@ -69,6 +70,13 @@ export interface TravelOptions {
   readonly guard?: (pilot: Pilot, goal: Cell, origin: boolean) => Promise<LeaveRefusal | null>;
   readonly maxHops?: number;
   readonly maxMinutes?: number;
+  /**
+   * Task 140: the cell the caller will walk to after arriving. The last map change then picks
+   * an entrance whose landing can reach it, instead of any entrance to the map.
+   */
+  readonly toCell?: Cell | null;
+  /** Task 140: the floor of `toCell`, when known. */
+  readonly toLayer?: number | null;
 }
 
 export interface TravelHop {
@@ -294,6 +302,34 @@ function landingBlocks(
   return blocks.length === 0 ? null : blocks;
 }
 
+/**
+ * Task 140: whether the last hop's landing can walk to the goal cell inside the goal map.
+ * This is the difference between "get to map 205" and "get to 205's west half": the game has
+ * two stairs into 205 and only one lands in the block the boss is in.
+ *
+ * A map without a collision region, an unrecorded/off-grid landing, or an off-grid goal cell
+ * has no evidence and keeps the old optimistic "walk in and see". A recorded landing whose
+ * block cannot reach the goal is rejected, so `mapPath` tries the map's other entrance instead
+ * of pretending the goal is unreachable.
+ */
+function landingReachesGoal(
+  regions: RegionIndex | undefined,
+  goalMap: number,
+  goalCell: Cell | null | undefined,
+  goalLayer: number | null | undefined,
+  land: Cell | null,
+  layer: number | null,
+): boolean {
+  if (regions === undefined || goalCell === null || goalCell === undefined) return true;
+  const region = regions.region(goalMap);
+  if (region === undefined || land === null) return true;
+  const goal = region.blocksAt(goalCell, goalLayer ?? null);
+  if (goal.length === 0) return true;
+  const from = region.blocksAt(land, layer);
+  if (from.length === 0) return true;
+  return region.reachable(from, goalCell, goalLayer ?? null).ok;
+}
+
 /** One world-map node: a connected block under a set of vehicles (task 123). */
 interface WorldNode {
   readonly zone: number;
@@ -326,11 +362,35 @@ function blockReaches(
   mapId: number,
   blocks: readonly RegionBlock[] | null,
   cell: Cell,
+  layer: number | null = null,
 ): boolean {
   if (regions === undefined || blocks === null) return true;
   const region = regions.region(mapId);
   if (region === undefined) return true;
-  return region.reachable(blocks, cell, null).ok;
+  return region.reachable(blocks, cell, layer).ok;
+}
+
+/**
+ * Task 148: whether a plan from a map to a cell on the same map must leave the map first.
+ * The old "same map means already there" is kept for an unknown start/goal cell, a map
+ * without cached collision, or a goal the start block can already walk to.
+ */
+function sameMapNeedsDetour(
+  regions: RegionIndex | undefined,
+  mapId: number,
+  start: Cell | null,
+  startLayer: number | null,
+  toCell: Cell | null | undefined,
+  toLayer: number | null | undefined,
+): boolean {
+  if (regions === undefined || start === null || toCell === null || toCell === undefined) {
+    return false;
+  }
+  // Water on the world map is crossed by vehicles (tasks 123/134), not by leaving and coming back.
+  if (isWorldMap(mapId)) return false;
+  const blocks = landingBlocks(regions, mapId, start, startLayer);
+  if (blocks === null) return false;
+  return !blockReaches(regions, mapId, blocks, toCell, toLayer ?? null);
 }
 
 /** The lift edges recorded on a map, as map edges a route may use (task 71). */
@@ -348,6 +408,13 @@ export interface MapPathOptions {
   readonly landings?: ReadonlyMap<string, ObservedLanding>;
   /** Task 75: cached collision regions; absent keeps the plain map-to-map planner. */
   readonly regions?: RegionIndex;
+  /**
+   * Task 140: the goal cell on `to`. When given, the last hop must land in a block that walks
+   * to this cell; a stair that lands in the map's other half no longer counts as arriving.
+   */
+  readonly toCell?: Cell | null;
+  /** Task 140: the floor of `toCell`, when the caller knows it. */
+  readonly toLayer?: number | null;
   /**
    * Task 123: the collision store loaded with the game files' map directory. It supplies
    * exits for maps (or cells) the atlas never recorded; without it only saved exits count.
@@ -371,6 +438,10 @@ export interface MapPathOptions {
  * an edge whose landing was never recorded, is a single "whole map" node and behaves as
  * before: walk into it and see. A route may come back to a map it has already left when it
  * lands in another block (255's north half after 634 → 255).
+ *
+ * Task 148: `from === to` is no longer always "already there". When the start cell's block
+ * cannot walk to `toCell`, the same (map, block) search leaves the map and comes back through
+ * another entrance that lands in the goal's block (A → B → A).
  */
 export function mapPath(
   atlas: Atlas,
@@ -380,7 +451,19 @@ export function mapPath(
   viaWorld = false,
   options: MapPathOptions = {},
 ): MapHop[] | null {
-  if (from === to) return [];
+  if (
+    from === to &&
+    !sameMapNeedsDetour(
+      options.regions,
+      from,
+      options.start ?? null,
+      options.startLayer ?? null,
+      options.toCell,
+      options.toLayer,
+    )
+  ) {
+    return [];
+  }
   if (!viaWorld && (isWorldMap(from) || isWorldMap(to))) return null;
   const regions = options.regions;
   // Task 123: the region index was built from the collision store, so it already names the
@@ -437,11 +520,23 @@ export function mapPath(
       } else if (!blockReaches(regions, item.id, item.blocks, exit.cell)) {
         continue;
       }
-      const hop: MapHop = { from: item.id, to: exit.to, cell: exit.cell, kind: "exit" };
-      if (exit.to === to) return [...item.path, hop];
+      const hop: MapHop = {
+        from: item.id,
+        to: exit.to,
+        cell: exit.cell,
+        kind: "exit",
+      };
       const observed = options.landings?.get(edgeKey(item.id, exit.cell, exit.to));
       const land = observed === undefined ? (exit.land ?? null) : observed.cell;
       const layer = observed === undefined ? (exit.landLayer ?? null) : observed.layer;
+      if (exit.to === to) {
+        // Task 140: entering the right map through a stair that lands in its other half is
+        // not arriving. Reject that hop and keep searching for another entrance.
+        if (!landingReachesGoal(regions, to, options.toCell, options.toLayer, land, layer)) {
+          continue;
+        }
+        return [...item.path, hop];
+      }
       const world = isWorldMap(exit.to)
         ? worldNodeFor(source, exit.to, land, worldModes)
         : undefined;
@@ -482,7 +577,21 @@ export function mapPath(
         dir: ride.dir,
         press: ride.press,
       };
-      if (ride.to === to) return [...item.path, hop];
+      if (ride.to === to) {
+        if (
+          !landingReachesGoal(
+            regions,
+            to,
+            options.toCell,
+            options.toLayer,
+            ride.land,
+            ride.landLayer ?? null,
+          )
+        ) {
+          continue;
+        }
+        return [...item.path, hop];
+      }
       const world = isWorldMap(ride.to)
         ? worldNodeFor(source, ride.to, ride.land, worldModes)
         : undefined;
@@ -504,6 +613,49 @@ export function mapPath(
     }
   }
   return null;
+}
+
+/**
+ * Task 140: one Chinese line for a failed cell plan: which recorded entrances land in a block
+ * that reaches the goal. This is the "205's west half is entered from 203 (9,15), not (23,15)"
+ * information the model needs after an entrance in the wrong half was chosen.
+ *
+ * Returns null when the goal map has no collision region or the goal cell is off its grid:
+ * without block data there is nothing to say.
+ */
+export function goalEntranceHint(
+  atlas: Atlas,
+  regions: RegionIndex,
+  goalMap: number,
+  goalCell: Cell,
+  goalLayer: number | null = null,
+): string | null {
+  const region = regions.region(goalMap);
+  if (region === undefined) return null;
+  const goal = region.blocksAt(goalCell, goalLayer);
+  if (goal.length === 0) return null;
+  const entrances: {
+    readonly map: number;
+    readonly cell: Cell;
+    readonly land: Cell;
+  }[] = [];
+  for (const [key] of atlas.maps) {
+    const mapId = Number(key);
+    if (!Number.isFinite(mapId) || mapId === goalMap) continue;
+    for (const exit of mapExits(atlas, mapId, regions.source)) {
+      if (exit.to !== goalMap || exit.land === undefined) continue;
+      const from = region.blocksAt(exit.land, exit.landLayer ?? null);
+      if (from.length === 0 || !region.reachable(from, goalCell, goalLayer).ok) continue;
+      entrances.push({ map: mapId, cell: exit.cell, land: exit.land });
+    }
+  }
+  const head = `目标 ${cellText(goalCell)} 在 地图 ${goalMap} 的另一个块`;
+  if (entrances.length === 0) return `${head};没有记过能进这一块的入口`;
+  const list = entrances
+    .slice(0, 6)
+    .map((entry) => `地图 ${entry.map} ${cellText(entry.cell)}→落点 ${cellText(entry.land)}`)
+    .join("、");
+  return `${head};能进这一块的入口:${list}`;
 }
 
 /**
@@ -540,28 +692,39 @@ function explainNoPath(
   from: number,
   start: Cell | null,
   target: number,
+  toCell: Cell | null,
+  toLayer: number | null,
+  worldModes?: readonly WorldMode[],
 ): string {
+  const source = regions.source;
   const missingCache: number[] = [];
   const missingLand: string[] = [];
   for (const key of atlas.maps.keys()) {
     const id = Number(key);
     if (!Number.isFinite(id) || isWorldMap(id) || id === target) continue;
     const rides = atlas.rides(id);
-    const exits = mapExits(atlas, id, regions.source);
+    const exits = mapExits(atlas, id, source);
     if (exits.length === 0 && rides.length === 0) continue;
-    if (!regions.has(id)) missingCache.push(id);
+    // Task 132: ask the store whether a collision source exists instead of `regions.has`,
+    // which built a whole region for every map just to print this hint. The hint runs on every
+    // failed plan, so it must not do route-sized work.
+    if (source?.has(id) !== true) missingCache.push(id);
     for (const exit of exits) {
-      if (exit.land !== undefined || !regions.has(exit.to)) continue;
+      if (exit.land !== undefined || source?.has(exit.to) !== true) continue;
       missingLand.push(`地图 ${id} (${exit.cell[0]}, ${exit.cell[1]})→地图 ${exit.to}`);
     }
   }
   const plain = mapPath(atlas, from, target, new Set(), true, {
     start,
-    collisions: regions.source,
+    collisions: source,
+    ...(worldModes === undefined ? {} : { worldModes }),
   });
   const lines: string[] = ["规划失败的原因:"];
   if (plain === null) lines.push(`  地图记录本身就没有从 ${from} 到 ${target} 的出口路线`);
   else lines.push("  地图记录本身是通的,但按 (地图, 块) 走不到;落点或碰撞缓存可能过时");
+  const targetHint =
+    toCell === null ? null : goalEntranceHint(atlas, regions, target, toCell, toLayer);
+  if (targetHint !== null) lines.push(`  ${targetHint}`);
   if (missingCache.length > 0) {
     const list = missingCache
       .slice(0, 6)
@@ -597,6 +760,133 @@ async function readPosition(pilot: Pilot): Promise<TravelPosition> {
   };
 }
 
+/** One vehicle from bridge 0.14.9's `vehicles` query; a field the bridge could not read is null. */
+interface VehicleInfo {
+  readonly id: number | null;
+  readonly type: number | null;
+  readonly typeName: string | null;
+  readonly map: number | null;
+  readonly cell: Cell | null;
+  readonly enabled: boolean | null;
+  readonly riding: boolean | null;
+}
+
+interface VehicleTable {
+  readonly ready: boolean;
+  readonly list: readonly VehicleInfo[];
+}
+
+/**
+ * Task 143: ask where the owned vehicles are parked. An older bridge has no `vehicles` op;
+ * the failed query is the feature test, and null means "keep the old walking behaviour".
+ * The bridge answers `{ready:false}` at the title screen or while a save is loading.
+ */
+async function readVehicles(pilot: Pilot): Promise<VehicleTable | null> {
+  try {
+    const reply = await pilot.query("vehicles");
+    const nested = reply.vehicles;
+    const top = record(reply);
+    const body = record(nested ?? top);
+    // An old bridge answers an unknown op with ok:false and no vehicles envelope; that is
+    // not "ready with no vehicles", it is "keep the old walking behaviour".
+    const envelope =
+      nested != null ||
+      Array.isArray(top.list) ||
+      Array.isArray(top.vehicles) ||
+      typeof top.ready === "boolean";
+    if (!envelope) return null;
+    if (body.ready === false) return { ready: false, list: [] };
+    const raw = Array.isArray(body.list)
+      ? body.list
+      : Array.isArray(body.vehicles)
+        ? body.vehicles
+        : Array.isArray(nested)
+          ? nested
+          : Array.isArray(top.vehicles)
+            ? top.vehicles
+            : [];
+    const list: VehicleInfo[] = [];
+    for (const entry of raw) {
+      const row = record(entry);
+      const id = num(row.id);
+      const type = num(row.type);
+      const map = num(row.map) ?? num(row.mapId);
+      const cell = cellOf(row.cell) ?? cellOf(row.position) ?? cellOf(row.pos);
+      const typeName = text(row.typeName) ?? text(row.name) ?? text(row.type) ?? null;
+      const enabled =
+        typeof row.enabled === "boolean"
+          ? row.enabled
+          : typeof row.enable === "boolean"
+            ? row.enable
+            : null;
+      const riding =
+        typeof row.riding === "boolean"
+          ? row.riding
+          : typeof row.current === "boolean"
+            ? row.current
+            : null;
+      if (id === undefined && type === undefined && cell === null) continue;
+      list.push({
+        id: id === undefined ? null : Math.trunc(id),
+        type: type === undefined ? null : Math.trunc(type),
+        typeName,
+        map: map === undefined ? null : Math.trunc(map),
+        cell,
+        enabled,
+        riding,
+      });
+    }
+    return { ready: true, list };
+  } catch {
+    return null;
+  }
+}
+
+/** Which world-map terrain grid this vehicle uses (MapConstants.TransportationType). */
+function vehicleWorldMode(vehicle: VehicleInfo): WorldMode | null {
+  const name = (vehicle.typeName ?? "").replace(/[^a-z]/giu, "").toLowerCase();
+  if (name === "ship") return "ship";
+  if (name === "chocobo" || name === "yellowchocobo") return "chocobo";
+  if (name === "blackchocobo") return "blackChocobo";
+  if (name === "drake" || name === "lowflying") return "drake";
+  if (name === "airship" || name === "specialplane" || name === "plane") return "airship";
+  if (name === "submarine") return "submarine";
+  switch (vehicle.type) {
+    case 2:
+      return "ship";
+    case 3:
+    case 8:
+      return "airship";
+    case 6:
+      return "submarine";
+    case 7:
+      return "drake";
+    case 9:
+      return "chocobo";
+    case 10:
+      return "blackChocobo";
+    default:
+      return null;
+  }
+}
+
+/** The surface modes a walking party can use with the vehicles on this world map. */
+function surfaceWorldModes(
+  map: number,
+  vehicles: VehicleTable | null,
+): readonly WorldMode[] | undefined {
+  if (!vehicles?.ready) return undefined;
+  const modes = new Set<WorldMode>(["walk"]);
+  for (const vehicle of vehicles.list) {
+    if (vehicle.cell === null) continue;
+    if (vehicle.map !== null && vehicle.map !== map) continue;
+    if (vehicle.enabled === false) continue;
+    const mode = vehicleWorldMode(vehicle);
+    if (mode === "ship" || mode === "chocobo" || mode === "blackChocobo") modes.add(mode);
+  }
+  return [...modes];
+}
+
 export async function currentMapAndCell(pilot: Pilot): Promise<[number | null, Cell | null]> {
   const position = await readPosition(pilot);
   return [position.map, position.cell];
@@ -628,8 +918,21 @@ async function exitReachable(
   state: MoveState,
   map: number,
   cell: Cell,
+  from: Cell | null = null,
+  layer: number | null = null,
+  regions?: RegionIndex,
 ): Promise<boolean> {
   if (isWorldMap(map)) return true;
+  // Fast path: the region index already holds this map's collision and observed moves. It
+  // says "reachable" without a cells+collision+entities plan, which is what every hop used
+  // to pay before walking the exit. A negative answer still goes through canReach, so this
+  // only skips a plan that would have said yes.
+  const region = regions?.region(map);
+  const blocks = from === null ? [] : (region?.blocksAt(from, layer) ?? []);
+  if (blocks.length > 0 && region !== undefined) {
+    const target = region.blocksAt(cell, layer);
+    if (target.length > 0 && region.reachable(blocks, cell, layer).ok) return true;
+  }
   return canReach(pilot, cell, state, map);
 }
 
@@ -668,18 +971,19 @@ async function withHop<T>(state: MoveState, hop: number, run: () => Promise<T>):
   }
 }
 
-/** Walk to one cell, keeping the battle/story outcomes the travel tools must report. */
-async function walkTo(
+/** Move to one cell on foot or by ship, keeping the battle/story outcomes travel reports. */
+async function moveTo(
   pilot: Pilot,
   moveState: MoveState,
   cell: Cell,
   say: Say,
+  byShip: boolean,
 ): Promise<WalkOutcome> {
   const said: string[] = [];
   const [reached, detail] = await navigate(
     pilot,
     cell,
-    false,
+    byShip,
     (line) => {
       said.push(line);
       say(line);
@@ -688,6 +992,16 @@ async function walkTo(
     moveState,
   );
   return walkOutcome(await readPosition(pilot), reached, detail, said);
+}
+
+/** Walk to one cell, keeping the battle/story outcomes the travel tools must report. */
+async function walkTo(
+  pilot: Pilot,
+  moveState: MoveState,
+  cell: Cell,
+  say: Say,
+): Promise<WalkOutcome> {
+  return await moveTo(pilot, moveState, cell, say, false);
 }
 
 /**
@@ -721,21 +1035,32 @@ export async function rideState(pilot: Pilot): Promise<string> {
 interface WorldRide {
   readonly flying: boolean;
   readonly stop: string | null;
+  /** A surface vehicle that can keep moving on the world map; null on foot or in the air. */
+  readonly vehicle: "Ship" | null;
 }
 
 /** Task 123: which world-map terrain grids the live ride state can cross. */
-async function worldModesFor(pilot: Pilot): Promise<readonly WorldMode[] | undefined> {
+async function worldModesFor(
+  pilot: Pilot,
+  map: number | null,
+  vehicles: VehicleTable | null,
+): Promise<readonly WorldMode[] | undefined> {
   const state = await rideState(pilot);
   if (state === "LowFlying") return ["walk", "drake"];
   if (state === "HighFlying") return ["walk", "airship"];
   if (state === "Chocobo") return ["walk", "chocobo"];
   if (state === "Ship") return ["walk", "ship"];
-  return undefined; // walking/unknown: the default surface network (walk + ship)
+  // Task 143: on foot, only the vehicles the save says are here can be used. Without the
+  // query this is undefined and mapPath keeps its old walking-plus-ship default.
+  return surfaceWorldModes(map ?? -1, vehicles);
 }
 
 /**
- * Whether a world-map hop may go on: on foot, or on the drake. A ship or chocobo cannot enter
- * a town, so the map route stops and says so instead of walking into the sea/land on it.
+ * Whether a world-map hop may go on: on foot, on the drake, or on the ship. A chocobo still
+ * stops the route because its dismount is not implemented here. The ship is handled by
+ * `shipApproach`: sail to the nearest sea cell beside the exit, then walk the last cells so
+ * the game auto-dismounts (11-11, Tule: the ship was at (150,89) and the old code refused
+ * every ship hop after `mapPath` had already found the exit).
  */
 async function worldRide(pilot: Pilot): Promise<WorldRide> {
   let airborne = false;
@@ -744,12 +1069,196 @@ async function worldRide(pilot: Pilot): Promise<WorldRide> {
   } catch {
     // A test without a sample is walking; production always has one.
   }
-  if (airborne) return { flying: true, stop: null };
+  if (airborne) return { flying: true, stop: null, vehicle: null };
   const state = await rideState(pilot);
+  if (state === "Ship") return { flying: false, stop: null, vehicle: "Ship" };
   const label = RIDES.get(state);
-  if (label === undefined) return { flying: false, stop: null };
+  if (label === undefined) return { flying: false, stop: null, vehicle: null };
   const name = label.split("(", 1)[0] ?? label;
-  return { flying: false, stop: `现在在${name}上,go 只会步行和骑飞龙` };
+  return {
+    flying: false,
+    stop: `现在在${name}上,go 只会步行和骑飞龙`,
+    vehicle: null,
+  };
+}
+
+/** How far from an exit a ship may look for a sea cell to dock at. */
+const SHIP_APPROACH_RADIUS = 8;
+
+/**
+ * The ship cell nearest `exit` that is in the ship's own world block and has walkable land
+ * next to it. The walk from there to the exit is a second leg: at Tule the exit is (130,89),
+ * land (131,89) is between it and the sea (132,89), so the old one-leg walk could not start.
+ */
+function shipApproach(
+  source: CollisionStore | undefined,
+  map: number,
+  exit: Cell,
+  from: Cell,
+): Cell | null {
+  if (source === undefined) return null;
+  if (!source.hasWorld(map)) return null;
+  const zone = source.worldZone(map, ["ship"], from);
+  const exitWalk = source.worldZone(map, ["walk"], exit);
+  if (zone === null || exitWalk === null) return null;
+  for (let radius = 1; radius <= SHIP_APPROACH_RADIUS; radius += 1) {
+    for (let dx = -radius; dx <= radius; dx += 1) {
+      for (let dy = -radius; dy <= radius; dy += 1) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
+        const cell: Cell = [exit[0] + dx, exit[1] + dy];
+        if (sameCell(cell, from)) return cell;
+        if (source.worldZone(map, ["ship"], cell) !== zone) continue;
+        const neighbours: readonly Cell[] = [
+          [cell[0] + 1, cell[1]],
+          [cell[0] - 1, cell[1]],
+          [cell[0], cell[1] + 1],
+          [cell[0], cell[1] - 1],
+        ];
+        const land = neighbours.some(
+          (neighbour) => source.worldZone(map, ["walk"], neighbour) === exitWalk,
+        );
+        if (land) return cell;
+      }
+    }
+  }
+  return null;
+}
+
+/** Task 143: whether walking alone can reach `exit` from `from` on this world map. */
+function needsSurfaceVehicle(
+  source: CollisionStore | undefined,
+  map: number,
+  from: Cell,
+  exit: Cell,
+): boolean {
+  if (!source?.hasWorld(map)) return false;
+  const here = source.worldZone(map, ["walk"], from);
+  if (here === null) return false;
+  return source.worldZone(map, ["walk"], exit) !== here;
+}
+
+/** A land neighbour of the ship's cell that the party can walk to from where it stands. */
+function shipHasWalkableShore(
+  source: CollisionStore,
+  map: number,
+  from: Cell,
+  shipCell: Cell,
+): boolean {
+  const walkZone = source.worldZone(map, ["walk"], from);
+  if (walkZone === null) return false;
+  if (source.worldZone(map, ["walk"], shipCell) === walkZone) return true;
+  const neighbours: readonly Cell[] = [
+    [shipCell[0] + 1, shipCell[1]],
+    [shipCell[0] - 1, shipCell[1]],
+    [shipCell[0], shipCell[1] + 1],
+    [shipCell[0], shipCell[1] - 1],
+  ];
+  return neighbours.some((cell) => source.worldZone(map, ["walk"], cell) === walkZone);
+}
+
+interface Boarding {
+  readonly vehicle: VehicleInfo;
+  readonly mode: WorldMode;
+  readonly cell: Cell;
+}
+
+/**
+ * Task 143: pick the vehicle to board when `exit` is not walk-reachable. A ship must be in
+ * the sea block that can dock at this exit and have a shore the party can walk to; a chocobo
+ * is simply standing on a reachable land cell. Ships win ties because the story's sea routes
+ * are the ones with a dock (task 134).
+ */
+function boardingVehicle(
+  source: CollisionStore | undefined,
+  map: number,
+  from: Cell,
+  exit: Cell,
+  vehicles: VehicleTable | null,
+): Boarding | null {
+  if (!source?.hasWorld(map)) return null;
+  if (!vehicles?.ready) return null;
+  if (!needsSurfaceVehicle(source, map, from, exit)) return null;
+  const walkZone = source.worldZone(map, ["walk"], from);
+  let best: Boarding | null = null;
+  let bestRank = Number.POSITIVE_INFINITY;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const vehicle of vehicles.list) {
+    if (vehicle.cell === null || vehicle.enabled === false) continue;
+    if (vehicle.map !== null && vehicle.map !== map) continue;
+    const mode = vehicleWorldMode(vehicle);
+    if (mode !== "ship" && mode !== "chocobo" && mode !== "blackChocobo") continue;
+    if (mode === "ship") {
+      if (!shipHasWalkableShore(source, map, from, vehicle.cell)) continue;
+      if (shipApproach(source, map, exit, vehicle.cell) === null) continue;
+    } else {
+      if (walkZone === null) continue;
+      if (source.worldZone(map, ["walk"], vehicle.cell) !== walkZone) continue;
+      const vehicleZone = source.worldZone(map, [mode], vehicle.cell);
+      if (vehicleZone === null) continue;
+      if (vehicleZone !== source.worldZone(map, [mode], exit)) continue;
+    }
+    const rank = mode === "ship" ? 0 : 1;
+    const distance = Math.abs(from[0] - vehicle.cell[0]) + Math.abs(from[1] - vehicle.cell[1]);
+    if (rank < bestRank || (rank === bestRank && distance < bestDistance)) {
+      best = { vehicle, mode, cell: vehicle.cell };
+      bestRank = rank;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+interface BoardResult {
+  readonly cell: Cell;
+  readonly ride: WorldRide;
+}
+
+/**
+ * Walk onto the vehicle's cell: the game itself boards a ship or mounts a chocobo when the
+ * party steps on it, so no separate key press is needed. The ship is then sailed by the
+ * caller's existing `shipApproach` leg (task 134).
+ */
+async function boardVehicle(
+  pilot: Pilot,
+  state: MoveState,
+  map: number,
+  boarding: Boarding,
+  say: Say,
+): Promise<BoardResult | string> {
+  const walked = await moveTo(pilot, state, boarding.cell, say, false);
+  if (walked.wipe !== null) return `全灭:${firstLine(walked.wipe)}`;
+  if (walked.story !== null) return `停在状态 ${walked.story}，先停下`;
+  if (!walked.reached || walked.position.map !== map || walked.position.cell === null) {
+    return `走不到${boarding.mode === "ship" ? "船" : "陆行鸟"}停的 ${cellText(boarding.cell)}`;
+  }
+  const reachedCell = walked.position.cell;
+  const expected =
+    boarding.mode === "ship"
+      ? ["Ship"]
+      : boarding.mode === "blackChocobo"
+        ? ["BlackChocobo", "Chocobo"]
+        : ["Chocobo"];
+  await waitForRide(pilot, expected);
+  const after = await readPosition(pilot);
+  return {
+    cell: after.map === map && after.cell !== null ? after.cell : reachedCell,
+    ride: {
+      flying: false,
+      stop: null,
+      vehicle: boarding.mode === "ship" ? "Ship" : null,
+    },
+  };
+}
+
+/** Wait a moment for the game to switch to the mounted move state; tests use a fake clock. */
+async function waitForRide(pilot: Pilot, expected: readonly string[]): Promise<void> {
+  const until = pilot.now() + 2_000;
+  for (;;) {
+    const state = await rideState(pilot);
+    if (expected.includes(state)) return;
+    if (pilot.now() >= until) return;
+    await pilot.sleep(200);
+  }
 }
 
 function firstLine(line: string): string {
@@ -774,10 +1283,18 @@ function travelText(
   hops: readonly TravelHop[],
   blocked: readonly string[],
   end: TravelEnd,
+  target: number,
 ): TravelResult {
   const parts: string[] = [];
   if (hops.length === 0) {
-    parts.push("跳数:0");
+    // Task 132: "跳数:0" alone made the model report no movement even when the reason (a
+    // chocobo cannot enter, or no recorded route) was on the next lines. Say which case it is
+    // in the first line: already at the target, or why this target cannot be reached.
+    parts.push(
+      end.reached
+        ? `跳数:0(已经在${mapLabel(atlas, end.mapId ?? target)})`
+        : `到不了${mapLabel(atlas, target)}`,
+    );
   } else {
     parts.push(`走了 ${hops.length} 跳:`);
     for (const hop of hops) {
@@ -869,7 +1386,7 @@ export async function travelToMap(
     say(line);
   };
 
-  const finish = (end: TravelEnd): TravelResult => travelText(atlas, hops, blocked, end);
+  const finish = (end: TravelEnd): TravelResult => travelText(atlas, hops, blocked, end, target);
 
   if (current === null) {
     return finish({
@@ -909,19 +1426,42 @@ export async function travelToMap(
         cell,
       });
     }
-    const worldModes = isWorldMap(current) ? await worldModesFor(pilot) : undefined;
+    // Task 143: the save's vehicle positions are read again before every plan; an older
+    // bridge has no vehicles op, so this is null and the old behaviour stays.
+    const vehicles = isWorldMap(current) ? await readVehicles(pilot) : null;
+    const worldModes = isWorldMap(current)
+      ? await worldModesFor(pilot, current, vehicles)
+      : undefined;
     const path = mapPath(atlas, current, target, unavailable, true, {
       start: cell,
       startLayer: layer,
       landings,
       regions,
       collisions: context.collisions,
+      ...(options.toCell === undefined ? {} : { toCell: options.toCell }),
+      ...(options.toLayer === undefined ? {} : { toLayer: options.toLayer }),
       ...(worldModes === undefined ? {} : { worldModes }),
     });
     if (path === null) {
-      const hint = explainNoPath(atlas, regions, current, cell, target);
+      const hint = explainNoPath(
+        atlas,
+        regions,
+        current,
+        cell,
+        target,
+        options.toCell ?? null,
+        options.toLayer ?? null,
+        worldModes,
+      );
       const stop = `地图记录里找不到从 ${current} 到 ${target} 的路`;
-      return finish({ reached: false, stop, detail: stop, mapId: current, cell, hint });
+      return finish({
+        reached: false,
+        stop,
+        detail: stop,
+        mapId: current,
+        cell,
+        hint,
+      });
     }
     const first = path[0];
     if (first === undefined) {
@@ -934,7 +1474,9 @@ export async function travelToMap(
       });
     }
     if (first.kind === "ride") {
-      if (!(await exitReachable(pilot, context.moveState, current, first.cell))) {
+      if (
+        !(await exitReachable(pilot, context.moveState, current, first.cell, cell, layer, regions))
+      ) {
         unavailable.add(hopKey(current, cell, first.cell, first.to, "ride"));
         blocked.push(
           `地图 ${current} (${first.cell[0]}, ${first.cell[1]}) 坐电梯到地图 ${first.to}` +
@@ -1011,7 +1553,7 @@ export async function travelToMap(
       }
       continue;
     }
-    const ride: WorldRide | null = isWorldMap(current) ? await worldRide(pilot) : null;
+    let ride: WorldRide | null = isWorldMap(current) ? await worldRide(pilot) : null;
     if (ride !== null && ride.stop !== null) {
       return finish({
         reached: false,
@@ -1021,7 +1563,49 @@ export async function travelToMap(
         cell,
       });
     }
-    if (!(await exitReachable(pilot, context.moveState, current, first.cell))) {
+    // Task 143: on foot, if this exit is on another walk block, walk to the parked ship or
+    // chocobo first and step onto its cell. The ship then uses the existing shipApproach leg
+    // below; on foot again the last cells to the exit dismount automatically.
+    if (
+      isWorldMap(current) &&
+      ride !== null &&
+      ride.vehicle === null &&
+      !ride.flying &&
+      cell !== null
+    ) {
+      const boarding = boardingVehicle(
+        context.collisions ?? regions.source,
+        current,
+        cell,
+        first.cell,
+        vehicles,
+      );
+      if (boarding !== null) {
+        const boarded = await withHop(context.moveState, hops.length + 1, () =>
+          boardVehicle(pilot, context.moveState, Number(current), boarding, walkSay),
+        );
+        if (typeof boarded === "string") {
+          return finish({
+            reached: false,
+            stop: boarded,
+            detail: boarded,
+            mapId: current,
+            cell,
+          });
+        }
+        cell = boarded.cell;
+        layer = null;
+        ride = boarded.ride;
+        walkSay(
+          boarding.mode === "ship"
+            ? `  走到${cellText(boarding.cell)}上船`
+            : `  走到${cellText(boarding.cell)}骑上陆行鸟`,
+        );
+      }
+    }
+    if (
+      !(await exitReachable(pilot, context.moveState, current, first.cell, cell, layer, regions))
+    ) {
       // The exit exists in the atlas but is in another region of this map. Close it for this
       // call instead of walking into the wall; the next route may leave by another exit.
       unavailable.add(hopKey(current, cell, first.cell, first.to));
@@ -1042,6 +1626,49 @@ export async function travelToMap(
         cell,
         verbatim: refusal.text,
       });
+    }
+    // A ship cannot walk onto land. Sail to the nearest sea cell beside this exit, then let
+    // the ordinary walk take the last cells; the game dismounts when it steps ashore.
+    if (ride?.vehicle === "Ship" && cell !== null) {
+      const approach = shipApproach(
+        context.collisions ?? regions.source,
+        current,
+        first.cell,
+        cell,
+      );
+      if (approach !== null && !sameCell(approach, cell)) {
+        const sailed = await withHop(context.moveState, hops.length + 1, () =>
+          moveTo(pilot, context.moveState, approach, walkSay, true),
+        );
+        if (sailed.wipe !== null) {
+          return finish({
+            reached: false,
+            stop: `全灭:${firstLine(sailed.wipe)}`,
+            detail: sailed.wipe,
+            mapId: sailed.position.map,
+            cell: sailed.position.cell,
+          });
+        }
+        if (sailed.story !== null) {
+          return finish({
+            reached: false,
+            stop: `停在状态 ${sailed.story}，先停下`,
+            detail: sailed.detail,
+            mapId: sailed.position.map,
+            cell: sailed.position.cell,
+          });
+        }
+        if (!sailed.reached || sailed.position.map !== current || sailed.position.cell === null) {
+          unavailable.add(hopKey(current, cell, first.cell, first.to));
+          blocked.push(
+            `地图 ${current} (${cell[0]}, ${cell[1]}) 开不到 ${cellText(approach)} 靠岸` +
+              `(去地图 ${first.to})`,
+          );
+          continue;
+        }
+        cell = sailed.position.cell;
+        layer = null;
+      }
     }
     const walked: WalkOutcome = await withHop(context.moveState, hops.length + 1, () =>
       ride?.flying === true
@@ -1303,12 +1930,20 @@ export async function detourToCell(
   for (const source of automatic.slice(0, 4)) {
     const out = await travelToMap(pilot, context, source.id, say, options);
     if (!out.reached) continue;
-    const back = await travelToMap(pilot, context, start.map, say, options);
+    const back = await travelToMap(pilot, context, start.map, say, {
+      ...options,
+      toCell: goal,
+    });
     if (!back.reached) continue;
     const now = await readPosition(pilot);
     if (now.map !== start.map || now.cell === null) continue;
     observed.set(source.id, now.cell);
-    if (!(await canReach(pilot, goal, context.moveState, start.map, { cell: now.cell }))) continue;
+    if (
+      !(await canReach(pilot, goal, context.moveState, start.map, {
+        cell: now.cell,
+      }))
+    )
+      continue;
     const [, walked] = await navigate(pilot, goal, false, say, 8, context.moveState);
     parts.push(`目标 ${cellText(goal)} 和原来所在的区域不连通,先出去绕一圈再进来。`);
     parts.push(out.text, back.text);
@@ -1509,7 +2144,9 @@ function nearestMapWithUnknownExits(
     const id = Number(key);
     if (!Number.isFinite(id) || id === from || isWorldMap(id)) continue;
     if (unknownExits(atlas, id, source).length === 0) continue;
-    const path = mapPath(atlas, from, id, new Set(), true, { collisions: source });
+    const path = mapPath(atlas, from, id, new Set(), true, {
+      collisions: source,
+    });
     if (path === null) continue;
     if (best === null || path.length < best.hops || (path.length === best.hops && id < best.id)) {
       best = { id, hops: path.length };
@@ -1537,7 +2174,11 @@ export async function explore(
   const start = await readPosition(pilot);
   const startMap = start.map;
   if (startMap === null) {
-    return { found: false, mapId: null, text: "读不到当前地图，没法找新出口。" };
+    return {
+      found: false,
+      mapId: null,
+      text: "读不到当前地图，没法找新出口。",
+    };
   }
   let current = startMap;
   let cell = start.cell;

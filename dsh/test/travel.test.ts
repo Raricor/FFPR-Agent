@@ -4,11 +4,12 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { Atlas } from "../src/engine/atlas.ts";
+import { CollisionStore } from "../src/engine/regions.ts";
 import { Game } from "../src/engine/game.ts";
 import type { Laptop } from "../src/engine/laptop.ts";
 import type { Cell } from "../src/engine/nav.ts";
@@ -389,7 +390,53 @@ void test("on the wind drake the world-map hop flies in and lands", async () => 
   assert.ok(pilot.keys().some((keys) => keys.includes("Enter")));
 });
 
-void test("on a ship go does not move and says only walking or the drake works", async () => {
+void test("a ship without a world export falls back to walking and says why", async () => {
+  const atlas = atlasOf({
+    1: { name: "世界地图", exits: [{ cell: [7, 7], to: 32 }] },
+    32: { name: "终点", exits: [] },
+  });
+  const world = worldFor(atlas);
+  world.map = 1;
+  world.cell = [20, 20];
+  const pilot = terrainPilot(world, { state: "Ship" });
+  // Open sea everywhere: without the world export there is no dock to aim at, so the
+  // walking fallback cannot leave the ship's cell.
+  pilot.on("cells", () => ({
+    cells: {
+      origin: [0, 0],
+      center: [world.cell[0], world.cell[1]],
+      attr: Array.from({ length: 40 }, () => Array.from({ length: 40 }, () => 16)),
+    },
+  }));
+  const result = await travelToMap(pilot, { atlas, moveState: { drake: null } }, 32);
+  assert.equal(result.reached, false);
+  assert.equal(world.map, 1);
+  assert.match(result.text, /^到不了地图 32/m);
+  assert.doesNotMatch(result.text, /现在在坐船上/);
+  assert.doesNotMatch(result.text, /跳数:0/);
+});
+
+void test("go to a map no exit reaches says 到不了 and why, never 跳数:0", async () => {
+  const atlas = atlasOf(SIMPLE);
+  const world = worldFor(atlas);
+  const result = await travelToMap(pilotFor(world), { atlas, moveState: { drake: null } }, 99);
+  assert.equal(result.reached, false);
+  assert.equal(world.map, 30);
+  assert.match(result.text, /^到不了地图 99/m);
+  assert.match(result.text, /地图记录本身就没有从 30 到 99 的出口路线/);
+  assert.doesNotMatch(result.text, /跳数:0/);
+});
+
+void test("go to the map the party is already on is 0 hops and says 已经在地图", async () => {
+  const atlas = atlasOf(SIMPLE);
+  const world = worldFor(atlas);
+  const result = await travelToMap(pilotFor(world), { atlas, moveState: { drake: null } }, 30);
+  assert.equal(result.reached, true);
+  assert.equal(result.hops.length, 0);
+  assert.match(result.text, /跳数:0\(已经在地图 30「图尔村」\)/);
+});
+
+void test("on a chocobo go says 到不了 and why instead of only 跳数:0", async () => {
   const atlas = atlasOf({
     1: { name: "世界地图", exits: [{ cell: [7, 7], to: 32 }] },
     32: { name: "终点", exits: [] },
@@ -398,14 +445,15 @@ void test("on a ship go does not move and says only walking or the drake works",
   world.map = 1;
   world.cell = [20, 20];
   const result = await travelToMap(
-    terrainPilot(world, { state: "Ship" }),
+    terrainPilot(world, { state: "Chocobo" }),
     { atlas, moveState: { drake: null } },
     32,
   );
   assert.equal(result.reached, false);
   assert.equal(world.map, 1);
-  assert.equal(world.cell[0], 20);
-  assert.match(result.text, /现在在坐船上,go 只会步行和骑飞龙/);
+  assert.match(result.text, /^到不了地图 32/m);
+  assert.match(result.text, /现在在骑陆行鸟上,go 只会步行和骑飞龙/);
+  assert.doesNotMatch(result.text, /跳数:0/);
 });
 
 void test("a map name shared by two maps is listed and nothing moves", () => {
@@ -727,6 +775,28 @@ void test("go walks two hops to a map named 图尔村", async () => {
     assert.match(result, /地图 62 →\(1, 5\)→ 地图 31/);
     assert.match(result, /地图 31 →\(2, 5\)→ 地图 30/);
     assert.match(result, /停在:地图 30「图尔村」/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("go by map id that no route reaches says 到不了 instead of only 跳数:0", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ffpr-go-unreachable-"));
+  try {
+    const game = calmGame(
+      await gameWithMaps(directory, {
+        30: { name: "起点", exits: [{ cell: [1, 5], to: 31 }] },
+        31: { name: "运河", exits: [] },
+      }),
+    );
+    const world = worldFor(game.atlas);
+    const result = await game.run("go", { to: 99 }, playablePilot(world));
+    assert.equal(world.map, 30);
+    assert.match(result, /到不了地图 99/);
+    assert.doesNotMatch(result, /跳数:0/);
+
+    const already = await game.run("go", { to: 30 }, playablePilot(world));
+    assert.match(already, /跳数:0\(已经在地图 30/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -1100,5 +1170,88 @@ void test("explore can leave an incomplete map with leave_incomplete", async () 
     assert.equal(game.backlog.pending()[0]?.reason, "需要钥匙");
   } finally {
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+void test("a ship sails to the coast and walks into the town", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ffpr-ship-"));
+  try {
+    const maps = join(dir, "maps");
+    await mkdir(maps, { recursive: true });
+    const walk = [
+      "0000000000",
+      "0000000000",
+      "0000000000",
+      "0000000111",
+      "0000000111",
+      "0000000111",
+      "0000000111",
+    ];
+    const ship = [
+      "1111111000",
+      "1111111000",
+      "1111111000",
+      "1111111000",
+      "1111111000",
+      "1111111000",
+      "1111111000",
+    ];
+    await writeFile(
+      join(maps, "1.json"),
+      JSON.stringify({
+        id: 1,
+        collision: [],
+        exits: [{ cell: [8, 3], toMap: 30, toPoint: 1 }],
+        world: { width: 10, height: 7, modes: { walk, ship }, points: [] },
+      }),
+      "utf8",
+    );
+    await writeFile(
+      join(maps, "30.json"),
+      JSON.stringify({
+        id: 30,
+        collision: [
+          { name: "GroundCollision", rows: Array.from({ length: 8 }, () => "0".repeat(8)) },
+        ],
+        exits: [],
+      }),
+      "utf8",
+    );
+    const store = await CollisionStore.load(undefined, undefined, maps);
+    const atlas = atlasOf({
+      1: { name: "世界地图", exits: [{ cell: [8, 3], to: 30 }] },
+      30: { name: "图尔村", exits: [] },
+    });
+    const world = worldFor(atlas);
+    world.map = 1;
+    world.cell = [1, 3];
+    const sailed: string[] = [];
+    const pilot = pilotFor(world, (from, to) => {
+      sailed.push(`${from[0]},${from[1]}>${to[0]},${to[1]}`);
+    });
+    pilot.on("cells", () => ({
+      cells: {
+        origin: [0, 0],
+        center: [world.cell[0], world.cell[1]],
+        attr: walk.map((row) => Array.from(row, (value) => (value === "1" ? 4 : 16))),
+      },
+    }));
+    pilot.onQuery("sample", () => ({ sample: { field: { moveState: "Ship" } } }));
+    const result = await travelToMap(
+      pilot,
+      { atlas, moveState: { drake: null }, collisions: store },
+      30,
+    );
+    assert.equal(result.reached, true);
+    assert.equal(world.map, 30);
+    assert.deepEqual(
+      result.hops.map((hop) => [hop.from, hop.actual]),
+      [[1, 30]],
+    );
+    assert.equal(sailed[0], "1,3>6,3", "the ship sailed to the approach cell");
+    assert.ok(sailed.includes("6,3>8,3"), "the party walked ashore to the town entrance");
+    assert.match(result.text, /走了 1 跳/u);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });

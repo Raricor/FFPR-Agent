@@ -85,6 +85,11 @@ export interface LayeredGrid {
    * floor and enters them only when that is the only way to the goal.
    */
   readonly passages?: ReadonlyMap<string, number | null>;
+  /**
+   * Task 143: story/event trigger cells. They are always walkable (the party has to step on
+   * them), even if this collision snapshot still calls the cell a wall.
+   */
+  readonly events?: ReadonlySet<string>;
 }
 
 export function cellKey(x: number, y: number): string {
@@ -498,6 +503,7 @@ export function layeredGrid(
   transitions: Iterable<Cell | LayerChange> = [],
   moves: readonly ObservedMove[] = [],
   dangers: Iterable<DangerCell> = [],
+  eventCells: ReadonlySet<string> = new Set(),
 ): LayeredGrid | null {
   const { layers, here, passages } = collisionData(collision);
   if (layers.length === 0 || !here) return null;
@@ -545,6 +551,7 @@ export function layeredGrid(
     moves: moveCells,
     dangers: dangerCells,
     passages: passageCells,
+    ...(eventCells.size === 0 ? {} : { events: eventCells }),
   };
 }
 
@@ -588,6 +595,9 @@ function cellAt(grid: LayeredGrid, x: number, y: number, z: number): string {
   ) {
     return "0";
   }
+  // Task 143: a story trigger is walked onto; even a stale collision row that calls it a
+  // wall must not hide the only corridor.
+  if (grid.events?.has(cellKey(x, y)) === true) return "0";
   // 11-09: the party may stand on a cell the collision data calls a wall (a GotoMap or
   // PointIn door/landing; the game drops it there). That cell is walkable from the party's
   // side, or every search starting on it stayed put and called the goal unreachable.

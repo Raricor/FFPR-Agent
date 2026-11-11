@@ -35,9 +35,12 @@ void test("the Fire-Powered Ship fixture plans finite legs that match mapPath", 
 
   assert.ok(plan.legs.length > 0);
   for (const leg of plan.legs) {
+    // Task 148: a same-map leg may now leave and re-enter, so the comparison must ask the
+    // planner about the goal cell; without it mapPath still answers "already there".
     const path = mapPath(atlas, leg.from.map, leg.map, new Set(), true, {
       regions,
       start: leg.from.cell,
+      toCell: leg.cell,
     });
     assert.notEqual(path, null, `leg to ${leg.waypoint} should be routeable`);
     assert.deepEqual(leg.maps, [leg.from.map, ...(path ?? []).map((hop) => hop.to)]);

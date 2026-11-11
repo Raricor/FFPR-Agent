@@ -6,12 +6,16 @@
  * so nothing here symmetrises the matrix. A pair that `mapPath` cannot route is reported with
  * a Chinese reason instead of being given a made-up distance; the caller puts the waypoint in
  * `unreachable` and lets the AI explore it later.
+ *
+ * Task 148: a same-map pair also uses `mapPath` when the cached grid cannot walk it, so a goal
+ * in another block of the same map can be reached by leaving through another map and returning.
  */
 
 import { LAYER_Z, layeredGrid, layeredRouteAvoiding } from "../nav.ts";
+import { jumpMoves } from "../knowledge/jumps.ts";
 import type { Cell } from "../nav.ts";
 import type { CollisionSnapshot, CollisionStore, WorldMode } from "../regions.ts";
-import { isWorldMap, mapExits, mapPath } from "../skills/travel.ts";
+import { isWorldMap, goalEntranceHint, mapExits, mapPath } from "../skills/travel.ts";
 import type { Atlas } from "../atlas.ts";
 import type { PairEstimate, RoutePoint, RouteWorld } from "./types.ts";
 
@@ -88,12 +92,13 @@ function walkCells(world: RouteWorld, mapId: number, from: Cell, to: Cell): Walk
   const snapshot = world.collisions?.get(mapId);
   if (snapshot === undefined) return null;
   let best: number | null = null;
+  const jumps = jumpMoves(world.collisions?.jumps(mapId) ?? []);
   for (const height of layerHeights(snapshot)) {
     const grid = layeredGrid(
       { ...snapshot, searchLayer: height, playerCell: [from[0], from[1]] },
       [],
       [],
-      world.atlas.moves(mapId),
+      [...world.atlas.moves(mapId), ...jumps],
       [],
     );
     if (grid === null) continue;
@@ -147,7 +152,17 @@ function noPathReason(world: RouteWorld, from: RoutePoint, to: RoutePoint): stri
   if (plain === null) {
     return `地图记录里没有从地图 ${from.map} 到地图 ${to.map} 的出口路线`;
   }
-  return `按（地图，连通块）走不到地图 ${to.map}:` + "这一块没有记过能进来的入口或落点（碰撞缓存）";
+  // Task 140: a map can be reachable while the goal cell's block is not; name the entrances
+  // that do land in that block, so the model can tell which stair to take.
+  const hint =
+    to.cell === null || world.regions === undefined
+      ? null
+      : goalEntranceHint(world.atlas, world.regions, to.map, to.cell);
+  return (
+    `按（地图，连通块）走不到地图 ${to.map}:` +
+    "这一块没有记过能进来的入口或落点（碰撞缓存）" +
+    (hint === null ? "" : `;${hint}`)
+  );
 }
 
 function sameMapResult(world: RouteWorld, from: RoutePoint, to: RoutePoint): PairResult {
@@ -163,40 +178,40 @@ function sameMapResult(world: RouteWorld, from: RoutePoint, to: RoutePoint): Pai
     return { ok: true, estimate: estimate([map], 0, ROUTE_CELLS_PER_MAP_HOP) };
   }
   if (!walk.ok) {
+    // Task 148: the same grid can be split into blocks that only connect through another map.
+    // Ask mapPath for that A → B → A route before calling the waypoint unreachable.
+    const path = mapPath(world.atlas, map, map, new Set(), true, {
+      regions: world.regions,
+      collisions: world.collisions,
+      start: fromCell,
+      toCell,
+      worldModes: world.worldModes ?? ROUTE_SURFACE_WORLD_MODES,
+    });
+    if (path !== null && path.length > 0) {
+      const detour = pathResult(world, from, to, path);
+      if (detour.ok) return detour;
+    }
     return {
       ok: false,
       reason:
-        `地图 ${map} 里从 ${cellText(fromCell)} 走不到 ${cellText(toCell)}` + "（按碰撞缓存）",
+        `地图 ${map} 里从 ${cellText(fromCell)} 走不到 ${cellText(toCell)}` +
+        "（同图另一块，经别的图也绕不过去）",
     };
   }
   return { ok: true, estimate: estimate([map], 0, walk.cells) };
 }
 
-function crossMapResult(world: RouteWorld, from: RoutePoint, to: RoutePoint): PairResult {
-  if (!world.atlas.maps.has(String(from.map))) {
-    return { ok: false, reason: `地图记录里没有地图 ${from.map}` };
-  }
-  // An unrecorded destination cannot be planned to; task 58's "walk into it and see" is for
-  // the last step of an execution, not for saying a waypoint is reachable.
-  if (!world.atlas.maps.has(String(to.map))) {
-    return { ok: false, reason: `地图记录里没有地图 ${to.map}` };
-  }
-  const modes = world.worldModes ?? ROUTE_SURFACE_WORLD_MODES;
-  const pathFor = (start: Cell | null): HopLike[] | null =>
-    mapPath(world.atlas, from.map, to.map, new Set(), true, {
-      regions: world.regions,
-      collisions: world.collisions,
-      start,
-      worldModes: modes,
-    });
-  let path = pathFor(from.cell);
-  // 11-11: a world-map entrance is often an event on the map, not an exported exit cell, so
-  // the collision grid says the start block cannot walk to the exit that the game actually
-  // uses. When the exact block has no route, plan the world map as one node again (task 75's
-  // fallback for an unrecorded landing) instead of calling every waypoint unreachable.
-  if (path === null && isWorldMap(from.map) && from.cell !== null) path = pathFor(null);
-  if (path === null) return { ok: false, reason: noPathReason(world, from, to) };
-
+/**
+ * Count an already found mapPath route: walking cells inside each map plus the final walk to
+ * the goal. Task 148 shares it between cross-map pairs and the same-map detour, so both put
+ * the maps passed through and the hop count in the estimate.
+ */
+function pathResult(
+  world: RouteWorld,
+  from: RoutePoint,
+  to: RoutePoint,
+  path: readonly HopLike[],
+): PairResult {
   let cells = 0;
   let currentMap = from.map;
   let currentCell: Cell | null = from.cell;
@@ -235,6 +250,34 @@ function crossMapResult(world: RouteWorld, from: RoutePoint, to: RoutePoint): Pa
   }
   const maps = [from.map, ...path.map((hop) => hop.to)];
   return { ok: true, estimate: estimate(maps, path.length, cells) };
+}
+
+function crossMapResult(world: RouteWorld, from: RoutePoint, to: RoutePoint): PairResult {
+  if (!world.atlas.maps.has(String(from.map))) {
+    return { ok: false, reason: `地图记录里没有地图 ${from.map}` };
+  }
+  // An unrecorded destination cannot be planned to; task 58's "walk into it and see" is for
+  // the last step of an execution, not for saying a waypoint is reachable.
+  if (!world.atlas.maps.has(String(to.map))) {
+    return { ok: false, reason: `地图记录里没有地图 ${to.map}` };
+  }
+  const modes = world.worldModes ?? ROUTE_SURFACE_WORLD_MODES;
+  const pathFor = (start: Cell | null): HopLike[] | null =>
+    mapPath(world.atlas, from.map, to.map, new Set(), true, {
+      regions: world.regions,
+      collisions: world.collisions,
+      start,
+      toCell: to.cell,
+      worldModes: modes,
+    });
+  let path = pathFor(from.cell);
+  // 11-11: a world-map entrance is often an event on the map, not an exported exit cell, so
+  // the collision grid says the start block cannot walk to the exit that the game actually
+  // uses. When the exact block has no route, plan the world map as one node again (task 75's
+  // fallback for an unrecorded landing) instead of calling every waypoint unreachable.
+  if (path === null && isWorldMap(from.map) && from.cell !== null) path = pathFor(null);
+  if (path === null) return { ok: false, reason: noPathReason(world, from, to) };
+  return pathResult(world, from, to, path);
 }
 
 /**
