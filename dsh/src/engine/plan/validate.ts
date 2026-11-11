@@ -24,6 +24,8 @@ export interface PlanValidation {
   readonly fixed?: SegmentPlan;
   /** Chinese, one line per thing code will do without being asked (task 144: which shop). */
   readonly notes?: readonly string[];
+  /** Task 159: non-blocking concerns (save-point data missing, so the check is only a hint). */
+  readonly warnings?: readonly string[];
 }
 
 /** Task 146: the previous plan of the game plus the report that ended it. */
@@ -43,8 +45,11 @@ const ACTIONS: ReadonlySet<string> = new Set([
   "choose",
   "grind",
   "boss",
+  "buy",
 ]);
 const TURN_BACK_THEN: ReadonlySet<string> = new Set(["heal-and-continue", "replan"]);
+/** 11-11 live: these need a real cell; a map-only target cannot be investigated. */
+const CELL_REQUIRED: ReadonlySet<string> = new Set(["open", "talk", "switch", "choose"]);
 
 /** FF5's job names in the game's Chinese spelling plus the English spellings the guide uses. */
 const KNOWN_JOBS: readonly string[] = [
@@ -152,47 +157,74 @@ export function parseTurnBackCondition(value: string): TurnBackParse {
   }
   if (kind === "party.lowest_hp_pct" || kind === "party.mp_pct") {
     if (number < 0 || number > 100) {
-      return { ok: false, problem: `条件「${value}」的百分比要在 0 到 100 之间` };
+      return {
+        ok: false,
+        problem: `条件「${value}」的百分比要在 0 到 100 之间`,
+      };
     }
     return { ok: true, condition: { kind, operator, value: number } };
   }
   if (kind === "party.dead") {
     if (!Number.isInteger(number) || number < 0) {
-      return { ok: false, problem: `条件「${value}」的倒下人数要是 0 以上的整数` };
+      return {
+        ok: false,
+        problem: `条件「${value}」的倒下人数要是 0 以上的整数`,
+      };
     }
-    return { ok: true, condition: { kind: "party.dead", operator, value: number } };
+    return {
+      ok: true,
+      condition: { kind: "party.dead", operator, value: number },
+    };
   }
   const item = (match[2] ?? "").trim();
   if (item === "") return { ok: false, problem: `条件「${value}」没有写道具名` };
   if (number < 0) return { ok: false, problem: `条件「${value}」的道具数量不能是负数` };
-  return { ok: true, condition: { kind: "item", item, operator, value: number } };
+  return {
+    ok: true,
+    condition: { kind: "item", item, operator, value: number },
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
 // Name lookups
 
-function nameKey(value: string): string {
+export function nameKey(value: string): string {
   return normalizeName(cleanIconTags(value));
 }
 
-interface ItemCatalog {
-  /** Every name the model may use for an item, already cleaned and normalized. */
+export interface ItemCatalog {
+  /** Every name the model may use for an item or spell, already cleaned and normalized. */
   readonly keys: Set<string>;
   readonly idsByKey: Map<string, Set<number>>;
   readonly keysById: Map<number, Set<string>>;
+  /** Names known to be magic (shop purchase needs a magic shop). */
+  readonly magicKeys: Set<string>;
 }
 
 function catalogAdd(catalog: ItemCatalog, id: number | null, raw: string): void {
   const key = nameKey(raw);
-  if (key === "") return;
-  catalog.keys.add(key);
-  if (id === null) return;
-  const ids = catalog.idsByKey.get(key) ?? new Set<number>();
-  ids.add(id);
-  catalog.idsByKey.set(key, ids);
-  const keys = catalog.keysById.get(id) ?? new Set<string>();
-  keys.add(key);
-  catalog.keysById.set(id, keys);
+  if (key !== "") {
+    catalog.keys.add(key);
+    if (id !== null) {
+      const ids = catalog.idsByKey.get(key) ?? new Set<number>();
+      ids.add(id);
+      catalog.idsByKey.set(key, ids);
+      const keys = catalog.keysById.get(id) ?? new Set<string>();
+      keys.add(key);
+      catalog.keysById.set(id, keys);
+    }
+  }
+  // 11-11: a plan may name an item by its content id ("123") instead of a trilingual name.
+  if (id !== null) {
+    const idKey = String(id);
+    catalog.keys.add(idKey);
+    const ids = catalog.idsByKey.get(idKey) ?? new Set<number>();
+    ids.add(id);
+    catalog.idsByKey.set(idKey, ids);
+    const keys = catalog.keysById.get(id) ?? new Set<string>();
+    keys.add(idKey);
+    catalog.keysById.set(id, keys);
+  }
 }
 
 /**
@@ -200,38 +232,66 @@ function catalogAdd(catalog: ItemCatalog, id: number | null, raw: string): void 
  * model buys "火炎". Build one index of every language's name plus the content id, so a buy
  * item and a shop product meet on either the id or the cleaned name.
  */
-function itemCatalog(knowledge: Knowledge | undefined, facts: SegmentFactsData): ItemCatalog {
+export function itemCatalog(
+  knowledge: Knowledge | undefined,
+  facts?: SegmentFactsData,
+): ItemCatalog {
   const catalog: ItemCatalog = {
     keys: new Set<string>(),
     idsByKey: new Map<string, Set<number>>(),
     keysById: new Map<number, Set<string>>(),
+    magicKeys: new Set<string>(),
   };
   for (const item of knowledge?.items ?? []) catalogAdd(catalog, item.id, item.name);
   for (const spell of knowledge?.magic ?? []) {
-    if (spell.name.trim() !== "") catalogAdd(catalog, null, spell.name);
+    if (spell.name.trim() === "") continue;
+    catalogAdd(catalog, null, spell.name);
+    catalog.magicKeys.add(nameKey(spell.name));
   }
   for (const item of knowledge?.contentItems ?? []) {
     for (const name of [item.names.ja, item.names.en, item.names.zhc]) {
-      if (name !== null && name.trim() !== "") catalogAdd(catalog, item.id, name);
+      if (name !== null && name.trim() !== "") {
+        catalogAdd(catalog, item.id, name);
+        if (item.kind === "magic") {
+          catalog.magicKeys.add(nameKey(name));
+          catalog.magicKeys.add(String(item.id));
+        }
+      }
     }
   }
   for (const shop of knowledge?.shops ?? []) {
-    for (const product of shop.products) catalogAdd(catalog, product.itemId, product.name);
-  }
-  for (const shop of facts.shops) {
     for (const product of shop.products) {
-      catalogAdd(catalog, product.itemId ?? null, product.name);
+      catalogAdd(catalog, product.itemId, product.name);
+      for (const alias of product.aliases ?? []) catalogAdd(catalog, product.itemId, alias);
     }
   }
-  for (const item of facts.bag) catalogAdd(catalog, null, item.name);
+  for (const shop of facts?.shops ?? []) {
+    for (const product of shop.products) {
+      catalogAdd(catalog, product.itemId ?? null, product.name);
+      for (const alias of product.aliases ?? []) {
+        catalogAdd(catalog, product.itemId ?? null, alias);
+      }
+    }
+  }
+  for (const item of facts?.bag ?? []) catalogAdd(catalog, null, item.name);
+  // A magic shop's goods are spells even when the guide only gives the English name; carry
+  // the aliases so Fire and 火炎 both need a magic shop.
+  for (const shop of [...(knowledge?.shops ?? []), ...(facts?.shops ?? [])]) {
+    const magicShop = /魔法|magic/iu.test(shop.kind ?? "");
+    for (const product of shop.products) {
+      const names = [product.name, ...(product.aliases ?? [])].filter((name) => name.trim() !== "");
+      if (!magicShop && !names.some((name) => catalog.magicKeys.has(nameKey(name)))) continue;
+      for (const name of names) catalog.magicKeys.add(nameKey(name));
+    }
+  }
   return catalog;
 }
 
-function catalogIds(catalog: ItemCatalog, raw: string): Set<number> {
+export function catalogIds(catalog: ItemCatalog, raw: string): Set<number> {
   return new Set(catalog.idsByKey.get(nameKey(raw)) ?? []);
 }
 
-function catalogKeysFor(catalog: ItemCatalog, raw: string): Set<string> {
+export function catalogKeysFor(catalog: ItemCatalog, raw: string): Set<string> {
   const wanted = nameKey(raw);
   const keys = new Set<string>();
   if (wanted !== "") keys.add(wanted);
@@ -246,7 +306,7 @@ function shares<T>(left: ReadonlySet<T>, right: ReadonlySet<T>): boolean {
   return false;
 }
 
-function productIsWanted(
+export function productIsWanted(
   catalog: ItemCatalog,
   product: { readonly name: string; readonly itemId?: number | null },
   wanted: string,
@@ -316,12 +376,12 @@ function blueMagicAt(facts: SegmentFactsData, name: string) {
 // ---------------------------------------------------------------------------------------------
 // Shape checks
 
-interface Target {
+export interface PlanTarget {
   readonly mapId: number;
   readonly cell: readonly [number, number] | null;
 }
 
-function parseTarget(value: unknown): Target | string {
+export function parseTarget(value: unknown): PlanTarget | string {
   if (typeof value !== "string") return "to 要写成「地图号:x,y」或「地图号」";
   const raw = value.trim();
   if (raw === "") return "to 是空的";
@@ -345,7 +405,7 @@ function whereStation(index: number): string {
  * trigger cell on it. Multiple bosses or multiple cells stay allowed, because the plan did not
  * say which one it means and code must not guess.
  */
-function bossTriggerProblem(facts: SegmentFactsData, mapId: number): string | null {
+export function bossTriggerProblem(facts: SegmentFactsData, mapId: number): string | null {
   const bosses = facts.bosses.filter((boss) => boss.maps.includes(mapId));
   if (bosses.length !== 1) return null;
   const boss = bosses[0];
@@ -356,6 +416,42 @@ function bossTriggerProblem(facts: SegmentFactsData, mapId: number): string | nu
   if (cell === undefined) return null;
   const name = boss.knowledgeName ?? boss.name;
   return `首领站「${mapId}」要写坐标：${name}的触发点是 ${mapId}:${cell.cell[0]},${cell.cell[1]}`;
+}
+
+/**
+ * Task 159: a save station must be at a save point or on a world map. If the plan names only a
+ * dungeon map and the knowledge files know no save point there, the save will fail and the
+ * station would otherwise be recorded done. `knowledge` missing means "no save-point data";
+ * the plan is rejected rather than trusted.
+ */
+export function saveStationProblem(
+  station: PlanStation,
+  knowledge: Knowledge | undefined,
+): string | null {
+  if (station.do !== "save") return null;
+  const target = parseTarget(station.to);
+  if (typeof target === "string") return null;
+  const mapName = knowledge?.maps.find((map) => map.id === target.mapId)?.name ?? "";
+  const world = target.mapId === 1 || /^Map_100|world.?map/iu.test(mapName);
+  if (world) return null;
+  const cells: (readonly [number, number])[] = [];
+  for (const point of knowledge?.savePoints ?? []) {
+    if (point.mapId === target.mapId) cells.push(point.cell);
+  }
+  const mapFile = knowledge?.mapFiles?.find((file) => file.id === target.mapId);
+  if (mapFile !== undefined) {
+    for (const point of mapFile.savePoints) cells.push(point.cell);
+  }
+  // A map with no exported file has no save-point data, not a proven absence of save points.
+  const dataKnown = knowledge === undefined || mapFile !== undefined || cells.length > 0;
+  if (!dataKnown) return null;
+  const cell = target.cell;
+  if (cell !== null && cells.some((point) => point[0] === cell[0] && point[1] === cell[1])) {
+    return null;
+  }
+  if (cells.length > 0) return null;
+  const where = mapName === "" ? `图 ${target.mapId}` : `图 ${target.mapId} ${mapName}`;
+  return `${where} 不是世界地图，也查不到存档点，这里存不了档;改到世界地图或存档点的格子`;
 }
 
 interface DroppedTarget {
@@ -388,7 +484,11 @@ function checkDropped(value: unknown, problems: string[]): DroppedTarget[] {
       problems.push(`${where}的 why 要写清楚为什么不做这一站`);
     }
     if (typeof target !== "string" && action !== undefined && ACTIONS.has(action)) {
-      out.push({ mapId: target.mapId, cell: target.cell, do: action as PlanStationAction });
+      out.push({
+        mapId: target.mapId,
+        cell: target.cell,
+        do: action as PlanStationAction,
+      });
     }
   }
   return out;
@@ -565,12 +665,63 @@ function checkUntil(
   }
 }
 
+/**
+ * Task 151: `buy` carries `items`. Shape-check them here and, when the section's shops are
+ * known, warn about a product no nearby shop sells. The chapter check additionally proves the
+ * shop is on the station's own map and adds up the whole chapter's purchases.
+ */
+function checkBuyItems(
+  value: unknown,
+  where: string,
+  facts: SegmentFactsData,
+  catalog: ItemCatalog,
+  problems: string[],
+): void {
+  if (!Array.isArray(value)) {
+    problems.push(`${where}:do 是 buy 就要写 items(买什么,买几个)`);
+    return;
+  }
+  if (value.length === 0) {
+    problems.push(`${where}:items 不能是空的`);
+    return;
+  }
+  const stock = facts.shops.length === 0 ? null : shopStock(facts);
+  for (const [index, raw] of value.entries()) {
+    const label = `${where}:items[${index}]`;
+    if (!isRecord(raw)) {
+      problems.push(`${label} 不是对象`);
+      continue;
+    }
+    const item = text(raw.item)?.trim() ?? "";
+    if (item === "") {
+      problems.push(`${label} 没有写道具名`);
+    } else if (stock !== null) {
+      const sellers = facts.shops.filter((shop) =>
+        shop.products.some((product) => productIsWanted(catalog, product, item)),
+      );
+      const magic = catalog.magicKeys.has(nameKey(item));
+      const usable = magic ? sellers.filter((shop) => /魔法|magic/iu.test(shop.kind)) : sellers;
+      if (usable.length === 0) {
+        problems.push(
+          `${label}:这节附近${magic ? "的魔法店" : "的商店"}没有卖「${item}」;这些店有卖：${stock.length === 0 ? "没有记录" : stock.join("、")}`,
+        );
+      }
+    }
+    const count = raw.count;
+    if (typeof count !== "number" || !Number.isInteger(count) || count <= 0) {
+      problems.push(`${label}:「${item}」的 count 要是正整数`);
+    }
+  }
+}
+
 function checkStation(
   value: unknown,
   index: number,
   facts: SegmentFactsData,
   allowed: ReadonlySet<number>,
+  catalog: ItemCatalog,
   problems: string[],
+  warnings: string[],
 ): PlanStation | null {
   const where = whereStation(index);
   if (!isRecord(value)) {
@@ -587,6 +738,16 @@ function checkStation(
   if (action === undefined || !ACTIONS.has(action)) {
     problems.push(`${where}的 do 不认识;能用:${[...ACTIONS].join("、")}`);
   }
+  if (
+    action !== undefined &&
+    CELL_REQUIRED.has(action) &&
+    typeof target !== "string" &&
+    target.cell === null
+  ) {
+    problems.push(
+      `第 ${index + 1} 站 do=${action} 要写格子(图:x,y);事实表/look_around 里能查到坐标`,
+    );
+  }
   if (value.choose !== undefined && action !== "choose") {
     problems.push(`${where}:只有 do 是 choose 才能写 choose`);
   }
@@ -601,6 +762,11 @@ function checkStation(
   }
   if (value.until !== undefined && action !== "grind") {
     problems.push(`${where}:只有 do 是 grind 才能写 until`);
+  }
+  if (action === "buy") {
+    checkBuyItems(value.items, where, facts, catalog, problems);
+  } else if (value.items !== undefined) {
+    problems.push(`${where}:只有 do 是 buy 才能写 items`);
   }
   if (action === "grind" && typeof target !== "string") {
     checkUntil(value.until, where, facts, problems);
@@ -625,6 +791,9 @@ function checkStation(
     ...(typeof value.why === "string" ? { why: value.why } : {}),
     ...(value.choose === undefined ? {} : { choose: value.choose as number | string }),
     ...(value.until === undefined ? {} : { until: value.until as PlanStation["until"] }),
+    ...(action === "buy" && Array.isArray(value.items)
+      ? { items: value.items as NonNullable<PlanStation["items"]> }
+      : {}),
     ...(typeof value.optional === "boolean" ? { optional: value.optional } : {}),
     ...(isRecord(value.book) && typeof value.book.section === "string"
       ? {
@@ -638,6 +807,17 @@ function checkStation(
   if (station.do === "boss" && target.cell === null) {
     const problem = bossTriggerProblem(facts, target.mapId);
     if (problem !== null) problems.push(`${where}:${problem}`);
+  }
+  if (station.do === "save") {
+    const knowledge = segmentFactsKnowledge(facts);
+    const problem = saveStationProblem(station, knowledge);
+    if (problem !== null) {
+      const line = `${where}:${problem}`;
+      // Task 159: old/synthetic facts carry no save-point data. Do not reject the whole plan
+      // for a missing export; the executor still tries a known point and skips if there is none.
+      if (knowledge === undefined) warnings.push(`${line}（没有存档点数据，降为提醒）`);
+      else problems.push(line);
+    }
   }
   return station;
 }
@@ -755,17 +935,19 @@ function checkPrep(
         continue;
       }
       if (!catalog.keys.has(nameKey(item))) {
-        problems.push(`${where}:知识库里没有道具「${item}」`);
+        problems.push(`${where}:知识库里没有道具或魔法「${item}」`);
       }
       const sellers = facts.shops.filter((shop) =>
         shop.products.some((product) => productIsWanted(catalog, product, item)),
       );
-      if (sellers.length === 0) {
+      const magic = catalog.magicKeys.has(nameKey(item));
+      const usable = magic ? sellers.filter((shop) => /魔法|magic/iu.test(shop.kind)) : sellers;
+      if (usable.length === 0) {
         problems.push(
-          `${where}:这节附近的商店没有卖「${item}」;这些店有卖：${stock.length === 0 ? "没有记录" : stock.join("、")}`,
+          `${where}:这节附近${magic ? "的魔法店" : "的商店"}没有卖「${item}」;这些店有卖：${stock.length === 0 ? "没有记录" : stock.join("、")}`,
         );
       } else {
-        const shopWhere = sellers
+        const shopWhere = usable
           .slice(0, 3)
           .map((shop) => `${shop.area}${shop.kind}`)
           .join("、");
@@ -865,6 +1047,7 @@ export function validatePlan(
 ): PlanValidation {
   const problems: string[] = [];
   const notes: string[] = [];
+  const warnings: string[] = [];
   if (!isRecord(plan)) return { ok: false, problems: ["计划要是 JSON 对象"] };
   if (plan.version !== 1) problems.push("version 要是 1");
   const section = text(plan.section)?.trim() ?? "";
@@ -884,13 +1067,14 @@ export function validatePlan(
       : [facts.currentMapId]),
   ]);
   const fixedStations: unknown[] = [];
+  const catalog = itemCatalog(segmentFactsKnowledge(facts), facts);
   const kept: DroppedTarget[] = [];
   let stationsFixed = false;
   if (!Array.isArray(plan.stations)) {
     problems.push("stations 要写成数组");
   } else {
     for (const [index, raw] of plan.stations.entries()) {
-      const station = checkStation(raw, index, facts, allowed, problems);
+      const station = checkStation(raw, index, facts, allowed, catalog, problems, warnings);
       if (station !== null) {
         const target = parseTarget(station.to);
         if (typeof target !== "string") {
@@ -949,5 +1133,6 @@ export function validatePlan(
     problems,
     ...(fixed === undefined ? {} : { fixed }),
     ...(notes.length === 0 ? {} : { notes }),
+    ...(warnings.length === 0 ? {} : { warnings }),
   };
 }

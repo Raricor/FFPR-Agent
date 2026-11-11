@@ -63,7 +63,14 @@ function monsterRow(
 }
 
 function encounter(mapId: number, monsterId: number, weight = 50): EncountersRow {
-  return { scope: "map", mapId, areaId: null, groupId: 1, weight, monsterIds: [monsterId] };
+  return {
+    scope: "map",
+    mapId,
+    areaId: null,
+    groupId: 1,
+    weight,
+    monsterIds: [monsterId],
+  };
 }
 
 function treasure(id: number, mapId: number, cell: [number, number], name: string): TreasuresRow {
@@ -85,7 +92,7 @@ function shopRow(products: readonly [string, number, number?][]): ShopsRow {
     id: 3,
     mapId: 10,
     areaName: "试验镇",
-    kind: "道具店",
+    kind: "魔法店",
     products: products.map(([name, price, itemId]) => ({
       itemId: itemId ?? null,
       name,
@@ -111,12 +118,32 @@ function makeKnowledge(atlas: Atlas | null = null): Knowledge {
         weak: ["冰"],
         absorb: ["火"],
         moves: [
-          { abilityId: null, name: "毒针", blueMagic: false, conditions: ["中毒"], rate: 0.5 },
-          { abilityId: null, name: "Goblin Punch", blueMagic: true, conditions: [], rate: null },
+          {
+            abilityId: null,
+            name: "毒针",
+            blueMagic: false,
+            conditions: ["中毒"],
+            rate: 0.5,
+          },
+          {
+            abilityId: null,
+            name: "Goblin Punch",
+            blueMagic: true,
+            conditions: [],
+            rate: null,
+          },
         ],
       }),
       monsterRow(10, 10, "风形魔", {
-        moves: [{ abilityId: null, name: "Aero", blueMagic: true, conditions: [], rate: null }],
+        moves: [
+          {
+            abilityId: null,
+            name: "Aero",
+            blueMagic: true,
+            conditions: [],
+            rate: null,
+          },
+        ],
       }),
       monsterRow(20, 20, "巨翼猛禽", { boss: true, hp: 250, absorb: ["冰"] }),
     ],
@@ -228,9 +255,24 @@ function makeSection(): RouteSection {
     order: 0,
     areaName: "试验迷宫",
     maps: [
-      { mapId: 10, name: "试验迷宫 １层", areaName: "试验迷宫", reasons: ["楼层 1F"] },
-      { mapId: 11, name: "试验迷宫 ２层", areaName: "试验迷宫", reasons: ["楼层 2F"] },
-      { mapId: 12, name: "试验迷宫 ３层", areaName: "试验迷宫", reasons: ["首领"] },
+      {
+        mapId: 10,
+        name: "试验迷宫 １层",
+        areaName: "试验迷宫",
+        reasons: ["楼层 1F"],
+      },
+      {
+        mapId: 11,
+        name: "试验迷宫 ２层",
+        areaName: "试验迷宫",
+        reasons: ["楼层 2F"],
+      },
+      {
+        mapId: 12,
+        name: "试验迷宫 ３层",
+        areaName: "试验迷宫",
+        reasons: ["首领"],
+      },
     ],
     places: [],
     stations: [
@@ -377,6 +419,119 @@ const PARTY = [
   },
 ];
 const BAG = [{ name: "恢复药", count: 2 }];
+
+void test("opened chests do not finish a section before its last story flag", () => {
+  const base = makeSection();
+  const cutscene = {
+    index: 9,
+    where: null,
+    kind: "cutscene" as const,
+    mapId: 10,
+    cell: [3, 4] as const,
+    action: "剧情",
+    text: "Farris joins the party.",
+    basis: "游戏文件：事件 sc_e_0001(法利斯入队)",
+    chest: null,
+    pointCandidate: null,
+  };
+  const section: RouteSection = {
+    ...base,
+    bosses: [],
+    chests: base.chests.map((chest) => ({ ...chest, opened: true })),
+    stations: [...base.stations, cutscene],
+  };
+  const notYet = segmentFacts({
+    section,
+    knowledge: makeKnowledge(makeAtlas()),
+    save: { ...SAVE, storyFlags: new Set() },
+    party: PARTY,
+    bag: BAG,
+    gil: 100,
+  });
+  assert.equal(notYet.data.storyDone, false);
+  const played = segmentFacts({
+    section,
+    knowledge: makeKnowledge(makeAtlas()),
+    save: { ...SAVE, storyFlags: new Set(["sc_e_0001"]) },
+    party: PARTY,
+    bag: BAG,
+    gil: 100,
+  });
+  assert.equal(played.data.storyDone, true);
+});
+
+void test("a registered bestiary boss is defeated even when its route row has no number", () => {
+  const knowledge = makeKnowledge(makeAtlas());
+  const base = makeSection();
+  const boss = base.bosses[0];
+  assert.ok(boss !== undefined);
+  const section: RouteSection = {
+    ...base,
+    bosses: [{ ...boss, bookId: null, name: "巨翼猛禽" }],
+  };
+  const save: RouteBookSave = { ...SAVE, bestiary: new Set([20]) };
+  const facts = segmentFacts({
+    section,
+    knowledge,
+    save,
+    party: PARTY,
+    bag: BAG,
+    gil: 100,
+  });
+  const bossFacts = facts.data.bosses[0];
+  assert.ok(bossFacts !== undefined);
+  assert.equal(bossFacts.defeated, true);
+  assert.equal(bossFacts.bookId, 20);
+});
+
+void test("segment shops use the map clerk and carry the guide's magic names", () => {
+  const base = makeKnowledge(makeAtlas());
+  const knowledge = {
+    ...base,
+    mapFiles: [
+      {
+        id: 10,
+        name: "试验迷宫 １层",
+        title: { ja: "魔法店", en: "Magic Shop", zhc: "魔法店" },
+        npcs: [{ cell: [4, 4], name: "店员", shopId: 38 }],
+      },
+    ],
+    shops: [
+      {
+        id: 38,
+        mapId: 11,
+        areaName: "图尔村",
+        kind: "武器",
+        products: [
+          { itemId: 392, name: "火炎", price: 150, aliases: ["Fire"] },
+          { itemId: 393, name: "治疗", price: 180, aliases: ["Cure"] },
+        ],
+      },
+    ],
+  } as unknown as Knowledge;
+  const facts = segmentFacts({
+    section: makeSection(),
+    knowledge,
+    save: SAVE,
+    party: PARTY,
+    bag: BAG,
+    gil: 100,
+  });
+  assert.equal(facts.data.shops.length, 1);
+  const shop = facts.data.shops[0];
+  assert.ok(shop !== undefined);
+  assert.equal(shop.kind, "魔法");
+  assert.deepEqual(
+    shop.products.map((product) => product.name),
+    ["火炎", "治疗"],
+  );
+  assert.deepEqual(shop.products[0]?.aliases, ["Fire"]);
+  const fire = {
+    ...facts.draftPlan,
+    prep: { ...facts.draftPlan.prep, buy: [{ item: "Fire", count: 1 }] },
+  };
+  assert.deepEqual(validatePlan(fire, facts.data).problems, []);
+});
 
 void test("synthetic section: facts carry maps, stations, monsters, boss and shop", () => {
   const knowledge = makeKnowledge(makeAtlas());
@@ -700,6 +855,37 @@ void test("boss triggers come from event names in the supplied map files", () =>
   assert.deepEqual(withCell.problems, []);
 });
 
+void test("a set boss story flag marks it defeated when the bestiary has no entry", () => {
+  const knowledge = makeKnowledge(makeAtlas());
+  const save: RouteBookSave = {
+    ...SAVE,
+    bestiary: new Set(),
+    storyFlags: new Set(["ev_e_0001.json"]),
+  };
+  const facts = segmentFacts({
+    section: makeSection(),
+    knowledge,
+    save,
+    party: PARTY,
+    bag: BAG,
+    gil: 100,
+    files: {
+      events: [
+        {
+          mapId: 12,
+          file: "ev_e_0001.json",
+          name: "巨翼猛禽と戦闘",
+          cell: [7, 8],
+          rect: null,
+          scriptId: null,
+        },
+      ],
+      npcs: [],
+    },
+  });
+  assert.equal(facts.data.bosses[0]?.defeated, true);
+});
+
 void test("the healing line is facts only: spells, healing items and revive items", () => {
   const knowledge = makeKnowledge(makeAtlas());
   const someone = segmentFacts({
@@ -762,7 +948,11 @@ void test("the healing line is facts only: spells, healing items and revive item
     bag: [],
     gil: 100,
   });
-  assert.deepEqual(none.data.healing, { spells: [], items: [], reviveItems: [] });
+  assert.deepEqual(none.data.healing, {
+    spells: [],
+    items: [],
+    reviveItems: [],
+  });
   assert.match(none.text, /回复手段:没人会回复魔法，没有回复道具/u);
 });
 

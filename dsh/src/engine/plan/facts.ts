@@ -13,9 +13,11 @@
 import type { Atlas } from "../atlas.ts";
 import { cleanName } from "../icons.ts";
 import {
+  areaKeys,
   monstersIn,
   normalizeName,
   shopsNear,
+  shopsOnMap,
   type Knowledge,
   type MonsterKnowledge,
   type ShopKnowledge,
@@ -30,6 +32,7 @@ import type {
   RouteBookSave,
   RouteMonster,
   RouteSection,
+  RouteStation,
 } from "../stage/route-book.ts";
 import type { StagePlan } from "../stage/types.ts";
 import type { PlanStation, PlanStationAction, SegmentPlan } from "./types.ts";
@@ -124,6 +127,8 @@ export interface SegmentFactsShopProduct {
   readonly price: number | null;
   /** The item table id, so a plan can name the same thing in another language. */
   readonly itemId?: number | null;
+  /** Guide/other-language names for the same product (Fire / 火炎). */
+  readonly aliases?: readonly string[];
 }
 
 export interface SegmentFactsShop {
@@ -153,7 +158,10 @@ export interface SegmentFactsBagItem {
 /** Task 146: the facts behind the one "回复手段" line; no advice. */
 export interface SegmentFactsHealing {
   /** Members who know 治疗/救疗, with the spell each knows. */
-  readonly spells: readonly { readonly member: string; readonly spell: string }[];
+  readonly spells: readonly {
+    readonly member: string;
+    readonly spell: string;
+  }[];
   /** Healing items in the bag, from battle.ts's HEAL_ITEMS. */
   readonly items: readonly SegmentFactsBagItem[];
   /** Revive items in the bag, matched by the names the game and knowledge use. */
@@ -210,6 +218,8 @@ export interface SegmentFactsData {
   readonly blueMagic: readonly SegmentFactsBlueMagic[];
   readonly blueMagicMissing: readonly SegmentFactsBlueMagic[];
   readonly notes: readonly string[];
+  /** Whether the last story station's flag is set; false when it cannot be judged. */
+  readonly storyDone?: boolean;
   /** Where the party stood when the sheet was built, when the caller knew it. */
   readonly currentMapId?: number | null;
   /** Why the default-section picker chose this section; absent for an explicit section. */
@@ -304,8 +314,61 @@ function exitsOf(
   return out;
 }
 
+/**
+ * Task 150 follow-up: drop a map held only by an area-name match. The live chapter 2 sheet had
+ * the Fire-Powered Ship maps 250–258 in Ship Graveyard because the sub-location name matched the
+ * area ("小节「Ship Graveyard - Sunken Shipwreck」对上了这个地区"). Direct evidence (title,
+ * floor, monster, exit, visit order) or no reason at all keeps the map; an empty result falls
+ * back to the section's own list so a deliberately area-only section still has maps.
+ */
+function sectionAreaNames(knowledge: Knowledge, section: RouteSection): string[] {
+  const values = [section.title, ...section.places.map((place) => place.title)].filter(
+    (value) => value.trim() !== "",
+  );
+  return [
+    ...new Set([
+      ...values.map((value) => normalizeName(value)),
+      ...values.flatMap((value) => areaKeys(knowledge.guide, value)),
+    ]),
+  ];
+}
+
+function mapAreaInSection(
+  knowledge: Knowledge,
+  section: RouteSection,
+  map: RouteSection["maps"][number],
+): boolean {
+  const values = [map.areaName, map.name].filter(
+    (value): value is string => value !== null && value.trim() !== "",
+  );
+  const names = [
+    ...new Set([
+      ...values.map((value) => normalizeName(value)),
+      ...values.flatMap((value) => areaKeys(knowledge.guide, value)),
+    ]),
+  ];
+  if (names.length === 0) return false;
+  return sectionAreaNames(knowledge, section).some((area) =>
+    names.some((name) => area.includes(name) || name.includes(area)),
+  );
+}
+
+function relevantSectionMaps(knowledge: Knowledge, section: RouteSection): RouteSection["maps"] {
+  const relevant = section.maps.filter((map) => {
+    const areaOnly =
+      map.reasons.length > 0 && map.reasons.every((reason) => reason.includes("对上了这个地区"));
+    return !areaOnly || mapAreaInSection(knowledge, section, map);
+  });
+  return relevant.length > 0 ? relevant : section.maps;
+}
+
+function isWorldMap(knowledge: Knowledge, mapId: number): boolean {
+  const name = knowledge.maps.find((map) => map.id === mapId)?.name ?? "";
+  return /^Map_100|world.?map/iu.test(name);
+}
+
 function sectionMaps(knowledge: Knowledge, section: RouteSection): SegmentFactsMap[] {
-  return section.maps.map((map) => ({
+  return relevantSectionMaps(knowledge, section).map((map) => ({
     mapId: map.mapId,
     name: mapNameOf(knowledge, map.mapId) ?? map.name,
     areaName: map.areaName ?? mapAreaOf(knowledge, map.mapId),
@@ -471,16 +534,33 @@ function collectMonsters(
   section: RouteSection,
   bestiary: ReadonlySet<number> | null | undefined,
 ): SegmentFactsMonster[] {
-  const sectionMapIds = section.maps.map((map) => map.mapId);
+  const sectionMapIds = relevantSectionMaps(knowledge, section).map((map) => map.mapId);
   const found = new Map<string, SegmentFactsMonster>();
   const keyOf = (monster: SegmentFactsMonster): string =>
     monster.bookId === null ? `name:${normalizeName(monster.name)}` : `book:${monster.bookId}`;
+  const worldMaps = new Set(sectionMapIds.filter((mapId) => isWorldMap(knowledge, mapId)));
+  const guideBooks = new Set(
+    section.monsters.flatMap((row) => (row.bookId === null ? [] : [row.bookId])),
+  );
+  const guideNames = new Set(section.monsters.map((row) => normalizeName(row.name)));
   for (const master of monstersIn(knowledge, { mapIds: sectionMapIds })) {
+    // A world map's encounter table covers every region, including later worlds. The guide's
+    // section monsters are the only evidence for which of them this section can actually meet.
+    if (worldMaps.size > 0) {
+      const maps = new Set(master.encounters.flatMap((encounter) => encounter.mapIds));
+      const onlyWorld = maps.size > 0 && [...maps].every((mapId) => worldMaps.has(mapId));
+      const named =
+        (master.bookId !== null && guideBooks.has(master.bookId)) ||
+        guideNames.has(normalizeName(master.name));
+      if (onlyWorld && !named) continue;
+    }
     const row = routeMonsterFor(section, master, master.name);
     const facts = monsterFacts(row, master, bestiary, sectionMapIds);
     found.set(keyOf(facts), facts);
   }
+  const sectionMapSet = new Set(sectionMapIds);
   for (const row of section.monsters) {
+    if (row.maps.length > 0 && !row.maps.some((mapId) => sectionMapSet.has(mapId))) continue;
     const master = masterOf(knowledge, row);
     const facts = monsterFacts(row, master, bestiary, sectionMapIds);
     found.set(keyOf(facts), facts);
@@ -567,21 +647,92 @@ function bossTriggerCells(
     .slice(0, 20);
 }
 
+function bossBookId(
+  knowledge: Knowledge,
+  row: RouteMonster,
+  master: MonsterKnowledge | null,
+): number | null {
+  if (row.bookId !== null) return row.bookId;
+  if (master?.bookId !== null && master?.bookId !== undefined) return master.bookId;
+  const byName = bookIdForGuideName(knowledge, row.name);
+  if (byName !== null) return byName;
+  return row.guideName === null ? null : bookIdForGuideName(knowledge, row.guideName);
+}
+
+/** 11-11 live: a boss row may lack its guide number, so check every name's bestiary number. */
+function bossBestiaryDefeated(
+  knowledge: Knowledge,
+  row: RouteMonster,
+  master: MonsterKnowledge | null,
+  bestiary: ReadonlySet<number> | null | undefined,
+): boolean | null {
+  if (bestiary === null || bestiary === undefined) return null;
+  const bookId = bossBookId(knowledge, row, master);
+  if (bookId !== null) return bestiary.has(bookId);
+  return null;
+}
+
+/**
+ * 11-11 live: the save's story flags can prove a boss was fought even when the bestiary table
+ * is unreliable. Only a set flag counts; an unset flag leaves the answer unknown.
+ */
+function bossStoryFlagDefeated(
+  names: readonly (string | null)[],
+  maps: readonly number[],
+  files: RouteBookFiles | null | undefined,
+  save: RouteBookSave | null | undefined,
+): boolean {
+  const flags = save?.storyFlags;
+  if (flags === null || flags === undefined || files === null || files === undefined) return false;
+  const wanted = names
+    .filter((name): name is string => name !== null && name.trim() !== "")
+    .map(normalizeName)
+    .filter((name) => name !== "");
+  if (wanted.length === 0 || maps.length === 0) return false;
+  const own = new Set(maps);
+  return files.events.some((event) => {
+    if (!own.has(event.mapId)) return false;
+    const eventName = normalizeName(event.name);
+    if (!wanted.some((name) => eventName.includes(name))) return false;
+    const file = event.file.replace(/\.json$/iu, "");
+    const keys = [
+      file,
+      event.file,
+      event.name,
+      ...(event.scriptId === null ? [] : [`script:${event.scriptId}`, String(event.scriptId)]),
+    ];
+    return keys.some((key) => flags.has(key));
+  });
+}
+
 function collectBosses(
   knowledge: Knowledge,
   section: RouteSection,
   files: RouteBookFiles | null | undefined,
+  save: RouteBookSave | null | undefined,
 ): SegmentFactsBoss[] {
   return section.bosses.map((row) => {
     const master = bossMaster(knowledge, row);
+    const bookId = bossBookId(knowledge, row, master);
+    const fromBestiary = bossBestiaryDefeated(knowledge, row, master, save?.bestiary ?? null);
+    const fromStory = bossStoryFlagDefeated(
+      [master?.name ?? null, row.name, row.guideName],
+      row.maps,
+      files,
+      save,
+    );
+    const defeated =
+      fromBestiary === true || row.registered === true || fromStory
+        ? true
+        : (fromBestiary ?? row.registered ?? null);
     return {
       name: row.name,
       knowledgeName: master?.name ?? null,
       guideName: row.guideName,
-      bookId: row.bookId ?? master?.bookId ?? null,
+      bookId,
       maps: row.maps,
       triggers: bossTriggerCells(master?.name ?? null, row.maps, files),
-      defeated: row.registered,
+      defeated,
       hp: master?.hp ?? null,
       mp: master?.mp ?? null,
       level: master?.level ?? null,
@@ -596,6 +747,81 @@ function collectBosses(
 }
 
 // ---------------------------------------------------------------------------------------------
+// Section completion
+
+function storyEventCode(event: { readonly file: string; readonly name: string }): string {
+  const named = /(?:sc_e_|ev_e_)\d+/iu.exec(event.name);
+  return named === null ? event.file.replace(/\.json$/iu, "") : named[0];
+}
+
+function storyEventFlags(event: {
+  readonly file: string;
+  readonly name: string;
+  readonly scriptId: number | null;
+}): string[] {
+  return [
+    event.file.replace(/\.json$/iu, ""),
+    event.file,
+    event.name,
+    ...(event.scriptId === null ? [] : [`script:${event.scriptId}`, String(event.scriptId)]),
+  ];
+}
+
+function lastStoryStation(section: RouteSection): RouteStation | undefined {
+  return [...section.stations].reverse().find((station) => station.kind === "cutscene");
+}
+
+/**
+ * 11-11 live: chests and bosses alone called Prologue finished while the last story scene had
+ * not played. The last cutscene's event code (or cell) must have a set story flag; without
+ * enough evidence this returns false, so the section is not silently skipped.
+ */
+function sectionStoryDone(
+  section: RouteSection,
+  files: RouteBookFiles | null | undefined,
+  save: RouteBookSave | null | undefined,
+): boolean {
+  const station = lastStoryStation(section);
+  if (station === undefined) return true;
+  const flags = save?.storyFlags;
+  if (flags === null || flags === undefined) return false;
+  const basis = normalizeName(station.basis);
+  const codes = [...station.basis.matchAll(/(?:sc_e_|ev_e_)\d+/giu)].map((match) =>
+    normalizeName(match[0]),
+  );
+  if (flags.size > 0) {
+    for (const code of codes) {
+      if ([...flags].some((flag) => normalizeName(flag) === code)) return true;
+    }
+    for (const flag of flags) {
+      const key = normalizeName(flag);
+      if (key.length >= 4 && basis.includes(key)) return true;
+    }
+  }
+  if (files !== null && files !== undefined) {
+    const matched = files.events.filter((event) => {
+      if (event.mapId !== station.mapId) return false;
+      if (codes.some((code) => normalizeName(storyEventCode(event)) === code)) return true;
+      if (station.cell === null) return false;
+      if (event.cell !== null) {
+        return event.cell[0] === station.cell[0] && event.cell[1] === station.cell[1];
+      }
+      return (
+        event.rect !== null &&
+        station.cell[0] >= event.rect.x1 &&
+        station.cell[0] <= event.rect.x2 &&
+        station.cell[1] >= event.rect.y1 &&
+        station.cell[1] <= event.rect.y2
+      );
+    });
+    if (matched.length > 0) {
+      return matched.some((event) => storyEventFlags(event).some((flag) => flags.has(flag)));
+    }
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Shops, chests, blue magic
 
 function shopKey(shop: ShopKnowledge): string {
@@ -607,9 +833,36 @@ function collectShops(
   section: RouteSection,
   routeMaps: readonly number[],
 ): SegmentFactsShop[] {
+  const mapIds = new Set([...section.maps.map((map) => map.mapId), ...routeMaps]);
+  // 11-11 live: use the map files' clerks and titles, the same source as the chapter sheet.
+  // The old area-name query mixed in another town's product group (mithril weapons) and a
+  // magic shop's goods could be replaced by a weapon table.
+  if ((knowledge.mapFiles?.length ?? 0) > 0) {
+    const out: SegmentFactsShop[] = [];
+    const seen = new Set<string>();
+    for (const mapId of mapIds) {
+      for (const shop of shopsOnMap(knowledge, mapId)) {
+        const key = `${shop.area}\u0000${shop.kind}\u0000${shop.products
+          .map((product) => `${product.name}|${product.price ?? ""}`)
+          .join("|")}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({
+          area: shop.area,
+          kind: shop.kind,
+          products: shop.products.slice(0, MAX_SHOP_PRODUCTS).map((product) => ({
+            name: product.name,
+            price: product.price,
+            itemId: product.itemId,
+            ...(product.aliases === undefined ? {} : { aliases: product.aliases }),
+          })),
+        });
+      }
+    }
+    return out.slice(0, MAX_SHOPS);
+  }
   const picked = new Map<string, ShopKnowledge>();
-  // 11-11: a section's maps can be split across a region, and the shops the party buys from
-  // can be in a town on the way in. Query every map's name and area, not just the section title.
+  // Fallback for an older knowledge export without map files: query every map's name and area.
   const queries = [
     section.areaName,
     section.title,
@@ -622,7 +875,6 @@ function collectShops(
   for (const query of queries) {
     for (const shop of shopsNear(knowledge, query)) picked.set(shopKey(shop), shop);
   }
-  const mapIds = new Set([...section.maps.map((map) => map.mapId), ...routeMaps]);
   for (const shop of knowledge.shops) {
     if (shop.mapId !== null && mapIds.has(shop.mapId)) picked.set(shopKey(shop), shop);
   }
@@ -635,6 +887,7 @@ function collectShops(
       name: cleanName(product.name),
       price: product.price,
       itemId: product.itemId,
+      ...(product.aliases === undefined ? {} : { aliases: product.aliases }),
     })),
   }));
 }
@@ -793,7 +1046,10 @@ function mergePassThrough(
       byId.set(map.mapId, map);
       continue;
     }
-    byId.set(map.mapId, { ...found, from: [...new Set([...found.from, ...map.from])] });
+    byId.set(map.mapId, {
+      ...found,
+      from: [...new Set([...found.from, ...map.from])],
+    });
   }
   return [...byId.values()];
 }
@@ -887,7 +1143,7 @@ export function segmentFacts(input: SegmentFactsInput): SegmentFactsResult {
   );
   const bestiary = input.save?.bestiary ?? null;
   const monsters = collectMonsters(knowledge, section, bestiary);
-  const bosses = collectBosses(knowledge, section, input.files);
+  const bosses = collectBosses(knowledge, section, input.files, input.save);
   const shops = collectShops(knowledge, section, routeMaps);
   const chests = chestFacts(knowledge, section);
   const party = input.party.map((member) => ({
@@ -900,6 +1156,7 @@ export function segmentFacts(input: SegmentFactsInput): SegmentFactsResult {
   const bag = input.bag.slice(0, MAX_BAG);
   const healing = healingFacts(party, bag, knowledge);
   const stations = draftStations(section, input.grindMinutes ?? DEFAULT_GRIND_MINUTES, bosses);
+  const storyDone = sectionStoryDone(section, input.files, input.save);
   const goal = goalOf(section, stations);
   const notes = [...section.mismatches];
   const data: SegmentFactsData = {
@@ -923,6 +1180,7 @@ export function segmentFacts(input: SegmentFactsInput): SegmentFactsResult {
     blueMagic,
     blueMagicMissing: blueMagic.filter((spell) => !spell.learned),
     notes,
+    storyDone,
     ...(input.currentMapId === undefined || input.currentMapId === null
       ? {}
       : { currentMapId: input.currentMapId }),
@@ -1006,6 +1264,8 @@ function actionLabel(action: PlanStationAction): string {
       return "刷怪";
     case "boss":
       return "打首领";
+    case "buy":
+      return "买东西";
   }
 }
 
@@ -1092,7 +1352,7 @@ function draftPlanOf(
 // ---------------------------------------------------------------------------------------------
 // Description
 
-function describeSegmentFacts(facts: SegmentFactsData): string {
+export function describeSegmentFacts(facts: SegmentFactsData): string {
   const lines: string[] = [
     `段计划事实:${facts.section}${facts.areaName === null ? "" : `(${facts.areaName})`}`,
     ...(facts.sectionReason === undefined || facts.sectionReason === null
@@ -1201,6 +1461,84 @@ function describeSegmentFacts(facts: SegmentFactsData): string {
   }
   if (facts.notes.length > 0) lines.push("### 攻略说明", ...facts.notes.map((note) => `- ${note}`));
   return truncate(lines.join("\n"), SEGMENT_FACTS_LIMIT);
+}
+
+/**
+ * Task 150 follow-up (11-11 live): the chapter sheet's per-section text. The old section text
+ * listed up to 41 maps first, so a long map list pushed the stations, chests and bosses past the
+ * cut. Here the useful parts come first and only the tail of the map list is dropped, always
+ * leaving "另 N 张图略". Party and bag are printed once for the whole chapter, not per section.
+ */
+export function describeChapterSectionFacts(facts: SegmentFactsData, limit = 5_000): string {
+  const core: string[] = [
+    `段计划事实:${facts.section}${facts.areaName === null ? "" : `(${facts.areaName})`}`,
+    `目标:${facts.goal}`,
+    `### 站点草稿(${facts.stations.length} 站)`,
+  ];
+  if (facts.stations.length === 0) core.push("- 没有可执行站点。");
+  for (const [index, station] of facts.stations.entries()) {
+    core.push(
+      `- ${index + 1}. ${station.to} ${actionLabel(station.do)}${station.optional === true ? "(可选)" : ""}${station.until === undefined ? "" : ` until ${untilText(station.until)}`}${station.why === undefined ? "" : ` — ${station.why}`}`,
+    );
+  }
+  core.push(`### 宝箱(${facts.chests.length} 个没开)`);
+  if (facts.chests.length === 0) core.push("- 没有未开的宝箱。");
+  for (const chest of facts.chests) {
+    const where =
+      chest.mapId === null
+        ? (chest.where ?? "地图不明")
+        : `${chest.mapId} ${chest.mapName ?? "?"}${chest.cell === null ? "" : ` (${chest.cell[0]},${chest.cell[1]})`}`;
+    core.push(`- ${chest.item} @ ${where}${chest.note === "" ? "" : `;${chest.note}`}`);
+  }
+  core.push(`### 首领(${facts.bosses.length} 个)`);
+  if (facts.bosses.length === 0) core.push("- 这一节没有首领记录。");
+  for (const boss of facts.bosses.slice(0, MAX_BOSSES)) core.push(`- ${bossLine(boss)}`);
+  core.push(`### 怪物(${facts.monsters.length} 种)`);
+  if (facts.monsters.length === 0) core.push("- 没有怪物记录。");
+  for (const monster of facts.monsters.slice(0, MAX_MONSTERS))
+    core.push(`- ${monsterLine(monster)}`);
+  if (facts.notes.length > 0) core.push("### 攻略说明", ...facts.notes.map((note) => `- ${note}`));
+
+  const mapLines: string[] = [];
+  if (facts.maps.length === 0) mapLines.push("- 这一节没对上地图;只能按攻略现场找。");
+  for (const map of facts.maps) {
+    const exits =
+      map.exits.length === 0
+        ? "出口没有记录"
+        : `出口:${map.exits.map((exit) => `${exit.mapId} ${exit.name}`).join("、")}`;
+    const reasons = map.reasons.length === 0 ? "" : `;依据:${map.reasons.join("、")}`;
+    mapLines.push(
+      `- ${map.mapId} ${map.name}${map.areaName === null ? "" : `(${map.areaName})`};${exits}${reasons}`,
+    );
+  }
+  if (facts.passThrough.length > 0) {
+    mapLines.push(
+      `- 路上可经过:${facts.passThrough
+        .slice(0, 12)
+        .map((map) => `${map.mapId} ${map.name}`)
+        .join("、")}`,
+    );
+  }
+  if (facts.revisitMaps.length > 0) {
+    mapLines.push(
+      `- 回头学的地图:${facts.revisitMaps.map((map) => `${map.mapId} ${map.name}`).join("、")}`,
+    );
+  }
+
+  const header = `### 地图与连通(${facts.maps.length} 张)`;
+  let length = Array.from([...core, header].join("\n")).length;
+  const shown: string[] = [];
+  for (const line of mapLines) {
+    const next = length + Array.from(line).length + 1;
+    if (next > limit) break;
+    shown.push(line);
+    length = next;
+  }
+  const omitted = mapLines.length - shown.length;
+  if (omitted > 0) {
+    shown.push(`- 另 ${omitted} 张图略(见结构化数据)`);
+  }
+  return [...core, header, ...shown].join("\n");
 }
 
 function monsterLine(monster: SegmentFactsMonster): string {

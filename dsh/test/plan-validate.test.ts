@@ -8,9 +8,11 @@ import type {
 import type { SegmentPlan, SegmentReport } from "../src/engine/plan/types.ts";
 import {
   parseTurnBackCondition,
+  saveStationProblem,
   validatePlan,
   type PlanRevision,
 } from "../src/engine/plan/validate.ts";
+import type { Knowledge } from "../src/engine/knowledge/index.ts";
 
 function monster(bookId: number, name: string, maps: readonly number[]): SegmentFactsMonster {
   return {
@@ -73,7 +75,13 @@ function facts(overrides: Partial<SegmentFactsData> = {}): SegmentFactsData {
         reasons: [],
         exits: [],
       },
-      { mapId: 12, name: "试验迷宫 ３层", areaName: "试验迷宫", reasons: [], exits: [] },
+      {
+        mapId: 12,
+        name: "试验迷宫 ３层",
+        areaName: "试验迷宫",
+        reasons: [],
+        exits: [],
+      },
     ],
     passThrough: [],
     revisitMaps: [],
@@ -185,6 +193,99 @@ void test("stations: target spelling, map membership, choose/until placement", (
   assert.match(until.problems.join("\n"), /只有 do 是 grind 才能写 until/u);
 });
 
+void test("open, talk, switch and choose need a real cell, other actions do not", () => {
+  for (const action of ["open", "talk", "switch", "choose"] as const) {
+    const validation = validatePlan(
+      plan({
+        stations: [
+          {
+            to: "10",
+            do: action,
+            ...(action === "choose" ? { choose: 0 } : {}),
+          },
+        ],
+      }),
+      facts(),
+    );
+    assert.match(
+      validation.problems.join("\n"),
+      new RegExp(`第 1 站 do=${action} 要写格子\\(图:x,y\\)`, "u"),
+    );
+  }
+  for (const action of ["move", "story", "grind", "boss", "heal", "save", "buy"] as const) {
+    const validation = validatePlan(
+      plan({
+        stations: [
+          {
+            to: "10",
+            do: action,
+            ...(action === "grind" ? { until: { minutes: 5 } } : {}),
+            ...(action === "buy" ? { items: [{ item: "恢复药", count: 1 }] } : {}),
+          },
+        ],
+      }),
+      facts(),
+    );
+    assert.doesNotMatch(validation.problems.join("\n"), /要写格子/u);
+  }
+});
+
+void test("buy stations need items and a nearby shop that sells them", () => {
+  const good = validatePlan(
+    plan({
+      stations: [{ to: "10:4,4", do: "buy", items: [{ item: "恢复药", count: 2 }] }],
+    }),
+    facts(),
+  );
+  assert.deepEqual(good.problems, []);
+
+  const missing = validatePlan(plan({ stations: [{ to: "10:4,4", do: "buy" }] }), facts());
+  assert.match(missing.problems.join("\n"), /do 是 buy 就要写 items/u);
+
+  const notSold = validatePlan(
+    plan({
+      stations: [{ to: "10:4,4", do: "buy", items: [{ item: "圣灵药", count: 1 }] }],
+    }),
+    facts(),
+  );
+  assert.match(notSold.problems.join("\n"), /没有卖「圣灵药」/u);
+
+  const misplaced = validatePlan(
+    plan({
+      stations: [{ to: "10:4,4", do: "move", items: [{ item: "恢复药", count: 1 }] }],
+    }),
+    facts(),
+  );
+  assert.match(misplaced.problems.join("\n"), /只有 do 是 buy 才能写 items/u);
+});
+
+void test("a magic buy accepts English or Chinese names only when the shop sells it", () => {
+  const magicFacts = facts({
+    shops: [
+      {
+        area: "图尔村",
+        kind: "魔法店",
+        products: [
+          { name: "火炎", price: 150, itemId: 392, aliases: ["Fire"] },
+          { name: "治疗", price: 180, itemId: 393, aliases: ["Cure"] },
+        ],
+      },
+    ],
+  });
+  for (const item of ["Fire", "火炎", "Cure", "治疗"]) {
+    const validation = validatePlan(
+      plan({ prep: { ...plan().prep, buy: [{ item, count: 1 }] } }),
+      magicFacts,
+    );
+    assert.deepEqual(validation.problems, [], `${item} should be sold`);
+  }
+  const missing = validatePlan(
+    plan({ prep: { ...plan().prep, buy: [{ item: "Blizzard", count: 1 }] } }),
+    magicFacts,
+  );
+  assert.match(missing.problems.join("\n"), /没有卖「Blizzard」/u);
+});
+
 void test("stations may stand on the current map and cross towns on the way", () => {
   const routeFacts = facts({
     passThrough: [{ mapId: 30, name: "图尔村", from: [] }],
@@ -219,12 +320,16 @@ void test("grind: bestiary must be met here; blue magic needs a teacher and a Bl
   );
   assert.match(wrongMap.problems.join("\n"), /不在这节地图出现/u);
   const noTeacher = validatePlan(
-    plan({ stations: [{ to: "11", do: "grind", until: { blueMagic: ["Aero"] } }] }),
+    plan({
+      stations: [{ to: "11", do: "grind", until: { blueMagic: ["Aero"] } }],
+    }),
     facts({ blueMagic: [blueMagic({ teacherMaps: [] })] }),
   );
   assert.match(noTeacher.problems.join("\n"), /没有会教/u);
   const noBlueMage = validatePlan(
-    plan({ stations: [{ to: "11", do: "grind", until: { blueMagic: ["Aero"] } }] }),
+    plan({
+      stations: [{ to: "11", do: "grind", until: { blueMagic: ["Aero"] } }],
+    }),
     facts({ blueMagic: [blueMagic({ canLearn: false })] }),
   );
   assert.match(noBlueMage.problems.join("\n"), /没有青魔导士/u);
@@ -292,7 +397,12 @@ void test("a buy the nearby shops sell says which shop code will visit", () => {
 void test("battle and boss tables go through the existing rule checks", () => {
   const badBattle = validatePlan(
     plan({
-      battle: [{ maps: [10], tables: [{ 巴兹: [{ if: "unknown.thing < 1", do: "攻击" }] }] }],
+      battle: [
+        {
+          maps: [10],
+          tables: [{ 巴兹: [{ if: "unknown.thing < 1", do: "攻击" }] }],
+        },
+      ],
     }),
     facts(),
   );
@@ -350,7 +460,12 @@ void test("turnBack conditions parse the four supported forms and reject others"
   assert.match(bad.problems.join("\n"), /看不懂/u);
   const badThen = validatePlan(
     plan({
-      turnBack: [{ when: "party.lowest_hp_pct < 30", then: "continue" as unknown as "replan" }],
+      turnBack: [
+        {
+          when: "party.lowest_hp_pct < 30",
+          then: "continue" as unknown as "replan",
+        },
+      ],
     }),
     facts(),
   );
@@ -428,6 +543,35 @@ void test("an exception revision must keep the undone station or drop it with a 
   assert.deepEqual(dropped.problems, []);
 });
 
+void test("a save station in a dungeon with no known save point is rejected at submit", () => {
+  const maze = validatePlan(plan({ stations: [{ to: "10", do: "save" }] }), facts());
+  assert.equal(
+    maze.problems.some((problem) => problem.includes("这里存不了档")),
+    false,
+  );
+  assert.match(maze.warnings?.join("\n") ?? "", /没有存档点数据，降为提醒/u);
+
+  const noSaveData = {
+    maps: [{ id: 10, name: "试验迷宫 １层" }],
+    savePoints: [],
+    mapFiles: [{ id: 10, name: "试验迷宫 １层", savePoints: [] }],
+  } as unknown as Knowledge;
+  assert.match(
+    saveStationProblem({ to: "10", do: "save" }, noSaveData) ?? "",
+    /图 10 试验迷宫 １层 不是世界地图，也查不到存档点，这里存不了档/u,
+  );
+
+  assert.equal(saveStationProblem({ to: "1", do: "save" }, undefined), null);
+
+  const knowledge = {
+    maps: [{ id: 10, name: "试验迷宫 １层" }],
+    savePoints: [{ mapId: 10, cell: [5, 5] }],
+    mapFiles: [],
+  } as unknown as Knowledge;
+  assert.equal(saveStationProblem({ to: "10:5,5", do: "save" }, knowledge), null);
+  assert.equal(saveStationProblem({ to: "10:6,6", do: "save" }, knowledge), null);
+});
+
 void test("a revision does not check a new section, a done report or a missing previous run", () => {
   const noPrevious = validatePlan(plan({ stations: [] }), facts());
   assert.deepEqual(noPrevious.problems, []);
@@ -463,7 +607,10 @@ void test("dropped entries are checked for shape even without a previous run", (
 });
 
 function bossFacts(
-  triggers: readonly { readonly map: number; readonly cell: [number, number] }[],
+  triggers: readonly {
+    readonly map: number;
+    readonly cell: [number, number];
+  }[],
   defeated?: boolean | null,
 ) {
   return facts({

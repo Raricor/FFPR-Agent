@@ -17,7 +17,8 @@
      - grind 站的 until 至少写一项:bestiary(怪名或图鉴号)、blueMagic(青魔法名)、
        battles(场数)、minutes(分钟)。
      - turnBack:走路途中的回头条件,when 写 party.lowest_hp_pct < N、party.mp_pct < N、
-       party.dead >= N 或 item.道具名 < N;then 写 heal-and-continue 或 replan。
+       party.dead >= N 或 item.道具名 < N;then 只能写 heal-and-continue:整章模式执行期间
+       不会再叫你,回头条件只能是 heal-and-continue。
   3. 用 submit_plan 交整份计划。不通过就按返回的问题改,再交;通过了会存盘。
   4. 用 execute_plan 执行当前存盘的计划。它一直跑到这一段做完或出例外才返回,执行期间不叫你;
      返回中文摘要和结构化 JSON 报告,报告同时存盘。
