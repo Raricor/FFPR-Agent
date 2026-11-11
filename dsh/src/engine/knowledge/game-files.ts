@@ -25,6 +25,13 @@
 
 import { cleanName } from "../icons.ts";
 import { isRecord, list, num, records, text } from "../values.ts";
+import {
+  JUMP_DELTAS,
+  JUMP_FACINGS,
+  type JumpFacing,
+  type JumpKind,
+  type MapJump,
+} from "./jumps.ts";
 
 const TILE_SIZE = 16;
 const WORLD_MAP_ID = 1;
@@ -450,6 +457,20 @@ export function buildItems(contents: readonly ContentEntry[], messages: MessageT
       zhc: entry.nameKey === null ? null : (messages.zhc.get(entry.nameKey) ?? null),
     },
   }));
+}
+
+/**
+ * Task 133: the map's three-language title (`map.csv`'s `map_title` through the message tables).
+ * The English title is the direct evidence for a guide sub-location such as "Tule - Pub";
+ * without a title key every language stays null instead of guessing from the map name.
+ */
+export function mapTitleNames(map: MapResource, messages: MessageTables): TrilingualNames {
+  const key = map.titleKey;
+  return {
+    ja: key === null ? null : (messages.ja.get(key) ?? null),
+    en: key === null ? null : (messages.en.get(key) ?? null),
+    zhc: key === null ? null : (messages.zhc.get(key) ?? null),
+  };
 }
 
 function propertyValue(object: unknown, name: string): unknown {
@@ -1034,6 +1055,277 @@ export function parseEventNpcs(file: string, value: unknown): Npc[] {
   return npcs;
 }
 
+
+/** One mnemonic reduced to what the jump reader needs: name, integer operands, label. */
+interface ScriptInstruction {
+  readonly mnemonic: string;
+  readonly values: readonly number[];
+  readonly label: string;
+}
+
+function scriptProgram(value: unknown): readonly ScriptInstruction[] | null {
+  if (!isRecord(value) || !Array.isArray(value.Mnemonics)) return null;
+  const instructions: ScriptInstruction[] = [];
+  for (const entry of records(value.Mnemonics)) {
+    const mnemonic = text(entry.mnemonic) ?? "";
+    if (mnemonic === "") continue;
+    const operands = isRecord(entry.operands) ? entry.operands : {};
+    instructions.push({
+      mnemonic,
+      values: list(operands.iValues).map((item) => integer(item) ?? 0),
+      label: text(entry.label) ?? "",
+    });
+  }
+  return instructions.length === 0 ? null : instructions;
+}
+
+type PlayerSteps = readonly (readonly [direction: number, cells: number])[];
+
+/**
+ * The player's `Move` sequence. `SetPuppet` slot 0 with entity -1001 is the player (other
+ * slots carry NPCs); its third operand is the script entry to run. `Call` follows the same
+ * entry numbering the labels use. A script without a direction branch runs one sequence for
+ * every facing, so all four facings share it.
+ */
+function playerPaths(instructions: readonly ScriptInstruction[]): Map<JumpFacing, PlayerSteps> {
+  const run = (entry: number): PlayerSteps | null => {
+    const steps: (readonly [number, number])[] = [];
+    const returns: number[] = [];
+    const seen = new Set<number>();
+    let index = entry;
+    for (let guard = 0; guard < 1024; guard += 1) {
+      const instruction = instructions[index];
+      if (instruction === undefined) break;
+      if (seen.has(index)) return null;
+      seen.add(index);
+      if (instruction.mnemonic === "Move") {
+        const direction = instruction.values[0] ?? -1;
+        const cells = instruction.values[1] ?? 0;
+        if (direction < 0 || direction > 3 || cells <= 0 || cells > 64) return null;
+        steps.push([direction, cells]);
+        index += 1;
+        continue;
+      }
+      if (instruction.mnemonic === "SetPuppet" && instruction.values[1] === -1001) {
+        const target = instruction.values[2] ?? -1;
+        if (target < 0 || target >= instructions.length) return null;
+        returns.push(index + 1);
+        index = target;
+        continue;
+      }
+      if (instruction.mnemonic === "Call") {
+        const target = instruction.values[0] ?? -1;
+        if (target < 0 || target >= instructions.length) return null;
+        returns.push(index + 1);
+        index = target;
+        continue;
+      }
+      if (instruction.mnemonic === "Exit" || instruction.mnemonic === "ChangeScript") break;
+      if (instruction.mnemonic === "Return") {
+        const next = returns.pop();
+        if (next === undefined) break;
+        index = next;
+        continue;
+      }
+      index += 1;
+    }
+    return steps.length === 0 ? null : steps;
+  };
+
+  const paths = new Map<JumpFacing, PlayerSteps>();
+  const branch = instructions.find((item) => item.mnemonic === "BranchByPlayerDirection");
+  if (branch !== undefined) {
+    JUMP_FACINGS.forEach((facing, direction) => {
+      const target = branch.values[direction] ?? 0;
+      if (target <= 0 || target >= instructions.length) return;
+      const steps = run(target);
+      if (steps !== null) paths.set(facing, steps);
+    });
+    return paths;
+  }
+  const puppet = instructions.find(
+    (item) => item.mnemonic === "SetPuppet" && item.values[1] === -1001,
+  );
+  if (puppet === undefined) return paths;
+  const steps = run(puppet.values[2] ?? -1);
+  if (steps !== null) for (const facing of JUMP_FACINGS) paths.set(facing, steps);
+  return paths;
+}
+
+interface JumpLayer {
+  readonly width: number;
+  readonly height: number;
+  readonly walkable: readonly boolean[];
+  readonly components: Int32Array;
+}
+
+const JUMP_WALKABLE = new Set(["0", "2", "3", "4", "5"]);
+
+function jumpLayerRows(rows: readonly string[]): JumpLayer | null {
+  const height = rows.length;
+  const width = rows[0]?.length ?? 0;
+  if (width === 0 || height === 0) return null;
+  const walkable = new Array<boolean>(width * height).fill(false);
+  for (let y = 0; y < height; y += 1) {
+    const row = rows[y] ?? "";
+    for (let x = 0; x < width; x += 1) {
+      walkable[y * width + x] = JUMP_WALKABLE.has(row[x] ?? "");
+    }
+  }
+  const components = new Int32Array(width * height).fill(-1);
+  let next = 0;
+  const queue: number[] = [];
+  for (let start = 0; start < walkable.length; start += 1) {
+    if (walkable[start] !== true || components[start] !== -1) continue;
+    components[start] = next;
+    queue.length = 0;
+    queue.push(start);
+    for (let head = 0; head < queue.length; head += 1) {
+      const index = queue[head] ?? 0;
+      const x = index % width;
+      const y = Math.floor(index / width);
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as const) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const neighbour = ny * width + nx;
+        if (walkable[neighbour] !== true || components[neighbour] !== -1) continue;
+        components[neighbour] = next;
+        queue.push(neighbour);
+      }
+    }
+    next += 1;
+  }
+  return { width, height, walkable, components };
+}
+
+function jumpCell(layer: JumpLayer, cell: readonly [number, number]): number | null {
+  if (cell[0] < 0 || cell[1] < 0 || cell[0] >= layer.width || cell[1] >= layer.height) return null;
+  return cell[1] * layer.width + cell[0];
+}
+
+function jumpLanding(start: readonly [number, number], steps: PlayerSteps): [number, number] {
+  let x = start[0];
+  let y = start[1];
+  for (const [direction, cells] of steps) {
+    const delta = JUMP_DELTAS[JUMP_FACINGS[direction] ?? "Up"];
+    x += delta[0] * cells;
+    y += delta[1] * cells;
+  }
+  return [x, y];
+}
+
+export interface JumpSkip {
+  readonly cell: readonly [number, number];
+  readonly name: string;
+  readonly scriptId: number | null;
+  readonly reason: string;
+}
+
+export interface JumpParse {
+  readonly jumps: readonly MapJump[];
+  readonly skipped: readonly JumpSkip[];
+}
+
+/**
+ * Task 149: read the jump objects of one map. A candidate is an `object_type` 2 (step on) or
+ * 5 (touch/confirm) object with a `script_id`. The script must name the player puppet
+ * (`SetPuppet` entity -1001), the `Move` sequence must be readable, and the computed landing
+ * must be walkable on the same collision layer but in a different connected block. Anything
+ * else is recorded in `skipped` for the export summary instead of guessed at.
+ *
+ * Facing: `BranchByPlayerDirection`'s first four operands are the branch labels for
+ * Up, Right, Down, Left (jump_10's [5,0,2,0] points at its 上向き/下向き labels; jump_11's
+ * [0,5,0,2] at 右向き/左向き). A touch object is used from the cell in front of it, so the
+ * party stands at `cell - facing` and looks at the object. A step object is entered from the
+ * same cell and the entry direction is the facing. The walk itself runs from that stand cell.
+ */
+export function parseJumps(
+  entity: unknown,
+  scripts: readonly { readonly file: string; readonly value: unknown }[],
+  scriptNames: ReadonlyMap<number, string> | undefined,
+  layers: readonly CollisionLayer[],
+): JumpParse {
+  const jumps: MapJump[] = [];
+  const skipped: JumpSkip[] = [];
+  const seen = new Set<string>();
+  const layersReady = layers.map((layer) => jumpLayerRows(layer.rows)).filter((layer) => layer !== null);
+  if (layersReady.length === 0) return { jumps, skipped };
+  for (const layer of tileLayers(entity)) {
+    for (const object of records(layer.objects)) {
+      const type = objectType(object);
+      if (type !== 2 && type !== 5) continue;
+      const scriptId = integer(propertyValue(object, "script_id"));
+      if (scriptId === null || scriptId <= 0) continue;
+      const cell = objectCell(object);
+      if (cell === null) continue;
+      const name = objectName(object);
+      const skip = (reason: string): void => {
+        skipped.push({ cell, name, scriptId, reason });
+      };
+      const scriptName = scriptNames?.get(scriptId);
+      if (scriptName === undefined) {
+        skip(`script.csv 里没有脚本 ${scriptId}`);
+        continue;
+      }
+      const script = scripts.find(
+        (item) => item.file === `${scriptName}.json` || item.file === scriptName,
+      );
+      if (script === undefined) {
+        skip(`没有脚本文件 ${scriptName}`);
+        continue;
+      }
+      const instructions = scriptProgram(script.value);
+      if (instructions === null) {
+        skip(`脚本 ${scriptName} 读不懂`);
+        continue;
+      }
+      const paths = playerPaths(instructions);
+      if (paths.size === 0) {
+        skip(`脚本 ${scriptName} 没有玩家的 Move`);
+        continue;
+      }
+      const kind: JumpKind = type === 2 ? "step" : "touch";
+      let found = false;
+      for (const feature of layersReady) {
+        const startIndex = jumpCell(feature, cell);
+        if (startIndex === null) continue;
+        if (kind === "step" && feature.walkable[startIndex] !== true) continue;
+        for (const facing of JUMP_FACINGS) {
+          const steps = paths.get(facing);
+          if (steps === undefined) continue;
+          const delta = JUMP_DELTAS[facing];
+          const stand: [number, number] = [cell[0] - delta[0], cell[1] - delta[1]];
+          const standIndex = jumpCell(feature, stand);
+          if (standIndex === null || feature.walkable[standIndex] !== true) continue;
+          const start = kind === "step" ? cell : stand;
+          const startBlock = feature.components[kind === "step" ? startIndex : standIndex] ?? -1;
+          const land = jumpLanding(start, steps);
+          const landIndex = jumpCell(feature, land);
+          if (landIndex === null || feature.walkable[landIndex] !== true) continue;
+          const landBlock = feature.components[landIndex] ?? -1;
+          if (startBlock < 0 || landBlock < 0 || startBlock === landBlock) continue;
+          const key = `${cell[0]},${cell[1]}:${kind}:${facing}:${land[0]},${land[1]}`;
+          if (seen.has(key)) {
+            found = true;
+            continue;
+          }
+          seen.add(key);
+          jumps.push({ cell, kind, facing, land, script: scriptName });
+          found = true;
+        }
+      }
+      if (!found) skip(`脚本 ${scriptName} 的落点不可走或和起点同一块`);
+    }
+  }
+  return { jumps, skipped };
+}
+
 export interface MapFileSet {
   readonly map: MapResource;
   readonly entity: unknown;
@@ -1052,6 +1344,11 @@ export interface MapFileSet {
     readonly file: string;
     readonly value: unknown;
   }[];
+  /** Task 149: every `sc_*.json` of the map, for the jump-object reader. */
+  readonly jumpScripts?: readonly {
+    readonly file: string;
+    readonly value: unknown;
+  }[];
   /** Task 128: object `script_id` → `script.csv` name, for world-map event entrances. */
   readonly scriptNames?: ReadonlyMap<number, string>;
   /** Task 128: world-map package scripts (inline base64 already decoded by the caller). */
@@ -1063,6 +1360,10 @@ export interface MapFileSet {
 export interface ParsedMap extends EntityParse {
   readonly map: MapResource;
   readonly events: readonly EventTrigger[];
+  /** Task 149: script-moved jumps, each already checked against the collision blocks. */
+  readonly jumps: readonly MapJump[];
+  /** Task 149: candidate objects whose script or landing could not be read. */
+  readonly jumpSkipped: readonly JumpSkip[];
   readonly collision: readonly CollisionLayer[];
   readonly damage: readonly ValueLayer[];
   readonly hiddenPassages: readonly ValueLayer[];
@@ -1074,6 +1375,8 @@ export interface ParsedMap extends EntityParse {
 
 export function parseSubmap(files: MapFileSet): ParsedMap {
   const entity = parseEntity(files.entity, files.treasureTypes);
+  const collision = parseCollisionLayers(files.collision);
+  const jumpParse = parseJumps(files.entity, files.jumpScripts ?? [], files.scriptNames, collision);
   const events = files.events.flatMap((event) => parseEventFile(event.file, event.value));
   const eventNpcs = files.events.flatMap((event) => parseEventNpcs(event.file, event.value));
   const attribute = files.attribute;
@@ -1118,7 +1421,9 @@ export function parseSubmap(files: MapFileSet): ParsedMap {
     exits,
     npcs: dedupeNpcs([...entity.npcs, ...eventNpcs]),
     events,
-    collision: parseCollisionLayers(files.collision),
+    jumps: jumpParse.jumps,
+    jumpSkipped: jumpParse.skipped,
+    collision,
     damage: parseValueLayers(files.damage),
     hiddenPassages: parseValueLayers(files.hiddenPassage),
     ...(world === undefined ? {} : { world }),

@@ -12,10 +12,10 @@ import { join } from "node:path";
 import {
   buildItems,
   compareAtlas,
+  mapTitleNames,
   compareCollisions,
   isWorldMapResource,
   parseContentCsv,
-  parseEntity,
   parseMapCsv,
   parseMessageTable,
   parseScriptNames,
@@ -142,10 +142,14 @@ function sum(values: readonly number[]): number {
   return values.reduce((total, value) => total + value, 0);
 }
 
-function mapForJson(map: ParsedMap): Record<string, unknown> {
+function mapForJson(
+  map: ParsedMap,
+  title: ReturnType<typeof mapTitleNames>,
+): Record<string, unknown> {
   return {
     id: map.map.id,
     name: map.map.name,
+    title,
     packageName: map.map.packageName,
     assetName: map.map.assetName,
     titleKey: map.map.titleKey,
@@ -154,6 +158,7 @@ function mapForJson(map: ParsedMap): Record<string, unknown> {
     chests: map.chests,
     exits: map.exits,
     events: map.events,
+    jumps: map.jumps,
     npcs: map.npcs,
     savePoints: map.savePoints,
     restorePoints: map.restorePoints,
@@ -179,9 +184,8 @@ async function parseMap(
   const entityText = await readOptionalText(join(directory, "entity_default.json"));
   if (entityText === null) return null;
   const entity = JSON.parse(entityText) as unknown;
-  // World-exit scripts are only interesting on maps whose entities have a world-map exit.
-  const hasWorldExit = parseEntity(entity).exits.some((exit) => exit.kind === "world");
-  const scripts = hasWorldExit ? await readScriptFiles(directory) : [];
+  // Task 149 needs every script of the map, not only the world-exit ones task 123 read.
+  const scripts = await readScriptFiles(directory);
   const toWorld = scripts.filter((script) => script.file.endsWith("_to_world.json"));
   const worldScripts = toWorld.length > 0 ? toWorld : scripts;
   const files: MapFileSet = {
@@ -196,6 +200,7 @@ async function parseMap(
       ? await readOptionalJson(join(directory, "attribute.json"))
       : undefined,
     scripts: worldScripts,
+    jumpScripts: scripts,
     scriptNames,
     packageScripts: isWorldMapResource(map)
       ? await readPackageScripts(packageDirectory)
@@ -258,6 +263,12 @@ interface Summary {
   readonly exits: number;
   readonly eventExits: number;
   readonly events: number;
+  readonly jumps: number;
+  readonly jumpSkipped: {
+    readonly total: number;
+    readonly byMap: Record<string, number>;
+    readonly examples: readonly string[];
+  };
   readonly npcs: number;
   readonly savePoints: number;
   readonly restorePoints: number;
@@ -303,6 +314,22 @@ function buildSummary(
     exits: sum(maps.map((map) => map.exits.length)),
     eventExits: sum(maps.map((map) => map.exits.filter((exit) => exit.kind === "event").length)),
     events: sum(maps.map((map) => map.events.length)),
+    jumps: sum(maps.map((map) => map.jumps.length)),
+    jumpSkipped: {
+      total: sum(maps.map((map) => map.jumpSkipped.length)),
+      byMap: Object.fromEntries(
+        maps
+          .filter((map) => map.jumpSkipped.length > 0)
+          .map((map) => [String(map.map.id), map.jumpSkipped.length]),
+      ),
+      examples: maps.flatMap((map) =>
+        map.jumpSkipped.slice(0, 2).map(
+          (entry) =>
+            `地图 ${map.map.id} ${entry.name || entry.scriptId} ` +
+            `(${entry.cell[0]}, ${entry.cell[1]}) ${entry.reason}`,
+        ),
+      ),
+    },
     npcs: sum(maps.map((map) => map.npcs.length)),
     savePoints: sum(maps.map((map) => map.savePoints.length)),
     restorePoints: sum(maps.map((map) => map.restorePoints.length)),
@@ -330,13 +357,21 @@ function printSummary(summary: Summary): void {
     `地图 ${summary.maps}/${summary.mapsInCsv} 张（磁盘 ${summary.submapsOnDisk} 张子图，` +
       `${summary.unmappedSubmaps.length} 张无地图编号），宝箱 ${summary.chests} 个（隐藏 ${summary.hiddenItems}），` +
       `出口 ${summary.exits} 个（其中事件入口 ${summary.eventExits}），` +
-      `事件 ${summary.events} 个，NPC ${summary.npcs} 个，` +
+      `事件 ${summary.events} 个，跳石 ${summary.jumps} 个，NPC ${summary.npcs} 个，` +
       `存档点 ${summary.savePoints} 个，回复点 ${summary.restorePoints} 个`,
   );
   console.log(
     `物品 ${summary.items} 条；碰撞 ${summary.collisionLayers} 层，伤害格 ${summary.damageCells}，` +
       `隐藏通道格 ${summary.hiddenPassageCells}，移动区域 ${summary.moveAreas}`,
   );
+  const skippedMaps = Object.entries(summary.jumpSkipped.byMap)
+    .map(([id, count]) => `${id}(${count})`)
+    .join("，");
+  console.log(
+    `跳石另跳过 ${summary.jumpSkipped.total} 个候选` +
+      (skippedMaps === "" ? "" : `，按图：${skippedMaps}`),
+  );
+  for (const line of summary.jumpSkipped.examples.slice(0, 10)) console.log(`  ${line}`);
   const unresolvedTypes = Object.entries(summary.unresolved.byType)
     .map(([type, count]) => `${type}=${count}`)
     .join("，");
@@ -384,11 +419,12 @@ async function main(): Promise<void> {
     const text = await readOptionalText(join(FILES, "Data", "Message", `system_${language}.txt`));
     return text === null ? new Map() : parseMessageTable(text);
   };
-  const items = buildItems(contents, {
+  const messages = {
     ja: await messageTable("ja"),
     en: await messageTable("en"),
     zhc: await messageTable("zhc"),
-  });
+  };
+  const items = buildItems(contents, messages);
 
   const disk = await scanSubmaps(resources);
   const maps: ParsedMap[] = [];
@@ -399,7 +435,7 @@ async function main(): Promise<void> {
     maps.push(parsed);
     await writeFile(
       join(MAP_OUTPUT, `${parsed.map.id}.json`),
-      `${JSON.stringify(mapForJson(parsed), null, 2)}\n`,
+      `${JSON.stringify(mapForJson(parsed, mapTitleNames(parsed.map, messages)), null, 2)}\n`,
       "utf8",
     );
   }

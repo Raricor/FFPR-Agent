@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   buildItems,
   buildWorldMap,
+  mapTitleNames,
   compareAtlas,
   compareCollisions,
   objectCell,
@@ -64,6 +65,27 @@ void test("map.csv gives the id, Tiled directory and package name", () => {
       [1, 2],
     ],
   );
+});
+
+void test("a map title resolves all three languages from its message keys", () => {
+  const maps = parseMapCsv(
+    ["id,map_name,asset_name,map_title", "33,Map_1,,TITLE_A", "34,Map_2,,"].join("\n"),
+  );
+  const messages = {
+    ja: new Map([["TITLE_A", "試し酒場"]]),
+    en: new Map([["TITLE_A", "Test Pub"]]),
+    zhc: new Map([["TITLE_A", "试酒馆"]]),
+  };
+  const titled = maps[0];
+  assert.ok(titled);
+  assert.deepEqual(mapTitleNames(titled, messages), {
+    ja: "試し酒場",
+    en: "Test Pub",
+    zhc: "试酒馆",
+  });
+  const without = maps[1];
+  assert.ok(without);
+  assert.deepEqual(mapTitleNames(without, messages), { ja: null, en: null, zhc: null });
 });
 
 void test("a gid object's cell is x/16 and y/16-1", () => {
