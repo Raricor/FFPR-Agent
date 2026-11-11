@@ -81,7 +81,12 @@ function result(seq: number, time: number, callId: string, body: string, isError
 }
 
 function activity(time: number, body: string): Record<string, unknown> {
-  return { at: new Date(time).toISOString(), game: "ff5", kind: "event", text: body };
+  return {
+    at: new Date(time).toISOString(),
+    game: "ff5",
+    kind: "event",
+    text: body,
+  };
 }
 
 function battle(
@@ -248,11 +253,18 @@ void test("active duration skips a three-day idle gap but the event range stays 
     user(1, at(0), "目标", "user"),
     event("step/end", 2, at(1), { turn: 1, step: 1 }),
     event("step/end", 3, at(day * 3), { turn: 1, step: 1 }),
-    event("turn/end", 4, at(day * 3 + 1), { turn: 1, reason: { kind: "done" } }),
+    event("turn/end", 4, at(day * 3 + 1), {
+      turn: 1,
+      reason: { kind: "done" },
+    }),
   ]);
   const activityFile = join(dir, "activity.jsonl");
   await writeFile(activityFile, jsonl([activity(at(day * 3), "地点 首次到达「三天后」")]));
-  const metrics = await metricsForLog({ id: "session-7777cccc", log, activityFile });
+  const metrics = await metricsForLog({
+    id: "session-7777cccc",
+    log,
+    activityFile,
+  });
   const totals = metrics.totals;
   assert.ok(totals);
   assert.ok(Math.abs((totals.activeHours ?? 0) - 2 / 60) < 1e-9);
@@ -358,13 +370,32 @@ void test("walkpath seconds per cell come from result cell lines and the timing 
   await writeFile(
     timingFile,
     jsonl([
-      { t: new Date(at(1)).toISOString(), op: "walkpath", via: "lan", ms: 3000 },
-      { t: new Date(at(2)).toISOString(), op: "walkpath", via: "lan", ms: 2000 },
-      { t: new Date(at(-5)).toISOString(), op: "walkpath", via: "lan", ms: 100000 },
+      {
+        t: new Date(at(1)).toISOString(),
+        op: "walkpath",
+        via: "lan",
+        ms: 3000,
+      },
+      {
+        t: new Date(at(2)).toISOString(),
+        op: "walkpath",
+        via: "lan",
+        ms: 2000,
+      },
+      {
+        t: new Date(at(-5)).toISOString(),
+        op: "walkpath",
+        via: "lan",
+        ms: 100000,
+      },
       { t: new Date(at(2)).toISOString(), op: "pos", via: "lan", ms: 1 },
     ]),
   );
-  const metrics = await metricsForLog({ id: "session-dddd4444", log, timingFile });
+  const metrics = await metricsForLog({
+    id: "session-dddd4444",
+    log,
+    timingFile,
+  });
   const walking = metrics.walking;
   assert.ok(walking);
   assert.equal(walking.tool, "go");
@@ -391,7 +422,11 @@ void test("old walk timing and walk_to results use the same cell accounting", as
     timingFile,
     jsonl([{ t: new Date(at(1)).toISOString(), op: "walk", via: "ssh", ms: 4000 }]),
   );
-  const metrics = await metricsForLog({ id: "session-eeee5555", log, timingFile });
+  const metrics = await metricsForLog({
+    id: "session-eeee5555",
+    log,
+    timingFile,
+  });
   const walking = metrics.walking;
   assert.ok(walking);
   assert.equal(walking.tool, "walk_to");
@@ -415,7 +450,11 @@ void test("wipes are counted and the story wipe is listed separately", async (t)
       battle(4, at(40), at(41), "boss", "wipe", 205, "首领战全灭"),
     ]),
   );
-  const metrics = await metricsForLog({ id: "session-ffff6666", log, battlesFiles: [battlesFile] });
+  const metrics = await metricsForLog({
+    id: "session-ffff6666",
+    log,
+    battlesFiles: [battlesFile],
+  });
   const battles = metrics.battles;
   assert.ok(battles);
   assert.equal(battles.total, 4);
@@ -471,7 +510,10 @@ void test("missing source files leave null metrics instead of failing", async (t
   assert.equal(walking.walkCount, null);
   assert.equal(walking.secondsPerCell, null);
 
-  const broken = await metricsForLog({ id: "broken", log: join(dir, "nope.zstd") });
+  const broken = await metricsForLog({
+    id: "broken",
+    log: join(dir, "nope.zstd"),
+  });
   assert.notEqual(broken.error, null);
   assert.equal(broken.totals, null);
   assert.equal(broken.tools, null);
@@ -503,7 +545,10 @@ void test("coordinate/map go, route and the stage plan gate are counted separate
     user(1, at(0), "目标", "user"),
     call(2, at(1), "c1", "go", { to: [1, 2] }),
     result(3, at(2), "c1", "阶段计划拦下：这一段还在进行"),
-    call(4, at(3), "c2", "go", { to: [3, 4], leave_incomplete: "要先踩触发格" }),
+    call(4, at(3), "c2", "go", {
+      to: [3, 4],
+      leave_incomplete: "要先踩触发格",
+    }),
     result(5, at(4), "c2", "到了 (3, 4)\n阶段计划放行：带理由走坐标"),
     call(6, at(5), "c3", "go", { to: "风之神殿" }),
     result(7, at(6), "c3", "走了 1 跳"),

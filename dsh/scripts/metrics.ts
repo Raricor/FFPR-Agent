@@ -14,7 +14,10 @@ const USAGE =
   "用法: node scripts/metrics.ts --session <会话号> [--session <另一个>] [--json]\n" +
   "会话号可以只给前 8 位。";
 
-function parseArguments(argv: readonly string[]): { sessions: string[]; json: boolean } {
+function parseArguments(argv: readonly string[]): {
+  sessions: string[];
+  json: boolean;
+} {
   const sessions: string[] = [];
   let json = false;
   for (let i = 0; i < argv.length; i += 1) {

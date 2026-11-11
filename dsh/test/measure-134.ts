@@ -45,7 +45,10 @@ async function timing(startText: string, endText: string): Promise<void> {
     throw new Error("用法: node test/measure-134.ts timing <开始 ISO> <结束 ISO>");
   }
   const rows: TimingRow[] = [];
-  const lines = createInterface({ input: createReadStream(TIMING), crlfDelay: Infinity });
+  const lines = createInterface({
+    input: createReadStream(TIMING),
+    crlfDelay: Infinity,
+  });
   for await (const line of lines) {
     if (line.trim() === "") continue;
     const parsed: unknown = JSON.parse(line);

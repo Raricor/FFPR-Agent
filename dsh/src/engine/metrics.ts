@@ -547,7 +547,11 @@ function summarizeEvents(parsed: ParsedSession): {
     }
   }
   const tools = [...toolMap.entries()]
-    .map(([name, stat]) => ({ name, calls: stat.calls, failures: stat.failures }))
+    .map(([name, stat]) => ({
+      name,
+      calls: stat.calls,
+      failures: stat.failures,
+    }))
     .sort((left, right) => right.calls - left.calls || left.name.localeCompare(right.name));
   const guideRepeats = [...guideCounts.values()]
     .filter((entry) => entry.count > 1)
@@ -986,7 +990,10 @@ export async function resolveSession(root: string, prefix: string): Promise<Reso
       if (!prefixes.some((wanted) => session.name.startsWith(wanted))) continue;
       const names = await readdir(join(root, group.name, session.name)).catch((): string[] => []);
       if (!names.includes(SESSION_FILE)) continue;
-      found.push({ id: session.name, log: join(root, group.name, session.name, SESSION_FILE) });
+      found.push({
+        id: session.name,
+        log: join(root, group.name, session.name, SESSION_FILE),
+      });
     }
   }
   const exact = found.filter((entry) => prefixes.includes(entry.id));
