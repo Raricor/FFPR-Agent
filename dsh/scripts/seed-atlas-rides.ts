@@ -71,7 +71,10 @@ const USAGE =
   "用法: node scripts/seed-atlas-rides.ts [--check] [--atlas <path>]\n" +
   "默认 atlas:../.deps/ds/atlas-ff5.json;--check 只打印,不写文件。";
 
-function parseArguments(argv: readonly string[]): { check: boolean; path: string } {
+function parseArguments(argv: readonly string[]): {
+  check: boolean;
+  path: string;
+} {
   let check = false;
   let path = DEFAULT_ATLAS;
   for (let i = 0; i < argv.length; i += 1) {
