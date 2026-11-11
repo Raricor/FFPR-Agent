@@ -4,7 +4,7 @@
  * ffpr_agent/ds/game.py; control plan §4.8–§4.11 and §10.
  */
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Laptop } from "./laptop.ts";
 import { MonsterCache, monsterStatus } from "./bestiary.ts";
@@ -46,6 +46,7 @@ import {
 } from "./encounters.ts";
 import type { EncounterTable } from "./encounters.ts";
 import { parsePositionReply } from "./position.ts";
+import { parseTreasureFlags } from "./treasure-flags.ts";
 import { profileFor } from "./profiles/index.ts";
 import { Atlas } from "./atlas.ts";
 import { AtlasSave } from "./atlas-save.ts";
@@ -123,7 +124,7 @@ import {
   targetCell,
   type RouteStopInput,
 } from "./route/tool.ts";
-import type { Waypoint } from "./route/types.ts";
+import type { RoutePlan, Waypoint } from "./route/types.ts";
 import {
   describeScout,
   planScout,
@@ -148,6 +149,12 @@ import {
   routeFromBookSection,
   type BookPlanOptions,
 } from "./stage/book-plan.ts";
+import {
+  bookPlanAnnouncement,
+  bookPlanTarget,
+  bookSectionDigest,
+  ROUTE_BOOK_PLAN_VERSION,
+} from "./stage/book-version.ts";
 import { buildStageFacts, describeStageFacts, stageTargetMapIds } from "./stage/facts.ts";
 import {
   MAX_RECOVERY_DISTANCE,
@@ -170,6 +177,33 @@ import { purchaseList, type ShopHere } from "./stage/purchase.ts";
 import { describeStagePlan } from "./stage/report.ts";
 import type { StageOfficerRunner } from "./stage/runner.ts";
 import { StagePlanStore, type StagePlanRecord, type StageStats } from "./stage/store.ts";
+import { executeSegmentPlan } from "./plan/execute.ts";
+import {
+  chooseDefaultSection,
+  segmentFacts,
+  withBossTriggers,
+  type SegmentFactsResult,
+} from "./plan/facts.ts";
+import { gamePlanPorts } from "./plan/game-ports.ts";
+import { SegmentPlanStore, readSegmentProgress, writeSegmentProgress } from "./plan/store.ts";
+import { handlePlanFacts, handleSubmitPlan, type PlanToolPorts } from "./plan/tools.ts";
+import type {
+  PlanBattle,
+  PlanBoss,
+  SegmentPlan,
+  SegmentProgress,
+  SegmentReport,
+} from "./plan/types.ts";
+import type {
+  PlanActionResult,
+  PlanBossResult,
+  PlanBuyResult,
+  PlanObservation,
+  PlanPortMember,
+  PlanProgressStatus,
+  PlanShop,
+  PlanStationResult,
+} from "./plan/execute.ts";
 import type {
   StageBossPartyMember,
   StageBossTable,
@@ -180,7 +214,9 @@ import type {
 import {
   loadRouteBook,
   readLearnedPoints,
+  readRouteBookFiles,
   readVisitOrder,
+  sectionFinished,
   selectSectionIndex,
   writeLearnedPoint,
   type LearnedPoint,
@@ -238,6 +274,109 @@ export function shopSelling(guide: Guide | null, area: string, item: string): st
     }
   }
   return "";
+}
+
+/**
+ * Task 139: one `execute_plan` run. The default builds the real ports and calls the executor;
+ * tests and previews inject a substitute that returns a report immediately.
+ */
+export type SegmentExecutor = (
+  plan: SegmentPlan,
+  pilot: Pilot,
+  signal: AbortSignal | undefined,
+) => Promise<SegmentReport>;
+
+/** One Chinese summary of a plan, used by plan_status and the report header. */
+function describeSegmentPlan(plan: SegmentPlan): string {
+  const bosses = plan.bosses.map((boss) => boss.name).join("、");
+  const dropped = plan.dropped ?? [];
+  const droppedText =
+    dropped.length === 0
+      ? ""
+      : `\n不做了 ${dropped.length} 站:${dropped
+          .map((station) => `${station.do} ${station.to}(${station.why})`)
+          .join("、")}`;
+  return (
+    `当前段计划:${plan.section}\n` +
+    `目标:${plan.goal}\n` +
+    `站点 ${plan.stations.length} 个;普通战斗表 ${plan.battle.length} 组;` +
+    `首领 ${bosses === "" ? "无" : bosses};回头条件 ${plan.turnBack.length} 条;` +
+    `准备:换职业 ${plan.prep.jobs.length} 项,采购 ${plan.prep.buy.length} 项,装备 ${plan.prep.equip}` +
+    droppedText
+  );
+}
+
+/** One Chinese summary of an execution report; the JSON follows it in the tool result. */
+function describeSegmentReport(report: SegmentReport): string {
+  const status =
+    report.status === "done" ? "完成" : report.status === "aborted" ? "中止" : "出例外";
+  const lines = [
+    `段计划报告:${report.section} — ${status};用时 ${report.minutes} 分钟,模型调用 ${report.modelCalls} 次`,
+  ];
+  if (report.exception !== undefined) {
+    const where =
+      report.exception.map === null
+        ? "位置不明"
+        : `地图 ${report.exception.map}${report.exception.cell === null ? "" : ` 格子 ${report.exception.cell[0]},${report.exception.cell[1]}`}`;
+    const station =
+      report.exception.station === null ? "" : `;第 ${report.exception.station + 1} 站`;
+    lines.push(`例外(${report.exception.kind})${where}${station}:${report.exception.detail}`);
+  }
+  lines.push(
+    `完成 ${report.done.stations} 站,开 ${report.done.chestsOpened} 个宝箱,` +
+      `战斗 ${report.done.battles} 场,首领 ${report.done.bossesWon.join("、") || "无"}`,
+  );
+  if (report.done.bestiaryNew.length > 0) {
+    lines.push(`图鉴新登记:${report.done.bestiaryNew.join("、")}`);
+  }
+  if (report.done.blueMagicNew.length > 0) {
+    lines.push(`青魔法新学会:${report.done.blueMagicNew.join("、")}`);
+  }
+  if (report.remaining.length > 0) {
+    lines.push(`还没做的站:${report.remaining.map((index) => index + 1).join("、")}`);
+  }
+  lines.push(`队伍:${report.party}`);
+  return lines.join("\n");
+}
+
+/** Load the last report if the file exists; a missing or unreadable report is just empty. */
+async function loadSegmentReport(
+  path: string | undefined,
+  signal?: AbortSignal,
+): Promise<SegmentReport | null> {
+  if (path === undefined) return null;
+  let body: string;
+  try {
+    body = await readFile(path, { encoding: "utf8", signal });
+  } catch (error) {
+    if (isMissingFile(error)) return null;
+    signal?.throwIfAborted();
+    // The report is optional context for plan_status; a corrupt file must not stop the engine.
+    return null;
+  }
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (!isRecord(parsed)) return null;
+    if (parsed.status !== "done" && parsed.status !== "exception" && parsed.status !== "aborted") {
+      return null;
+    }
+    if (
+      typeof parsed.section !== "string" ||
+      typeof parsed.party !== "string" ||
+      typeof parsed.minutes !== "number" ||
+      typeof parsed.modelCalls !== "number" ||
+      !isRecord(parsed.done) ||
+      !Array.isArray(parsed.remaining) ||
+      !Array.isArray(parsed.done.bestiaryNew) ||
+      !Array.isArray(parsed.done.blueMagicNew) ||
+      !Array.isArray(parsed.done.bossesWon)
+    ) {
+      return null;
+    }
+    return parsed as unknown as SegmentReport;
+  } catch {
+    return null;
+  }
 }
 
 export interface GameOptions {
@@ -324,7 +463,11 @@ export interface GameOptions {
   readonly stageBossLevelGap?: number;
   /** Task 117: route book executor switch, grind cap, progress and learned-coordinate files. */
   readonly routeBookEnabled?: boolean;
+  /** Task 131: entering a new book section generates its plan without asking the model. */
+  readonly routeBookAutoPlan?: boolean;
   readonly routeBookGrindMinutes?: number;
+  /** Task 136: use a book save station when the last save is this many minutes old (Config). */
+  readonly routeBookSaveMinutes?: number;
   /** Task 124: how many sections from the current one and the build's time budget (Config). */
   readonly routeBookAheadSections?: number;
   readonly routeBookTimeBudgetMs?: number;
@@ -341,6 +484,13 @@ export interface GameOptions {
   readonly scoutDir?: string;
   readonly scoutMinutes?: number;
   readonly scoutMaxTargets?: number;
+  /** Task 139: the saved segment plan and its last report (Config). */
+  readonly segmentPlanFile?: string;
+  readonly segmentReportFile?: string;
+  /** Task 145: the live segment-progress file (defaults beside the report). */
+  readonly segmentProgressFile?: string;
+  /** Task 139: a substitute executor for tests/previews (the real one needs the bridge). */
+  readonly segmentExecutor?: SegmentExecutor;
 }
 
 interface HandlerResult {
@@ -431,7 +581,7 @@ function interruptedByStory(text: string): boolean {
 
 /** `openAt` reports these as text only; a route must not count them as done. */
 function interactionFailed(text: string): boolean {
-  return /^(没按成|走不到|地图还在切换|四周两格内都走不到|关不掉操作提示)/u.test(text.trim());
+  return /没按成|走不到|地图还在切换|四周两格内都走不到|关不掉操作提示/u.test(text.trim());
 }
 
 async function fileExists(path: string, signal?: AbortSignal): Promise<boolean> {
@@ -501,6 +651,12 @@ interface BossWatch {
   turnsRead: number;
 }
 
+/** Task 138: one plan battle table set during a segment; `current` follows the old bad-battle rule. */
+interface PlanBattleEntry {
+  readonly tables: Json[];
+  current: number;
+}
+
 /** Everything a background call needs, read while the tool call's pilot is still alive. */
 interface TacticianFacts {
   readonly facts: string;
@@ -556,7 +712,7 @@ export class Game {
   /** The plugin's activity log sink for an incident (task 45); unset in tests. */
   onIncident: ((message: string) => void) | undefined;
   /** Task 101: a non-error activity line (a planned-coordinate go allowed with a reason). */
-  onActivity: ((message: string) => void) | undefined;
+  onActivity: ((message: string, kind?: "event" | "plan") => void) | undefined;
   readonly advised = new Set<string>();
   readonly moveState: MoveState = { drake: null };
   readonly hooks: BattleHooks;
@@ -584,6 +740,21 @@ export class Game {
   private tacticianCalled = false; // one call per tool invocation (task 10)
   /** The one background call, and at most one waiting to start after it (task 86). */
   private background: BackgroundCall | null = null;
+  /** Task 133: stage-officer enrichments running beside a book plan, never blocking it. */
+  private readonly bookOfficerTasks = new Set<Promise<void>>();
+  private readonly bookOfficerStarted = new Set<string>();
+  /** Opened chests seen on each map this session, so overlapping book sections can be judged. */
+  private readonly openedBookChests = new Map<number, ReadonlySet<string>>();
+  /**
+   * Task 135: bridge 0.14.8's whole-game treasure flags. A complete table makes the route book
+   * judge chests on maps that are not loaded; `ready` is false before the first successful read
+   * and after the title/load answer, so the old entity fallback still covers those moments.
+   */
+  private readonly treasureFlags = new Map<number, boolean | null>();
+  private treasureFlagsReady = false;
+  private treasureFlagsUnsupported = false;
+  private treasureFlagsMap: number | null = null;
+  private treasureFlagsSave: number | null = null;
   private pending: {
     readonly trigger: FactsTrigger;
     readonly prepared: TacticianFacts;
@@ -618,6 +789,24 @@ export class Game {
   } | null = null;
   private readonly routeFile: string | undefined;
   private readonly routeBattleSeconds: number;
+  /** Task 138: the plan's battle tables override the stored tactics for the run only. */
+  private planBattleTables: Map<number, PlanBattleEntry> | null = null;
+  private planDefaultBattle: PlanBattleEntry | null = null;
+  private planBattleCount = 0;
+  /** Task 145 follow-up: model calls made while a segment plan runs (should be zero in plan mode). */
+  private planModelCallCount = 0;
+  /** Task 138: restore the model layers after a plan run (null when none was suspended). */
+  private planRestoreLayers: (() => void) | null = null;
+  /** Task 139: the current segment plan and the last execution report. */
+  readonly segmentPlans: SegmentPlanStore;
+  readonly segmentReportFile: string | undefined;
+  /** Task 145: where the live progress is written; undefined means "do not record". */
+  readonly segmentProgressFile: string | undefined;
+  private segmentProgress: SegmentProgress | null = null;
+  /** Task 145: what the plan left behind on maps it passed, for the report. */
+  private readonly planLeaveLog: string[] = [];
+  private lastSegmentReport: SegmentReport | null;
+  private readonly segmentExecutor: SegmentExecutor | undefined;
   /** Task 97: the one stage plan, its gate settings and the lazily loaded knowledge. */
   readonly stagePlans: StagePlanStore;
   private stageOfficer: StageOfficerRunner | undefined;
@@ -633,7 +822,14 @@ export class Game {
   readonly stageBossLevelGap: number;
   /** Task 117: the route book's switch, grind cap and live files. */
   readonly routeBookEnabled: boolean;
+  /** Task 131: entering a new section generates a plan before the first move. */
+  readonly routeBookAutoPlan: boolean;
   readonly routeBookGrindMinutes: number;
+  /** Task 136: a book save station is used once the last save is this old. */
+  readonly routeBookSaveMinutes: number;
+  /** Task 136: an unopened chest/boss since the last save makes the next save station due. */
+  private bookDirty = false;
+  private lastBookSaveAt: number | null = null;
   /** Task 124: the runtime build's window and budget. */
   readonly routeBookAheadSections: number;
   readonly routeBookTimeBudgetMs: number;
@@ -645,8 +841,13 @@ export class Game {
     readonly book: RouteBook;
     readonly sectionIndex: number;
     readonly section: RouteSection;
+    readonly digest: string;
     readonly mapId: number | null;
   } | null = null;
+  /** Task 131: the map whose first movement has already run the book check. */
+  private bookCheckMap: number | null = null;
+  /** Task 131: the first-plan line prepended to the tool result that generated it. */
+  private bookPlanNotice = "";
   /** Task 117: a handoff/boss the model took over; the next `route {}` records it. */
   private pendingBook: {
     readonly section: string;
@@ -658,6 +859,8 @@ export class Game {
   private readonly knowledgeOption: Knowledge | undefined;
   private knowledge: Knowledge | null = null;
   private knowledgeLoading: Promise<Knowledge> | null = null;
+  /** Task 144: shop locations read from the map files' clerk NPCs, built once. */
+  private planShopIndex: Promise<readonly PlanShop[]> | null = null;
   private stageBossWon = false;
   private stageNotice = "";
   /** Task 113: the tool whose handler is running, so a departure counts that call. */
@@ -719,7 +922,9 @@ export class Game {
     stageTurnBackDistance: number,
     stageBossLevelGap: number,
     routeBookEnabled: boolean,
+    routeBookAutoPlan: boolean,
     routeBookGrindMinutes: number,
+    routeBookSaveMinutes: number,
     routeBookAheadSections: number,
     routeBookTimeBudgetMs: number,
     routeBookGuideFile: string | undefined,
@@ -736,6 +941,11 @@ export class Game {
     healFullPercent: number,
     saveTimerMinSeconds: number,
     storyStuckSeconds: number,
+    segmentPlans: SegmentPlanStore,
+    segmentReportFile: string | undefined,
+    segmentProgressFile: string | undefined,
+    lastSegmentReport: SegmentReport | null,
+    segmentExecutor: SegmentExecutor | undefined,
   ) {
     this.laptop = laptop;
     this.game = game;
@@ -772,7 +982,9 @@ export class Game {
     this.stageTurnBackDistance = stageTurnBackDistance;
     this.stageBossLevelGap = stageBossLevelGap;
     this.routeBookEnabled = routeBookEnabled;
+    this.routeBookAutoPlan = routeBookAutoPlan;
     this.routeBookGrindMinutes = routeBookGrindMinutes;
+    this.routeBookSaveMinutes = routeBookSaveMinutes;
     this.routeBookAheadSections = routeBookAheadSections;
     this.routeBookTimeBudgetMs = routeBookTimeBudgetMs;
     this.routeBookGuideFile = routeBookGuideFile;
@@ -789,6 +1001,11 @@ export class Game {
     this.healFullPercent = healFullPercent;
     this.saveTimerMinSeconds = saveTimerMinSeconds;
     this.storyStuckSeconds = storyStuckSeconds;
+    this.segmentPlans = segmentPlans;
+    this.segmentReportFile = segmentReportFile;
+    this.segmentProgressFile = segmentProgressFile;
+    this.lastSegmentReport = lastSegmentReport;
+    this.segmentExecutor = segmentExecutor;
     // Task 42: a `battle.ai` push says a script exists; the body is queried later by `ensure`.
     this.events?.onRecord((record) => {
       if (record.type === "battle.ai") this.monsterAi.recordEvent(record);
@@ -804,16 +1021,10 @@ export class Game {
     });
     // The player's tactics per map fight the regular battles (control plan §4.10).
     this.hooks = {
-      tableFor: (mapId) => this.tactics.current(mapId),
-      tableIndexFor: (mapId) => {
-        if (mapId === null) return null;
-        return this.tactics.maps.get(String(mapId))?.current ?? null;
-      },
+      tableFor: (mapId) => this.battleTableFor(mapId),
+      tableIndexFor: (mapId) => this.battleTableIndexFor(mapId),
       recorder: this.battles,
-      report: async (mapId, verdict, detail) => {
-        this.lastBattle = { mapId, verdict, detail };
-        return await this.tactics.record(mapId, verdict, detail);
-      },
+      report: async (mapId, verdict, detail) => await this.reportBattle(mapId, verdict, detail),
       onIncident: (message) => this.onIncident?.(message),
       elements: this.elements,
       heal: this.healOptions(),
@@ -839,7 +1050,7 @@ export class Game {
         },
         goalMap,
         say,
-        { maxHops: this.travelMaxHops, maxMinutes: this.travelMaxMinutes },
+        { maxHops: this.travelMaxHops, maxMinutes: this.travelMaxMinutes, toCell: goal },
       );
       if (!result.reached) return [false, result.text];
       return await move.navigate(pilot, goal, false, say, 8, this.moveState, budget);
@@ -847,8 +1058,14 @@ export class Game {
     this.handlers = new Map<string, ToolHandler>([
       ["go", (args, pilot, signal) => this.toolGo(args, pilot, signal)],
       ["route", (args, pilot, signal) => this.toolRoute(args, pilot, signal)],
-      ["explore", (args, pilot) => this.toolExplore(args, pilot)],
+      ["explore", (args, pilot, signal) => this.toolExplore(args, pilot, signal)],
       ["plan_stage", (args, pilot, signal) => this.toolPlanStage(args, pilot, signal)],
+      // Task 139: plan mode's four tools. The model only plans and edits plans; the executor
+      // runs a whole section without calling it.
+      ["plan_facts", (args, pilot, signal) => this.toolPlanFacts(args, pilot, signal)],
+      ["submit_plan", (args, pilot, signal) => this.toolSubmitPlan(args, pilot, signal)],
+      ["execute_plan", (args, pilot, signal) => this.toolExecutePlan(args, pilot, signal)],
+      ["plan_status", () => Promise.resolve(this.toolPlanStatus())],
       ["scout", (args, pilot, signal) => this.toolScout(args, pilot, signal)],
       ["terrain", (args, pilot) => this.toolTerrain(args, pilot)],
       ["entrances", (_args, pilot) => this.toolEntrances(pilot)],
@@ -858,7 +1075,7 @@ export class Game {
       ["press", (args, pilot) => this.toolPress(args, pilot)],
       ["choose", (args, pilot) => this.toolChoose(args, pilot)],
       ["fight", (args, pilot) => this.toolFight(args, pilot)],
-      ["grind", (args, pilot) => this.toolGrind(args, pilot)],
+      ["grind", (args, pilot, signal) => this.toolGrind(args, pilot, signal)],
       ["sell", (args, pilot) => this.toolSell(args, pilot)],
       ["shop_gear", (_args, pilot) => this.toolShopGear(pilot)],
       ["buy", (args, pilot) => this.toolBuy(args, pilot)],
@@ -867,8 +1084,8 @@ export class Game {
       ["change_job", (args, pilot) => this.toolChangeJob(args, pilot)],
       ["leave_menu", (_args, pilot) => this.toolLeaveMenu(pilot)],
       ["save_game", (_args, pilot) => this.toolSaveGame(pilot)],
-      ["land", (_args, pilot) => this.toolLand(pilot)],
-      ["board", (_args, pilot) => this.toolBoard(pilot)],
+      ["land", (_args, pilot, signal) => this.toolLand(pilot, signal)],
+      ["board", (_args, pilot, signal) => this.toolBoard(pilot, signal)],
       ["optimize_equipment", (_args, pilot) => this.toolOptimizeEquipment(pilot)],
       ["set_tactics", (args, pilot) => this.toolSetTactics(args, pilot)],
       ["guide", (args) => this.toolGuide(args)],
@@ -937,6 +1154,8 @@ export class Game {
     const aiFile = options.monsterAiFile ?? (game === "ff5" ? monsterAiPath(game) : undefined);
     const monsterAi = await MonsterAiCache.load(game, aiFile, signal);
     const stagePlans = await StagePlanStore.load(options.stagePlanFile, signal);
+    const segmentPlans = await SegmentPlanStore.load(game, options.segmentPlanFile, signal);
+    const segmentReport = await loadSegmentReport(options.segmentReportFile, signal);
     const created = new Game(
       options.laptop,
       game,
@@ -973,7 +1192,10 @@ export class Game {
       options.stageTurnBackDistance ?? MAX_RECOVERY_DISTANCE,
       options.stageBossLevelGap ?? 3,
       options.routeBookEnabled ?? true,
+      options.routeBookAutoPlan ??
+        (options.routeBookEnabled === true || options.routeBook !== undefined),
       options.routeBookGrindMinutes ?? 8,
+      options.routeBookSaveMinutes ?? 10,
       options.routeBookAheadSections ?? 4,
       options.routeBookTimeBudgetMs ?? 5_000,
       options.routeBookGuideFile,
@@ -990,6 +1212,14 @@ export class Game {
       options.healFullPercent ?? 95,
       options.saveTimerMinSeconds ?? 300,
       options.storyStuckSeconds ?? 60,
+      segmentPlans,
+      options.segmentReportFile,
+      options.segmentProgressFile ??
+        (options.segmentReportFile === undefined
+          ? undefined
+          : join(dirname(options.segmentReportFile), `segment-progress-${game}.json`)),
+      segmentReport,
+      options.segmentExecutor,
     );
     created.moveState.walkpathTimeoutMs = options.walkpathTimeoutMs;
     created.moveState.walkpathBlockedMs = options.walkpathBlockedMs;
@@ -1043,15 +1273,106 @@ export class Game {
     } catch {
       // An old bridge without sample still gets the book's chest order and bestiary.
     }
+    const { map } = await this.stagePosition(pilot);
+    await this.syncTreasureFlags(pilot, map, null);
+    const flags = this.treasureFlagsReady ? new Map(this.treasureFlags) : null;
     return {
       bestiary: new Set(this.bestiary.numbers),
       blueMagic,
       jobs,
-      openedChests: await this.openedChestsHere(pilot),
+      // Task 135: with 0.14.8's flag table a chest on an unloaded map is still known; only
+      // the old bridge needs the current map's entity list.
+      openedChests: flags === null ? await this.openedChestsHere(pilot) : null,
+      ...(flags === null ? {} : { treasureFlags: flags }),
     };
   }
 
-  /** `"mapId:x,y"` for every opened treasure entity the bridge reports on this map. */
+  /**
+   * Task 135: read bridge 0.14.8's whole-game treasure flags once at startup, after a load
+   * (the save count changes) and after every map change. The table is tiny and independent of
+   * the loaded map. An older bridge answers "unknown op" once and is never asked again.
+   */
+  private async syncTreasureFlags(
+    pilot: Pilot,
+    mapId: number | null,
+    saves: number | null,
+    force = false,
+  ): Promise<void> {
+    if (this.treasureFlagsUnsupported) return;
+    if (
+      !force &&
+      this.treasureFlagsReady &&
+      mapId === this.treasureFlagsMap &&
+      (saves === null || saves === this.treasureFlagsSave)
+    ) {
+      return;
+    }
+    let reply: Json;
+    try {
+      reply = await pilot.query("treasureflags");
+    } catch {
+      return;
+    }
+    const read = parseTreasureFlags(reply);
+    if (read.kind === "unsupported") {
+      this.treasureFlagsUnsupported = true;
+      return;
+    }
+    if (read.kind === "not-ready") {
+      this.treasureFlagsReady = false;
+      this.treasureFlags.clear();
+      this.treasureFlagsMap = mapId;
+      if (saves !== null) this.treasureFlagsSave = saves;
+      return;
+    }
+    if (read.kind === "error") return;
+    this.treasureFlags.clear();
+    for (const [flag, open] of read.flags) this.treasureFlags.set(flag, open);
+    this.treasureFlagsReady = true;
+    this.treasureFlagsUnsupported = false;
+    this.treasureFlagsMap = mapId;
+    this.treasureFlagsSave = saves;
+  }
+
+  /** Task 135: the flag of the treasure at this cell, from the merged data or the atlas. */
+  private treasureFlagAt(mapId: number, cell: Cell): number | null {
+    const knowledge = this.knowledgeOption ?? this.knowledge;
+    const known = knowledge?.chests.find(
+      (chest) =>
+        chest.mapId === mapId &&
+        chest.cell !== null &&
+        chest.cell[0] === cell[0] &&
+        chest.cell[1] === cell[1],
+    );
+    if (known !== undefined) {
+      if (known.flagId !== null) return known.flagId;
+      const parsed = known.flag === null ? Number.NaN : Number.parseInt(known.flag, 10);
+      if (Number.isInteger(parsed)) return parsed;
+    }
+    for (const raw of records(this.atlas.maps.get(String(mapId))?.chests)) {
+      const found = cellOf(raw.cell);
+      if (found?.[0] !== cell[0] || found[1] !== cell[1]) continue;
+      const flag = num(raw.flag);
+      if (flag !== undefined) return flag;
+    }
+    return null;
+  }
+
+  /** Task 135: a chest just opened, remembered now instead of waiting for the next read. */
+  private rememberOpenedCell(mapId: number, cell: Cell): void {
+    const key = `${mapId}:${cell[0]},${cell[1]}`;
+    const cells = new Set(this.openedBookChests.get(mapId) ?? []);
+    cells.add(key);
+    this.openedBookChests.set(mapId, cells);
+    const flag = this.treasureFlagAt(mapId, cell);
+    if (flag !== null) this.treasureFlags.set(flag, true);
+  }
+
+  /**
+   * `"mapId:x,y"` for every opened treasure entity the bridge reports on this map. The bridge
+   * only answers for the current map, so remember each answer: a later build can then judge a
+   * section whose chests lie on maps the party already visited.
+   */
   private async openedChestsHere(pilot: Pilot): Promise<ReadonlySet<string> | null> {
     const { map } = await this.stagePosition(pilot);
     if (map === null) return null;
@@ -1061,12 +1382,17 @@ export class Game {
       );
       const opened = new Set<string>();
       for (const entity of records(reply.entities)) {
+        const flag = num(entity.flag);
+        if (flag !== undefined && typeof entity.opened === "boolean") {
+          this.treasureFlags.set(flag, entity.opened);
+        }
         if (entity.opened !== true) continue;
         const cell = cellOf(entity.cell);
         if (cell === null) continue;
         opened.add(`${map}:${cell[0]},${cell[1]}`);
       }
-      return opened;
+      this.openedBookChests.set(map, opened);
+      return new Set([...this.openedBookChests.values()].flatMap((cells) => [...cells]));
     } catch {
       return null;
     }
@@ -1093,17 +1419,19 @@ export class Game {
     if (this.routeBookOption !== undefined) {
       const book = this.routeBookOption;
       this.bookSectionsByTitle = new Map(book.sections.map((section) => [section.title, section]));
+      const save = await this.liveBookSave(pilot);
       const sectionIndex = selectSectionIndex(book, position.map, {
         ...(options.preferredSection === undefined
           ? {}
           : { preferredSection: options.preferredSection }),
         ...(options.preferredMapId === undefined ? {} : { preferredMapId: options.preferredMapId }),
         ...(previous === null ? {} : { previous }),
+        finished: (section) => sectionFinished(section, save),
       });
       const section = sectionIndex === null ? undefined : book.sections[sectionIndex];
       return section === undefined || sectionIndex === null
         ? null
-        : { book, sectionIndex, section };
+        : { book, sectionIndex, section, digest: bookSectionDigest(section) };
     }
     const knowledge = await this.ensureStageKnowledge(signal);
     const visitOrder = await readVisitOrder(this.game, undefined, signal);
@@ -1161,12 +1489,21 @@ export class Game {
         book: cached.book,
         sectionIndex: cached.sectionIndex,
         section: cached.section,
+        digest: cached.digest,
       };
     }
     const runtime = await this.buildBookRuntime(pilot, signal, {
       ...(preferredSection === undefined ? {} : { preferredSection }),
     });
     if (runtime === null) return null;
+    // Task 131: a map the book cannot place keeps the old behaviour; it must not start the
+    // first section just because the progress file has no section yet. The world map is the
+    // one uncovered map that does advance to the next section.
+    const covered =
+      position.map === null ||
+      position.map === 1 ||
+      runtime.section.maps.some((map) => map.mapId === position.map);
+    if (!covered && preferredSection === undefined) return null;
     const current = this.bookProgress.current;
     if (current?.finishedAt != null && current.section === runtime.section.title) {
       // The last section is finished and the party is still on one of its maps; there is no
@@ -1181,6 +1518,7 @@ export class Game {
       book: runtime.book,
       sectionIndex: runtime.sectionIndex,
       section: runtime.section,
+      digest: runtime.digest,
       mapId: position.map,
     };
     return runtime;
@@ -1233,33 +1571,17 @@ export class Game {
   private async ensureBookPlan(
     pilot: Pilot,
     runtime: RouteBookRuntime,
-    signal: AbortSignal | undefined,
   ): Promise<{ readonly record: StagePlanRecord } | { readonly error: string }> {
     const position = await this.stagePosition(pilot);
     const section = runtime.section;
-    const mapId = section.maps[0]?.mapId ?? position.map;
-    if (mapId === null) return { error: "路线书这一节没有对上地图，没法执行" };
-    const target: StageTarget = {
-      mapId,
-      areaName: section.areaName,
-      label: section.title,
+    const target = bookPlanTarget(section);
+    if (target === null) return { error: "路线书这一节没有对上地图，没法执行" };
+    const book = {
+      section: section.title,
+      order: section.order,
+      version: ROUTE_BOOK_PLAN_VERSION,
+      digest: runtime.digest,
     };
-    if (this.stageOfficer !== undefined) {
-      const created = await this.createStagePlan(pilot, target, signal);
-      if (created.record === null) {
-        return {
-          error:
-            `路线书这一节「${section.title}」自动建计划没通过：\n` +
-            created.problems.map((problem) => `- ${problem}`).join("\n"),
-        };
-      }
-      const marked: StagePlanRecord = {
-        ...created.record,
-        book: { section: section.title, order: section.order },
-      };
-      await this.stagePlans.save(marked);
-      return { record: marked };
-    }
     const plan: StagePlan = {
       threats: [],
       supplies: [],
@@ -1286,10 +1608,164 @@ export class Game {
               position.map,
             ),
           }),
-      book: { section: section.title, order: section.order },
+      book,
     };
     await this.stagePlans.save(record);
+    // Task 133: the book's route is executable now; the officer's supplies/jobs/levels join
+    // later. Waiting for the LLM here made the auto plan take 86 seconds on the real machine.
+    if (this.stageOfficer !== undefined) {
+      this.startBookOfficer(pilot, target, section.title, runtime.digest);
+    }
     return { record };
+  }
+
+  private startBookOfficer(
+    pilot: Pilot,
+    target: StageTarget,
+    section: string,
+    digest: string,
+  ): void {
+    if (this.stageOfficer === undefined) return;
+    const key = `${section}|${digest}`;
+    if (this.bookOfficerStarted.has(key)) return;
+    this.bookOfficerStarted.add(key);
+    const task = this.runBookOfficer(pilot, target, section, digest)
+      .catch((error: unknown) => {
+        if (isAbortError(error)) return;
+        this.backgroundNotices.push(
+          `路线书「${section}」的阶段官计划没写成:${describeError(error)}`,
+        );
+      })
+      .finally(() => {
+        this.bookOfficerTasks.delete(task);
+      });
+    this.bookOfficerTasks.add(task);
+  }
+
+  /** Merge what the officer adds into the running book plan; never replace its route. */
+  private async runBookOfficer(
+    pilot: Pilot,
+    target: StageTarget,
+    section: string,
+    digest: string,
+  ): Promise<void> {
+    const created = await this.createStagePlan(pilot, target, undefined, false);
+    if (created.record === null) {
+      this.backgroundNotices.push(
+        `路线书「${section}」的阶段官计划没通过:${created.problems.join("；")}`,
+      );
+      return;
+    }
+    const current = this.stagePlans.current;
+    if (
+      current === null ||
+      current.status === "completed" ||
+      current.book?.section !== section ||
+      current.book.digest !== digest
+    ) {
+      return;
+    }
+    const officer = created.record.plan;
+    const merged: StagePlanRecord = {
+      ...current,
+      plan: {
+        ...current.plan,
+        threats: officer.threats,
+        supplies: officer.supplies,
+        spells: officer.spells,
+        gear: officer.gear,
+        jobs: officer.jobs,
+        minLevel: officer.minLevel,
+        turnBack: officer.turnBack,
+        notes: officer.notes === "" ? current.plan.notes : officer.notes,
+      },
+      ...(created.record.boss === undefined ? {} : { boss: created.record.boss }),
+      ...(created.record.bossError === undefined ? {} : { bossError: created.record.bossError }),
+    };
+    await this.stagePlans.save(merged);
+    this.backgroundNotices.push(
+      `路线书「${section}」的阶段官计划已合并（药品、职业、最低等级），出发检查按它算。`,
+    );
+  }
+
+  /**
+   * Task 131: entering a new book section starts its plan before the first move. The section is
+   * the one the current map belongs to; the world map advances to the next section, which is how
+   * a walk from town to dungeon crosses the map without producing an empty world-map plan.
+   * `route {}` forces the check, every movement tool runs it once per map.
+   */
+  private async autoBookPlanOnMove(
+    pilot: Pilot,
+    signal: AbortSignal | undefined,
+    force = false,
+  ): Promise<HandlerResult | null> {
+    if (!this.routeBookEnabled || !this.routeBookAutoPlan) return null;
+    if (this.scouting) return null;
+    const position = await this.stagePosition(pilot);
+    if (position.map === null) return null;
+    const active = this.stagePlans.current;
+    if (
+      !force &&
+      this.bookCheckMap === position.map &&
+      active !== null &&
+      active.status !== "completed"
+    ) {
+      return null;
+    }
+    const runtime = await this.ensureBook(pilot, signal);
+    if (runtime === null) {
+      this.bookCheckMap = position.map;
+      return null;
+    }
+    const covered =
+      position.map === 1 || runtime.section.maps.some((map) => map.mapId === position.map);
+    if (!covered) {
+      this.bookCheckMap = position.map;
+      return null;
+    }
+    if (bookPlanTarget(runtime.section) === null) {
+      this.bookCheckMap = position.map;
+      return null;
+    }
+    const same =
+      active !== null &&
+      active.status !== "completed" &&
+      active.book?.section === runtime.section.title &&
+      active.book.version === ROUTE_BOOK_PLAN_VERSION &&
+      active.book.digest === runtime.digest;
+    if (same) {
+      this.bookCheckMap = position.map;
+      return null;
+    }
+    // A section whose stations are all notes/moves has nothing to execute; do not leave an
+    // empty plan behind (the old code did that for the world map).
+    if (routeFromBookSection(runtime.section, this.bookPlanOptions()).length === 0) {
+      if (active !== null && active.status !== "completed") await this.settleBookPlan(active);
+      this.bookCheckMap = position.map;
+      return null;
+    }
+    if (active !== null && active.status !== "completed") await this.settleBookPlan(active);
+    const created = await this.ensureBookPlan(pilot, runtime);
+    if ("error" in created) return { text: created.error, early: true };
+    this.bookPlanNotice = bookPlanAnnouncement(runtime.section, created.record.plan.route);
+    this.bookCheckMap = position.map;
+    return null;
+  }
+
+  /** Close the replaced plan and put its numbers in the activity log (task 131). */
+  private async settleBookPlan(record: StagePlanRecord): Promise<void> {
+    const stats = record.stats === undefined ? undefined : this.stageFinishStats(record.stats);
+    const closed: StagePlanRecord = {
+      ...record,
+      status: "completed",
+      ...(stats === undefined ? {} : { stats }),
+    };
+    await this.stagePlans.save(closed);
+    if (stats === undefined) {
+      this.onActivity?.(this.stageStatsLine(closed));
+    } else {
+      this.stageLogStats(closed);
+    }
   }
 
   /** `route {}`'s first choice: a book section with no plan starts one and runs it. */
@@ -1316,7 +1792,7 @@ export class Game {
         section.maps.some((map) => map.mapId === position.map),
       );
     if (!covered && !afterFinished) return null;
-    const created = await this.ensureBookPlan(pilot, runtime, signal);
+    const created = await this.ensureBookPlan(pilot, runtime);
     if ("error" in created) return { text: created.error, early: true };
     const refusal = await this.stageBeforeTravel(pilot, args, created.record.target.mapId, signal);
     if (refusal !== null) return refusal;
@@ -1340,12 +1816,14 @@ export class Game {
       if (stop === undefined) continue;
       const kind = stop.book?.kind ?? stop.do ?? "";
       if (kind !== "boss" && stop.do !== "handoff") continue;
-      await this.bookProgress.mark(
-        station.index,
-        "handoff",
-        kind === "boss" ? "首领交回处理完" : "交回处理完",
-        kind,
-      );
+      for (const index of stop.book?.indexes ?? [station.index]) {
+        await this.bookProgress.mark(
+          index,
+          "handoff",
+          kind === "boss" ? "首领交回处理完" : "交回处理完",
+          kind,
+        );
+      }
     }
     this.pendingBook = null;
   }
@@ -1386,11 +1864,39 @@ export class Game {
         .map((station) => station.index),
     );
     const position = await this.stagePosition(pilot);
-    const stops: RouteStopInput[] = [];
-    for (const stop of record.plan.route) {
+    // Task 136: heal/save stops are conditional. Decide from the live party and save clock
+    // before building the route, so a full party never walks to a recovery pot at all.
+    const live = record.plan.route.filter((stop) => {
       const book = stop.book;
-      if (book?.section !== section.title) continue;
-      if (terminal.has(book.index)) continue;
+      if (book?.section !== section.title) return false;
+      return !(book.indexes ?? [book.index]).every((index) => terminal.has(index));
+    });
+    const party = await this.bookParty(pilot);
+    const stops: RouteStopInput[] = [];
+    for (const [at, stop] of live.entries()) {
+      const book = stop.book;
+      if (book === undefined) continue;
+      if (this.bookConditionalStop(stop)) {
+        const next = live.slice(at + 1).find((candidate) => !this.bookConditionalStop(candidate));
+        const beforeBoss = next !== undefined && (next.do === "boss" || next.book?.kind === "boss");
+        if (!beforeBoss && book.kind === "heal" && party !== null) {
+          if (!this.bookHealNeeded(party)) {
+            await this.markBookSkipped(book, "满血，跳过回复");
+            continue;
+          }
+        }
+        if (!beforeBoss && book.kind === "save" && !this.bookSaveDue()) {
+          // A chest earlier in this same walk makes the save worth it; an already-opened one
+          // does not (it is no longer in `live`).
+          const chestBefore = live
+            .slice(0, at)
+            .some((candidate) => this.bookCollectionStop(candidate));
+          if (!chestBefore) {
+            await this.markBookSkipped(book, "刚存过档，跳过存档");
+            continue;
+          }
+        }
+      }
       let action: RouteStopInput["action"] = stop.do ?? "move";
       let to: unknown = stop.to;
       if (action === "handoff" && (book.kind === "cutscene" || book.kind === "talk")) {
@@ -1423,18 +1929,81 @@ export class Game {
     return stops;
   }
 
+  /** Task 136: a save or heal stop, which the party may or may not need right now. */
+  private bookConditionalStop(stop: StagePlan["route"][number]): boolean {
+    const kind = stop.book?.kind;
+    return stop.do === "save" || kind === "save" || kind === "heal";
+  }
+
+  private bookCollectionStop(stop: StagePlan["route"][number]): boolean {
+    const kind = stop.book?.kind;
+    return stop.do === "open" || kind === "chest" || kind === "hidden";
+  }
+
+  /** Task 136: the live party, or null when the bridge cannot answer (then keep the heal). */
+  private async bookParty(pilot: Pilot): Promise<readonly PartyMember[] | null> {
+    try {
+      const party = readParty(record((await pilot.query("sample")).sample));
+      return party.length === 0 ? null : party;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Task 136: the same thresholds the after-battle heal rule uses. A downed member, any
+   * abnormal status, HP below `healHpPercent` or MP below `healMpReservePercent` all want a
+   * recovery point; a full party does not.
+   */
+  private bookHealNeeded(party: readonly PartyMember[]): boolean {
+    return party.some((member) => {
+      if (member.maxHp > 0 && member.hp <= 0) return true;
+      if (member.status.some((status) => status.trim() !== "")) return true;
+      if (member.maxHp > 0 && member.hp * 100 < member.maxHp * this.healHpPercent) return true;
+      if (member.maxMp > 0 && member.mp * 100 < member.maxMp * this.healMpReservePercent) {
+        return true;
+      }
+      return false;
+    });
+  }
+
+  /**
+   * Task 136: a save station is due after Config's minutes, after a chest or boss, or when this
+   * run has no save time to compare with. A chest earlier in the same walk also counts.
+   */
+  private bookSaveDue(): boolean {
+    if (this.bookDirty) return true;
+    if (this.lastBookSaveAt !== null) {
+      return Date.now() - this.lastBookSaveAt >= this.routeBookSaveMinutes * 60_000;
+    }
+    const last = this.events?.lastSaveMinutes() ?? null;
+    return last === null || last >= this.routeBookSaveMinutes;
+  }
+
+  /** Task 136: a skipped conditional station is terminal, with its reason in the progress. */
+  private async markBookSkipped(
+    book: NonNullable<StagePlan["route"][number]["book"]>,
+    note: string,
+  ): Promise<void> {
+    for (const index of book.indexes ?? [book.index]) {
+      await this.bookProgress.mark(index, "skipped", note, book.kind);
+    }
+  }
+
   /** Per-waypoint book progress; multi-cell stations complete only when every part did. */
   private bookWaypointCallback(): (
     stop: Waypoint,
     event: "done" | "skipped" | "current",
+    note?: string,
   ) => Promise<void> {
     const parts = new Map<number, Set<number>>();
     const skipped = new Map<number, Set<number>>();
-    return async (stop, event) => {
+    return async (stop, event, note) => {
       const book = stop.book;
       if (book === undefined) return;
       const part = book.part ?? 1;
       const total = book.parts ?? 1;
+      const indexes = book.indexes ?? [book.index];
       if (event === "current") {
         await this.bookProgress.mark(book.index, "current", "交回 AI", book.kind);
         if (stop.kind === "boss" || stop.kind === "handoff") {
@@ -1445,6 +2014,20 @@ export class Game {
           };
         }
         return;
+      }
+      if (event === "done" && stop.kind === "chest" && stop.cell !== null) {
+        // Task 135: the executor knows this chest is open now; update the flag table in memory.
+        this.rememberOpenedCell(stop.map, stop.cell);
+      }
+      if (event === "done" && (stop.kind === "save" || book.kind === "save")) {
+        this.lastBookSaveAt = Date.now();
+        this.bookDirty = false;
+      }
+      if (
+        event === "done" &&
+        (stop.kind === "chest" || book.kind === "chest" || book.kind === "hidden")
+      ) {
+        this.bookDirty = true;
       }
       const set = event === "done" ? parts : skipped;
       const found = set.get(book.index) ?? new Set<number>();
@@ -1459,12 +2042,14 @@ export class Game {
         );
         return;
       }
-      await this.bookProgress.mark(
-        book.index,
-        event === "done" ? "done" : "skipped",
-        event === "done" ? this.bookDoneNote(stop) : "倒计时跳过",
-        book.kind,
-      );
+      for (const index of indexes) {
+        await this.bookProgress.mark(
+          index,
+          event === "done" ? "done" : "skipped",
+          event === "done" ? this.bookDoneNote(stop) : (note ?? "倒计时跳过"),
+          book.kind,
+        );
+      }
     };
   }
 
@@ -1488,13 +2073,15 @@ export class Game {
     const line = await this.finishBookProgress();
     const record = this.stagePlans.current;
     if (record?.book !== undefined && record.status !== "completed") {
-      const finishedAt = new Date().toISOString();
-      const stats = record.stats === undefined ? undefined : { ...record.stats, finishedAt };
-      await this.stagePlans.save({
+      const stats = record.stats === undefined ? undefined : this.stageFinishStats(record.stats);
+      const completed: StagePlanRecord = {
         ...record,
         status: "completed",
         ...(stats === undefined ? {} : { stats }),
-      });
+      };
+      await this.stagePlans.save(completed);
+      // Task 131: the section's stage report uses the book's Chinese label, not a map resource.
+      this.stageLogStats(completed);
     }
     return line;
   }
@@ -1518,6 +2105,11 @@ export class Game {
       this.bookSectionsByTitle.get(record.book.section) ??
       runtime.section;
     await this.settleBookDecision(record);
+    // Task 131: without a stage officer there is no departure check to start the clock; the
+    // book's own plan still needs its statistics (and its tool counts) from this first walk.
+    if (record.status === "planned" && this.stageOfficer === undefined) {
+      await this.stageMarkDeparted();
+    }
     const stops = await this.bookStopsOf(pilot, record, section);
     if (stops.length === 0) {
       const line = await this.finishBookIfDone();
@@ -1614,6 +2206,9 @@ export class Game {
   async whenTacticianIdle(): Promise<void> {
     while (this.background !== null) {
       await this.background.task.catch(() => undefined);
+    }
+    while (this.bookOfficerTasks.size > 0) {
+      await Promise.all([...this.bookOfficerTasks].map((task) => task.catch(() => undefined)));
     }
   }
 
@@ -1970,7 +2565,11 @@ export class Game {
       if (gaps !== "") fought += "\n" + gaps;
       if (result.learned.length > 0) fought += "\n" + result.learned.join(";");
       if (truthy(result.ok)) {
-        if (truthy(fight.boss)) this.stageBossWon = true;
+        if (truthy(fight.boss)) {
+          this.stageBossWon = true;
+          // Task 136: a beaten boss makes the next save station due even if it is soon.
+          this.bookDirty = true;
+        }
         const healed = await battle.patchUp(
           pilot,
           () => undefined,
@@ -2120,6 +2719,7 @@ export class Game {
   /** The runner may be one old plan promise or a started dsh child (task 86). */
   private async callTacticianPlan(facts: string): Promise<TacticianPlan> {
     if (this.tactician === undefined) throw new Error("战术官没有接上");
+    this.planModelCallCount += 1;
     return await asTacticianCall(this.tactician(facts)).result;
   }
 
@@ -2584,6 +3184,7 @@ export class Game {
     }
     let call: TacticianCall;
     try {
+      this.planModelCallCount += 1;
       call = asTacticianCall(runner(prepared.facts, { background: true }));
     } catch (error) {
       if (isAbortError(error)) throw error;
@@ -2788,6 +3389,11 @@ export class Game {
     this.titleScene =
       pos.state === "GotoTitle" || pos.state === "Init" || text(record(pos.scene).name) === "Title";
     const mapId = num(pos.map) ?? null;
+    // Task 135: startup, a load (save count changes) and every map change read the flag table,
+    // so the route book no longer depends on which map happens to be loaded.
+    if (!this.titleScene && mapId !== null && mapId > 0) {
+      await this.syncTreasureFlags(pilot, mapId, num(pos.saves) ?? null);
+    }
     // Task 110: the player's hand-written table lasts only until they leave that map. Retire
     // the mark on the map being left; map 0/title is not "another map", so it does not count,
     // and a scout walks through other maps only to come back to this save, so it does not.
@@ -2858,6 +3464,12 @@ export class Game {
       for (const key of ["content", "num", "flag", "hidden", "contentName"] as const) {
         const value = entity[key];
         if (value !== undefined && value !== null) chest[key] = value;
+      }
+      // Task 135: the entity's opened flag updates the whole-game table at once, so a chest the
+      // model or the executor just opened counts without waiting for another treasureflags read.
+      const flag = num(entity.flag);
+      if (flag !== undefined && (entity.opened === true || entity.opened === false)) {
+        this.treasureFlags.set(flag, entity.opened);
       }
       return chest;
     });
@@ -3220,13 +3832,17 @@ export class Game {
     this.lastBattle = null;
     this.stageBossWon = false;
     this.stageNotice = "";
+    this.bookPlanNotice = "";
     // Task 113: the model's own calls are the denominator of the stage report; internal calls
     // made by the route executor do not pass through `run`.
     this.stageCallName = name;
     await this.stageTrackTool(name);
     const outcome = await handler(args, pilot, signal);
+    // Task 131: the plan the first move of a section generated speaks before the move's result.
+    const outcomeText =
+      this.bookPlanNotice === "" ? outcome.text : `${this.bookPlanNotice}\n${outcome.text}`;
     // Task 117: while a handoff is pending, the model's own action names the cell to learn.
-    await this.captureBookCell(name, args, pilot, outcome.text);
+    await this.captureBookCell(name, args, pilot, outcomeText);
     // Task 91: a wait can stop on a game-over popup; recover before the usual settle/hints.
     const ended = await this.recoverGameover(pilot);
     if (ended !== null) {
@@ -3234,9 +3850,9 @@ export class Game {
     }
     if (outcome.early) {
       const timed = this.lastCompletion === null ? "" : timedLine(this.lastCompletion);
-      return timed === "" ? outcome.text : `${outcome.text}\n${timed}`;
+      return timed === "" ? outcomeText : `${outcomeText}\n${timed}`;
     }
-    const text = outcome.text;
+    const text = outcomeText;
     const settled = await this.settle(pilot);
     // A wipe during settle opens the same popup after the handler's own check.
     const endedAfterSettle = await this.recoverGameover(pilot);
@@ -3324,6 +3940,9 @@ export class Game {
     try {
       const reply = await pilot.send("pos");
       pos = parsePositionReply(reply);
+      // Task 135: the opening notes and every per-turn completion check also keep the table
+      // fresh, so a save load is noticed even before the first chart.
+      await this.syncTreasureFlags(pilot, pos.map, pos.saves ?? null);
       // Task 89: pos.timer is bridge 0.14.3's countdown; an older bridge has no field and
       // leaves the previous reading alone, so the route tool's own watch decides.
       const timer = parseRouteTimer(record(reply.pos).timer);
@@ -3642,6 +4261,18 @@ export class Game {
       );
     if (owed) return null;
     return await this.guardLeave({}, pilot, goal);
+  }
+
+  /** Task 145: the plan walk only records what a map still lacks, never refuses the leave. */
+  private planTravelOptions(): travel.TravelOptions {
+    return {
+      guard: async (runner) => {
+        await this.planLeaveNote(runner);
+        return null;
+      },
+      maxHops: this.travelMaxHops,
+      maxMinutes: this.travelMaxMinutes,
+    };
   }
 
   /** Task 48: the route and its report are the whole result; no completion hints are added. */
@@ -4200,6 +4831,7 @@ export class Game {
     pilot: Pilot,
     target: import("./stage/types.ts").StageTarget,
     signal: AbortSignal | undefined,
+    persist = true,
   ): Promise<{
     readonly record: StagePlanRecord | null;
     readonly text: string;
@@ -4217,6 +4849,7 @@ export class Game {
       bag: state.bag,
       gil: state.gil,
     });
+    this.planModelCallCount += 1;
     const answer = await officer(
       facts,
       describeStageFacts(facts),
@@ -4263,10 +4896,12 @@ export class Game {
             book: {
               section: bookRoute.runtime.section.title,
               order: bookRoute.runtime.section.order,
+              version: ROUTE_BOOK_PLAN_VERSION,
+              digest: bookRoute.runtime.digest,
             },
           }),
     };
-    if (problems.length === 0) {
+    if (problems.length === 0 && persist) {
       // Task 113: a new plan replaces the old one; the old stage's numbers go to the log.
       const previous = this.stagePlans.current;
       if (previous !== null && previous.status === "departed") this.stageLogStats(previous);
@@ -4904,14 +5539,32 @@ export class Game {
 
   /** Task 113: a fresh counter block, started when the plan leaves the town. */
   private stageNewStats(): StageStats {
+    const at = new Date().toISOString();
     return {
-      departedAt: new Date().toISOString(),
+      departedAt: at,
       tools: 0,
       go: 0,
       route: 0,
       planStage: 0,
       stops: 0,
+      activeMs: 0,
+      lastToolAt: at,
     };
+  }
+
+  /** Task 133: count only working time; a gap over ten minutes is idle, not play time. */
+  private stageAdvanceStats(stats: StageStats, at = new Date()): StageStats {
+    const last = Date.parse(stats.lastToolAt ?? stats.departedAt);
+    const gap = Number.isFinite(last) ? Math.max(0, at.getTime() - last) : 0;
+    return {
+      ...stats,
+      activeMs: (stats.activeMs ?? 0) + Math.min(gap, 10 * 60_000),
+      lastToolAt: at.toISOString(),
+    };
+  }
+
+  private stageFinishStats(stats: StageStats, at = new Date()): StageStats {
+    return { ...this.stageAdvanceStats(stats, at), finishedAt: at.toISOString() };
   }
 
   /** Task 113: count one model tool call while the active plan is on the road. */
@@ -4926,7 +5579,7 @@ export class Game {
     }
     const record = this.stagePlans.current;
     if (record?.status !== "departed") return;
-    const stats = record.stats ?? this.stageNewStats();
+    const stats = this.stageAdvanceStats(record.stats ?? this.stageNewStats());
     const next: StageStats = {
       ...stats,
       tools: stats.tools + 1,
@@ -4944,13 +5597,16 @@ export class Game {
   /** Task 113: departure starts the clock and counts the tool call that set out. */
   private stageDepartureStats(): StageStats {
     const name = this.stageCallName;
+    const at = new Date().toISOString();
     return {
-      departedAt: new Date().toISOString(),
+      departedAt: at,
       tools: name === null ? 0 : 1,
       go: name === "go" ? 1 : 0,
       route: name === "route" ? 1 : 0,
       planStage: name === "plan_stage" ? 1 : 0,
       stops: 0,
+      activeMs: 0,
+      lastToolAt: at,
     };
   }
 
@@ -4991,19 +5647,18 @@ export class Game {
         "按计划走了 0 站，用时 0 分(还没出发)"
       );
     }
-    const finished = stats.finishedAt ?? end.toISOString();
-    const started = Date.parse(stats.departedAt);
-    const ended = Date.parse(finished);
-    const minutes =
-      Number.isFinite(started) && Number.isFinite(ended)
-        ? Math.max(0, Math.round((ended - started) / 60_000))
+    const last = Date.parse(stats.lastToolAt ?? stats.departedAt);
+    const gap =
+      stats.finishedAt === undefined && Number.isFinite(last)
+        ? Math.min(Math.max(0, end.getTime() - last), 10 * 60_000)
         : 0;
+    const minutes = Math.max(0, Math.round(((stats.activeMs ?? 0) + gap) / 60_000));
     const calls = withPlanStage
       ? `go ${stats.go}、route ${stats.route}、plan_stage ${stats.planStage}`
       : `go ${stats.go}、route ${stats.route}`;
     return (
       `阶段统计「${record.target.label}」:工具 ${stats.tools} 次(${calls}),` +
-      `按计划走了 ${stats.stops} 站，用时 ${minutes} 分`
+      `按计划走了 ${stats.stops} 站，用时 ${minutes} 分(实际)`
     );
   }
 
@@ -5011,6 +5666,102 @@ export class Game {
   private stageLogStats(record: StagePlanRecord): void {
     if (record.stats === undefined) return;
     this.onActivity?.(this.stageStatsLine(record));
+  }
+
+  /**
+   * Task 133: a running book section keeps the party on its maps until every chest/hidden item
+   * there is opened. The bridge's `opened` flag is the authority, so a chest the plan thought
+   * was open (or one the model skipped) cannot be waved through. Countdowns and scouts keep
+   * their existing exceptions; `leave_incomplete` records the usual debt.
+   */
+  private async bookSectionLeaveGate(
+    pilot: Pilot,
+    args: Json,
+    destinationMap: number | null,
+    active: StagePlanRecord | null,
+    signal?: AbortSignal,
+  ): Promise<HandlerResult | null> {
+    if (this.scouting) return null;
+    if (destinationMap === null) return null;
+    const progress = this.bookProgress.current;
+    if (progress?.finishedAt !== null) return null;
+    if (active?.book?.section !== progress.section) return null;
+    const { map: currentMap } = await this.stagePosition(pilot);
+    if (currentMap === null || currentMap === destinationMap) return null;
+    const cached = this.bookCache;
+    const section =
+      cached !== null && cached.section.title === active.book.section
+        ? cached.section
+        : this.bookSectionsByTitle.get(active.book.section);
+    if (section === undefined) return null;
+    const currentInSection = section.maps.some((map) => map.mapId === currentMap);
+    if (!currentInSection) return null;
+    const sectionMaps = new Set(section.maps.map((map) => map.mapId));
+    if (destinationMap !== 1 && sectionMaps.has(destinationMap)) return null;
+    if (await this.stageTimerRunning(pilot)) return null;
+    signal?.throwIfAborted();
+
+    // Task 135: with the whole-game table the gate needs no entity read at all. Only an old
+    // bridge falls back to this map's chest list.
+    let opened: Set<string> | null = null;
+    if (!this.treasureFlagsReady) {
+      try {
+        const reply = record(
+          (await pilot.send("entities", { kind: "TresureBox", max: 400 })).entities,
+        );
+        opened = new Set<string>();
+        for (const entity of records(reply.entities)) {
+          if (entity.opened !== true) continue;
+          const cell = cellOf(entity.cell);
+          if (cell !== null) opened.add(`${currentMap}:${cell[0]},${cell[1]}`);
+        }
+      } catch {
+        // Without either source the gate would block on stale plan data; fail open.
+        return null;
+      }
+    }
+
+    const missing: string[] = [];
+    const seen = new Set<string>();
+    for (const stop of active.plan.route) {
+      const book = stop.book;
+      if (book?.section !== active.book.section) continue;
+      const kind = book.kind;
+      if (kind !== "chest" && kind !== "hidden" && stop.do !== "open") continue;
+      if (!stop.to.startsWith(`${currentMap}:`)) continue;
+      const cell = stop.to.slice(`${currentMap}:`.length);
+      const parts = cell.split(",");
+      const x = Number.parseInt(parts[0] ?? "", 10);
+      const y = Number.parseInt(parts[1] ?? "", 10);
+      const at: Cell | null = Number.isInteger(x) && Number.isInteger(y) ? [x, y] : null;
+      // Task 135: the game-file flag is the authority; the entity read is only the fallback.
+      const flag = at === null ? null : this.treasureFlagAt(currentMap, at);
+      const flagOpen = flag !== null && this.treasureFlags.get(flag) === true;
+      if (seen.has(cell) || flagOpen || opened?.has(`${currentMap}:${cell}`) === true) continue;
+      seen.add(cell);
+      const item = book.item ?? book.text;
+      missing.push(`地图 ${currentMap} (${cell}) ${item}`);
+    }
+    if (missing.length === 0) return null;
+
+    const reason = text(args.leave_incomplete)?.trim() ?? "";
+    if (reason !== "") {
+      await this.stageRecordDebt(pilot, active, missing, reason);
+      return null;
+    }
+    const where = stagePlaceName(
+      this.knowledgeOption ?? this.knowledge ?? null,
+      this.atlas,
+      currentMap,
+    );
+    return {
+      early: true,
+      text: [
+        `路线书这一节「${progress.section}」在「${where}」还有没开的宝箱/隐藏道具，先别离开：`,
+        ...missing.map((line) => `- ${line}`),
+        "先按计划 route {} 拿完；确实要离开就带 leave_incomplete 写具体理由，会记一条欠账。",
+      ].join("\n"),
+    };
   }
 
   /**
@@ -5027,10 +5778,20 @@ export class Game {
   ): Promise<HandlerResult | null> {
     // Task 105: the scout replans itself; the stage officer is off for its whole run.
     if (this.scouting) return null;
+    const currentMap = (await this.stagePosition(pilot)).map;
+    if (currentMap !== null) {
+      const leaveRefusal = await this.bookSectionLeaveGate(
+        pilot,
+        args,
+        destinationMap,
+        this.stagePlans.current,
+        signal,
+      );
+      if (leaveRefusal !== null) return leaveRefusal;
+    }
     // Without an officer the stage layer is off (tests and previews that never set one keep
     // their old movement behaviour).
     if (this.stageOfficer === undefined) return null;
-    const currentMap = (await this.stagePosition(pilot)).map;
     if (currentMap === null) return null;
     const knowledge = await this.ensureStageKnowledge(signal);
     const current = mapPlace(knowledge, this.atlas, currentMap);
@@ -5038,9 +5799,21 @@ export class Game {
       destinationMap === null ? null : mapPlace(knowledge, this.atlas, destinationMap);
 
     let active = this.stagePlans.current;
+    // Task 131: a book plan owns only its own maps. A detour to a shop or a party retreat
+    // outside them keeps the ordinary movement behaviour instead of the plan's checks.
+    if (
+      active?.book !== undefined &&
+      destinationMap !== null &&
+      !this.bookPlanMaps(active).has(destinationMap)
+    ) {
+      return null;
+    }
     if (
       this.stageAutoPlan &&
       destination !== null &&
+      // Task 131: never plan an empty walk whose destination is the world map itself.
+      destination.mapId !== 1 &&
+      !destination.world &&
       (active === null ||
         active.status === "completed" ||
         !sameStageTarget(active.target, targetForMap(knowledge, this.atlas, destination.mapId))) &&
@@ -5174,6 +5947,15 @@ export class Game {
     const current = mapPlace(knowledge, this.atlas, currentMap);
     if (!this.stagePlanCovers(active, current, knowledge)) return null;
     const goalMap = targetMap ?? currentMap;
+    // Task 131: a book plan only claims its own maps; a go to a map outside it is an ordinary
+    // detour (the model may be heading to a shop).
+    if (
+      goalMap !== currentMap &&
+      active.book !== undefined &&
+      !this.bookPlanMaps(active).has(goalMap)
+    ) {
+      return null;
+    }
     const waypoints = this.stageRouteWaypoints(active, currentMap);
     if (
       waypoints.some(
@@ -5265,6 +6047,80 @@ export class Game {
     return best.map;
   }
 
+  /** Task 131: the maps a book plan actually covers (its destination and every stop's map). */
+  private bookPlanMaps(record: StagePlanRecord): Set<number> {
+    const maps = new Set<number>();
+    if (record.target.mapId !== null) maps.add(record.target.mapId);
+    for (const stop of record.plan.route) {
+      const mapId = Number.parseInt(stop.to.split(":")[0] ?? "", 10);
+      if (Number.isFinite(mapId)) maps.add(mapId);
+    }
+    return maps;
+  }
+
+  /** Is this exact cell one of the plan's stations? Those must keep their normal go. */
+  private bookPlanStopAt(record: StagePlanRecord, mapId: number, cell: Cell): boolean {
+    return record.plan.route.some((stop) => {
+      const match = /^(\d+):(-?\d+),(-?\d+)$/u.exec(stop.to);
+      if (match === null) return false;
+      return (
+        Number.parseInt(match[1] ?? "", 10) === mapId &&
+        Number.parseInt(match[2] ?? "", 10) === cell[0] &&
+        Number.parseInt(match[3] ?? "", 10) === cell[1]
+      );
+    });
+  }
+
+  /**
+   * Task 131: `go` to a map the running book plan covers is the plan's own next walk, not a
+   * separate trip. A map outside the plan stays an ordinary go (a shop in town, a detour).
+   */
+  private async bookFollowForMapGo(
+    pilot: Pilot,
+    args: Json,
+    targetMap: number,
+    cell: Cell | null,
+    signal: AbortSignal | undefined,
+  ): Promise<HandlerResult | null> {
+    if (!this.routeBookEnabled || !this.stageGoFollowPlan || this.scouting) return null;
+    if ((text(args.leave_incomplete)?.trim() ?? "") !== "") return null;
+    const record = this.stagePlans.current;
+    if (record?.book === undefined || record.status === "completed") return null;
+    if (!this.bookPlanMaps(record).has(targetMap)) return null;
+    if (cell !== null && this.bookPlanStopAt(record, targetMap, cell)) return null;
+    if (
+      this.bookProgress.current?.stations.some((station) => station.status === "current") === true
+    ) {
+      return null;
+    }
+    const before = await this.stagePosition(pilot);
+    const beforeBook = this.bookProgressSignature();
+    const followed = await this.stageFollowPlan(pilot, args, signal);
+    if (followed === null) return null;
+    // Task 133: a plan with no executable stop (or whose remaining stops cannot be reached)
+    // must not swallow the go. Only claim the move when the plan actually did something.
+    if (followed.text.includes("没有要执行的站了")) return null;
+    const after = await this.stagePosition(pilot);
+    const moved =
+      before.map !== after.map ||
+      (before.cell !== null &&
+        after.cell !== null &&
+        (before.cell[0] !== after.cell[0] || before.cell[1] !== after.cell[1]));
+    if (!moved && this.bookProgressSignature() === beforeBook) return null;
+    return {
+      early: followed.early,
+      text: `go 指向路线书这一节的图，代码接着按计划走。\n${followed.text}`,
+    };
+  }
+
+  private bookProgressSignature(): string {
+    const progress = this.bookProgress.current;
+    if (progress === null) return "";
+    return `${progress.finishedAt ?? ""}|${progress.stations
+      .map((station) => `${station.index}:${station.status}`)
+      .join(",")}`;
+  }
+
   /**
    * Task 113: after a go reached the plan's map, keep following it in this same tool call.
    * The route executor's `early` rule still returns for a story choice, a boss or a game over.
@@ -5290,6 +6146,7 @@ export class Game {
     }
     const current = mapPlace(knowledge, this.atlas, currentMap);
     if (!this.stagePlanCovers(record, current, knowledge)) return null;
+    if (record.book !== undefined && !this.bookPlanMaps(record).has(currentMap)) return null;
     const followed = await this.stageFollowPlan(pilot, args, signal);
     if (followed === null) return null;
     return {
@@ -5718,8 +6575,7 @@ export class Game {
     }
     if (reason === "") return "";
     this.stageBossWon = false;
-    const finishedAt = new Date().toISOString();
-    const stats = record.stats === undefined ? undefined : { ...record.stats, finishedAt };
+    const stats = record.stats === undefined ? undefined : this.stageFinishStats(record.stats);
     const completed: StagePlanRecord = {
       ...record,
       status: "completed",
@@ -5739,6 +6595,9 @@ export class Game {
    * state as before. Task 97 runs the stage gates before a map move.
    */
   private async toolGo(args: Json, pilot: Pilot, signal?: AbortSignal): Promise<HandlerResult> {
+    // Task 131: the first move after entering a book section builds that section's plan.
+    const automatic = await this.autoBookPlanOnMove(pilot, signal);
+    if (automatic !== null) return automatic;
     const coordinate = goCellTarget(args.to);
     if (coordinate !== null) {
       const cell = coordinate.cell;
@@ -5764,6 +6623,20 @@ export class Game {
       if (entranceMap !== null) {
         const refusal = await this.stageBeforeTravel(pilot, args, entranceMap, signal);
         if (refusal !== null) return refusal;
+      }
+      // Task 131: a coordinate naming another map is that map's move; a covered book map is
+      // followed, an exact station or an outside map keeps the ordinary walk.
+      if (current !== null && coordinate.map !== null && coordinate.map !== current) {
+        const leaveRefusal = await this.bookSectionLeaveGate(
+          pilot,
+          args,
+          coordinate.map,
+          this.stagePlans.current,
+          signal,
+        );
+        if (leaveRefusal !== null) return leaveRefusal;
+        const followed = await this.bookFollowForMapGo(pilot, args, coordinate.map, cell, signal);
+        if (followed !== null) return followed;
       }
       const refusal = await this.stageBeforeGoCell(pilot, args, cell, coordinate.map, signal);
       if (refusal !== null) return refusal;
@@ -5803,7 +6676,7 @@ export class Game {
             },
             targetMap,
             () => undefined,
-            this.travelOptions(args),
+            { ...this.travelOptions(args), toCell: cell },
           );
           if (!travelled.reached) return { text: travelled.text };
           const walked = await this.goCell(args, pilot, cell);
@@ -5815,6 +6688,8 @@ export class Game {
     if (!choice.ok) return { text: `go 没有执行:${choice.error}`, early: true };
     const refusal = await this.stageBeforeTravel(pilot, args, choice.mapId, signal);
     if (refusal !== null) return refusal;
+    const followed = await this.bookFollowForMapGo(pilot, args, choice.mapId, null, signal);
+    if (followed !== null) return followed;
     const name = this.mapNameOf(choice.mapId);
     const label =
       name === "" ? `go → 地图 ${choice.mapId}` : `go → 地图 ${choice.mapId}「${name}」`;
@@ -5851,6 +6726,9 @@ export class Game {
     const rawStops = args.stops === null ? undefined : args.stops;
     const endInput = parseRouteEnd(args.end);
     if (rawStops === undefined && endInput === null) {
+      // Task 131: `route {}` always checks the current book section, even on the same map.
+      const automatic = await this.autoBookPlanOnMove(pilot, signal, true);
+      if (automatic !== null) return automatic;
       return await this.resumeRouteTool(pilot, signal);
     }
     if (rawStops !== undefined && !Array.isArray(rawStops)) {
@@ -5858,8 +6736,12 @@ export class Game {
     }
     const stops = list(rawStops).map((entry, index) => parseRouteStop(entry, `stops[${index}]`));
     if (stops.length === 0 && endInput === null) {
+      const automatic = await this.autoBookPlanOnMove(pilot, signal, true);
+      if (automatic !== null) return automatic;
       return await this.resumeRouteTool(pilot, signal);
     }
+    const automatic = await this.autoBookPlanOnMove(pilot, signal);
+    if (automatic !== null) return automatic;
     return await this.runRouteStops(pilot, args, stops, endInput, signal);
   }
 
@@ -5872,7 +6754,11 @@ export class Game {
     signal?: AbortSignal,
     followPlan = false,
     persistProgress = true,
-    onWaypoint?: (stop: Waypoint, event: "done" | "skipped" | "current") => Promise<void>,
+    onWaypoint?: (
+      stop: Waypoint,
+      event: "done" | "skipped" | "current",
+      note?: string,
+    ) => Promise<void>,
   ): Promise<HandlerResult> {
     const destination = await this.routeDestinationMap(pilot, stops, endInput);
     const refusal = await this.stageBeforeTravel(pilot, args, destination, signal);
@@ -6009,8 +6895,9 @@ export class Game {
     return { plan, waypoints, end };
   }
 
-  private routePorts(pilot: Pilot, args: Json): RoutePorts {
+  private routePorts(pilot: Pilot, args: Json, planWalk = false): RoutePorts {
     const flee = truthy(args.flee);
+    const options = planWalk ? this.planTravelOptions() : this.travelOptions(args);
     const now = async (): Promise<{ map: number; cell: Cell } | null> => {
       const pos = parsePositionReply(await pilot.send("pos"));
       if (pos.map === null || pos.cell === null) return null;
@@ -6032,7 +6919,7 @@ export class Game {
             },
             stop.map,
             () => undefined,
-            this.travelOptions(args),
+            { ...options, toCell: stop.cell },
           );
           lines.push(travelled.text);
           if (!travelled.reached) return { ok: false, text: travelled.text };
@@ -6043,6 +6930,7 @@ export class Game {
           { to: [stop.cell[0], stop.cell[1]], flee },
           pilot,
           stop.cell,
+          planWalk,
         );
         let after = await now();
         if (after !== null && after.map === stop.map && matchesCell(after.cell, stop.cell)) {
@@ -6061,7 +6949,12 @@ export class Game {
               decision,
             };
           }
-          walked = await this.goCell({ to: [stop.cell[0], stop.cell[1]], flee }, pilot, stop.cell);
+          walked = await this.goCell(
+            { to: [stop.cell[0], stop.cell[1]], flee },
+            pilot,
+            stop.cell,
+            planWalk,
+          );
           lines.push(walked.text);
           after = await now();
           if (after !== null && after.map === stop.map && matchesCell(after.cell, stop.cell)) {
@@ -6080,7 +6973,11 @@ export class Game {
           const refusal = scoutSaveGuard({ scouting: this.scouting, windows });
           if (refusal !== null) return { ok: false, done: false, text: refusal };
           const [ok, detail] = await save.saveGame(pilot, this.saveSlot, this.saveTimerMinSeconds);
-          if (ok) await this.captureBestiary(pilot);
+          if (ok) {
+            await this.captureBestiary(pilot);
+            this.lastBookSaveAt = Date.now();
+            this.bookDirty = false;
+          }
           return { ok, done: ok, text: detail };
         }
         if (stop.cell === null) return { ok: false, done: false, text: "这个路标没有格子" };
@@ -6144,6 +7041,1282 @@ export class Game {
     };
   }
 
+  // -------------------------------------------------------------------------------------------
+  // Task 138: the segment executor's public ports. These wrap private capabilities and do not
+  // change the tool path; the only shared switch is the plan battle overlay below.
+
+  /** Task 138: stop the second-layer model calls for a plan run; returns the restore function. */
+  suspendModelLayers(): () => void {
+    if (this.planRestoreLayers !== null) return this.planRestoreLayers;
+    const tactician = this.tactician;
+    const officer = this.stageOfficer;
+    this.tactician = undefined;
+    this.stageOfficer = undefined;
+    const restore = (): void => {
+      this.tactician = tactician;
+      this.stageOfficer = officer;
+      if (this.planRestoreLayers === restore) this.planRestoreLayers = null;
+    };
+    this.planRestoreLayers = restore;
+    return restore;
+  }
+
+  /** Task 138: install the plan's normal-battle tables for this run only. */
+  planBeginBattles(battles: readonly PlanBattle[]): void {
+    this.planBattleTables = new Map<number, PlanBattleEntry>();
+    this.planDefaultBattle = null;
+    this.planBattleCount = 0;
+    for (const battle of battles) {
+      const entry: PlanBattleEntry = { tables: [...battle.tables], current: 0 };
+      if (battle.maps.length === 0) {
+        this.planDefaultBattle = entry;
+        continue;
+      }
+      for (const mapId of battle.maps) {
+        if (!this.planBattleTables.has(mapId)) this.planBattleTables.set(mapId, entry);
+      }
+    }
+  }
+
+  /** Task 138: put the stored tactics back in charge. */
+  planEndBattles(): void {
+    this.planBattleTables = null;
+    this.planDefaultBattle = null;
+  }
+
+  /** Normal battles fought since `planBeginBattles`. */
+  planBattlesFought(): number {
+    return this.planBattleCount;
+  }
+
+  private planBattleEntry(mapId: number | null): PlanBattleEntry | null {
+    if (this.planBattleTables === null) return null;
+    if (mapId === null) return this.planDefaultBattle;
+    return this.planBattleTables.get(mapId) ?? this.planDefaultBattle;
+  }
+
+  private battleTableFor(mapId: number | null): Json | null {
+    if (this.planBattleTables === null) return this.tactics.current(mapId);
+    const entry = this.planBattleEntry(mapId);
+    if (entry === null || entry.tables.length === 0) return null;
+    return entry.tables[entry.current % entry.tables.length] ?? null;
+  }
+
+  private battleTableIndexFor(mapId: number | null): number | null {
+    if (this.planBattleTables !== null) return this.planBattleEntry(mapId)?.current ?? null;
+    if (mapId === null) return null;
+    return this.tactics.maps.get(String(mapId))?.current ?? null;
+  }
+
+  /** Task 138: a bad plan table moves to the next one, exactly like `tactics.record`. */
+  private async reportBattle(
+    mapId: number | null,
+    verdict: string,
+    detail: string,
+  ): Promise<string> {
+    this.lastBattle = { mapId, verdict, detail };
+    if (this.planBattleTables === null) return await this.tactics.record(mapId, verdict, detail);
+    this.planBattleCount += 1;
+    const entry = this.planBattleEntry(mapId);
+    if (entry === null || entry.tables.length === 0) return "";
+    if (verdict !== "hard" && verdict !== "lost") return "";
+    const index = entry.current;
+    entry.current = (index + 1) % Math.max(1, entry.tables.length);
+    return `计划策略 ${index + 1} 打得不好(${detail}),下一场换策略 ${entry.current + 1}`;
+  }
+
+  /**
+   * Task 145 follow-up: a map change makes `pos` briefly empty. Wait a few seconds before
+   * calling that position unreadable; the old one-shot read turned an entrance step into
+   * "位置不明" on the real machine.
+   */
+  private async planPosReply(pilot: Pilot): Promise<Json> {
+    let pos = record((await pilot.send("pos")).pos);
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const mapped = num(pos.map);
+      const cell = cellOf(pos.cell);
+      if (mapped !== undefined && cell !== null) return pos;
+      await pilot.sleep(750);
+      pos = record((await pilot.send("pos")).pos);
+    }
+    return pos;
+  }
+
+  /** Task 138: position for the executor's report and route start. */
+  async planPosition(pilot: Pilot): Promise<{ readonly map: number; readonly cell: Cell } | null> {
+    const pos = await this.planPosReply(pilot);
+    const map = num(pos.map);
+    const cell = cellOf(pos.cell);
+    if (map === undefined || cell === null) return null;
+    return { map, cell: [cell[0], cell[1]] };
+  }
+
+  /** Task 145 follow-up: the map must be in the map records before a route is planned to it. */
+  async planMapKnown(map: number): Promise<boolean> {
+    if (map === this.mapId || this.atlas.maps.has(String(map))) return true;
+    if (this.collisions.exits(map).length > 0) return true;
+    try {
+      const knowledge = await this.ensureStageKnowledge();
+      return knowledge.maps.some((entry) => entry.id === map);
+    } catch {
+      return false;
+    }
+  }
+
+  /** Every normal item in the bag, by cleaned name. */
+  private async planItems(pilot: Pilot): Promise<Record<string, number>> {
+    const held = records(record((await pilot.query("items")).items).normal);
+    const out: Record<string, number> = {};
+    for (const item of held) {
+      const name = cleanName(text(item.name));
+      if (name === "") continue;
+      out[name] = (out[name] ?? 0) + (num(item.count) ?? 0);
+    }
+    return out;
+  }
+
+  /**
+   * Task 138: what the report needs. `refresh` also updates the save-local bestiary and the
+   * treasure flags, which is expensive, so the executor asks for it at the start and the end
+   * only.
+   */
+  async planObservation(pilot: Pilot, refresh = false): Promise<PlanObservation> {
+    // Task 145 follow-up: a crossover map's id (198 on the pirate ship) is not the party's
+    // real position. Only report a position when the screen is stable and controllable.
+    const scene = await this.planScene(pilot);
+    const unstable =
+      scene.battle ||
+      scene.dialog ||
+      scene.state === "Event" ||
+      scene.state === "Dialog" ||
+      scene.state === "FieldHelp";
+    const at = unstable
+      ? { map: null, cell: null }
+      : ((await this.planPosition(pilot)) ?? { map: null, cell: null });
+    if (refresh) {
+      try {
+        await this.refreshCompletion(pilot);
+      } catch {
+        // A report is still worth returning from the last completed read.
+      }
+    }
+    try {
+      if (at.map !== null) await this.syncTreasureFlags(pilot, at.map, null);
+    } catch {
+      // Old bridge or a failed read: chests stay null and the executor counts open stations.
+    }
+    let members: PlanPortMember[] = [];
+    let items: Record<string, number> = {};
+    try {
+      const sample = record((await pilot.query("sample")).sample);
+      members = readParty(sample).map((member) => ({
+        name: member.name,
+        job: member.job,
+        lv: member.lv,
+        hp: member.hp,
+        maxHp: member.maxHp,
+        mp: member.mp,
+        maxMp: member.maxMp,
+        status: [...member.status],
+        abilities: member.abilities.map((ability) => ability.name),
+      }));
+      items = await this.planItems(pilot);
+    } catch {
+      // An old bridge without sample still gets the map and treasure count.
+    }
+    const byNumber = new Map<number, string>();
+    for (const [name, number] of this.bestiaryNames()) {
+      if (!byNumber.has(number)) byNumber.set(number, name);
+    }
+    const bestiary = [...this.bestiary.numbers]
+      .sort((left, right) => left - right)
+      .map((number) => ({ number, name: byNumber.get(number) ?? "" }));
+    const blueMagic = [
+      ...new Set(members.flatMap((member) => member.abilities).filter((name) => name !== "")),
+    ];
+    const opened = this.treasureFlagsReady
+      ? [...this.treasureFlags.values()].filter((open) => open === true).length
+      : null;
+    let area: string | null = null;
+    try {
+      const knowledge = await this.ensureStageKnowledge();
+      const map = at.map === null ? undefined : knowledge.maps.find((item) => item.id === at.map);
+      area = cleanName(map?.areaName ?? map?.name ?? "") || null;
+    } catch {
+      // The area only narrows prep shops; a report is still worth returning without it.
+    }
+    return {
+      map: at.map,
+      cell: at.cell === null ? null : [at.cell[0], at.cell[1]],
+      ...(area === null ? {} : { area }),
+      members,
+      items,
+      bestiary,
+      blueMagic,
+      chestsOpened: opened,
+      battles: this.planBattleCount,
+    };
+  }
+
+  /**
+   * Task 144: every shop the game files place on a map. The shop export's own `mapId` is
+   * sometimes another town's (the product group can be reused), so the clerk NPC's
+   * `shopId` is the reliable link: map + cell from the NPC, goods from that product group.
+   */
+  async planShops(): Promise<readonly PlanShop[]> {
+    if (this.planShopIndex === null) {
+      const pending = this.buildPlanShopIndex();
+      this.planShopIndex = pending;
+      try {
+        return await pending;
+      } catch (error) {
+        if (this.planShopIndex === pending) this.planShopIndex = null;
+        throw error;
+      }
+    }
+    return await this.planShopIndex;
+  }
+
+  private async buildPlanShopIndex(): Promise<readonly PlanShop[]> {
+    if (this.game !== "ff5") return [];
+    const knowledge = await this.ensureStageKnowledge();
+    const dir = join(DEPS, "knowledge", this.game, "files", "maps");
+    let files: string[];
+    try {
+      files = await readdir(dir);
+    } catch (error) {
+      if (isMissingFile(error)) return [];
+      throw new Error(`读不了游戏文件地图目录 ${dir}:${describeError(error)}`, { cause: error });
+    }
+    const spots = new Map<number, { readonly map: number; readonly cell: Cell }[]>();
+    for (const name of files.filter((entry) => entry.endsWith(".json"))) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(await readFile(join(dir, name), "utf8"));
+      } catch {
+        continue;
+      }
+      if (!isRecord(parsed)) continue;
+      const map = num(parsed.id);
+      if (map === undefined || !Number.isInteger(map) || map <= 0) continue;
+      for (const npc of records(parsed.npcs)) {
+        const shopId = num(npc.shopId);
+        const cell = list(npc.cell);
+        const x = num(cell[0]);
+        const y = num(cell[1]);
+        if (shopId === undefined || x === undefined || y === undefined) continue;
+        const entry = spots.get(shopId) ?? [];
+        if (!entry.some((spot) => spot.map === map && spot.cell[0] === x && spot.cell[1] === y)) {
+          entry.push({ map, cell: [x, y] });
+        }
+        spots.set(shopId, entry);
+      }
+    }
+    const aliases = new Map<number, string[]>();
+    const addAlias = (id: number | null, name: string | null): void => {
+      if (id === null || name === null || name.trim() === "") return;
+      const list = aliases.get(id) ?? [];
+      if (!list.includes(name)) list.push(name);
+      aliases.set(id, list);
+    };
+    for (const item of knowledge.contentItems) {
+      addAlias(item.id, item.names.ja);
+      addAlias(item.id, item.names.en);
+      addAlias(item.id, item.names.zhc);
+    }
+    for (const item of knowledge.items) addAlias(item.id, item.name);
+    for (const magic of knowledge.magic) addAlias(magic.id, magic.name);
+    const out: PlanShop[] = [];
+    const seen = new Set<string>();
+    for (const shop of knowledge.shops) {
+      if (shop.id === null) continue;
+      const found = spots.get(shop.id);
+      if (found === undefined || found.length === 0) continue;
+      const products = shop.products.map((product) => {
+        const names = new Set<string>();
+        const name = cleanName(product.name);
+        if (name !== "") names.add(name);
+        if (product.itemId !== null) {
+          for (const alias of aliases.get(product.itemId) ?? []) {
+            const cleaned = cleanName(alias);
+            if (cleaned !== "") names.add(cleaned);
+          }
+        }
+        return {
+          name,
+          names: [...names],
+          itemId: product.itemId,
+          price: product.price,
+        };
+      });
+      for (const spot of found) {
+        const key = `${shop.id}@${spot.map}:${spot.cell[0]},${spot.cell[1]}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const map = knowledge.maps.find((entry) => entry.id === spot.map);
+        const area = cleanName(map?.areaName ?? map?.name ?? shop.areaName ?? "") || "?";
+        out.push({
+          id: shop.id,
+          map: spot.map,
+          cell: spot.cell,
+          area,
+          kind: cleanName(shop.kind ?? "商店") || "商店",
+          products,
+        });
+      }
+    }
+    return out;
+  }
+
+  /** Task 144: walk to the clerk and open the shop; an already-open menu is fine too. */
+  async planOpenShop(pilot: Pilot, cell: Cell): Promise<PlanActionResult> {
+    try {
+      const before = await shop.shopState(pilot);
+      if (truthy(before.open)) return { ok: true, text: "商店菜单已经开着" };
+      const acted = await this.planInteract(pilot, cell);
+      const after = await shop.shopState(pilot);
+      if (truthy(after.open)) return { ok: true, text: acted.text };
+      return {
+        ok: false,
+        text: acted.text.trim() === "" ? "和店员说话后商店菜单没有打开" : acted.text,
+      };
+    } catch (error) {
+      return { ok: false, text: `开商店出错:${describeError(error)}` };
+    }
+  }
+
+  /** Task 144: close the shop menu before walking on. */
+  async planLeaveShop(pilot: Pilot): Promise<PlanActionResult> {
+    try {
+      const text = await menu.leaveMenu(pilot);
+      return { ok: text.includes("已回到地图"), text };
+    } catch (error) {
+      return { ok: false, text: `离开商店菜单出错:${describeError(error)}` };
+    }
+  }
+
+  /** Task 138: change one member's job; `abilities` are the job's commands, not a menu step. */
+  async planChangeJob(
+    pilot: Pilot,
+    member: string,
+    job: string,
+    abilities: readonly string[],
+  ): Promise<PlanActionResult> {
+    const [ok, detail] = await menu.changeJob(pilot, member, job);
+    if (abilities.length === 0) return { ok, text: detail };
+    return {
+      ok,
+      text: detail + `;技能随职业:${abilities.join("、")}`,
+    };
+  }
+
+  /** Task 138: buy only when a shop is actually open; otherwise it is a note, not an exception. */
+  async planBuy(pilot: Pilot, item: string, count: number): Promise<PlanBuyResult> {
+    const state = await shop.shopState(pilot);
+    if (!truthy(state.open)) {
+      return {
+        ok: false,
+        atShop: false,
+        bought: 0,
+        text: `不在商店，没买「${item}」`,
+      };
+    }
+    const [ok, detail] = await shop.buy(pilot, item, Math.max(1, Math.trunc(count)));
+    return { ok, atShop: true, bought: ok ? Math.max(1, Math.trunc(count)) : 0, text: detail };
+  }
+
+  /**
+   * Task 138: the formation prep. The engine has no row command yet (there is no menu skill
+   * for it), so this refuses without pressing a key instead of guessing a menu path.
+   */
+  planSetRow(member: string, row: "front" | "back"): PlanActionResult {
+    return {
+      ok: false,
+      text: `引擎还没有队形菜单能力,没调 ${member} 站${row === "front" ? "前排" : "后排"}`,
+    };
+  }
+
+  /** Task 138: the existing walking/story/watch ports for the route executor. */
+  planRoutePorts(pilot: Pilot): RoutePorts {
+    // Task 145: a plan is the model's decision; the old "this map is not finished" leave guard
+    // must not stop it. Missing chests/bestiary are logged and put in the report instead.
+    return this.routePorts(pilot, { flee: false }, true);
+  }
+
+  /** Task 138: analyse one station's walk with the same atlas/collision data as `route`. */
+  planRoute(
+    from: { readonly map: number; readonly cell: Cell },
+    waypoints: readonly Waypoint[],
+    end: Waypoint | null,
+  ): RoutePlan {
+    return analyzeRoute(
+      {
+        start: from,
+        end: end === null ? null : { map: end.map, cell: end.cell },
+        waypoints,
+      },
+      {
+        atlas: this.atlas,
+        collisions: this.collisions,
+        battleSeconds: this.routeBattleSeconds,
+      },
+    );
+  }
+
+  /** Task 138: the existing route grind loop with the plan's `until`. */
+  async planGrind(pilot: Pilot, stop: Waypoint): Promise<PlanStationResult> {
+    return await this.routeGrind(pilot, stop);
+  }
+
+  /**
+   * Task 145 follow-up: the knowledge module's chest at one cell, with its save flag. A chest
+   * exists even when the flag is unknown; the executor still must verify that it opened.
+   */
+  private async planChestAt(
+    mapId: number,
+    cell: Cell,
+  ): Promise<{ readonly flag: number | null; readonly item: string | null } | null> {
+    try {
+      const knowledge = await this.ensureStageKnowledge();
+      const chest = knowledge.chests.find(
+        (entry) =>
+          entry.mapId === mapId &&
+          entry.cell !== null &&
+          entry.cell[0] === cell[0] &&
+          entry.cell[1] === cell[1],
+      );
+      if (chest !== undefined) {
+        const flag = chest.flagId ?? (chest.flag === null ? null : Number.parseInt(chest.flag, 10));
+        return {
+          flag: flag !== null && Number.isInteger(flag) ? flag : null,
+          item: chest.contentNames?.zhc ?? chest.contentName ?? null,
+        };
+      }
+    } catch {
+      // Without knowledge, the atlas chest list below is the fallback.
+    }
+    for (const raw of records(this.atlas.maps.get(String(mapId))?.chests)) {
+      const at = cellOf(raw.cell);
+      if (at === null) continue;
+      if (at[0] !== cell[0] || at[1] !== cell[1]) continue;
+      const flag = num(raw.flag) ?? num(raw.flagId);
+      return {
+        flag: flag !== undefined && Number.isInteger(flag) ? flag : null,
+        item: cleanName(text(raw.contentName) ?? text(raw.name) ?? "") || null,
+      };
+    }
+    return null;
+  }
+
+  /** Task 145 follow-up: verify a chest actually opened before a station may count as done. */
+  private async planChestOpened(
+    pilot: Pilot,
+    mapId: number,
+    flag: number | null,
+    beforeItems: Readonly<Record<string, number>> | null,
+    beforeEvents: number,
+  ): Promise<boolean> {
+    if (flag !== null) {
+      try {
+        await this.syncTreasureFlags(pilot, mapId, null, true);
+      } catch {
+        // The bag and the activity log below are the other two proofs.
+      }
+      if (this.treasureFlags.get(flag) === true) return true;
+    }
+    if (beforeItems !== null) {
+      try {
+        const after = await this.planItems(pilot);
+        if (Object.entries(after).some(([item, count]) => count > (beforeItems[item] ?? 0))) {
+          return true;
+        }
+      } catch {
+        // An old bridge without items leaves the event log.
+      }
+    }
+    const fresh = this.events?.entries.slice(beforeEvents) ?? [];
+    return fresh.some((entry) => entry.type === "chest");
+  }
+
+  async planInteract(pilot: Pilot, cell: Cell): Promise<PlanStationResult> {
+    // Task 145: a plan is followed as written; the manual interact path keeps its leave guard.
+    const beforePos = await this.planPosition(pilot);
+    const chest = beforePos === null ? null : await this.planChestAt(beforePos.map, cell);
+    let beforeItems: Record<string, number> | null = null;
+    if (chest !== null) {
+      try {
+        beforeItems = await this.planItems(pilot);
+      } catch {
+        beforeItems = null;
+      }
+    }
+    const beforeEvents = this.events?.entries.length ?? 0;
+    const acted = await this.toolInteract({ x: cell[0], y: cell[1] }, pilot, false);
+    const decision = await this.storyDecision(pilot);
+    if (decision !== null) {
+      return { ok: false, done: false, text: acted.text, decision };
+    }
+    if (acted.early === true) {
+      return { ok: false, done: false, text: acted.text, decision: acted.text };
+    }
+    if (interactionFailed(acted.text)) return { ok: false, done: false, text: acted.text };
+    if (chest !== null && beforePos !== null) {
+      const opened = await this.planChestOpened(
+        pilot,
+        beforePos.map,
+        chest.flag,
+        beforeItems,
+        beforeEvents,
+      );
+      if (!opened) {
+        return {
+          ok: false,
+          done: false,
+          text: `宝箱没有打开（${chest.item ?? "内容读不到"}；${acted.text}）`,
+        };
+      }
+      return {
+        ok: true,
+        done: true,
+        text: `开了宝箱 (${cell[0]},${cell[1]})${chest.item === null ? "" : `「${chest.item}」`}；${acted.text}`,
+      };
+    }
+    const afterPos = await this.planPosition(pilot);
+    const pages = /翻了\s*(\d+)\s*页/u.exec(acted.text)?.[1];
+    const moved =
+      beforePos !== null &&
+      afterPos !== null &&
+      (beforePos.map !== afterPos.map ||
+        beforePos.cell[0] !== afterPos.cell[0] ||
+        beforePos.cell[1] !== afterPos.cell[1]);
+    const movedTo = afterPos ?? beforePos;
+    const where =
+      moved && movedTo !== null
+        ? `地图 ${movedTo.map} (${movedTo.cell[0]},${movedTo.cell[1]})`
+        : "位置没变";
+    return {
+      ok: true,
+      done: true,
+      text: `${acted.text}\n备注:按了确认；${pages === undefined ? "对话页数读不到" : pages === "0" ? "没有对话" : `翻了 ${pages} 页对话`}；${where}`,
+    };
+  }
+
+  /** Task 138: page the story/dialog once more, as `advance_story` would. */
+  async planStory(pilot: Pilot): Promise<{ readonly text: string; readonly decision?: string }> {
+    return await this.storyAdvance(pilot);
+  }
+
+  /** Task 138: answer an open dialog choice with the plan's number or text. */
+  async planChoose(pilot: Pilot, option: number | string): Promise<PlanActionResult> {
+    const sample = record((await pilot.query("sample")).sample);
+    const open = Object.values(record(sample.choice)).find(
+      (value): value is Json => isRecord(value) && truthy(value.open),
+    );
+    if (open === undefined) return { ok: false, text: "现在没有打开的选项" };
+    const labels = list(truthy(open.options) ? open.options : open.labels).map((value) =>
+      show(value),
+    );
+    let index: number;
+    if (typeof option === "number") {
+      index = Math.trunc(option);
+    } else {
+      const wanted = option.trim();
+      index = labels.findIndex(
+        (label) => label.trim() === wanted || label.includes(wanted) || wanted.includes(label),
+      );
+      if (index < 0) {
+        return {
+          ok: false,
+          text: `选项里没有「${wanted}」,有:${labels.join("、")}`,
+        };
+      }
+    }
+    if (index < 0 || index >= Math.max(1, labels.length)) {
+      return { ok: false, text: `选项号 ${index} 不在 0–${Math.max(0, labels.length - 1)} 之间` };
+    }
+    const cursor = num(open.cursor) ?? 0;
+    const step = index >= cursor ? "Down" : "Up";
+    const keys = [...Array.from({ length: Math.abs(index - cursor) }, () => step), "Enter"];
+    const result = await pilot.send("keys", { keys, gap: 250 });
+    return {
+      ok: truthy(result.ok),
+      text: truthy(result.ok)
+        ? `选了「${labels[index] ?? index}」`
+        : `没选成:${show(result.error)}`,
+    };
+  }
+
+  /** Task 138: save to the user's slot and snapshot the bestiary, as `save_game` does. */
+  async planSave(pilot: Pilot): Promise<PlanActionResult> {
+    const [ok, detail] = await save.saveGame(pilot, this.saveSlot, this.saveTimerMinSeconds);
+    if (ok) {
+      await this.captureBestiary(pilot);
+      this.lastBookSaveAt = Date.now();
+      this.bookDirty = false;
+    }
+    return { ok, text: detail };
+  }
+
+  /**
+   * Task 138: heal to the pre-boss threshold; task 145 says why nothing happened instead of
+   * claiming a full party. HP above the threshold is not "full", and a low party without any
+   * spell/item/inn is a different fact from a full one.
+   */
+  async planHeal(pilot: Pilot): Promise<PlanActionResult> {
+    const healedText = await this.restoreBeforeBoss(pilot);
+    if (healedText !== "") return { ok: true, text: healedText };
+    const sample = record((await pilot.query("sample")).sample);
+    const party = records(sample.party);
+    if (party.length === 0) return { ok: false, text: "读不到队伍，没回复" };
+    const rows = party.map((member) => {
+      const hp = num(member.hp) ?? 0;
+      const maxHp = num(member.maxHp) ?? 0;
+      return {
+        name: text(member.name) ?? "?",
+        hp,
+        maxHp,
+        mp: num(member.mp) ?? 0,
+        pct: maxHp > 0 ? Math.floor((100 * hp) / maxHp) : 100,
+        abilities: records(member.abilities)
+          .map((ability) => text(ability.name) ?? "")
+          .map((name) => cleanName(name))
+          .filter((name) => name !== ""),
+      };
+    });
+    if (rows.every((row) => row.hp >= row.maxHp)) {
+      return { ok: true, text: "队伍 HP 已经是满的" };
+    }
+    const lowest = rows.reduce((left, right) => (right.pct < left.pct ? right : left));
+    if (lowest.pct >= this.healFullPercent) {
+      return {
+        ok: true,
+        text:
+          `队伍 HP 都在 ${this.healFullPercent}% 以上，没有需要回复的` +
+          `（最低 ${lowest.name} ${lowest.pct}%，${lowest.hp}/${lowest.maxHp}）`,
+      };
+    }
+    const reasons: string[] = [];
+    if (!this.innHere && !this.atSavePoint()) reasons.push("不在旅店/回复点");
+    const healers = rows.filter(
+      (row) =>
+        row.hp > 0 &&
+        row.mp > 0 &&
+        row.abilities.some((ability) =>
+          battle.HEAL_SPELLS.some((spell) => ability.includes(spell)),
+        ),
+    );
+    if (healers.length === 0) reasons.push("没人会回复魔法");
+    let hasItem = false;
+    try {
+      const held = await battle.heldItems(pilot);
+      hasItem = Object.entries(held).some(
+        ([name, count]) =>
+          count > 0 && battle.HEAL_ITEMS.some((item) => name.includes(item) || item.includes(name)),
+      );
+    } catch {
+      // An unreadable bag is reported as "no item" only when the rest says so.
+    }
+    if (!hasItem) reasons.push("没有回复道具");
+    const why =
+      reasons.length === 0 ? "有回复手段，但没有回复成功" : `没有回复手段(${reasons.join("、")})`;
+    return {
+      ok: true,
+      text:
+        `${why}；队伍 HP 低于 ${this.healFullPercent}%` +
+        `（最低 ${lowest.name} ${lowest.pct}%，${lowest.hp}/${lowest.maxHp}）`,
+    };
+  }
+
+  /** Task 138: the existing game-over route (否 → 是 → 标题 → 20 号位). */
+  async planRecoverGameover(pilot: Pilot): Promise<PlanActionResult> {
+    const result = await recoverFromGameover(pilot, this.saveSlot);
+    if (result === null) return { ok: false, text: "没有游戏结束弹窗" };
+    if (!result.ok) this.onIncident?.(result.text);
+    if (result.ok) this.lastTimer = null;
+    return { ok: result.ok, text: result.text };
+  }
+
+  /**
+   * Task 138: one boss fight with the plan's table. The executor does the heal/save before
+   * calling this; the result says whether the boss fell and carries a short battle summary.
+   */
+  async planFightBoss(pilot: Pilot, boss: PlanBoss): Promise<PlanBossResult> {
+    const table = boss.tables[0];
+    if (table === undefined) {
+      return { won: false, text: "首领没有规则表", summary: "首领没有规则表,没有开打" };
+    }
+    const sample = record((await pilot.query("sample")).sample);
+    const fight = record(sample.battle);
+    const enemies = records(fight.enemies);
+    if (!truthy(fight.active) && !truthy(fight.boss) && enemies.length === 0) {
+      return {
+        won: false,
+        text: "首领战没有开始",
+        summary: "到了首领站但战斗没有开始,没有按键",
+      };
+    }
+    const mapId = boss.map ?? num(record(sample.user).mapId) ?? this.mapId;
+    const names = battle.enemyNames(enemies);
+    const session = this.battles.start({
+      mapId,
+      mapName: placeName(sample),
+      boss: true,
+      enemies: battleUnits(enemies),
+      party: battleUnits(records(sample.party)),
+      table: { kind: "boss", mapId },
+      startedAt: new Date().toISOString(),
+      startedMs: pilot.now(),
+    });
+    const result = await battle.fight(pilot, table, 300, () => undefined, this.elements, {
+      record: session,
+    });
+    const foughtAt = pilot.now();
+    const [verdict, detail] = battle.judgePlayers(result.players);
+    const outcome =
+      result.error === "wiped"
+        ? "wipe"
+        : verdict === "lost"
+          ? "wipe"
+          : result.ok
+            ? "ok"
+            : "timeout";
+    await session.finish(
+      foughtAt,
+      outcome,
+      result.error === "wiped" ? "全员倒下" : (result.error ?? detail),
+    );
+    const turns = list(result.turns).map((turn) => show(turn));
+    const summary =
+      `敌人:${names || "读不到"},${detail};` +
+      (turns.length === 0 ? "没有读到出招" : `出招:${turns.slice(-6).join("、")}`);
+    if (result.error === "wiped") {
+      const report = await battle.wipeReport(pilot, names, this.saveSlot);
+      return { won: false, text: report, summary };
+    }
+    const won = result.ok && verdict !== "lost" && result.fled !== true;
+    const learned = result.learned.length === 0 ? "" : `;${result.learned.join(";")}`;
+    return {
+      won,
+      text:
+        (won ? `首领「${boss.name}」打倒了` : `首领「${boss.name}」没打完:${show(result.error)}`) +
+        `;${detail}${learned}`,
+      summary,
+    };
+  }
+
+  /**
+   * Task 145: fight the battle now on screen with the plan's ordinary table (a station-end
+   * encounter or an unlisted boss). It counts in `planBattlesFought` like a walk battle.
+   */
+  async planFightNormal(pilot: Pilot, tables: readonly Json[]): Promise<PlanBossResult> {
+    const sample = record((await pilot.query("sample")).sample);
+    const fight = record(sample.battle);
+    const enemies = records(fight.enemies);
+    if (!truthy(fight.active) && !truthy(fight.boss) && enemies.length === 0) {
+      return { won: false, text: "战斗没有开始", summary: "站末没有战斗，没有按键" };
+    }
+    const mapId = num(record(sample.user).mapId) ?? this.mapId ?? null;
+    const raw = this.battleTableFor(mapId) ?? tables[0];
+    const table =
+      raw === undefined
+        ? gambit.defaultTable(records(sample.party))
+        : raw.version === 2
+          ? raw
+          : gambit.normalize(raw);
+    const names = battle.enemyNames(enemies);
+    const session = this.battles.start({
+      mapId,
+      mapName: placeName(sample),
+      boss: false,
+      enemies: battleUnits(enemies),
+      party: battleUnits(records(sample.party)),
+      table: { kind: "map", mapId, table: null },
+      startedAt: new Date().toISOString(),
+      startedMs: pilot.now(),
+    });
+    const result = await battle.fight(pilot, table, 300, () => undefined, this.elements, {
+      record: session,
+    });
+    const foughtAt = pilot.now();
+    const [verdict, detail] = battle.judgePlayers(result.players);
+    const outcome =
+      result.error === "wiped"
+        ? "wipe"
+        : verdict === "lost"
+          ? "wipe"
+          : result.ok
+            ? "ok"
+            : "timeout";
+    await session.finish(
+      foughtAt,
+      outcome,
+      result.error === "wiped" ? "全员倒下" : (result.error ?? detail),
+    );
+    const turns = list(result.turns).map((turn) => show(turn));
+    const summary =
+      `敌人:${names || "读不到"},${detail};` +
+      (turns.length === 0 ? "没有读到出招" : `出招:${turns.slice(-6).join("、")}`);
+    if (result.error === "wiped") {
+      const report = await battle.wipeReport(pilot, names, this.saveSlot);
+      return { won: false, text: report, summary };
+    }
+    const won = result.ok && verdict !== "lost" && result.fled !== true;
+    await this.reportBattle(mapId, verdict, detail);
+    const learned = result.learned.length === 0 ? "" : `;${result.learned.join(";")}`;
+    return {
+      won,
+      text:
+        (won ? "普通战斗打完了" : `普通战斗没打完:${show(result.error)}`) + `;${detail}${learned}`,
+      summary,
+    };
+  }
+
+  /**
+   * Task 145: what the station boundary sees. The bridge's `sample` carries the battle and
+   * dialog; `pos` carries the state. A missing sample only loses the battle flag.
+   */
+  async planScene(pilot: Pilot): Promise<{
+    readonly state: string | null;
+    readonly dialog: boolean;
+    readonly battle: boolean;
+    readonly boss: boolean;
+    readonly enemies: readonly string[];
+  }> {
+    const pos = await this.planPosReply(pilot);
+    let sample: Json = {};
+    try {
+      sample = record((await pilot.query("sample")).sample);
+    } catch {
+      // An old bridge: the pos battle flag below still works.
+    }
+    const fight = record(sample.battle);
+    const enemies = records(fight.enemies)
+      .map((enemy) => cleanName(text(enemy.name) ?? ""))
+      .filter((name) => name !== "");
+    const dialog = record(sample.dialog);
+    const lines = list(dialog.lines)
+      .map((line) => show(line))
+      .filter((line) => line !== "");
+    return {
+      state: text(pos.state) ?? null,
+      dialog: (truthy(dialog.open) || truthy(dialog.playing)) && lines.length > 0,
+      battle:
+        truthy(fight.active) ||
+        truthy(fight.boss) ||
+        enemies.length > 0 ||
+        truthy(pos.battle) ||
+        pos.state === "Battle",
+      boss: truthy(fight.boss),
+      enemies,
+    };
+  }
+
+  /** Task 145: the exit/entrance on `map` at `cell`, with the destination map's name. */
+  async planExitTarget(
+    map: number,
+    cell: Cell,
+  ): Promise<{ readonly toMap: number; readonly name: string } | null> {
+    const same = (candidate: Cell): boolean => candidate[0] === cell[0] && candidate[1] === cell[1];
+    let toMap: number | null = null;
+    const fileExit = this.collisions.exits(map).find((exit) => same(exit.cell));
+    if (fileExit !== undefined) toMap = fileExit.to;
+    if (toMap === null) {
+      for (const exit of records(this.atlas.maps.get(String(map))?.exits)) {
+        const at = cellOf(exit.cell);
+        const to = num(exit.to);
+        if (at !== null && to !== undefined && same(at)) {
+          toMap = Math.trunc(to);
+          break;
+        }
+      }
+    }
+    if (toMap === null || toMap <= 0 || toMap === map) return null;
+    let name: string;
+    try {
+      const knowledge = await this.ensureStageKnowledge();
+      name = cleanName(knowledge.maps.find((entry) => entry.id === toMap)?.name ?? "");
+    } catch {
+      name = "";
+    }
+    if (name === "") name = cleanName(text(this.atlas.maps.get(String(toMap))?.name) ?? "");
+    return { toMap, name };
+  }
+
+  /** Task 145: other names a plan boss may be known by, from the knowledge module. */
+  async planBossAliases(name: string): Promise<readonly string[]> {
+    const aliases = new Set<string>();
+    const wanted = normalizeName(cleanName(name));
+    if (wanted === "") return [];
+    try {
+      const knowledge = await this.ensureStageKnowledge();
+      const guideNames = [...(knowledge.guide?.bestiary ?? [])];
+      const monster = knowledge.monsters.find(
+        (entry) =>
+          normalizeName(cleanName(entry.name)) === wanted ||
+          (entry.bookId !== null &&
+            guideNames.some(
+              ([book, guideName]) =>
+                book === entry.bookId && normalizeName(cleanName(guideName)) === wanted,
+            )),
+      );
+      if (monster !== undefined) {
+        aliases.add(monster.name);
+        for (const [book, guideName] of guideNames) {
+          if (monster.bookId !== null && book === monster.bookId) aliases.add(guideName);
+        }
+      }
+      for (const [book, guideName] of guideNames) {
+        if (normalizeName(cleanName(guideName)) !== wanted) continue;
+        const byGuide = knowledge.monsters.find((entry) => entry.bookId === book);
+        if (byGuide !== undefined) aliases.add(byGuide.name);
+      }
+    } catch {
+      // Without knowledge the plan's own spelling is all we have.
+    }
+    aliases.delete("");
+    return [...aliases];
+  }
+
+  /** Task 145 follow-up: model calls observed while this plan ran; the report carries it. */
+  planModelCalls(): number {
+    return this.planModelCallCount;
+  }
+
+  /** Task 145: what the plan left behind on maps it passed; the executor puts it in the report. */
+  planTakeLeaveNotes(): readonly string[] {
+    const lines = [...this.planLeaveLog];
+    this.planLeaveLog.length = 0;
+    return lines;
+  }
+
+  /** Task 145: one line per map the plan left with chests/bestiary still missing. */
+  private async planLeaveNote(pilot: Pilot): Promise<void> {
+    try {
+      const state = await this.refreshCompletion(pilot);
+      if (state === null || isComplete(state)) return;
+      const remaining = missingLines(state);
+      if (remaining.length === 0) return;
+      const line = `离开「${this.completionWhere(state)}」时还缺:${remaining.join("；")}`;
+      if (this.planLeaveLog.includes(line)) return;
+      this.planLeaveLog.push(line);
+      this.onActivity?.(line, "plan");
+    } catch {
+      // The report is better without the line than a plan that stops because completion failed.
+    }
+  }
+
+  /** Task 145: write one progress snapshot; a failure is a warning, never an execution error. */
+  private async saveSegmentProgress(): Promise<void> {
+    if (this.segmentProgress === null) return;
+    try {
+      await writeSegmentProgress(this.segmentProgressFile, this.segmentProgress);
+    } catch (error) {
+      this.onActivity?.(`段进度没写成:${describeError(error)}`, "plan");
+    }
+  }
+
+  /** Task 145: start this plan's progress, with the previous run's exception when it exists. */
+  async planProgressStart(section: string, goal: string, labels: readonly string[]): Promise<void> {
+    this.planLeaveLog.length = 0;
+    this.planModelCallCount = 0;
+    let previous: SegmentProgress | null = null;
+    try {
+      previous = await readSegmentProgress(this.segmentProgressFile);
+    } catch (error) {
+      this.onActivity?.(`读不了上一份段进度:${describeError(error)}`, "plan");
+    }
+    let previousException: SegmentProgress["previousException"] = null;
+    try {
+      const report = await loadSegmentReport(this.segmentReportFile);
+      if (report?.section === section && report.status === "exception" && report.exception) {
+        previousException = { kind: report.exception.kind, detail: report.exception.detail };
+      }
+    } catch {
+      // A broken report only loses the reason line.
+    }
+    const at = new Date();
+    this.segmentProgress = {
+      game: this.game,
+      section,
+      goal,
+      revision: previous?.section === section ? previous.revision + 1 : 1,
+      startedAt: at.toISOString(),
+      updatedAt: at.toISOString(),
+      finishedAt: null,
+      status: "running",
+      stations: labels.map((label, index) => ({ index, status: "pending", note: label })),
+      previousException,
+    };
+    await this.saveSegmentProgress();
+  }
+
+  /** Task 145: one station's state in the live progress file. */
+  async planProgressMark(index: number, status: PlanProgressStatus, note: string): Promise<void> {
+    const progress = this.segmentProgress;
+    if (progress === null) return;
+    const mapped = status === "handoff" ? "failed" : status;
+    this.segmentProgress = {
+      ...progress,
+      updatedAt: new Date().toISOString(),
+      stations: progress.stations.map((station) =>
+        station.index === index ? { ...station, status: mapped, note } : station,
+      ),
+    };
+    await this.saveSegmentProgress();
+  }
+
+  /** Task 145: close the live progress file with the report's verdict. */
+  async planProgressFinish(status: "done" | "exception" | "aborted" = "done"): Promise<void> {
+    const progress = this.segmentProgress;
+    if (progress === null) return;
+    const at = new Date().toISOString();
+    this.segmentProgress = {
+      ...progress,
+      status,
+      finishedAt: at,
+      updatedAt: at,
+    };
+    await this.saveSegmentProgress();
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // Task 139: the plan-mode tools. `plan_facts` and `submit_plan` are task 137's handlers; the
+  // executor is task 138's, run through the real ports unless a test substitutes one.
+
+  /** Facts for one section: the live route-book section, knowledge, save and party snapshot. */
+  private async planFactsFor(
+    pilot: Pilot,
+    signal: AbortSignal | undefined,
+    section?: string,
+  ): Promise<SegmentFactsResult> {
+    const position = await this.stagePosition(pilot);
+    let runtime: RouteBookRuntime | null;
+    let reason: string | null = null;
+    if (section === undefined) {
+      const picked = await this.defaultPlanSection(pilot, signal, position.map);
+      runtime = picked.runtime;
+      reason = picked.reason;
+    } else {
+      runtime = await this.buildBookRuntime(pilot, signal, { preferredSection: section });
+      if (runtime !== null && runtime.section.title !== section) {
+        throw new Error(`路线书里没有「${section}」这一节;最接近的是「${runtime.section.title}」`);
+      }
+    }
+    if (runtime === null) {
+      throw new Error(
+        section === undefined
+          ? "路线书里没有未完成的小节,plan_facts 取不到事实;可以带 section 指定小节"
+          : `路线书里没有「${section}」这一节`,
+      );
+    }
+    const knowledge = await this.ensureStageKnowledge(signal);
+    const state = await this.stageTravelState(pilot);
+    return segmentFacts({
+      game: this.game,
+      section: runtime.section,
+      knowledge,
+      save: await this.liveBookSave(pilot),
+      party: state.party,
+      bag: state.bag,
+      gil: state.gil,
+      grindMinutes: this.routeBookGrindMinutes,
+      currentMapId: position.map,
+      routeMaps: this.planRouteMaps(position.map, position.cell, runtime.section),
+      ...(reason === null ? {} : { sectionReason: reason }),
+    });
+  }
+
+  /**
+   * `plan_facts` without `section`: the unfinished section covering the current map, else the
+   * next unfinished section in route-book order. 11-11: standing on a finished section's save
+   * point (Wind Shrine) used to be "no current section"; the model still needs the next plan.
+   */
+  private async defaultPlanSection(
+    pilot: Pilot,
+    signal: AbortSignal | undefined,
+    currentMap: number | null,
+  ): Promise<{ readonly runtime: RouteBookRuntime; readonly reason: string }> {
+    const direct = await this.ensureBook(pilot, signal);
+    let book = direct?.book;
+    if (book === undefined) {
+      const previous = this.bookProgress.current?.section;
+      const built = await this.buildBookRuntime(
+        pilot,
+        signal,
+        previous === undefined ? {} : { preferredSection: previous },
+      );
+      book = built?.book ?? this.bookCache?.book ?? this.routeBookOption;
+    }
+    if (book === undefined) {
+      throw new Error(
+        "路线书没有加载出小节,plan_facts 取不到事实;先确认这一节在路线书里,或者带 section 指定小节",
+      );
+    }
+    const save = await this.liveBookSave(pilot);
+    const choice = chooseDefaultSection(book.sections, currentMap, (candidate) =>
+      sectionFinished(candidate, save),
+    );
+    if (choice === null) {
+      throw new Error("路线书里没有未完成的小节,plan_facts 取不到事实");
+    }
+    return {
+      runtime: {
+        book,
+        sectionIndex: choice.index,
+        section: choice.section,
+        digest: bookSectionDigest(choice.section),
+      },
+      reason: choice.reason,
+    };
+  }
+
+  /** Maps crossed from the current position to the section's maps, for `plan_facts`. */
+  private planRouteMaps(
+    currentMap: number | null,
+    currentCell: Cell | null,
+    section: RouteSection,
+  ): number[] {
+    if (currentMap === null) return [];
+    const maps = new Set<number>([currentMap]);
+    for (const map of section.maps) {
+      if (map.mapId === currentMap) continue;
+      const path =
+        travel.mapPath(this.atlas, currentMap, map.mapId, new Set<string>(), true, {
+          start: currentCell,
+          collisions: this.collisions,
+        }) ??
+        (currentCell === null
+          ? null
+          : travel.mapPath(this.atlas, currentMap, map.mapId, new Set<string>(), true, {
+              start: null,
+              collisions: this.collisions,
+            }));
+      if (path === null) continue;
+      for (const hop of path) maps.add(hop.to);
+    }
+    return [...maps];
+  }
+
+  private planToolPorts(pilot: Pilot, signal: AbortSignal | undefined): PlanToolPorts {
+    return {
+      facts: async (section) => {
+        const result = await this.planFactsFor(pilot, signal, section);
+        // Task 146: the sheet builder is synchronous and pure, so the game files' event names
+        // are attached here. A missing or malformed map file only loses the trigger cell.
+        try {
+          const knowledge = await this.ensureStageKnowledge(signal);
+          const files = await readRouteBookFiles(this.game, knowledge.filesDir, signal);
+          return withBossTriggers(result, files);
+        } catch {
+          signal?.throwIfAborted();
+          return result;
+        }
+      },
+      savePlan: (plan) => this.segmentPlans.save(plan),
+      // Task 146: the last plan and its report are the same two files Game loaded at startup;
+      // both are kept current when submit_plan and execute_plan save them.
+      previousRun: () => {
+        const plan = this.segmentPlans.current;
+        const report = this.lastSegmentReport;
+        return Promise.resolve(plan === null || report === null ? null : { plan, report });
+      },
+    };
+  }
+
+  private async toolPlanFacts(
+    args: Json,
+    pilot: Pilot,
+    signal: AbortSignal | undefined,
+  ): Promise<HandlerResult> {
+    const answer = await handlePlanFacts(this.planToolPorts(pilot, signal), args);
+    return { text: answer.text, early: true };
+  }
+
+  private async toolSubmitPlan(
+    args: Json,
+    pilot: Pilot,
+    signal: AbortSignal | undefined,
+  ): Promise<HandlerResult> {
+    const answer = await handleSubmitPlan(this.planToolPorts(pilot, signal), args);
+    return { text: answer.text, early: true };
+  }
+
+  /** The default executor: task 138's one-shot runner with the real game ports. */
+  private async runSegmentPlan(
+    plan: SegmentPlan,
+    pilot: Pilot,
+    signal: AbortSignal | undefined,
+  ): Promise<SegmentReport> {
+    return await executeSegmentPlan(plan, gamePlanPorts(this, pilot), {
+      signal,
+      log: (line) => this.onActivity?.(line, "plan"),
+    });
+  }
+
+  private async toolExecutePlan(
+    _args: Json,
+    pilot: Pilot,
+    signal: AbortSignal | undefined,
+  ): Promise<HandlerResult> {
+    const plan = this.segmentPlans.current;
+    if (plan === null) {
+      return {
+        text: "还没有存盘的段计划。先用 plan_facts 取事实,按事实写好计划,再用 submit_plan 交计划。",
+        early: true,
+      };
+    }
+    const execute = this.segmentExecutor ?? ((p, pi, sig) => this.runSegmentPlan(p, pi, sig));
+    let report: SegmentReport;
+    try {
+      report = await execute(plan, pilot, signal);
+    } catch (error) {
+      signal?.throwIfAborted();
+      return { text: `执行段计划失败:${describeError(error)}`, early: true };
+    }
+    this.lastSegmentReport = report;
+    let saved = "";
+    try {
+      await this.saveSegmentReport(report);
+    } catch (error) {
+      saved = `\n(报告没存盘:${describeError(error)})`;
+    }
+    return {
+      text:
+        `${describeSegmentReport(report)}${saved}\n\n` +
+        "### 结构化报告(JSON)\n" +
+        `\`\`\`json\n${JSON.stringify(report, null, 2)}\n\`\`\``,
+      early: true,
+    };
+  }
+
+  private toolPlanStatus(): HandlerResult {
+    const plan = this.segmentPlans.current;
+    const report = this.lastSegmentReport;
+    const lines: string[] = [];
+    if (plan === null) {
+      lines.push("当前没有存盘的段计划。先 plan_facts,再 submit_plan。");
+    } else {
+      lines.push(describeSegmentPlan(plan));
+    }
+    if (report === null) {
+      lines.push("还没有执行报告。");
+    } else {
+      lines.push("上一份执行报告:", describeSegmentReport(report));
+    }
+    return { text: lines.join("\n"), early: true };
+  }
+
+  private async saveSegmentReport(report: SegmentReport): Promise<void> {
+    const path = this.segmentReportFile;
+    if (path === undefined) return;
+    await mkdir(dirname(path), { recursive: true });
+    try {
+      await writeFile(path, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+    } catch (error) {
+      throw new Error(`写不了段报告 ${path}:${describeError(error)}`, { cause: error });
+    }
+  }
+
   private async routeWatch(pilot: Pilot): Promise<RouteWatch> {
     const pos = record((await pilot.send("pos")).pos);
     let timer = parseRouteTimer(pos.timer);
@@ -6201,7 +8374,13 @@ export class Game {
     }
   }
 
-  private async toolExplore(args: Json, pilot: Pilot): Promise<HandlerResult> {
+  private async toolExplore(
+    args: Json,
+    pilot: Pilot,
+    signal?: AbortSignal,
+  ): Promise<HandlerResult> {
+    const automatic = await this.autoBookPlanOnMove(pilot, signal);
+    if (automatic !== null) return automatic;
     const options = this.travelOptions(args);
     return await this.withWalkLabel("explore", () =>
       this.withFlee(args, async () => {
@@ -6381,14 +8560,21 @@ export class Game {
     return found === undefined ? null : { label: found.label };
   }
 
-  private async goCell(args: Json, pilot: Pilot, goal: Cell): Promise<HandlerResult> {
+  private async goCell(
+    args: Json,
+    pilot: Pilot,
+    goal: Cell,
+    planWalk = false,
+  ): Promise<HandlerResult> {
     return await this.withFlee(args, async () => {
       const help = await screens.dismissFieldHelp(pilot);
       if (help === "stuck") return { text: screens.FIELD_HELP_STUCK, early: true };
       const legs = help === "closed" ? ["关掉了操作提示"] : [];
       const [startMap] = await travel.currentMapAndCell(pilot);
-      const refusal = await this.guardLeave(args, pilot, goal);
-      if (refusal !== null) return refusal;
+      if (!planWalk) {
+        const refusal = await this.guardLeave(args, pilot, goal);
+        if (refusal !== null) return refusal;
+      }
       let message: string;
       if ((await move.flying(pilot)) && (await this.worldEntrance(pilot, goal))) {
         [, message] = await move.flyIn(pilot, this.moveState, goal, (line) => legs.push(line));
@@ -6409,7 +8595,7 @@ export class Game {
           },
           goal,
           (line) => legs.push(line),
-          this.travelOptions(args),
+          planWalk ? this.planTravelOptions() : this.travelOptions(args),
         );
         if (detour !== null) {
           legs.push(detour);
@@ -6428,7 +8614,9 @@ export class Game {
       const lines = [...legs, message];
       if (named !== null) {
         lines.push(
-          `(这一格是去地图 ${named.to}「${named.name}」的出口，下次可以写 go(to=${named.to}))`,
+          planWalk
+            ? `(这一格是去地图 ${named.to}「${named.name}」的出口，计划里把站点写成 ${named.to} 就能进这张图)`
+            : `(这一格是去地图 ${named.to}「${named.name}」的出口，下次可以写 go(to=${named.to}))`,
         );
       }
       return { text: lines.join("\n") };
@@ -6559,11 +8747,13 @@ export class Game {
     return { text: parts.join("\n") || "附近没有入口、宝箱、NPC 或物体" };
   }
 
-  private async toolInteract(args: Json, pilot: Pilot): Promise<HandlerResult> {
+  private async toolInteract(args: Json, pilot: Pilot, guard = true): Promise<HandlerResult> {
     const goal: Cell = [integer(args.x), integer(args.y)];
     return await this.withWalkLabel(`interact (${goal[0]}, ${goal[1]})`, async () => {
-      const refusal = await this.guardLeave(args, pilot, goal);
-      if (refusal !== null) return refusal;
+      if (guard) {
+        const refusal = await this.guardLeave(args, pilot, goal);
+        if (refusal !== null) return refusal;
+      }
       const [startMap] = await travel.currentMapAndCell(pilot);
       const message = await move.openAt(pilot, goal, () => undefined, this.moveState);
       await this.noteJump(pilot, message, startMap, goal);
@@ -6999,9 +9189,11 @@ export class Game {
    * Task 47: the code-driven farm loop. A missing stopping condition is refused before a key
    * is pressed; every in-game failure comes back in the report as the reason it stopped.
    */
-  private async toolGrind(args: Json, pilot: Pilot): Promise<HandlerResult> {
+  private async toolGrind(args: Json, pilot: Pilot, signal?: AbortSignal): Promise<HandlerResult> {
     const parsed = grind.parseGrindOptions(args);
     if (!parsed.ok) return { text: `grind 没有执行:${parsed.error}`, early: true };
+    const automatic = await this.autoBookPlanOnMove(pilot, signal);
+    if (automatic !== null) return automatic;
     return await this.withWalkLabel("grind(刷怪)", async () => {
       const report = await grind.grind(
         pilot,
@@ -7107,14 +9299,18 @@ export class Game {
     }
   }
 
-  private async toolLand(pilot: Pilot): Promise<HandlerResult> {
+  private async toolLand(pilot: Pilot, signal?: AbortSignal): Promise<HandlerResult> {
+    const automatic = await this.autoBookPlanOnMove(pilot, signal);
+    if (automatic !== null) return automatic;
     return await this.withWalkLabel("land(降落)", async () => {
       const [, detail] = await move.land(pilot, this.moveState, null, () => undefined);
       return { text: detail };
     });
   }
 
-  private async toolBoard(pilot: Pilot): Promise<HandlerResult> {
+  private async toolBoard(pilot: Pilot, signal?: AbortSignal): Promise<HandlerResult> {
+    const automatic = await this.autoBookPlanOnMove(pilot, signal);
+    if (automatic !== null) return automatic;
     return await this.withWalkLabel("board(骑飞龙)", async () => {
       const [, detail] = await move.board(pilot, this.moveState, () => undefined);
       return { text: detail };
