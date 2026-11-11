@@ -18,7 +18,12 @@ const LAPTOP: Laptop = {
 
 async function useFakeSsh(
   directory: string,
-  responses: readonly { stdout?: string; stderr?: string; code?: number; delayMs?: number }[],
+  responses: readonly {
+    stdout?: string;
+    stderr?: string;
+    code?: number;
+    delayMs?: number;
+  }[],
 ): Promise<string> {
   const config = join(directory, "fake-ssh.json");
   const log = join(directory, "ssh.log");
@@ -39,7 +44,12 @@ async function readSshLog(path: string): Promise<{ args: string[]; stdin: string
 }
 
 async function withFakeSsh(
-  responses: readonly { stdout?: string; stderr?: string; code?: number; delayMs?: number }[],
+  responses: readonly {
+    stdout?: string;
+    stderr?: string;
+    code?: number;
+    delayMs?: number;
+  }[],
   run: (laptop: Laptop, log: string) => Promise<void>,
 ): Promise<void> {
   const directory = await mkdtemp(join(tmpdir(), "ffpr-running-"));

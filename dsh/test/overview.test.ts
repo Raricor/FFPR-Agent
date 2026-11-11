@@ -120,7 +120,12 @@ void test("status translates known scene states and leaves unknown ones alone", 
 });
 
 void test("the title screen, a Title scene with no state, reads as the title screen", () => {
-  const title = { type: "sample", scene: { name: "Title", state: null }, user: {}, party: [] };
+  const title = {
+    type: "sample",
+    scene: { name: "Title", state: null },
+    user: {},
+    party: [],
+  };
   const overview = buildOverview(lookup([engine("ff1", { sample: title })]));
   assert.equal(overview.games[0]?.status, "标题画面");
 });
@@ -145,7 +150,12 @@ void test("a down link hides the stale sample's status, place and party", () => 
 
 void test("a down link shows the watcher's error; a missing bridge shows the default text", () => {
   const down = buildOverview(
-    lookup([engine("ff6", { connected: false, error: "连不上 http://192.168.1.20:47806" })]),
+    lookup([
+      engine("ff6", {
+        connected: false,
+        error: "连不上 http://192.168.1.20:47806",
+      }),
+    ]),
   );
   const downCard = down.games[5];
   assert.ok(downCard);
@@ -167,7 +177,10 @@ void test("a busy tool and the newest activity fill the card's two lines", () =>
   const overview = buildOverview(lookup([engine("ff4", { sample: sample("Player"), activity })]));
   const card = overview.games[3];
   assert.ok(card);
-  assert.deepEqual(card.busy, { name: "walk_to", at: "2026-10-29T10:00:00.000Z" });
+  assert.deepEqual(card.busy, {
+    name: "walk_to",
+    at: "2026-10-29T10:00:00.000Z",
+  });
   assert.equal(card.last, null);
 
   activity.record("error", "fight 出错:连不上桥插件");
@@ -200,9 +213,9 @@ void test("the overview's log is the six logs merged, filtered by game and since
     ["五之一"],
   );
   assert.deepEqual(
-    buildOverview(lookup(engines), { since: "2026-10-29T10:00:00.500Z" }).log.map(
-      (entry) => entry.text,
-    ),
+    buildOverview(lookup(engines), {
+      since: "2026-10-29T10:00:00.500Z",
+    }).log.map((entry) => entry.text),
     ["六之一"],
   );
 });
@@ -262,7 +275,9 @@ void test("the overview route starts only the one engine the laptop has open", a
     sourceOf({ ok: true, running: ["ff5"] }),
   );
   const response = await route.fetch(new Request("http://localhost/api/ffpr/overview"));
-  const body = (await response.json()) as { games: { game: string; linkText: string | null }[] };
+  const body = (await response.json()) as {
+    games: { game: string; linkText: string | null }[];
+  };
   assert.equal(response.status, 200);
   assert.equal(ff5Starts, 1);
   assert.equal(ff3Starts, 0);

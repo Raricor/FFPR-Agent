@@ -48,7 +48,11 @@ export interface GameCard {
   readonly linkText: string | null;
   readonly status: string;
   readonly place: string;
-  readonly party: readonly { readonly name: string; readonly hp: number; readonly maxHp: number }[];
+  readonly party: readonly {
+    readonly name: string;
+    readonly hp: number;
+    readonly maxHp: number;
+  }[];
   readonly busy: { readonly name: string; readonly at: string } | null;
   readonly last: OverviewLast | null;
   readonly saveSlot: number;
@@ -196,7 +200,11 @@ export function buildCurrentCard(
   // Tests build engines with a minimal `events`; older engines may lack these helpers.
   const events = engine?.events as unknown as
     | {
-        lastSample?: () => { sample: unknown; at: string; live: boolean } | null;
+        lastSample?: () => {
+          sample: unknown;
+          at: string;
+          live: boolean;
+        } | null;
         liveSample?: () => unknown;
       }
     | undefined;
@@ -316,7 +324,10 @@ export function overviewRoute(
           log?.warn(`总控页检测笔记本上开着的作品失败:${describeError(error)}`);
         });
       }
-      const body = { ok: true, ...buildOverview(engineFor, query, snapshot.result, game) };
+      const body = {
+        ok: true,
+        ...buildOverview(engineFor, query, snapshot.result, game),
+      };
       return new Response(JSON.stringify(body), {
         status: 200,
         headers: {

@@ -144,8 +144,14 @@ void test("activity files over 5 MB rotate to .1 at startup", async () => {
 });
 
 void test("mergeActivity filters by since, game and limit, newest first", () => {
-  const ff5 = new ActivityLog({ game: "ff5", now: stepping("2026-10-29T10:00:00.000Z") });
-  const ff6 = new ActivityLog({ game: "ff6", now: stepping("2026-10-29T10:00:02.000Z") });
+  const ff5 = new ActivityLog({
+    game: "ff5",
+    now: stepping("2026-10-29T10:00:00.000Z"),
+  });
+  const ff6 = new ActivityLog({
+    game: "ff6",
+    now: stepping("2026-10-29T10:00:02.000Z"),
+  });
   ff5.record("tool", "五之一");
   ff5.record("tool", "五之二");
   ff6.record("event", "六之一");

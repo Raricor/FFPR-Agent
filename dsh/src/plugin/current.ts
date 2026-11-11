@@ -81,7 +81,12 @@ export function decideCurrent(input: CurrentInput = {}): CurrentChoice {
     // A cached detection that says the game is not open is stronger than "an engine exists":
     // it may have outlived the game process. With no detection, trust the started engine.
     const running = detection?.ok === true ? detection.running.includes(engine.game) : true;
-    return { game: engine.game, running, reason: "engine", since: engine.startedAt };
+    return {
+      game: engine.game,
+      running,
+      reason: "engine",
+      since: engine.startedAt,
+    };
   }
   const activities = [...(input.activities ?? [])].filter((row) =>
     GAMES.some((item) => item.key === row.game),

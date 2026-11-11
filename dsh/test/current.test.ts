@@ -11,7 +11,12 @@ void test("exactly one detected game wins even when another engine started later
     engines: [{ game: "ff5", startedAt: "2026-11-03T10:00:00.000Z" }],
     activities: [{ game: "ff6", at: "2026-11-03T11:00:00.000Z" }],
   });
-  assert.deepEqual(choice, { game: "ff3", running: true, reason: "detection", since: null });
+  assert.deepEqual(choice, {
+    game: "ff3",
+    running: true,
+    reason: "detection",
+    since: null,
+  });
 });
 
 void test("two detected games fall through to the most recently started engine", () => {
@@ -52,7 +57,9 @@ void test("nothing to go on falls back to ff5 and says it is not running", () =>
 void test("readCurrent asks for activity logs only when detection and engines cannot decide", async () => {
   let reads = 0;
   const source = {
-    detection: { peek: () => ({ result: OPEN_FF3, fresh: true, pending: false }) },
+    detection: {
+      peek: () => ({ result: OPEN_FF3, fresh: true, pending: false }),
+    },
     engines: () => [],
     activities: () => {
       reads += 1;
@@ -63,7 +70,9 @@ void test("readCurrent asks for activity logs only when detection and engines ca
   assert.equal(reads, 0);
   const none = await readCurrent({
     ...source,
-    detection: { peek: () => ({ result: undefined, fresh: false, pending: false }) },
+    detection: {
+      peek: () => ({ result: undefined, fresh: false, pending: false }),
+    },
   });
   assert.equal(none.game, "ff6");
   assert.equal(reads, 1);

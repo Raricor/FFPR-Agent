@@ -36,7 +36,10 @@ export function runningGamesScript(laptop: Laptop): string {
  * dropped, and malformed output is a Chinese error rather than an empty list.
  */
 export async function runningGames(laptop: Laptop, signal?: AbortSignal): Promise<string[]> {
-  const result = await runPs(laptop, runningGamesScript(laptop), { capture: true, signal });
+  const result = await runPs(laptop, runningGamesScript(laptop), {
+    capture: true,
+    signal,
+  });
   return parseRunningGames(result.stdout);
 }
 

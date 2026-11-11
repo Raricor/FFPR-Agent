@@ -125,7 +125,10 @@ async function query(config: DetectionConfig, load: LaptopLoader): Promise<Detec
     const laptop = await load(config.laptopEnv, signal);
     return { ok: true, running: await runningGames(laptop, signal) };
   } catch (error) {
-    return { ok: false, error: `查不了笔记本上开着哪一作:${describeError(error)}` };
+    return {
+      ok: false,
+      error: `查不了笔记本上开着哪一作:${describeError(error)}`,
+    };
   }
 }
 
