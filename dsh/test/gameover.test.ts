@@ -12,7 +12,12 @@ import {
 } from "../src/engine/skills/gameover.ts";
 import { FakePilot } from "./fake-pilot.ts";
 
-const LAPTOP: Laptop = { host: "laptop", user: "player", key: "/tmp/key", root: "C:/ffpr" };
+const LAPTOP: Laptop = {
+  host: "laptop",
+  user: "player",
+  key: "/tmp/key",
+  root: "C:/ffpr",
+};
 
 type Stage = "continue" | "to-title" | "title" | "saveui" | "confirm" | "loaded";
 
@@ -43,7 +48,12 @@ function install(pilot: FakePilot, world: World): void {
               autosave: { map: "卡纳克城" },
             }
           : world.stage === "to-title"
-            ? { open: true, prompt: "to-title", cursor: world.gameoverCursor, autosave: null }
+            ? {
+                open: true,
+                prompt: "to-title",
+                cursor: world.gameoverCursor,
+                autosave: null,
+              }
             : { open: false, prompt: null, cursor: null, autosave: null },
     },
   }));

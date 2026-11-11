@@ -228,22 +228,35 @@ export async function recoverFromGameover(pilot: Pilot, slot = 20): Promise<Game
       const moved = await moveCursor(pilot, state, 1);
       if (!moved.ok) return { ok: false, text: `游戏结束处理停下:${moved.text}` };
       if (!(await press(pilot, ["Enter"]))) {
-        return { ok: false, text: `游戏结束处理停下:确认「否」失败:${describe(moved.state)}` };
+        return {
+          ok: false,
+          text: `游戏结束处理停下:确认「否」失败:${describe(moved.state)}`,
+        };
       }
     } else if (prompt === "to-title") {
       const moved = await moveCursor(pilot, state, 0);
       if (!moved.ok) return { ok: false, text: `游戏结束处理停下:${moved.text}` };
       if (!(await press(pilot, ["Enter"]))) {
-        return { ok: false, text: `游戏结束处理停下:确认「是」失败:${describe(moved.state)}` };
+        return {
+          ok: false,
+          text: `游戏结束处理停下:确认「是」失败:${describe(moved.state)}`,
+        };
       }
     } else {
-      return { ok: false, text: `游戏结束处理停下:${describe(state)};没有按键` };
+      return {
+        ok: false,
+        text: `游戏结束处理停下:${describe(state)};没有按键`,
+      };
     }
     const confirmed = await waitAfterConfirm(pilot, prompt);
     if (!confirmed.ok) return { ok: false, text: `游戏结束处理停下:${confirmed.text}` };
     if (!confirmed.state.open) break;
     state = confirmed.state;
-    if (guard === 3) return { ok: false, text: `游戏结束处理停下:弹窗还在:${describe(state)}` };
+    if (guard === 3)
+      return {
+        ok: false,
+        text: `游戏结束处理停下:弹窗还在:${describe(state)}`,
+      };
   }
 
   const deadline = pilot.now() + STORY_TIMEOUT_MS;
@@ -263,7 +276,10 @@ export async function recoverFromGameover(pilot: Pilot, slot = 20): Promise<Game
   if (!truthy(ui.open)) return { ok: false, text: "游戏结束处理停下:读档列表没有打开" };
   const slots = list(ui.slots);
   if (!slots.includes(slot)) {
-    return { ok: false, text: `游戏结束处理停下:读档列表里没有 ${slot} 号位(${slots.join("、")})` };
+    return {
+      ok: false,
+      text: `游戏结束处理停下:读档列表里没有 ${slot} 号位(${slots.join("、")})`,
+    };
   }
   if ((await moveToSlot(pilot, ui, slot)) === null) {
     return { ok: false, text: `游戏结束处理停下:光标没能移到 ${slot} 号位` };
