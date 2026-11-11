@@ -132,7 +132,10 @@ function pilot(): FakePilot {
 
 void test("the tactician's fact sheet carries the map's completion line", async () => {
   const base = await factsGame("Go west, flip the lever.");
-  const game = { ...base, completionText: () => "本图完成度(火力船)：宝箱 1/2(没拿：(4,7) 以太)" };
+  const game = {
+    ...base,
+    completionText: () => "本图完成度(火力船)：宝箱 1/2(没拿：(4,7) 以太)",
+  };
   const facts = await buildFacts(game, {
     kind: "new-map",
     mapId: 260,
@@ -193,7 +196,12 @@ void test("the encounter table adds the formations and each monster's facts", as
             { name: "败怨魔", book: 39 },
           ],
         },
-        { id: 2, rate: 400, notEscape: true, monsters: [{ name: "哥布林", book: 1 }] },
+        {
+          id: 2,
+          rate: 400,
+          notEscape: true,
+          monsters: [{ name: "哥布林", book: 1 }],
+        },
       ],
     },
   });
@@ -296,7 +304,17 @@ void test("an old bridge without abilities keeps the note and lists no spells", 
   without.onQuery("sample", {
     sample: {
       user: { mapId: 260, areaText: "火力船" },
-      party: [{ name: "巴兹", jobName: "骑士", lv: 17, hp: 500, maxHp: 600, mp: 60, maxMp: 60 }],
+      party: [
+        {
+          name: "巴兹",
+          jobName: "骑士",
+          lv: 17,
+          hp: 500,
+          maxHp: 600,
+          mp: 60,
+          maxMp: 60,
+        },
+      ],
     },
   });
   const facts = await buildFacts(await factsGame("walkthrough"), {
@@ -389,7 +407,13 @@ void test("a town's maps share one tactician call; castles and dungeons do not",
   assert.equal(isTown("火力船"), false);
   const covered = new Set(["卡纳克镇"]);
   const tactics = new Tactics();
-  const inn = { mapId: 89, tactics, met: [], mapName: "卡纳克镇 旅店", townsCovered: covered };
+  const inn = {
+    mapId: 89,
+    tactics,
+    met: [],
+    mapName: "卡纳克镇 旅店",
+    townsCovered: covered,
+  };
   assert.equal(chooseTrigger(inn), null);
   const castle = { ...inn, mapId: 95, mapName: "卡纳克城 １层" };
   assert.equal(chooseTrigger(castle)?.kind, "new-map");

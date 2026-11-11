@@ -191,7 +191,11 @@ export function chooseTrigger(state: TriggerState): TriggerReason | null {
     }
   }
   if (lastBad) {
-    return { kind: "bad-battle", mapId, detail: `${last.verdict}:${last.detail}` };
+    return {
+      kind: "bad-battle",
+      mapId,
+      detail: `${last.verdict}:${last.detail}`,
+    };
   }
   if (state.blocked && state.blocked.count >= 3) {
     return { kind: "blocked", mapId, detail: state.blocked.detail };
@@ -323,7 +327,11 @@ export function readTacticianPlan(value: unknown): TacticianPlan {
   }
   if (typeof value.walker_notes !== "string") throw new Error("战术官的结果里没有 walker_notes");
   if (typeof value.ask_up !== "string") throw new Error("战术官的结果里没有 ask_up");
-  return { tables, walkerNotes: value.walker_notes.trim(), askUp: value.ask_up.trim() };
+  return {
+    tables,
+    walkerNotes: value.walker_notes.trim(),
+    askUp: value.ask_up.trim(),
+  };
 }
 
 /** The current map's encounter table, when the bridge has one; older bridges have no op. */
@@ -440,7 +448,12 @@ function monstersMet(game: FactsGame, mapId: number, battleRows: readonly Json[]
   const seen = new Map<string, MetMonster>();
   const fromEvents = game.events?.enemies.get(mapId) ?? new Set<string>();
   for (const name of fromEvents) {
-    seen.set(name, { name, book: game.events?.books.get(name) ?? null, maxHp: null, id: null });
+    seen.set(name, {
+      name,
+      book: game.events?.books.get(name) ?? null,
+      maxHp: null,
+      id: null,
+    });
   }
   for (const enemy of battleRows) {
     const name = text(enemy.name);

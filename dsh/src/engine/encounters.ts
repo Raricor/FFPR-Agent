@@ -66,7 +66,10 @@ function parseParty(value: unknown): EncounterParty | null {
   if (!isRecord(value)) return null;
   const monsters = list(value.monsters)
     .filter(isRecord)
-    .map((monster) => ({ name: text(monster.name) ?? "", book: num(monster.book) ?? null }))
+    .map((monster) => ({
+      name: text(monster.name) ?? "",
+      book: num(monster.book) ?? null,
+    }))
     .filter((monster) => monster.name !== "");
   return {
     id: num(value.id) ?? null,
