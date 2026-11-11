@@ -186,6 +186,39 @@ interface PlayerView {
   readonly backlog: readonly string[];
 }
 
+interface BookStationRowView {
+  readonly number: number;
+  readonly mapText: string;
+  readonly cellText: string;
+  readonly action: string;
+  readonly statusText: string;
+  readonly note: string;
+  readonly current: boolean;
+}
+
+interface BookTableView {
+  readonly headers: readonly string[];
+  readonly rows: readonly (readonly string[])[];
+}
+
+interface BookSectionView {
+  readonly heading: string;
+  readonly startedText: string;
+  readonly stateText: string;
+  readonly acceptanceText: string;
+  readonly headers: readonly string[];
+  readonly stations: readonly BookStationRowView[];
+  readonly emptyText: string;
+}
+
+interface BookPanelView {
+  readonly title: string;
+  readonly status: string;
+  readonly message: string | null;
+  readonly section: BookSectionView | null;
+  readonly totals: BookTableView | null;
+}
+
 interface TacticianRuleLine {
   readonly text: string;
   readonly hits: number;
@@ -634,6 +667,78 @@ async function fetchPlayer(signal: AbortSignal, game: string): Promise<PollResul
     error: null,
     at,
   };
+}
+
+function isBookRow(value: unknown): value is BookStationRowView {
+  return (
+    isRecord(value) &&
+    typeof value.number === "number" &&
+    typeof value.mapText === "string" &&
+    typeof value.cellText === "string" &&
+    typeof value.action === "string" &&
+    typeof value.statusText === "string" &&
+    typeof value.note === "string" &&
+    typeof value.current === "boolean"
+  );
+}
+
+function isBookTable(value: unknown): value is BookTableView {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.headers) &&
+    value.headers.every((header) => typeof header === "string") &&
+    Array.isArray(value.rows) &&
+    value.rows.every((row) => Array.isArray(row) && row.every((cell) => typeof cell === "string"))
+  );
+}
+
+function isBookSection(value: unknown): value is BookSectionView {
+  return (
+    isRecord(value) &&
+    typeof value.heading === "string" &&
+    typeof value.startedText === "string" &&
+    typeof value.stateText === "string" &&
+    typeof value.acceptanceText === "string" &&
+    Array.isArray(value.headers) &&
+    value.headers.every((header) => typeof header === "string") &&
+    Array.isArray(value.stations) &&
+    value.stations.every(isBookRow) &&
+    typeof value.emptyText === "string"
+  );
+}
+
+function isBookView(value: unknown): value is BookPanelView {
+  return (
+    isRecord(value) &&
+    typeof value.title === "string" &&
+    typeof value.status === "string" &&
+    (value.message === null || typeof value.message === "string") &&
+    (value.section === null || isBookSection(value.section)) &&
+    (value.totals === null || isBookTable(value.totals))
+  );
+}
+
+async function fetchBook(signal: AbortSignal, game: string): Promise<PollResult<BookPanelView>> {
+  const response = await fetch(`api/ffpr/book?game=${encodeURIComponent(game)}`, {
+    signal,
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(`读不了路线书(HTTP ${response.status}),试试刷新网页`);
+  const body: unknown = await response.json();
+  if (!isRecord(body)) throw new Error("读不懂路线书");
+  const at = typeof body.at === "string" ? body.at : null;
+  if (body.ok !== true || !isBookView(body.view)) {
+    return {
+      value: null,
+      error: typeof body.error === "string" ? body.error : "读不了路线书",
+      at,
+    };
+  }
+  return { value: body.view, error: null, at };
+}
+
+async function loadBook(signal: AbortSignal, game: string): Promise<PollResult<BookPanelView>> {
+  return await fetchBook(signal, game);
 }
 
 function isRuleLine(value: unknown): value is TacticianRuleLine {
@@ -1224,9 +1329,93 @@ function errorLine(error: string | null): unknown {
     : h("div", { style: { color: toneColor("hard"), marginTop: 4 } }, error);
 }
 
+function bookStatusTone(status: string): Tone {
+  if (status === "已完成") return "win";
+  if (status === "进行中") return "business";
+  if (status === "交回") return "hard";
+  return "muted";
+}
+
+function bookStationCell(row: BookStationRowView): unknown {
+  return h(
+    "div",
+    null,
+    tag(row.statusText, bookStatusTone(row.statusText)),
+    row.note === ""
+      ? null
+      : h(
+          "div",
+          { style: { fontSize: 11, opacity: 0.7, marginTop: 2, overflowWrap: "anywhere" } },
+          row.note,
+        ),
+  );
+}
+
+function bookBlock(view: BookPanelView | null, error: string | null): unknown {
+  const children: unknown[] = [sectionTitle(view?.title ?? "路线书")];
+  if (view === null) {
+    children.push(emptyLine(error ?? "正在读取路线书…"));
+    return card(children);
+  }
+  const heading = view.section?.heading ?? view.status;
+  children.push(
+    h(
+      "div",
+      { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } },
+      h("div", { style: { flex: 1, minWidth: 120, fontWeight: 600 } }, heading),
+      view.section === null ? null : tag(view.status, bookStatusTone(view.status)),
+    ),
+  );
+  if (view.message !== null && view.message !== view.status) {
+    children.push(emptyLine(view.message));
+  }
+  const section = view.section;
+  if (section !== null) {
+    children.push(
+      h("div", { style: { fontSize: 12, opacity: 0.75, marginTop: 2 } }, section.startedText),
+      h("div", { style: { fontSize: 12, marginTop: 2 } }, section.acceptanceText),
+    );
+    if (section.stations.length === 0) {
+      children.push(emptyLine(section.emptyText));
+    } else {
+      children.push(
+        h(
+          "div",
+          { style: { marginTop: 4 } },
+          table(
+            section.headers,
+            section.stations.map((row) => [
+              row.number,
+              row.mapText,
+              row.cellText,
+              row.action,
+              bookStationCell(row),
+            ]),
+            section.stations.map((row) =>
+              row.current ? { background: "rgba(217, 130, 43, 0.14)" } : undefined,
+            ),
+          ),
+        ),
+      );
+    }
+  }
+  if (view.totals !== null) {
+    children.push(
+      h(
+        "details",
+        { style: { marginTop: 8 } },
+        h("summary", { style: { cursor: "pointer", fontSize: 12, fontWeight: 600 } }, "全书总表"),
+        h("div", { style: { marginTop: 4 } }, table(view.totals.headers, view.totals.rows)),
+      ),
+    );
+  }
+  return card(children);
+}
+
 function PlayerPanel(): unknown {
   const current = useCurrentGame();
   const poll = usePolling(loadPlayer, REFRESH_MS, current.game);
+  const book = usePolling(loadBook, REFRESH_MS, current.game);
   const view = poll.data;
   const children: unknown[] = [
     panelHeader(
@@ -1236,6 +1425,7 @@ function PlayerPanel(): unknown {
       () => {
         current.reload();
         poll.reload();
+        book.reload();
       },
     ),
     h(
@@ -1247,6 +1437,7 @@ function PlayerPanel(): unknown {
   const error = poll.error ?? current.error;
   children.push(errorLine(error));
   if (view === null) {
+    children.push(bookBlock(book.data, book.error));
     if (error === null) children.push(emptyLine("正在读取玩家记录…"));
     return h("div", { style: PANEL_STYLE }, ...children);
   }
@@ -1271,6 +1462,7 @@ function PlayerPanel(): unknown {
       sectionTitle("现在"),
       view.now === "" ? emptyLine("AI 还没有说话") : h("div", null, view.now),
     ]),
+    bookBlock(book.data, book.error),
     card([
       sectionTitle("笔记"),
       view.notes.length === 0

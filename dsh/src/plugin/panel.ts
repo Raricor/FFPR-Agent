@@ -1,11 +1,13 @@
 /**
- * The sidebar's read-only routes (task 14, task 24): GET /api/ffpr/achievements and
- * GET /api/ffpr/tactics answer for the game named by `?game=ffN`, so one registration serves
- * all six players. The connection service only exists in a web composition, so it is injected
- * optionally (Cordis `ctx.inject([...], callback)`), not listed in the plugin's required inject
- * array.
+ * The sidebar's read-only routes (task 14, task 24): GET /api/ffpr/achievements,
+ * /api/ffpr/tactics and /api/ffpr/book answer for the game named by `?game=ffN`, so one
+ * registration serves all six players. The connection service only exists in a web composition,
+ * so it is injected optionally (Cordis `ctx.inject([...], callback)`), not listed in the plugin's
+ * required inject array.
  */
 
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { Context } from "@deepseek-ai/cordis";
 import type { ConnectionFetchRoute } from "@deepseek-ai/dsh-client-connection";
 import { type BestiaryAreaCache } from "../engine/achievements.ts";
@@ -13,11 +15,18 @@ import { Backlog, Incidents } from "../engine/completion.ts";
 import { BattleLog } from "../engine/battle-record.ts";
 import { type MonsterCache } from "../engine/bestiary.ts";
 import { parseEncounters, type EncounterTable } from "../engine/encounters.ts";
-import { describeError } from "../engine/errors.ts";
+import { describeError, isMissingFile } from "../engine/errors.ts";
 import { CalledProcessError } from "../engine/laptop.ts";
 import { LinkError } from "../engine/bridge.ts";
 import { byKey, type Game } from "../engine/games.ts";
+import type { Cell } from "../engine/nav.ts";
+import { DEPS } from "../engine/paths.ts";
 import { PlayerJournal, playerView, type PlayerView } from "../engine/player-log.ts";
+import type {
+  BookSectionStats,
+  BookStationProgress,
+  BookStationStatus,
+} from "../engine/stage/book-progress-types.ts";
 import { TacticianLog } from "../engine/tactician-log.ts";
 import { tacticianView, type TacticianPanelView } from "../engine/tactician-view.ts";
 import { createPilot } from "../engine/link-pilot.ts";
@@ -28,7 +37,7 @@ import { inBattle as inBattleOf, placeName as placeNameOf } from "../engine/stat
 import { loadNotes } from "../engine/notes.ts";
 import { Tactics } from "../engine/tactics.ts";
 import { tacticsView, type TacticsPanelView } from "../engine/tactics-view.ts";
-import { num, record, records, truthy } from "../engine/values.ts";
+import { isRecord, num, record, records, text, truthy } from "../engine/values.ts";
 import { walkDisplay } from "../engine/walk-view.ts";
 import { currentGame, readAchievementView, type CommandPilotFactory } from "./commands.ts";
 import { currentRoute, readCurrent, type CurrentSource } from "./current.ts";
@@ -41,6 +50,7 @@ export const BATTLES_ROUTE = "/api/ffpr/battles";
 export const PLAYER_ROUTE = "/api/ffpr/player";
 export const TACTICIAN_ROUTE = "/api/ffpr/tactician";
 export const WALK_ROUTE = "/api/ffpr/walk";
+export const BOOK_ROUTE = "/api/ffpr/book";
 
 /** The root panel entry's way to find the player preset that started one game's engine. */
 export type EngineLookup = (game: string) => PlayerEngine | undefined;
@@ -479,6 +489,416 @@ export function walkRoute(engineFor: EngineLookup, current?: CurrentSource): Con
   };
 }
 
+/** Where the route book and its executor progress live for one game (task 118). */
+export interface BookFiles {
+  readonly book: string;
+  readonly progress: string;
+}
+
+/**
+ * Task 117 will put both paths into Config. Until that merges, task 118 reads the default files
+ * under `.deps/ds/`; the route takes a provider so the panel entry can pass Config later without
+ * changing the view code or the tests.
+ */
+export function defaultBookFiles(game: string): BookFiles {
+  return {
+    book: join(DEPS, "ds", `routebook-${game}.json`),
+    progress: join(DEPS, "ds", `routebook-progress-${game}.json`),
+  };
+}
+
+export type BookFilesOf = (game: string) => BookFiles;
+
+/** One station row the browser lays out; every label is already Chinese. */
+export interface BookStationRowView {
+  readonly number: number;
+  readonly mapText: string;
+  readonly cellText: string;
+  readonly action: string;
+  readonly statusText: string;
+  readonly note: string;
+  readonly current: boolean;
+}
+
+/** A small table; the route book's totals and stations both use this shape. */
+export interface BookTableView {
+  readonly headers: readonly string[];
+  readonly rows: readonly (readonly string[])[];
+}
+
+export interface BookSectionView {
+  readonly heading: string;
+  readonly startedText: string;
+  readonly stateText: string;
+  readonly acceptanceText: string;
+  readonly headers: readonly string[];
+  readonly stations: readonly BookStationRowView[];
+  readonly emptyText: string;
+}
+
+export interface BookPanelView {
+  readonly title: string;
+  readonly status: string;
+  readonly message: string | null;
+  readonly section: BookSectionView | null;
+  readonly totals: BookTableView | null;
+}
+
+interface BookStationSummary {
+  /** The guide step's own index, used only when executor progress indexed by it. */
+  readonly stepIndex: number | null;
+  readonly mapId: number | null;
+  readonly cell: Cell | null;
+  readonly action: string;
+}
+
+interface BookSectionSummary {
+  readonly title: string;
+  readonly areaName: string | null;
+  readonly stations: readonly BookStationSummary[];
+}
+
+interface BookTotals {
+  readonly sections: number;
+  readonly stations: number;
+  readonly chestsMatched: number;
+  readonly chestsTotal: number;
+  readonly bestiaryMissing: number;
+  readonly bestiaryUnknown: boolean;
+  readonly blueMagicMissing: number;
+  readonly mismatches: number;
+}
+
+interface BookSummary {
+  readonly sections: readonly BookSectionSummary[];
+  readonly totals: BookTotals | null;
+}
+
+interface ProgressSummary {
+  readonly section: string;
+  readonly startedAt: string;
+  readonly finishedAt: string | null;
+  readonly stations: readonly BookStationProgress[];
+  readonly stats: BookSectionStats;
+}
+
+type JsonRead =
+  | { readonly state: "missing" }
+  | { readonly state: "error"; readonly message: string }
+  | { readonly state: "ok"; readonly value: unknown };
+
+const STATION_STATUS_LABELS: Readonly<Record<BookStationStatus, string>> = {
+  pending: "待做",
+  current: "进行中",
+  done: "完成",
+  handoff: "交回",
+  skipped: "跳过",
+};
+
+function countOf(value: unknown): number {
+  return Math.max(0, Math.trunc(num(value) ?? 0));
+}
+
+function cellOf(value: unknown): Cell | null {
+  if (!Array.isArray(value) || value.length < 2) return null;
+  const x = num(value[0]);
+  const y = num(value[1]);
+  return x === undefined || y === undefined ? null : [Math.trunc(x), Math.trunc(y)];
+}
+
+function readBookTotals(value: unknown): BookTotals | null {
+  if (!isRecord(value)) return null;
+  return {
+    sections: countOf(value.sections),
+    stations: countOf(value.stations),
+    chestsMatched: countOf(value.chestsMatched),
+    chestsTotal: countOf(value.chestsTotal),
+    bestiaryMissing: countOf(value.bestiaryMissing),
+    bestiaryUnknown: value.bestiaryUnknown === true,
+    blueMagicMissing: countOf(value.blueMagicMissing),
+    mismatches: countOf(value.mismatches),
+  };
+}
+
+/** The route book JSON is written by task 115; keep the panel tolerant of unknown extra fields. */
+function readBook(value: unknown): BookSummary {
+  if (!isRecord(value)) throw new Error("路线书不是 JSON 对象");
+  if (!Array.isArray(value.sections)) throw new Error("路线书里没有 sections");
+  const sections = value.sections.map((rawSection, sectionIndex): BookSectionSummary => {
+    if (!isRecord(rawSection)) throw new Error(`路线书第 ${sectionIndex + 1} 段不是对象`);
+    const title = text(rawSection.title);
+    if (title === undefined || title.trim() === "") {
+      throw new Error(`路线书第 ${sectionIndex + 1} 段没有标题`);
+    }
+    if (!Array.isArray(rawSection.stations)) {
+      throw new Error(`路线书第 ${sectionIndex + 1} 段没有站点表`);
+    }
+    const stations = rawSection.stations.map((rawStation, stationIndex): BookStationSummary => {
+      if (!isRecord(rawStation)) {
+        throw new Error(`路线书「${title}」第 ${stationIndex + 1} 站不是对象`);
+      }
+      const mapId = num(rawStation.mapId);
+      const stepIndex = num(rawStation.index);
+      return {
+        stepIndex: stepIndex === undefined ? null : Math.trunc(stepIndex),
+        mapId: mapId === undefined ? null : Math.trunc(mapId),
+        cell: cellOf(rawStation.cell),
+        action: text(rawStation.action) ?? "",
+      };
+    });
+    const areaName = text(rawSection.areaName);
+    return {
+      title,
+      areaName: areaName === undefined || areaName.trim() === "" ? null : areaName,
+      stations,
+    };
+  });
+  return { sections, totals: readBookTotals(value.totals) };
+}
+
+function readProgressStats(value: unknown): BookSectionStats {
+  const raw = record(value);
+  const missing = (item: unknown): number | null => {
+    const number = num(item);
+    return number === undefined ? null : Math.max(0, Math.trunc(number));
+  };
+  return {
+    tools: countOf(raw.tools),
+    go: countOf(raw.go),
+    route: countOf(raw.route),
+    handoffs: countOf(raw.handoffs),
+    chestsOpened: countOf(raw.chestsOpened),
+    chestsTotal: countOf(raw.chestsTotal),
+    bestiaryMissing: missing(raw.bestiaryMissing),
+    blueMagicMissing: missing(raw.blueMagicMissing),
+    minutes: countOf(raw.minutes),
+  };
+}
+
+function statusOf(value: unknown): BookStationStatus {
+  return value === "current" || value === "done" || value === "handoff" || value === "skipped"
+    ? value
+    : "pending";
+}
+
+/** The executor writes BookProgress (task 117); a damaged file becomes a Chinese read error. */
+function readProgress(value: unknown): ProgressSummary {
+  if (!isRecord(value)) throw new Error("进度文件不是 JSON 对象");
+  const section = text(value.section);
+  if (section === undefined || section.trim() === "") throw new Error("进度文件里没有段名");
+  const startedAt = text(value.startedAt);
+  if (startedAt === undefined || startedAt.trim() === "") {
+    throw new Error("进度文件里没有开始时间");
+  }
+  if (!Array.isArray(value.stations)) throw new Error("进度文件里没有站点状态");
+  const finishedAt = text(value.finishedAt);
+  const stations = value.stations.flatMap((raw): BookStationProgress[] => {
+    if (!isRecord(raw)) return [];
+    const index = num(raw.index);
+    if (index === undefined) return [];
+    return [
+      {
+        index: Math.trunc(index),
+        status: statusOf(raw.status),
+        note: text(raw.note) ?? "",
+      },
+    ];
+  });
+  return {
+    section,
+    startedAt,
+    finishedAt: finishedAt === undefined || finishedAt.trim() === "" ? null : finishedAt,
+    stations,
+    stats: readProgressStats(value.stats),
+  };
+}
+
+async function readJson(path: string, label: string, signal?: AbortSignal): Promise<JsonRead> {
+  let body: string;
+  try {
+    body = await readFile(path, { encoding: "utf8", signal });
+  } catch (error) {
+    signal?.throwIfAborted();
+    if (isMissingFile(error)) return { state: "missing" };
+    return { state: "error", message: `读不了${label}:${describeError(error)}` };
+  }
+  try {
+    return { state: "ok", value: JSON.parse(body) };
+  } catch (error) {
+    signal?.throwIfAborted();
+    return { state: "error", message: `读不懂${label}:${describeError(error)}` };
+  }
+}
+
+function stateText(progress: ProgressSummary): string {
+  return progress.finishedAt === null ? "进行中" : "已完成";
+}
+
+function clockText(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (value: number): string => String(value).padStart(2, "0");
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function acceptanceText(stats: BookSectionStats): string {
+  const missing = (value: number | null): string => (value === null ? "未知" : String(value));
+  return (
+    `工具 ${stats.tools}(go ${stats.go}、route ${stats.route})、交回 ${stats.handoffs}、` +
+    `宝箱 ${stats.chestsOpened}/${stats.chestsTotal}、图鉴还缺 ${missing(stats.bestiaryMissing)}、` +
+    `青魔法还缺 ${missing(stats.blueMagicMissing)}、用时 ${stats.minutes} 分`
+  );
+}
+
+function totalsView(totals: BookTotals | null): BookTableView | null {
+  if (totals === null) return null;
+  return {
+    headers: ["段", "站点", "宝箱", "图鉴缺", "青魔法缺", "对不上"],
+    rows: [
+      [
+        `${totals.sections} 段`,
+        String(totals.stations),
+        `${totals.chestsMatched}/${totals.chestsTotal}`,
+        `${totals.bestiaryMissing}${totals.bestiaryUnknown ? "+?" : ""}`,
+        String(totals.blueMagicMissing),
+        String(totals.mismatches),
+      ],
+    ],
+  };
+}
+
+function stationProgress(
+  progress: ProgressSummary,
+  position: number,
+  station: BookStationSummary,
+): BookStationProgress | undefined {
+  const byPosition = progress.stations.find((item) => item.index === position);
+  if (byPosition !== undefined) return byPosition;
+  // Some executor builds may have written RouteStation.index (the guide step number) instead.
+  return station.stepIndex === null
+    ? undefined
+    : progress.stations.find((item) => item.index === station.stepIndex);
+}
+
+function sectionView(section: BookSectionSummary, progress: ProgressSummary): BookSectionView {
+  const started = clockText(progress.startedAt);
+  const rows = section.stations.map((station, position): BookStationRowView => {
+    const entry = stationProgress(progress, position, station);
+    const status = entry?.status ?? "pending";
+    return {
+      number: position + 1,
+      mapText: station.mapId === null ? "—" : String(station.mapId),
+      cellText: station.cell === null ? "—" : `(${station.cell[0]},${station.cell[1]})`,
+      action: station.action === "" ? "—" : station.action,
+      statusText: STATION_STATUS_LABELS[status],
+      note: entry?.note ?? "",
+      current: status === "current",
+    };
+  });
+  return {
+    heading: `${section.title}(${section.areaName ?? "没对上地图"})`,
+    startedText: started === "" ? "开始时间未知" : `开始 ${started}`,
+    stateText: stateText(progress),
+    acceptanceText: acceptanceText(progress.stats),
+    headers: ["序号", "图", "坐标", "做什么", "状态"],
+    stations: rows,
+    emptyText: "这一段没有站点",
+  };
+}
+
+/**
+ * Read `.deps/ds/routebook-<game>.json` and `routebook-progress-<game>.json` (tasks 115/117).
+ * Missing files and damaged JSON become Chinese view text, never an exception: the sidebar must
+ * keep showing the rest of the panel.
+ */
+export async function readBookPanel(
+  files: BookFiles,
+  signal?: AbortSignal,
+): Promise<BookPanelView> {
+  const [bookRead, progressRead] = await Promise.all([
+    readJson(files.book, "路线书", signal),
+    readJson(files.progress, "路线书进度", signal),
+  ]);
+  const base: BookPanelView = {
+    title: "路线书",
+    status: "还没有路线书",
+    message: "还没有路线书",
+    section: null,
+    totals: null,
+  };
+  if (bookRead.state === "missing") return base;
+  if (bookRead.state === "error") {
+    return { ...base, status: "路线书读不了", message: bookRead.message };
+  }
+  let book: BookSummary;
+  try {
+    book = readBook(bookRead.value);
+  } catch (error) {
+    return { ...base, status: "路线书读不了", message: `读不懂路线书:${describeError(error)}` };
+  }
+  const totals = totalsView(book.totals);
+  if (progressRead.state === "missing") {
+    return { ...base, status: "还没开始执行", message: "还没开始执行", totals };
+  }
+  if (progressRead.state === "error") {
+    return { ...base, status: "进度读不了", message: progressRead.message, totals };
+  }
+  let progress: ProgressSummary;
+  try {
+    progress = readProgress(progressRead.value);
+  } catch (error) {
+    return {
+      ...base,
+      status: "进度读不了",
+      message: `读不懂路线书进度:${describeError(error)}`,
+      totals,
+    };
+  }
+  const section = book.sections.find((item) => item.title === progress.section);
+  if (section === undefined) {
+    return {
+      ...base,
+      status: stateText(progress),
+      message: `进度里的段「${progress.section}」不在路线书里`,
+      totals,
+    };
+  }
+  return {
+    title: "路线书",
+    status: stateText(progress),
+    message: null,
+    section: sectionView(section, progress),
+    totals,
+  };
+}
+
+/** GET /api/ffpr/book?game=ffN: the route book's current section and acceptance numbers. */
+export function bookRoute(
+  current?: CurrentSource,
+  filesFor: BookFilesOf = defaultBookFiles,
+): ConnectionFetchRoute {
+  return {
+    path: BOOK_ROUTE,
+    methods: ["GET"],
+    requestBody: "buffered",
+    fetch: async (request) => {
+      const at = new Date().toISOString();
+      const choice = await requestedGame(request, current);
+      if (!choice.ok) return json({ ok: false, error: choice.error, at });
+      try {
+        return json({
+          ok: true,
+          at,
+          view: await readBookPanel(filesFor(choice.game.key), request.signal),
+        });
+      } catch (error) {
+        request.signal.throwIfAborted();
+        return json({ ok: false, error: `读不了路线书:${describeError(error)}`, at });
+      }
+    },
+  };
+}
+
 /**
  * Register the routes on the plugin's ctx when this deployment has a connection service. The
  * root panel entry calls this once; the player presets no longer register routes themselves.
@@ -490,6 +910,7 @@ export function installPanel(
   monsterCache?: MonsterCache,
   bestiaryCache?: BestiaryAreaCache,
   current?: CurrentSource,
+  bookFilesFor: BookFilesOf = defaultBookFiles,
 ): void {
   ctx.inject(["connection"], (connectionCtx) => {
     if (current !== undefined) {
@@ -516,6 +937,9 @@ export function installPanel(
     );
     connectionCtx.effect(() =>
       connectionCtx.connection.fetch.register(walkRoute(engineFor, current)),
+    );
+    connectionCtx.effect(() =>
+      connectionCtx.connection.fetch.register(bookRoute(current, bookFilesFor)),
     );
   });
 }

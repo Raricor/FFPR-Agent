@@ -4,6 +4,7 @@ import type { Context } from "@deepseek-ai/cordis";
 import type { ConnectionFetchRoute } from "@deepseek-ai/dsh-client-connection";
 import { CURRENT_ROUTE, currentRoute, type CurrentSource } from "../src/plugin/current.ts";
 import {
+  BOOK_ROUTE,
   PLAYER_ROUTE,
   TACTICIAN_ROUTE,
   WALK_ROUTE,
@@ -75,7 +76,7 @@ void test("player and tactician routes answer from files when their engine is no
   assert.match(String(view.status), /没在运行/u);
 });
 
-void test("installPanel registers the six read routes", () => {
+void test("installPanel registers the seven read routes", () => {
   const server = fakeContext();
   installPanel(server.ctx, () => undefined);
   assert.deepEqual(
@@ -87,6 +88,7 @@ void test("installPanel registers the six read routes", () => {
       PLAYER_ROUTE,
       TACTICIAN_ROUTE,
       WALK_ROUTE,
+      BOOK_ROUTE,
     ],
   );
 });
