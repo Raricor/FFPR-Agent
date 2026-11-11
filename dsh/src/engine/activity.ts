@@ -18,7 +18,7 @@ export const MAX_TEXT = 200;
 export const MAX_FILE_BYTES = 5 * 1024 * 1024;
 export const DEFAULT_LOG_LIMIT = 200;
 
-export const ACTIVITY_KINDS = ["tool", "error", "warn", "event", "link"] as const;
+export const ACTIVITY_KINDS = ["tool", "error", "warn", "event", "link", "plan"] as const;
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
 
 export interface ActivityEntry {

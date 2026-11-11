@@ -58,9 +58,12 @@ void test("activity keeps one line, redacts secrets, and caps the text at 200 ch
   const long = log.entries[1]?.text ?? "";
   assert.equal(Array.from(long).length, MAX_TEXT);
   assert.ok(long.endsWith("…"));
+  // Task 141: the segment executor's step lines use their own kind.
+  log.record("plan", "第 1/9 站 首领 205:14,11 开始");
+  assert.equal(log.entries[2]?.kind, "plan");
   // A blank line would render as an empty row; it is not recorded.
   log.record("link", "\n");
-  assert.equal(log.entries.length, 2);
+  assert.equal(log.entries.length, 3);
 });
 
 void test("activity keeps the newest 500 entries", () => {
