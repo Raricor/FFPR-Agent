@@ -1,0 +1,6 @@
+id,mes_id_name,mes_id_battle,mes_id_description,icon_id,type_id,type_value
+1,MSG_SYSTEM_901,None,None,0,5,1
+2,MSG_ITEM_NAME_901,None,MSG_ITEM_INF_901,0,1,1
+4,MSG_ITEM_NAME_902,None,MSG_ITEM_INF_902,0,1,3
+136,MSG_WEAPON_NAME_901,None,None,0,2,78
+251,MSG_ARMOR_NAME_901,None,None,0,3,78

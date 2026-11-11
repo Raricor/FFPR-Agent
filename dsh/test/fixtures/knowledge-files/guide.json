@@ -1,0 +1,47 @@
+{
+  "fetched": "2026-11-11",
+  "sources": {
+    "steam-walkthrough": "https://example.invalid/ff5"
+  },
+  "walkthrough": [
+    {
+      "title": "Test Town",
+      "text": "",
+      "treasures": [
+        {
+          "kind": "hidden",
+          "n": 1,
+          "where": "Test Town",
+          "text": "Search the barrel for 150 Test Gil."
+        },
+        {
+          "kind": "hidden",
+          "n": 2,
+          "where": "Test Town",
+          "text": "Search the top left box for a Test Tent."
+        },
+        {
+          "kind": "hidden",
+          "n": 3,
+          "where": "Test Town",
+          "text": "Now search the barrel at the opposite side to find a Test Potion."
+        },
+        {
+          "kind": "hidden",
+          "n": 4,
+          "where": "Test Town",
+          "text": "Inspect the bush at the top of the house for a Test Feather."
+        },
+        {
+          "kind": "hidden",
+          "n": 5,
+          "where": "Test Town",
+          "text": "Now do the same thing but at the east side this time. Search the box at the very top for Test Shoes."
+        }
+      ]
+    }
+  ],
+  "missables": [],
+  "bestiary": {},
+  "ludo": []
+}

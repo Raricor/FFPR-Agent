@@ -1,0 +1,60 @@
+{
+  "id": 30,
+  "name": "Map_92010",
+  "areaId": 9,
+  "saveAvailable": true,
+  "chests": [
+    {
+      "cell": [30, 13],
+      "name": "测试羽毛",
+      "contentId": 4,
+      "contentNum": 1,
+      "flagId": 0,
+      "hidden": true
+    },
+    {
+      "cell": [40, 13],
+      "name": "测试鞋子",
+      "contentId": 251,
+      "contentNum": 1,
+      "flagId": 1,
+      "hidden": true
+    },
+    {
+      "cell": [29, 28],
+      "name": "测试帐篷",
+      "contentId": 12,
+      "contentNum": 1,
+      "flagId": 2,
+      "hidden": true
+    },
+    {
+      "cell": [30, 28],
+      "name": "测试药水",
+      "contentId": 2,
+      "contentNum": 1,
+      "flagId": 3,
+      "hidden": true
+    },
+    {
+      "cell": [45, 36],
+      "name": "150测试币",
+      "contentId": 1,
+      "contentNum": 150,
+      "flagId": 4,
+      "hidden": true
+    }
+  ],
+  "savePoints": [
+    {
+      "cell": [5, 6],
+      "name": "测试存档点"
+    }
+  ],
+  "restorePoints": [
+    {
+      "cell": [6, 7],
+      "name": "测试旅店"
+    }
+  ]
+}

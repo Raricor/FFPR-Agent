@@ -1,0 +1,8 @@
+id,map_name,asset_name,map_title,monster_set_id,encount_area_grid_id,area_id,save_availability
+1,Map_91010,map_91010,None,0,1,1,1
+2,Map_91010_1,map_91010,None,0,1,1,1
+30,Map_92010,map_92010,None,0,0,9,1
+192,Map_93021_1,map_93021,None,91,0,81,1
+193,Map_93021_2,map_93021,None,92,0,81,1
+194,Map_93021_3,map_93021,None,92,0,81,1
+410,Map_94060,map_94060,None,184,0,65,1

@@ -1,0 +1,11 @@
+{
+  "layers": [
+    {
+      "name": "GroundHiddenPassage",
+      "type": "tilelayer",
+      "width": 3,
+      "height": 2,
+      "data": [0, 0, 1, 0, 2, 0]
+    }
+  ]
+}

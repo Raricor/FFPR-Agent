@@ -1,0 +1,144 @@
+{
+  "width": 64,
+  "height": 64,
+  "layers": [
+    {
+      "name": "GroundObject",
+      "type": "objectgroup",
+      "objects": [
+        {
+          "gid": 1023,
+          "id": 1,
+          "name": "宝箱A",
+          "x": 480,
+          "y": 224,
+          "width": 16,
+          "height": 16,
+          "properties": [
+            { "name": "object_type", "type": "int", "value": 7 },
+            { "name": "content_id", "type": "int", "value": 4 },
+            { "name": "content_num", "type": "int", "value": 1 },
+            { "name": "flag_id", "type": "int", "value": 0 },
+            { "name": "pick_up", "type": "bool", "value": false },
+            { "name": "interactive_icon_type", "type": "int", "value": 5 }
+          ]
+        },
+        {
+          "gid": 1023,
+          "id": 2,
+          "name": "测试鞋子",
+          "x": 640,
+          "y": 224,
+          "width": 16,
+          "height": 16,
+          "properties": [
+            { "name": "object_type", "type": "int", "value": 7 },
+            { "name": "content_id", "type": "int", "value": 251 },
+            { "name": "content_num", "type": "int", "value": 1 },
+            { "name": "flag_id", "type": "int", "value": 1 },
+            { "name": "pick_up", "type": "bool", "value": false },
+            { "name": "interactive_icon_type", "type": "int", "value": 5 }
+          ]
+        },
+        {
+          "gid": 996,
+          "id": 3,
+          "name": "测试馆1F",
+          "x": 288,
+          "y": 736,
+          "width": 16,
+          "height": 16,
+          "properties": [
+            { "name": "object_type", "type": "int", "value": 3 },
+            { "name": "map_id", "type": "int", "value": 31 },
+            { "name": "point_id", "type": "int", "value": 1 }
+          ]
+        },
+        {
+          "gid": 998,
+          "id": 4,
+          "name": "第一世界",
+          "x": 512,
+          "y": 832,
+          "width": 16,
+          "height": 16,
+          "properties": [
+            { "name": "object_type", "type": "int", "value": 2 },
+            { "name": "script_id", "type": "int", "value": 1100 }
+          ]
+        },
+        {
+          "gid": 1024,
+          "id": 5,
+          "name": "测试NPC（蓝发）",
+          "x": 320,
+          "y": 480,
+          "width": 16,
+          "height": 16,
+          "properties": [
+            { "name": "object_type", "type": "int", "value": 6 },
+            { "name": "message_key", "type": "string", "value": "TEST_MSG_001" },
+            { "name": "script_id", "type": "int", "value": 0 }
+          ]
+        },
+        {
+          "gid": 1003,
+          "id": 6,
+          "name": "SavePoint",
+          "x": 80,
+          "y": 112,
+          "width": 16,
+          "height": 16,
+          "properties": [{ "name": "object_type", "type": "int", "value": 9 }]
+        },
+        {
+          "gid": 1003,
+          "id": 7,
+          "name": "SavePoint",
+          "x": 80,
+          "y": 112,
+          "width": 16,
+          "height": 16,
+          "properties": [{ "name": "object_type", "type": "int", "value": 10 }]
+        },
+        {
+          "gid": 1003,
+          "id": 8,
+          "name": "休憩处",
+          "x": 96,
+          "y": 128,
+          "width": 16,
+          "height": 16,
+          "properties": [{ "name": "object_type", "type": "int", "value": 5 }]
+        },
+        {
+          "id": 9,
+          "name": "MoveArea",
+          "x": 320,
+          "y": 432,
+          "width": 16,
+          "height": 48,
+          "properties": [{ "name": "object_type", "type": "int", "value": 13 }]
+        },
+        {
+          "id": 10,
+          "name": "MoveArea",
+          "x": 416,
+          "y": 496,
+          "width": 112,
+          "height": 48,
+          "properties": [{ "name": "object_type", "type": "int", "value": 13 }]
+        },
+        {
+          "id": 11,
+          "name": "谜题",
+          "x": 0,
+          "y": 0,
+          "width": 16,
+          "height": 16,
+          "properties": []
+        }
+      ]
+    }
+  ]
+}

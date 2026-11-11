@@ -1,0 +1,11 @@
+{
+  "layers": [
+    {
+      "name": "GroundDamage",
+      "type": "tilelayer",
+      "width": 2,
+      "height": 2,
+      "data": [0, 2, 0, 0]
+    }
+  ]
+}

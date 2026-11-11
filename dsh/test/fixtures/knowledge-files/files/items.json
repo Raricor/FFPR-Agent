@@ -1,0 +1,74 @@
+{
+  "1": {
+    "id": 1,
+    "kind": "gil",
+    "typeId": 5,
+    "typeValue": 1,
+    "nameKey": "MSG_SYSTEM_901",
+    "names": {
+      "ja": "测试金币",
+      "en": "Test Gil",
+      "zhc": "测试金币"
+    }
+  },
+  "2": {
+    "id": 2,
+    "kind": "item",
+    "typeId": 1,
+    "typeValue": 1,
+    "nameKey": "MSG_ITEM_NAME_901",
+    "names": {
+      "ja": "测试药水",
+      "en": "Test Potion",
+      "zhc": "测试药水"
+    }
+  },
+  "4": {
+    "id": 4,
+    "kind": "item",
+    "typeId": 1,
+    "typeValue": 3,
+    "nameKey": "MSG_ITEM_NAME_902",
+    "names": {
+      "ja": "测试羽毛",
+      "en": "Test Feather",
+      "zhc": "测试羽毛"
+    }
+  },
+  "5": {
+    "id": 5,
+    "kind": "item",
+    "typeId": 1,
+    "typeValue": 4,
+    "nameKey": "MSG_ITEM_NAME_903",
+    "names": {
+      "ja": "测试圣水",
+      "en": "Test Ether",
+      "zhc": "测试圣水"
+    }
+  },
+  "12": {
+    "id": 12,
+    "kind": "item",
+    "typeId": 1,
+    "typeValue": 11,
+    "nameKey": "MSG_ITEM_NAME_904",
+    "names": {
+      "ja": "测试帐篷",
+      "en": "Test Tent",
+      "zhc": "测试帐篷"
+    }
+  },
+  "251": {
+    "id": 251,
+    "kind": "armor",
+    "typeId": 3,
+    "typeValue": 1,
+    "nameKey": "MSG_ARMOR_NAME_901",
+    "names": {
+      "ja": "测试鞋子",
+      "en": "Test Shoes",
+      "zhc": "测试鞋子"
+    }
+  }
+}

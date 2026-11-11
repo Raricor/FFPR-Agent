@@ -1,0 +1,36 @@
+{
+  "layers": [
+    {
+      "name": "GroundObject",
+      "type": "objectgroup",
+      "objects": [
+        {
+          "gid": 998,
+          "id": 47,
+          "name": "sc_e_0021:测试之家",
+          "x": 528,
+          "y": 400,
+          "width": 16,
+          "height": 16,
+          "properties": [
+            { "name": "object_type", "type": "int", "value": 2 },
+            { "name": "script_id", "type": "int", "value": 56 }
+          ]
+        },
+        {
+          "gid": 1024,
+          "id": 48,
+          "name": "测试NPC（蓝发）",
+          "x": 320,
+          "y": 480,
+          "width": 16,
+          "height": 16,
+          "properties": [
+            { "name": "object_type", "type": "int", "value": 6 },
+            { "name": "message_key", "type": "string", "value": "TEST_MSG_001" }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "game": "ff5",
+  "build": "1.0.0",
+  "bridge": "0.14.6",
+  "exportedAt": null,
+  "table": "encounters",
+  "rows": [
+    {
+      "scope": "map",
+      "mapId": 192,
+      "areaId": null,
+      "groupId": 111,
+      "weight": 100,
+      "monsterIds": [59]
+    },
+    {
+      "scope": "area",
+      "mapId": null,
+      "areaId": 65,
+      "groupId": 111,
+      "weight": 100,
+      "monsterIds": [59]
+    }
+  ]
+}

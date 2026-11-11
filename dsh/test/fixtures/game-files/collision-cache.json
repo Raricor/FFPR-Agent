@@ -1,0 +1,12 @@
+{
+  "30": {
+    "name": "CollisionGroup",
+    "searchLayer": 1,
+    "layers": [
+      {
+        "name": "GroundCollision",
+        "rows": ["0100", "0007", "0040"]
+      }
+    ]
+  }
+}

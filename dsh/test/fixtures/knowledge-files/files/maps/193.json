@@ -1,0 +1,18 @@
+{
+  "id": 193,
+  "name": "Map_93021_2",
+  "areaId": 81,
+  "saveAvailable": true,
+  "chests": [
+    {
+      "cell": [10, 10],
+      "name": "测试药水",
+      "contentId": 2,
+      "contentNum": 1,
+      "flagId": 10,
+      "hidden": false
+    }
+  ],
+  "savePoints": [],
+  "restorePoints": []
+}

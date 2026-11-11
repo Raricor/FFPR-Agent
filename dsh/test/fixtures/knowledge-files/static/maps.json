@@ -1,0 +1,58 @@
+{
+  "game": "ff5",
+  "build": "1.0.0",
+  "bridge": "0.14.6",
+  "exportedAt": null,
+  "table": "maps",
+  "rows": [
+    {
+      "id": 1,
+      "name": "Map_91010",
+      "areaId": 1,
+      "areaName": "世界地图",
+      "areaType": "0"
+    },
+    {
+      "id": 2,
+      "name": "Map_91010_1",
+      "areaId": 1,
+      "areaName": "世界地图",
+      "areaType": "0"
+    },
+    {
+      "id": 30,
+      "name": "Map_92010",
+      "areaId": 9,
+      "areaName": "测试村",
+      "areaType": "1"
+    },
+    {
+      "id": 192,
+      "name": "Map_93021_1",
+      "areaId": 81,
+      "areaName": "测试洞窟",
+      "areaType": "1"
+    },
+    {
+      "id": 193,
+      "name": "Map_93021_2",
+      "areaId": 81,
+      "areaName": "测试洞窟",
+      "areaType": "1"
+    },
+    {
+      "id": 194,
+      "name": "Map_93021_3",
+      "areaId": 81,
+      "areaName": "测试洞窟",
+      "areaType": "1"
+    },
+    {
+      "id": 410,
+      "name": "Map_94060",
+      "areaId": 65,
+      "areaName": "测试遗迹",
+      "areaType": "1"
+    }
+  ]
+}

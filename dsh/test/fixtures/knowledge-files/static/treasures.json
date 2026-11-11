@@ -1,0 +1,20 @@
+{
+  "game": "ff5",
+  "build": "1.0.0",
+  "bridge": "0.14.6",
+  "exportedAt": null,
+  "table": "treasures",
+  "rows": [
+    {
+      "id": 999,
+      "areaId": 9,
+      "mapId": 30,
+      "cell": [0, 0],
+      "hidden": false,
+      "contentId": 99,
+      "contentName": "旧的错误宝箱",
+      "count": 1,
+      "flag": "999"
+    }
+  ]
+}
