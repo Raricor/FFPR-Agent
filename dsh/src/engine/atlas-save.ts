@@ -83,13 +83,17 @@ export class AtlasSave {
     } catch (error) {
       if (isMissingFile(error)) return store;
       signal?.throwIfAborted();
-      throw new Error(`读不了本档地图记录 ${path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不了本档地图记录 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     let parsed: unknown;
     try {
       parsed = JSON.parse(body);
     } catch (error) {
-      throw new Error(`读不懂本档地图记录 ${path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不懂本档地图记录 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     if (!isRecord(parsed)) throw new Error(`本档地图记录 ${path} 不是 JSON 对象`);
     const live = isRecord(parsed.live) ? parsed.live : {};

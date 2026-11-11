@@ -14,7 +14,12 @@ import { Game } from "../src/engine/game.ts";
 import type { Laptop } from "../src/engine/laptop.ts";
 import { FakePilot } from "./fake-pilot.ts";
 
-const LAPTOP: Laptop = { host: "laptop", user: "player", key: "/tmp/key", root: "C:/ffpr" };
+const LAPTOP: Laptop = {
+  host: "laptop",
+  user: "player",
+  key: "/tmp/key",
+  root: "C:/ffpr",
+};
 
 void test("a save snapshot is used when an earlier count is loaded", async () => {
   const directory = await mkdtemp(join(tmpdir(), "ffpr-atlas-earlier-"));
@@ -122,8 +127,12 @@ void test("the game snapshots even after restore moved the count first", async (
     await game.atlas.visit(31, "运河", [], []);
     game.atlasSave.restore(11); // completion ran before the save snapshot
     const pilot = new FakePilot();
-    pilot.on("pos", { pos: { state: "Player", map: 31, cell: [1, 1], saves: 11 } });
-    pilot.onQuery("achievements", { achievements: { defs: [], save: null, bestiary: null } });
+    pilot.on("pos", {
+      pos: { state: "Player", map: 31, cell: [1, 1], saves: 11 },
+    });
+    pilot.onQuery("achievements", {
+      achievements: { defs: [], save: null, bestiary: null },
+    });
     await game.captureBestiary(pilot);
 
     const snapshot = game.atlasSave.snapshotFor(11);
@@ -152,8 +161,12 @@ void test("the game snapshots on a save and a reloaded game starts from it", asy
     await game.atlas.visit(30, "图尔村", [], []);
     await game.atlas.visit(31, "运河", [], []);
     const pilot = new FakePilot();
-    pilot.on("pos", { pos: { state: "Player", map: 31, cell: [1, 1], saves: 2 } });
-    pilot.onQuery("achievements", { achievements: { defs: [], save: null, bestiary: null } });
+    pilot.on("pos", {
+      pos: { state: "Player", map: 31, cell: [1, 1], saves: 2 },
+    });
+    pilot.onQuery("achievements", {
+      achievements: { defs: [], save: null, bestiary: null },
+    });
     await game.captureBestiary(pilot);
 
     await game.atlas.visit(32, "城堡", [], []);

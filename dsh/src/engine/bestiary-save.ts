@@ -93,13 +93,17 @@ export class BestiarySave {
     } catch (error) {
       if (isMissingFile(error)) return store;
       signal?.throwIfAborted();
-      throw new Error(`读不了本档图鉴 ${path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不了本档图鉴 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     let parsed: unknown;
     try {
       parsed = JSON.parse(body);
     } catch (error) {
-      throw new Error(`读不懂本档图鉴 ${path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不懂本档图鉴 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     if (!isRecord(parsed)) throw new Error(`本档图鉴 ${path} 不是 JSON 对象`);
     const snapshots = isRecord(parsed.snapshots) ? parsed.snapshots : {};
@@ -186,7 +190,10 @@ export class BestiarySave {
 
   /** Snapshot at a successful save's count; also writes the file. */
   async snapshot(saves: number, at = new Date().toISOString()): Promise<void> {
-    const snapshot = { at, numbers: [...this.numbers].sort((left, right) => left - right) };
+    const snapshot = {
+      at,
+      numbers: [...this.numbers].sort((left, right) => left - right),
+    };
     this.snapshots.set(saves, snapshot);
     this.saves = saves;
     this.backfill = null;
@@ -204,7 +211,9 @@ export class BestiarySave {
     try {
       await writeFile(this.path, JSON.stringify(data, null, 1) + "\n", "utf8");
     } catch (error) {
-      throw new Error(`写不了本档图鉴 ${this.path}:${describeError(error)}`, { cause: error });
+      throw new Error(`写不了本档图鉴 ${this.path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
   }
 }

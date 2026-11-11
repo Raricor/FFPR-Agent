@@ -32,7 +32,9 @@ const MOVING_GIMMICK_FLAG = "gimmick";
  * fake link (which would show up in the model's map view).
  */
 const MOVING_GIMMICK_MARK = Symbol("moving-gimmick");
-type MarkedMoves = ObservedMove[] & { readonly [MOVING_GIMMICK_MARK]?: boolean };
+type MarkedMoves = ObservedMove[] & {
+  readonly [MOVING_GIMMICK_MARK]?: boolean;
+};
 
 /** Task 99: whether `moves()` came from a map recorded as having a moving gimmick. */
 export function movesFromMovingGimmickMap(moves: readonly ObservedMove[]): boolean {
@@ -79,13 +81,17 @@ export class Atlas {
     } catch (error) {
       if (isMissingFile(error)) return atlas;
       signal?.throwIfAborted();
-      throw new Error(`读不了地图记录 ${path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不了地图记录 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     let parsed: unknown;
     try {
       parsed = JSON.parse(body);
     } catch (error) {
-      throw new Error(`读不懂地图记录 ${path}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不懂地图记录 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     if (!isRecord(parsed)) throw new Error(`地图记录 ${path} 不是 JSON 对象`);
     for (const [mapId, entry] of Object.entries(parsed)) {
@@ -133,7 +139,11 @@ export class Atlas {
         ...(before.landLayer !== undefined ? { landLayer: before.landLayer } : {}),
       };
     });
-    const entry: Json = { name: name || "", exits: merged, chests: [...chests] };
+    const entry: Json = {
+      name: name || "",
+      exits: merged,
+      chests: [...chests],
+    };
     if (Array.isArray(old.links) && old.links.length > 0) entry.links = old.links;
     // Task 99: look_around rewrites the entry from the entities, so keep a flag learned by
     // walking or from an earlier look.
@@ -379,7 +389,9 @@ export class Atlas {
     try {
       await writeFile(this.path, JSON.stringify(data, null, 1), "utf8");
     } catch (error) {
-      throw new Error(`写不了地图记录 ${this.path}:${describeError(error)}`, { cause: error });
+      throw new Error(`写不了地图记录 ${this.path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
   }
 

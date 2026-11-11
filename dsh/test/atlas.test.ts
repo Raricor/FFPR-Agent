@@ -161,7 +161,14 @@ void test("a lift ride is a cross-map edge that is updated, not duplicated", asy
     await atlas.ride(257, [4, 6], [3, 6], "Left", 634, [4, 5]); // landing updated
     await atlas.ride(257, [4, 6], [3, 6], "Left", 634, [4, 5]); // unchanged
     assert.deepEqual(atlas.rides(257), [
-      { cell: [4, 6], press: [3, 6], dir: "Left", to: 634, land: [4, 5], how: "坐一趟" },
+      {
+        cell: [4, 6],
+        press: [3, 6],
+        dir: "Left",
+        to: 634,
+        land: [4, 5],
+        how: "坐一趟",
+      },
     ]);
     // A ride is not a same-map conveyor/fall: the indoor planner must not see it as a move.
     assert.deepEqual(atlas.moves(257), []);
@@ -183,12 +190,30 @@ void test("atlas keeps walked gimmicks as directed moves", async () => {
   try {
     const atlas = await Atlas.load(path);
     await atlas.visit(261, "火力船", [], []);
-    await atlas.link(261, [13, 23], [13, 22], "传送带", { kind: "conveyor", toLayer: 1 });
-    await atlas.link(261, [15, 19], [15, 19], "换层到第 2 层", { kind: "layer", toLayer: 2 });
+    await atlas.link(261, [13, 23], [13, 22], "传送带", {
+      kind: "conveyor",
+      toLayer: 1,
+    });
+    await atlas.link(261, [15, 19], [15, 19], "换层到第 2 层", {
+      kind: "layer",
+      toLayer: 2,
+    });
     await atlas.visit(261, "火力船", [], []); // a later look keeps the moves
     assert.deepEqual(atlas.moves(261), [
-      { from: [13, 23], to: [13, 22], how: "传送带", kind: "conveyor", toLayer: 1 },
-      { from: [15, 19], to: [15, 19], how: "换层到第 2 层", kind: "layer", toLayer: 2 },
+      {
+        from: [13, 23],
+        to: [13, 22],
+        how: "传送带",
+        kind: "conveyor",
+        toLayer: 1,
+      },
+      {
+        from: [15, 19],
+        to: [15, 19],
+        how: "换层到第 2 层",
+        kind: "layer",
+        toLayer: 2,
+      },
     ]);
     assert.equal(atlas.links(261), "在 (13, 23) 传送带 到 (13, 22)、在 (15, 19) 换层到第 2 层");
   } finally {
