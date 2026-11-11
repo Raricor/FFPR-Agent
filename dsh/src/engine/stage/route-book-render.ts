@@ -21,19 +21,26 @@ export function renderRouteBook(book: RouteBook): string {
     "",
     "## 总表",
     "",
-    "| # | 段 | 地区 | 站点 | 宝箱 | 图鉴缺 | 青魔法缺 | 回头学 | 对不上 |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| # | 段 | 地区 | 站点 | 剧情站有坐标 | 宝箱 | 图鉴缺 | 青魔法缺 | 回头学 | 对不上 |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   ];
   book.sections.forEach((section, index) => {
     lines.push(
-      `| ${index + 1} | ${markdown(section.title)} | ${markdown(section.areaName ?? "没对上地图")} | ${section.stations.length} | ${section.chestsMatched}/${section.chestsTotal} | ${missingText(section)} | ${blueMissingText(section)} | ${section.revisit === null ? "—" : section.revisit.stations.length} | ${section.mismatches.length} |`,
+      `| ${index + 1} | ${markdown(section.title)} | ${markdown(section.areaName ?? "没对上地图")} | ${section.stations.length} | ${storyText(section)} | ${section.chestsMatched}/${section.chestsTotal} | ${missingText(section)} | ${blueMissingText(section)} | ${section.revisit === null ? "—" : section.revisit.stations.length} | ${section.mismatches.length} |`,
     );
   });
   const blueUnknown = book.sections.some((section) =>
     section.blueMagic.some((spell) => spell.learned === null),
   );
+  const story = book.sections.reduce(
+    (sum, section) => {
+      const counts = storyCounts(section);
+      return { located: sum.located + counts.located, total: sum.total + counts.total };
+    },
+    { located: 0, total: 0 },
+  );
   lines.push(
-    `| 合计 | ${book.totals.sections} 段 | — | ${book.totals.stations} | ${book.totals.chestsMatched}/${book.totals.chestsTotal} | ${book.totals.bestiaryMissing}${book.totals.bestiaryUnknown ? "+?" : ""} | ${book.totals.blueMagicMissing}${blueUnknown ? "+?" : ""} | ${book.totals.revisit} | ${book.totals.mismatches} |`,
+    `| 合计 | ${book.totals.sections} 段 | — | ${book.totals.stations} | ${storyRatio(story)} | ${book.totals.chestsMatched}/${book.totals.chestsTotal} | ${book.totals.bestiaryMissing}${book.totals.bestiaryUnknown ? "+?" : ""} | ${book.totals.blueMagicMissing}${blueUnknown ? "+?" : ""} | ${book.totals.revisit} | ${book.totals.mismatches} |`,
     "",
   );
   book.sections.forEach((section, index) => {
@@ -243,6 +250,26 @@ function renderGrindRows(lines: string[], rows: readonly RouteGrind[], emptyText
     );
   }
   lines.push("");
+}
+
+/** Task 122: cutscene/dialog/mechanism stations, and how many already have a real cell. */
+function storyCounts(section: RouteSection): { located: number; total: number } {
+  const stations = section.stations.filter(
+    (station) =>
+      station.kind === "cutscene" || station.kind === "talk" || station.kind === "switch",
+  );
+  return {
+    located: stations.filter((station) => station.mapId !== null && station.cell !== null).length,
+    total: stations.length,
+  };
+}
+
+function storyText(section: RouteSection): string {
+  return storyRatio(storyCounts(section));
+}
+
+function storyRatio(counts: { located: number; total: number }): string {
+  return counts.total === 0 ? "—" : `${counts.located}/${counts.total}`;
 }
 
 function missingText(section: RouteSection): string {

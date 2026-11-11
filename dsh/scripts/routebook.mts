@@ -14,6 +14,7 @@ import { loadKnowledge } from "../src/engine/knowledge/index.ts";
 import { DEPS } from "../src/engine/paths.ts";
 import { parseWalkthrough } from "../src/engine/stage/guide-steps.ts";
 import { buildRouteBook } from "../src/engine/stage/route-book.ts";
+import { readRouteBookFiles } from "../src/engine/stage/route-book-load.ts";
 import { renderRouteBook } from "../src/engine/stage/route-book-render.ts";
 import { isRecord } from "../src/engine/values.ts";
 
@@ -110,6 +111,7 @@ async function main(): Promise<void> {
   const atlas = await Atlas.load(join(DEPS, "ds", `atlas-${options.game}.json`));
   const visitOrder = await readVisitOrder(options.game);
   const bestiary = await bestiaryOf(options.game, knowledge);
+  const files = await readRouteBookFiles(options.game, knowledge.filesDir);
   const book = buildRouteBook({
     sections,
     fromSection: options.from,
@@ -118,6 +120,7 @@ async function main(): Promise<void> {
     knowledge,
     atlas,
     visitOrder,
+    ...(files === null ? {} : { files }),
     save: {
       bestiary,
       blueMagic: null,

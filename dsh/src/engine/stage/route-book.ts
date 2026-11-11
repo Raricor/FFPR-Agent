@@ -13,7 +13,7 @@
  */
 
 import type { Atlas } from "../atlas.ts";
-import type { Cell } from "../nav.ts";
+import { LAYER_Z, type Cell } from "../nav.ts";
 import {
   areaKeys,
   blueMagicSources,
@@ -21,6 +21,8 @@ import {
   missablesAfter,
   monstersIn,
   normalizeName,
+  restorePointsIn,
+  savePointsIn,
   type BlueMagicSource,
   type ChestKnowledge,
   type Knowledge,
@@ -40,6 +42,43 @@ export interface RouteBookSave {
   readonly jobs: readonly string[] | null;
   /** Opened chests as `"mapId:x,y"`. */
   readonly openedChests: ReadonlySet<string> | null;
+  /**
+   * Story flags this save has already set. Optional: when the caller cannot read them, event
+   * triggers are paired in event-number order instead.
+   */
+  readonly storyFlags?: ReadonlySet<string> | null;
+}
+
+/** One cutscene/mechanism trigger read from the game files (task 122). */
+export interface RouteStoryEvent {
+  readonly mapId: number;
+  /** The Tiled event file ("ev_e_0021.json"). */
+  readonly file: string;
+  /** The object name, often "sc_e_0021:..." or a Japanese description. */
+  readonly name: string;
+  readonly cell: Cell | null;
+  /** The trigger rectangle in cells, inclusive. */
+  readonly rect: {
+    readonly x1: number;
+    readonly y1: number;
+    readonly x2: number;
+    readonly y2: number;
+  } | null;
+  readonly scriptId: number | null;
+}
+
+/** One NPC read from the game files; the three-language names are optional when present. */
+export interface RouteNpc {
+  readonly mapId: number;
+  readonly name: string;
+  readonly cell: Cell;
+  readonly names?: { readonly ja?: string; readonly en?: string; readonly zhc?: string } | null;
+}
+
+/** The game files' story data the book aligns against (task 122). */
+export interface RouteBookFiles {
+  readonly events: readonly RouteStoryEvent[];
+  readonly npcs: readonly RouteNpc[];
 }
 
 export interface RouteBookInput {
@@ -54,6 +93,8 @@ export interface RouteBookInput {
   readonly knowledge: Knowledge;
   /** The map records: exits, chests and links. */
   readonly atlas: Atlas;
+  /** Task 122: events and NPCs from `.deps/knowledge/<game>/files/maps/`. */
+  readonly files?: RouteBookFiles | null;
   /** Previous saves' first-arrival order; names may repeat. */
   readonly visitOrder: readonly string[];
   readonly save: RouteBookSave;
@@ -104,6 +145,16 @@ export interface RouteChest {
   readonly candidates: readonly RouteChestCandidate[];
 }
 
+/** Task 122: what a "回头学" station grinds until, and why it is skipped when it is. */
+export interface RouteStationGrind {
+  /** The blue spell this stop learns; null for a bestiary stop. */
+  readonly blueMagic: string | null;
+  /** The bestiary number or name this stop registers; null for a blue-magic stop. */
+  readonly bestiary: string | number | null;
+  /** Chinese reason not to execute this stop (no Blue Mage, already known, unknown save). */
+  readonly skipReason: string | null;
+}
+
 /** A guide sentence kept out of the station table (note lines and unmatched point mentions). */
 export interface RouteNote {
   readonly index: number;
@@ -126,6 +177,8 @@ export interface RouteStation {
   readonly chest: RouteChest | null;
   /** Set when the guide's save/heal line did not match a real point. */
   readonly pointCandidate: "save" | "heal" | null;
+  /** For a "回头学" station: the grind target and, when non-null, why it is skipped. */
+  readonly grind?: RouteStationGrind | null;
 }
 
 export interface RouteMonster {
@@ -266,6 +319,44 @@ interface BuildContext {
   readonly save: RouteBookSave;
   readonly allBlueMagic: readonly BlueMagicSource[];
   readonly missableByBook: ReadonlyMap<number, string>;
+  readonly files: RouteBookFiles | null;
+  readonly cache: BuildCache;
+  readonly mention: MentionIndex;
+}
+
+/**
+ * Per-build lookups (task 124, 11-11). The book asks the same map/monster questions thousands of
+ * times; each of these functions is pure against the build inputs, so one map per build keeps
+ * the answers without sharing state between calls.
+ */
+interface BuildCache {
+  readonly mapById: Map<number, MapKnowledge>;
+  readonly mapNames: Map<number, string>;
+  readonly mapAreas: Map<number, string | null>;
+  readonly connected: Map<number, readonly number[]>;
+  readonly monstersByBook: Map<number, readonly MonsterKnowledge[]>;
+  readonly mapsByKeys: Map<string, readonly MapKnowledge[]>;
+  readonly monsterNamesByMap: Map<number, ReadonlySet<string>>;
+}
+
+/**
+ * "Which sections mention this area?" (task 124). Built once from every section's title, places
+ * and step text, keyed by each mentioned name and its guide aliases. `laterMention` used to
+ * rescan the whole guide for every missed monster; this turns it into a table lookup.
+ */
+interface MentionIndex {
+  /** Candidate name (normalized own value or guide alias) → section orders, ascending. */
+  readonly orders: ReadonlyMap<string, readonly number[]>;
+}
+
+export interface BuildOutcome {
+  readonly book: RouteBook;
+  readonly timedOut: boolean;
+}
+
+interface BuildBudget {
+  /** Epoch milliseconds after which the build stops and keeps what it has. */
+  readonly deadline: number;
 }
 
 interface AtlasExit {
@@ -310,6 +401,8 @@ interface ReturnCheck {
 const SAVE_POINT = /save\s*point|savepoint|存档点|セーブポイント/iu;
 const RECOVERY_POINT =
   /recovery\s*(?:point|device)|restore\s*(?:point|device)|回复装置|回復装置|回复点|回復点|全回复|全回復|healing\s*point/iu;
+/** The guide names a spring or a pot without calling it a "recovery point" (task 122). */
+const GUIDE_RECOVERY = /\bspring\b|\bfountain\b|healing\s+pot|回復の壺|回复壶|回复的壶|壺/iu;
 const REAL_SAVE_LINE = /save\s*point|savepoint|consecrated circle|存档点|セーブポイント/iu;
 
 const ACTION_LABELS: Readonly<Record<GuideStepKind, string>> = {
@@ -329,20 +422,87 @@ const ACTION_LABELS: Readonly<Record<GuideStepKind, string>> = {
 
 /** Build the whole book. Pure: the same input always gives the same book. */
 export function buildRouteBook(input: RouteBookInput): RouteBook {
+  return runBuild(buildRouteBookSteps(input));
+}
+
+/**
+ * Build the book while yielding to the event loop after each section (task 124, 11-11: the
+ * runtime build blocked the whole dsh process for minutes). Stops at the budget and returns the
+ * sections finished so far with `timedOut: true`, so the caller can fall back or use the part.
+ */
+export async function buildRouteBookAsync(
+  input: RouteBookInput,
+  timeBudgetMs: number,
+  signal?: AbortSignal,
+): Promise<BuildOutcome> {
+  const budget: BuildBudget = { deadline: Date.now() + Math.max(0, timeBudgetMs) };
+  const steps = buildRouteBookSteps(input, budget, false);
+  let step = steps.next();
+  while (!step.done) {
+    signal?.throwIfAborted();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    step = steps.next();
+  }
+  return step.value;
+}
+
+function runBuild(steps: Generator<void, BuildOutcome>): RouteBook {
+  let step = steps.next();
+  while (!step.done) step = steps.next();
+  return step.value.book;
+}
+
+function budgetSpent(budget: BuildBudget | undefined): boolean {
+  return budget !== undefined && Date.now() >= budget.deadline;
+}
+
+function emptyBook(input: RouteBookInput): RouteBook {
+  return {
+    fromSection: input.fromSection,
+    fromPlace: input.fromPlace ?? null,
+    toSection: input.toSection,
+    sections: [],
+    totals: totalsOf([]),
+  };
+}
+
+function* buildRouteBookSteps(
+  input: RouteBookInput,
+  budget?: BuildBudget,
+  exactMapOrders = true,
+): Generator<void, BuildOutcome> {
   const selected = selectSections(input.sections, input.fromSection, input.toSection);
   const sections =
     input.fromPlace === undefined ? selected : trimFromPlace(selected, input.fromPlace);
+  yield;
+  if (budgetSpent(budget)) return { book: emptyBook(input), timedOut: true };
   const ctx: BuildContext = {
     knowledge: input.knowledge,
     atlas: input.atlas,
     save: input.save,
     allBlueMagic: blueMagicSources(input.knowledge, { learned: [] }),
     missableByBook: missableRules(input.knowledge),
+    files: input.files ?? null,
+    cache: {
+      mapById: new Map(),
+      mapNames: new Map(),
+      mapAreas: new Map(),
+      connected: new Map(),
+      monstersByBook: new Map(),
+      mapsByKeys: new Map(),
+      monsterNamesByMap: new Map(),
+    },
+    mention: buildMentionIndex(input.sections, input.knowledge),
   };
-  const direct = sections.map((section) => directAlignment(section, ctx));
+  const direct: Alignment[] = [];
+  for (const section of sections) {
+    direct.push(directAlignment(section, ctx));
+    yield;
+    if (budgetSpent(budget)) return { book: emptyBook(input), timedOut: true };
+  }
   const fromIndex = input.sections.findIndex((section) => section.title === input.fromSection);
   const toIndex = input.sections.findIndex((section) => section.title === input.toSection);
-  const timeline = buildBlueTimeline(input, ctx, fromIndex, toIndex, direct);
+  const timeline = buildBlueTimeline(input, ctx, fromIndex, toIndex, direct, exactMapOrders);
   const usedChests = new Set<string>();
   const out: RouteSection[] = [];
   for (let index = 0; index < sections.length; index += 1) {
@@ -361,14 +521,30 @@ export function buildRouteBook(input: RouteBookInput): RouteBook {
       }
     }
     out.push(buildSection(section, alignment, ctx, usedChests, timeline));
+    yield;
+    if (budgetSpent(budget)) {
+      return {
+        book: {
+          fromSection: input.fromSection,
+          fromPlace: input.fromPlace ?? null,
+          toSection: input.toSection,
+          sections: out,
+          totals: totalsOf(out),
+        },
+        timedOut: true,
+      };
+    }
   }
   insertRevisit(out, timeline, ctx);
   return {
-    fromSection: input.fromSection,
-    fromPlace: input.fromPlace ?? null,
-    toSection: input.toSection,
-    sections: out,
-    totals: totalsOf(out),
+    book: {
+      fromSection: input.fromSection,
+      fromPlace: input.fromPlace ?? null,
+      toSection: input.toSection,
+      sections: out,
+      totals: totalsOf(out),
+    },
+    timedOut: false,
   };
 }
 
@@ -383,17 +559,26 @@ function buildBlueTimeline(
   fromIndex: number,
   toIndex: number,
   selectedDirect: readonly Alignment[],
+  exactMapOrders: boolean,
 ): BlueTimeline {
   const from = fromIndex < 0 ? 0 : fromIndex;
   const hasBlueMageNow = hasBlueMageJob(input.save);
   const unlockIndex = input.sections.findIndex((section) => sectionUnlocksBlueMage(section));
-  const availableIndex = hasBlueMageNow === true ? from : unlockIndex < 0 ? -1 : unlockIndex;
-  const mapOrders = buildMapOrders(input.sections, ctx, selectedDirect, from, toIndex);
+  const availableIndex =
+    hasBlueMageNow === true ? from : unlockIndex < 0 ? -1 : unlockIndex < from ? from : unlockIndex;
+  const mapOrders = buildMapOrders(
+    input.sections,
+    ctx,
+    selectedDirect,
+    from,
+    toIndex,
+    exactMapOrders,
+  );
   return {
     sections: input.sections,
     fromIndex: from,
     toIndex: toIndex < 0 ? input.sections.length - 1 : toIndex,
-    availableIndex: availableIndex < from ? from : availableIndex,
+    availableIndex,
     unlockIndex,
     hasBlueMageNow,
     mapOrders,
@@ -405,7 +590,7 @@ function sectionUnlocksBlueMage(section: GuideSection): boolean {
     const step = section.steps[index];
     if (step === undefined) continue;
     if (!/jobs?\s+unlocked|set\s+of\s+jobs/iu.test(step.text)) continue;
-    if (isBlueMageName(step.text)) return true;
+    if (normalizeName(step.text).includes("bluemage")) return true;
     for (let next = index + 1; next < section.steps.length; next += 1) {
       const line = section.steps[next];
       if (line === undefined) continue;
@@ -433,27 +618,42 @@ function buildMapOrders(
   selectedDirect: readonly Alignment[],
   fromIndex: number,
   toIndex: number,
+  exact: boolean,
 ): ReadonlyMap<number, readonly number[]> {
   const orders = new Map<number, Set<number>>();
-  for (let index = 0; index < sections.length; index += 1) {
-    const section = sections[index];
-    if (section === undefined) continue;
-    const direct =
-      index >= fromIndex && index <= toIndex
-        ? (selectedDirect[index - fromIndex] ?? directAlignment(section, ctx))
-        : directAlignment(section, ctx);
-    for (const mapId of direct.maps.keys()) addOrder(orders, mapId, index);
-  }
-  // A map that no monster/floor rule found still belongs to the section naming its area.
-  for (const map of ctx.knowledge.maps) {
-    if (map.id === null || orders.has(map.id)) continue;
+  if (exact) {
+    // Offline builds keep task 115's exact whole-guide map orders. The build is pure and the
+    // area-key cache makes this affordable for the 77-section review script.
     for (let index = 0; index < sections.length; index += 1) {
       const section = sections[index];
       if (section === undefined) continue;
-      const keys = unique([
-        ...sectionAreaKeys(section.title, ctx),
-        ...section.places.flatMap((place) => areaKeys(ctx.knowledge.guide, place)),
-      ]);
+      const direct =
+        index >= fromIndex && index <= toIndex
+          ? (selectedDirect[index - fromIndex] ?? directAlignment(section, ctx))
+          : directAlignment(section, ctx);
+      for (const mapId of direct.maps.keys()) addOrder(orders, mapId, index);
+    }
+  } else {
+    // Task 124: a runtime build only aligns the sections it produces. Every other section
+    // contributes its area/title name below, so "does this place appear later?" still sees the
+    // whole guide without running the four-rule alignment 77 times for a 4-section book.
+    for (let index = fromIndex; index <= toIndex; index += 1) {
+      const direct = selectedDirect[index - fromIndex];
+      if (direct === undefined) continue;
+      for (const mapId of direct.maps.keys()) addOrder(orders, mapId, index);
+    }
+  }
+  // A map that no monster/floor rule found still belongs to the section naming its area.
+  const sectionKeys = sections.map((section) =>
+    unique([
+      ...sectionAreaKeys(section.title, ctx),
+      ...section.places.flatMap((place) => areaKeys(ctx.knowledge.guide, place)),
+    ]),
+  );
+  for (const map of ctx.knowledge.maps) {
+    if (map.id === null || orders.has(map.id)) continue;
+    for (let index = 0; index < sections.length; index += 1) {
+      const keys = sectionKeys[index] ?? [];
       if (
         matchesAnyKey(map.areaName ?? "", keys, ctx) ||
         matchesAnyKey(map.name ?? "", keys, ctx)
@@ -476,6 +676,60 @@ function addOrder(orders: Map<number, Set<number>>, mapId: number, index: number
   const set = orders.get(mapId) ?? new Set<number>();
   set.add(index);
   orders.set(mapId, set);
+}
+
+/**
+ * Index every section's title, places and step text by the names they mention (task 124,
+ * 11-11). The old `laterMention` computed `areaKeys` for every string of every later section
+ * for every missed monster/blue spell, which is where the runtime build spent its time.
+ */
+function buildMentionIndex(sections: readonly GuideSection[], knowledge: Knowledge): MentionIndex {
+  const orders = new Map<string, number[]>();
+  for (let index = 0; index < sections.length; index += 1) {
+    const section = sections[index];
+    if (section === undefined) continue;
+    const values = [section.title, ...section.places, ...section.steps.map((step) => step.text)];
+    for (const value of values) {
+      for (const candidate of areaKeys(knowledge.guide, value)) {
+        if (!atLeastTwo(candidate)) continue;
+        const list = orders.get(candidate);
+        if (list === undefined) {
+          orders.set(candidate, [index]);
+        } else if (list.at(-1) !== index) {
+          list.push(index);
+        }
+      }
+    }
+  }
+  return { orders };
+}
+
+/** The first section after `after` that mentions any of `keys`; `laterMention`'s old scan. */
+function firstMentionOrder(
+  keys: readonly string[],
+  after: number,
+  index: MentionIndex,
+): number | null {
+  let first: number | null = null;
+  for (const [candidate, orders] of index.orders) {
+    if (!keys.some((key) => candidateMatches(candidate, key))) continue;
+    for (const order of orders) {
+      if (order <= after) continue;
+      if (first === null || order < first) first = order;
+      break;
+    }
+  }
+  return first;
+}
+
+function candidateMatches(candidate: string, key: string): boolean {
+  if (candidate === key) return true;
+  if (!atLeastTwo(candidate) || !atLeastTwo(key)) return false;
+  return candidate.includes(key) || key.includes(candidate);
+}
+
+function atLeastTwo(value: string): boolean {
+  return Array.from(value).length >= 2;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -556,10 +810,8 @@ function alignMonsters(section: GuideSection, ctx: BuildContext, alignment: Alig
   for (const guideMonster of section.monsters) {
     // A "BESTIARY: WIND SHRINE - 2F" table describes that floor. When the header names one,
     // only that floor's maps may be claimed; otherwise a 2F table would pull in 4F and hide
-    // the fact that 4F still needs checking. If the floor is not found in this area, let the
-    // encounter rows speak (Prologue's "Cave" has no guide alias but its monsters are known).
+    // the fact that 4F still needs checking.
     const floor = guideMonster.where === null ? null : placeFloor(guideMonster.where);
-    const specificPlace = guideMonster.where !== null && !isGenericPlace(guideMonster.where);
     const keys = unique([
       ...sectionAreaKeys(section.title, ctx),
       ...(guideMonster.where === null ? [] : areaKeys(ctx.knowledge.guide, guideMonster.where)),
@@ -572,11 +824,20 @@ function alignMonsters(section: GuideSection, ctx: BuildContext, alignment: Alig
             map.id !== null && mapFloor(mapName(ctx, map.id)) === floor ? [map.id] : [],
           );
     const allowed = floorMaps.length === 0 ? null : new Set(floorMaps);
-    for (const monster of ctx.knowledge.monsters) {
-      if (monster.bookId !== guideMonster.id) continue;
+    // The guide's "Cave - 1F" has no alias to 洞窟 and its map names carry no floor, so a floor
+    // header with no matching map must let the encounter rows name the cave maps. Everywhere
+    // else stay inside the section's own maps: one book number can cover several game monsters
+    // (book 001 is both "Goblin" and the all-questions-mark row), and their late-game encounters
+    // once pulled 453/454 into the Prologue.
+    const floorMissing = floor !== null && floorMaps.length === 0;
+    const known = monstersByBook(guideMonster.id, ctx);
+    const named = known.filter(
+      (monster) => normalizeName(monster.name) === normalizeName(guideMonster.name),
+    );
+    for (const monster of named.length > 0 ? named : known) {
       for (const encounter of monster.encounters) {
-        let maps = encounterMapIds(encounter, ctx);
-        if ((!specificPlace || encounter.mapId === null) && sectionMapIds.size > 0) {
+        let maps = encounterMapIds(encounter);
+        if (!floorMissing && sectionMapIds.size > 0) {
           maps = maps.filter((mapId) => sectionMapIds.has(mapId));
         }
         if (maps.length === 0) continue;
@@ -775,10 +1036,15 @@ function sectionAreaKeys(title: string, ctx: BuildContext): string[] {
 }
 
 function mapsInArea(keys: readonly string[], ctx: BuildContext): readonly MapKnowledge[] {
-  return ctx.knowledge.maps.filter((map) => {
+  const cacheKey = keys.join("\u0000");
+  const cached = ctx.cache.mapsByKeys.get(cacheKey);
+  if (cached !== undefined) return cached;
+  const found = ctx.knowledge.maps.filter((map) => {
     if (map.id === null) return false;
     return matchesAnyKey(map.areaName ?? "", keys, ctx) || matchesAnyKey(map.name ?? "", keys, ctx);
   });
+  ctx.cache.mapsByKeys.set(cacheKey, found);
+  return found;
 }
 
 function matchesAnyKey(
@@ -797,8 +1063,8 @@ function matchesAnyKey(
       if (key === "" || candidate === "") continue;
       if (candidate === key) return true;
       if (
-        Array.from(candidate).length >= 2 &&
-        Array.from(key).length >= 2 &&
+        atLeastTwo(candidate) &&
+        atLeastTwo(key) &&
         (candidate.includes(key) || key.includes(candidate))
       ) {
         return true;
@@ -868,6 +1134,8 @@ function floorAllowed(mapId: number, floors: ReadonlySet<string>, ctx: BuildCont
 // Atlas access
 
 function connectedMaps(mapId: number, ctx: BuildContext): number[] {
+  const cached = ctx.cache.connected.get(mapId);
+  if (cached !== undefined) return [...cached];
   const out = new Set<number>();
   const entry = ctx.atlas.maps.get(String(mapId));
   for (const exit of exitsOf(entry ?? {})) {
@@ -879,7 +1147,9 @@ function connectedMaps(mapId: number, ctx: BuildContext): number[] {
     if (!Number.isFinite(id)) continue;
     if (exitsOf(other).some((exit) => exit.to === mapId)) out.add(id);
   }
-  return [...out];
+  const found = [...out];
+  ctx.cache.connected.set(mapId, found);
+  return found;
 }
 
 function exitsOf(entry: Json): AtlasExit[] {
@@ -962,17 +1232,29 @@ function knowledgeChestFor(
   });
 }
 
+function mapKnowledge(mapId: number, ctx: BuildContext): MapKnowledge | undefined {
+  if (ctx.cache.mapById.has(mapId)) return ctx.cache.mapById.get(mapId);
+  const found = ctx.knowledge.maps.find((item) => item.id === mapId);
+  if (found !== undefined) ctx.cache.mapById.set(mapId, found);
+  return found;
+}
+
 function mapAreaName(mapId: number, ctx: BuildContext): string | null {
-  const map = ctx.knowledge.maps.find((item) => item.id === mapId);
-  return map?.areaName ?? null;
+  if (ctx.cache.mapAreas.has(mapId)) return ctx.cache.mapAreas.get(mapId) ?? null;
+  const area = mapKnowledge(mapId, ctx)?.areaName ?? null;
+  ctx.cache.mapAreas.set(mapId, area);
+  return area;
 }
 
 function mapName(ctx: BuildContext, mapId: number): string {
+  const cached = ctx.cache.mapNames.get(mapId);
+  if (cached !== undefined) return cached;
   const entry = ctx.atlas.maps.get(String(mapId));
   const observed = entry === undefined ? "" : (text(entry.name) ?? "");
-  if (observed !== "") return observed;
-  const known = ctx.knowledge.maps.find((item) => item.id === mapId)?.name ?? "";
-  return known !== "" ? known : `地图 ${mapId}`;
+  const known = observed !== "" ? observed : (mapKnowledge(mapId, ctx)?.name ?? "");
+  const name = known !== "" ? known : `地图 ${mapId}`;
+  ctx.cache.mapNames.set(mapId, name);
+  return name;
 }
 
 function mapText(mapId: number, ctx: BuildContext): string {
@@ -1049,6 +1331,7 @@ function buildSection(
   const usedPoints = new Set<string>();
   const stationByStep = new Map<number, RouteStation>();
   const stations: RouteStation[] = [];
+  const story: StoryMatchState = { usedEvents: new Set<string>() };
 
   for (const step of section.steps) {
     const chest = chestByStep.get(step.index) ?? null;
@@ -1090,7 +1373,7 @@ function buildSection(
       });
       continue;
     }
-    const station = buildStation(step, chest, section, maps, ctx, usedPoints, places);
+    const station = buildStation(step, chest, section, maps, ctx, usedPoints, places, story);
     if (station.kind === "note") {
       notes.push({
         index: step.index,
@@ -1108,18 +1391,22 @@ function buildSection(
   const allMonsters = buildMonsters(section, maps, stationByStep, ctx);
   const blueMagic = buildBlueMagic(section, maps, allMonsters, ctx, timeline);
   const grind = buildGrind(allMonsters, blueMagic, ctx);
+  const pruned = pruneGrind(grind, new Set(maps.map((map) => map.mapId)), ctx);
   const atlasChestCount = countAtlasChests(maps, ctx);
-  const mismatches = buildMismatches(
-    section,
-    maps,
-    places,
-    chests,
-    atlasChestCount,
-    stations,
-    notes,
-    allMonsters,
-    ctx,
-  );
+  const mismatches = [
+    ...buildMismatches(
+      section,
+      maps,
+      places,
+      chests,
+      atlasChestCount,
+      stations,
+      notes,
+      allMonsters,
+      ctx,
+    ),
+    ...pruned.mismatches,
+  ];
   const bestiaryMissing = allMonsters.filter((monster) => monster.registered === false).length;
   const blueMagicMissing = blueMagic.filter((spell) => spell.learned === false).length;
 
@@ -1138,7 +1425,7 @@ function buildSection(
     monsters: allMonsters.filter((monster) => !monster.boss),
     bosses: allMonsters.filter((monster) => monster.boss),
     blueMagic,
-    grind,
+    grind: pruned.grind,
     revisit: null,
     bestiaryMissing,
     blueMagicMissing,
@@ -1546,8 +1833,9 @@ function buildStation(
   ctx: BuildContext,
   usedPoints: Set<string>,
   places: readonly RoutePlace[],
+  story: StoryMatchState,
 ): RouteStation {
-  const placeMaps = stationPlaceMaps(step, section, maps, ctx, places);
+  const placeMaps = storyPlaceMaps(step, section, maps, ctx, places);
   const action = `${ACTION_LABELS[step.kind]}${chest === null ? "" : `(${chest.item})`}`;
   if (chest !== null) {
     return {
@@ -1592,6 +1880,26 @@ function buildStation(
       pointCandidate: null,
     };
   }
+  if (step.kind === "cutscene" || step.kind === "talk" || step.kind === "switch") {
+    const located =
+      step.kind === "talk"
+        ? matchNpc(step, placeMaps, ctx)
+        : matchStoryEvent(placeMaps, ctx, story);
+    if (located !== null) {
+      return {
+        index: step.index,
+        where: step.where,
+        kind: step.kind,
+        mapId: located.mapId,
+        cell: located.cell,
+        action,
+        text: step.text,
+        basis: located.basis,
+        chest: null,
+        pointCandidate: null,
+      };
+    }
+  }
   if (step.kind === "boss") {
     const boss = findBossMap(step, placeMaps, section, ctx);
     return {
@@ -1633,6 +1941,203 @@ function stationBasis(base: string, mapId: number | null, cell: Cell | null): st
   return `${base};坐标没有,执行时现场找`;
 }
 
+interface StoryMatchState {
+  readonly usedEvents: Set<string>;
+}
+
+/**
+ * Task 122: a story/dialog/mechanism station's maps. Usually the sub-location's maps; a
+ * single-map section is unambiguous even when the guide's header does not match a place.
+ */
+function storyPlaceMaps(
+  step: GuideStep,
+  section: GuideSection,
+  maps: readonly RouteMap[],
+  ctx: BuildContext,
+  places: readonly RoutePlace[],
+): readonly number[] {
+  const placeMaps = stationPlaceMaps(step, section, maps, ctx, places);
+  if (placeMaps.length > 0) return placeMaps;
+  const only = maps[0];
+  return maps.length === 1 && only !== undefined ? [only.mapId] : [];
+}
+
+/**
+ * Task 122: pair a dialog station with an NPC. The guide's English sentence must contain the
+ * NPC's name (or one of its three-language names); a role it cannot find stays unpaired
+ * instead of taking the first NPC on the map.
+ */
+function matchNpc(
+  step: GuideStep,
+  mapIds: readonly number[],
+  ctx: BuildContext,
+): { mapId: number; cell: Cell; basis: string } | null {
+  if (ctx.files === null || mapIds.length === 0) return null;
+  const wanted = normalizeName(step.text);
+  if (wanted === "") return null;
+  let best: { mapId: number; cell: Cell; name: string; length: number } | null = null;
+  for (const mapId of mapIds) {
+    const npcs = ctx.files.npcs
+      .filter((npc) => npc.mapId === mapId)
+      .sort(
+        (left, right) =>
+          left.cell[1] - right.cell[1] ||
+          left.cell[0] - right.cell[0] ||
+          left.name.localeCompare(right.name),
+      );
+    for (const npc of npcs) {
+      const names = [npc.name, npc.names?.ja, npc.names?.en, npc.names?.zhc].filter(
+        (name): name is string => name !== undefined && name !== "",
+      );
+      for (const name of names) {
+        const key = normalizeName(name);
+        // One-character names would match almost any sentence; two is already weak but the
+        // NPC data has many "兵士（青）"-style names, whose distinctive part is longer.
+        if (Array.from(key).length < 2 || !wanted.includes(key)) continue;
+        const candidate = { mapId, cell: npc.cell, name: npc.name, length: key.length };
+        if (best === null || candidate.length > best.length) best = candidate;
+      }
+    }
+  }
+  return best === null
+    ? null
+    : { mapId: best.mapId, cell: best.cell, basis: `游戏文件：NPC ${best.name}` };
+}
+
+/**
+ * Task 122: pair a cutscene/mechanism station with the next event trigger on its map, in event
+ * number order (`sc_e_0021` → 21). When this save's story flags name a trigger, it is skipped;
+ * without flags the order alone decides.
+ */
+function matchStoryEvent(
+  mapIds: readonly number[],
+  ctx: BuildContext,
+  state: StoryMatchState,
+): { mapId: number; cell: Cell; basis: string } | null {
+  if (ctx.files === null || mapIds.length === 0) return null;
+  const groups = new Map<
+    string,
+    {
+      mapId: number;
+      file: string;
+      name: string;
+      scriptId: number | null;
+      events: RouteStoryEvent[];
+    }
+  >();
+  for (const event of ctx.files.events) {
+    if (!mapIds.includes(event.mapId)) continue;
+    if (event.cell === null && event.rect === null) continue;
+    const key = `${event.mapId}|${event.file}|${event.name}|${event.scriptId ?? ""}`;
+    if (state.usedEvents.has(key) || storyEventDone(event, ctx.save)) continue;
+    const group = groups.get(key);
+    if (group === undefined) {
+      groups.set(key, {
+        mapId: event.mapId,
+        file: event.file,
+        name: event.name,
+        scriptId: event.scriptId,
+        events: [event],
+      });
+    } else {
+      group.events.push(event);
+    }
+  }
+  const ordered = [...groups.values()].sort(
+    (left, right) =>
+      storyEventNumber(left) - storyEventNumber(right) ||
+      left.mapId - right.mapId ||
+      left.file.localeCompare(right.file) ||
+      left.name.localeCompare(right.name),
+  );
+  const chosen = ordered[0];
+  if (chosen === undefined) return null;
+  const key = `${chosen.mapId}|${chosen.file}|${chosen.name}|${chosen.scriptId ?? ""}`;
+  state.usedEvents.add(key);
+  const cell = eventTriggerCell(chosen, ctx);
+  if (cell === null) return null;
+  const code = storyEventCode(chosen);
+  return {
+    mapId: chosen.mapId,
+    cell,
+    basis: `游戏文件：事件 ${code}(${storyEventLabel(chosen.name)})`,
+  };
+}
+
+function storyEventNumber(event: {
+  readonly file: string;
+  readonly name: string;
+  readonly scriptId: number | null;
+}): number {
+  const match = /(?:sc_e_|ev_e_)(\d+)/iu.exec(`${event.name} ${event.file}`);
+  return match?.[1] === undefined ? Number.MAX_SAFE_INTEGER : Number.parseInt(match[1], 10);
+}
+
+function storyEventCode(event: { readonly file: string; readonly name: string }): string {
+  const named = /(?:sc_e_|ev_e_)\d+/iu.exec(event.name);
+  if (named !== null) return named[0];
+  return event.file.replace(/\.json$/iu, "");
+}
+
+function storyEventLabel(name: string): string {
+  const label = name.replace(/^(?:sc_e_|ev_e_)\d+\s*[:：]?\s*/iu, "").trim();
+  return label === "" ? name : label;
+}
+
+/** A story flag may name the event file, its object name, or its script id. */
+function storyEventDone(event: RouteStoryEvent, save: RouteBookSave): boolean {
+  const flags = save.storyFlags;
+  if (flags === undefined || flags === null) return false;
+  const file = event.file.replace(/\.json$/iu, "");
+  const keys = [
+    file,
+    event.file,
+    event.name,
+    ...(event.scriptId === null ? [] : [`script:${event.scriptId}`, String(event.scriptId)]),
+  ];
+  return keys.some((key) => flags.has(key));
+}
+
+/**
+ * Task 122: the cell to stand on for an event rectangle. Prefer a walkable cell inside the
+ * rectangle (the collision record comes from task 123's export when the map was never walked);
+ * without collision data the first cell is the best the book can say.
+ */
+function eventTriggerCell(
+  event: { readonly mapId: number; readonly events: readonly RouteStoryEvent[] },
+  ctx: BuildContext,
+): Cell | null {
+  const cells: Cell[] = [];
+  for (const item of event.events) {
+    if (item.rect !== null) {
+      for (let y = item.rect.y1; y <= item.rect.y2; y += 1) {
+        for (let x = item.rect.x1; x <= item.rect.x2; x += 1) cells.push([x, y]);
+      }
+    } else if (item.cell !== null) {
+      cells.push(item.cell);
+    }
+  }
+  if (cells.length === 0) return null;
+  const sorted = uniqueCells(cells).sort((left, right) => left[1] - right[1] || left[0] - right[0]);
+  const walkable = sorted.find((cell) => isWalkable(event.mapId, cell, ctx));
+  return walkable ?? sorted[0] ?? null;
+}
+
+function isWalkable(mapId: number, cell: Cell, ctx: BuildContext): boolean {
+  const snapshot = ctx.knowledge.collisions?.get(mapId);
+  if (snapshot === undefined) return true;
+  const rowsByHeight = new Map<number, readonly string[]>();
+  snapshot.layers.forEach((layer, index) => {
+    rowsByHeight.set(LAYER_Z.get(layer.name) ?? index, layer.rows);
+  });
+  const z = snapshot.searchLayer ?? rowsByHeight.keys().next().value ?? 0;
+  const rows = rowsByHeight.get(z) ?? snapshot.layers[0]?.rows;
+  if (rows === undefined) return true;
+  const row = rows[cell[1]];
+  if (row === undefined || cell[0] < 0 || cell[0] >= row.length) return false;
+  return (row[cell[0]] ?? "1") === "0";
+}
+
 function findPoint(
   step: GuideStep,
   mapIds: readonly number[],
@@ -1641,7 +2146,9 @@ function findPoint(
 ): { mapId: number | null; cell: Cell | null; basis: string; real: boolean } {
   const recovery = step.kind === "heal";
   const label = recovery ? "回复点" : "存档点";
-  const looksReal = recovery ? RECOVERY_POINT.test(step.text) : REAL_SAVE_LINE.test(step.text);
+  const looksReal = recovery
+    ? RECOVERY_POINT.test(step.text) || GUIDE_RECOVERY.test(step.text)
+    : REAL_SAVE_LINE.test(step.text);
   if (!looksReal) {
     return {
       mapId: primaryMap(mapIds, ctx),
@@ -1649,6 +2156,25 @@ function findPoint(
       basis: `攻略提到${recovery ? "回复" : "存档"},但没对上真实的点`,
       real: false,
     };
+  }
+  const known = recovery
+    ? restorePointsIn(ctx.knowledge, { mapIds })
+    : savePointsIn(ctx.knowledge, { mapIds });
+  for (const mapId of mapIds) {
+    const point = known.find(
+      (item) =>
+        item.mapId === mapId && !used.has(pointKey(recovery, mapId, [item.cell[0], item.cell[1]])),
+    );
+    if (point !== undefined) {
+      const cell: Cell = [point.cell[0], point.cell[1]];
+      used.add(pointKey(recovery, mapId, cell));
+      return {
+        mapId,
+        cell,
+        basis: `游戏文件：${label} ${point.name}`,
+        real: true,
+      };
+    }
   }
   let fallback: number | null = null;
   let fallbackKey: string | null = null;
@@ -1780,7 +2306,7 @@ function buildMonsters(
   for (const guideMonster of section.monsters) {
     const known = monstersByBook(guideMonster.id, ctx);
     const first = known[0];
-    const mapsHere = first === undefined ? [] : mapsForMonster(first, sectionMapIds, ctx);
+    const mapsHere = first === undefined ? [] : mapsForMonster(first, sectionMapIds);
     const missable = missableInfo(guideMonster.id, first, sectionMapIds, ctx);
     const row = monsterRow(
       guideMonster.id,
@@ -1800,7 +2326,7 @@ function buildMonsters(
     const full = ctx.knowledge.monsters.find((candidate) => candidate.id === monster.id) ?? monster;
     const row = monster.bookId === null ? undefined : byBook.get(monster.bookId);
     if (row !== undefined) {
-      const mapsHere = mapsForMonster(monster, sectionMapIds, ctx);
+      const mapsHere = mapsForMonster(monster, sectionMapIds);
       const merged = { ...row, maps: unique([...row.maps, ...mapsHere]) };
       replaceRow(out, row, merged);
       if (monster.bookId !== null) byBook.set(monster.bookId, merged);
@@ -1812,7 +2338,7 @@ function buildMonsters(
       monster.name,
       null,
       monster.boss === true,
-      mapsForMonster(monster, sectionMapIds, ctx),
+      mapsForMonster(monster, sectionMapIds),
       missable,
       ctx,
     );
@@ -1889,18 +2415,18 @@ function monsterRow(
   };
 }
 
-function monstersByBook(bookId: number, ctx: BuildContext): MonsterKnowledge[] {
-  return ctx.knowledge.monsters.filter((monster) => monster.bookId === bookId);
+function monstersByBook(bookId: number, ctx: BuildContext): readonly MonsterKnowledge[] {
+  const cached = ctx.cache.monstersByBook.get(bookId);
+  if (cached !== undefined) return cached;
+  const found = ctx.knowledge.monsters.filter((monster) => monster.bookId === bookId);
+  ctx.cache.monstersByBook.set(bookId, found);
+  return found;
 }
 
-function mapsForMonster(
-  monster: MonsterKnowledge,
-  sectionMapIds: ReadonlySet<number>,
-  ctx: BuildContext,
-): number[] {
+function mapsForMonster(monster: MonsterKnowledge, sectionMapIds: ReadonlySet<number>): number[] {
   const out = new Set<number>();
   for (const encounter of monster.encounters) {
-    for (const mapId of encounterMapIds(encounter, ctx)) {
+    for (const mapId of encounterMapIds(encounter)) {
       if (sectionMapIds.has(mapId)) out.add(mapId);
     }
   }
@@ -1914,7 +2440,7 @@ function missableInfo(
   ctx: BuildContext,
 ): { missable: boolean; until: string | null; note: string } {
   const rule = bookId === null ? undefined : ctx.missableByBook.get(bookId);
-  const onlyHere = monster !== undefined && onlyInSection(monster, sectionMapIds, ctx);
+  const onlyHere = monster !== undefined && onlyInSection(monster, sectionMapIds);
   if (rule !== undefined) {
     return { missable: true, until: rule, note: `错过就没了(${rule})` };
   }
@@ -1924,15 +2450,11 @@ function missableInfo(
   return { missable: false, until: null, note: "" };
 }
 
-function onlyInSection(
-  monster: MonsterKnowledge,
-  sectionMapIds: ReadonlySet<number>,
-  ctx: BuildContext,
-): boolean {
+function onlyInSection(monster: MonsterKnowledge, sectionMapIds: ReadonlySet<number>): boolean {
   if (monster.encounters.length === 0) return false;
   let sawMap = false;
   for (const encounter of monster.encounters) {
-    const maps = encounterMapIds(encounter, ctx);
+    const maps = encounterMapIds(encounter);
     if (maps.length === 0) return false;
     for (const mapId of maps) {
       sawMap = true;
@@ -2037,8 +2559,8 @@ function blueTeachers(
   for (const guideMonster of section.monsters) {
     if (normalizeName(guideMonster.blueMagic ?? "") !== normalizeName(name)) continue;
     const known = monstersByBook(guideMonster.id, ctx)[0];
-    const maps = known === undefined ? [] : mapsForMonster(known, sectionMapIds, ctx);
-    const allMaps = known === undefined ? [] : allMapsForMonster(known, ctx);
+    const maps = known === undefined ? [] : mapsForMonster(known, sectionMapIds);
+    const allMaps = known === undefined ? [] : allMapsForMonster(known);
     const key = `book:${guideMonster.id}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -2055,7 +2577,7 @@ function mapsForSourceMonster(
 ): number[] {
   const out = new Set<number>();
   for (const monster of sourceMonsters(bookId, name, ctx)) {
-    for (const mapId of mapsForMonster(monster, sectionMapIds, ctx)) out.add(mapId);
+    for (const mapId of mapsForMonster(monster, sectionMapIds)) out.add(mapId);
   }
   return [...out].sort((left, right) => left - right);
 }
@@ -2063,15 +2585,15 @@ function mapsForSourceMonster(
 function allMapsForSourceMonster(bookId: number | null, name: string, ctx: BuildContext): number[] {
   const out = new Set<number>();
   for (const monster of sourceMonsters(bookId, name, ctx)) {
-    for (const mapId of allMapsForMonster(monster, ctx)) out.add(mapId);
+    for (const mapId of allMapsForMonster(monster)) out.add(mapId);
   }
   return [...out].sort((left, right) => left - right);
 }
 
-function allMapsForMonster(monster: MonsterKnowledge, ctx: BuildContext): number[] {
+function allMapsForMonster(monster: MonsterKnowledge): number[] {
   const out = new Set<number>();
   for (const encounter of monster.encounters) {
-    for (const mapId of encounterMapIds(encounter, ctx)) out.add(mapId);
+    for (const mapId of encounterMapIds(encounter)) out.add(mapId);
   }
   return [...out].sort((left, right) => left - right);
 }
@@ -2083,9 +2605,7 @@ function sourceMonsters(
   ctx: BuildContext,
 ): readonly MonsterKnowledge[] {
   const byBook: readonly MonsterKnowledge[] =
-    bookId === null
-      ? ctx.knowledge.monsters
-      : ctx.knowledge.monsters.filter((monster) => monster.bookId === bookId);
+    bookId === null ? ctx.knowledge.monsters : monstersByBook(bookId, ctx);
   if (name === "") return byBook;
   const exact = byBook.filter((monster) => normalizeName(monster.name) === normalizeName(name));
   return exact.length > 0 ? exact : byBook;
@@ -2101,7 +2621,7 @@ function blueOtherPlaces(
   for (const item of source?.from ?? []) {
     for (const monster of sourceMonsters(item.bookId, item.monster, ctx)) {
       for (const encounter of monster.encounters) {
-        for (const mapId of encounterMapIds(encounter, ctx)) {
+        for (const mapId of encounterMapIds(encounter)) {
           if (sectionMapIds.has(mapId)) continue;
           const area = mapAreaName(mapId, ctx);
           labels.push(
@@ -2166,9 +2686,7 @@ function blueWindow(
   timeline: BlueTimeline,
   ctx: BuildContext,
 ): BlueWindow {
-  const mapIds = unique(teachers.flatMap((teacher) => teacher.allMaps)).sort(
-    (left, right) => left - right,
-  );
+  const mapIds = routeMapsOf(unique(teachers.flatMap((teacher) => teacher.allMaps)), timeline);
   const orders = ordersOf(mapIds, timeline);
   const window = windowText(orders, mapIds, timeline);
   if (mapIds.length === 0 || orders.length === 0) {
@@ -2205,10 +2723,23 @@ function blueWindow(
   };
 }
 
+/** Keep only maps this book actually visits; a teacher may also live in later worlds. */
+function routeMapsOf(mapIds: readonly number[], timeline: BlueTimeline): number[] {
+  return unique(mapIds)
+    .filter((mapId) =>
+      (timeline.mapOrders.get(mapId) ?? []).some(
+        (order) => order >= timeline.fromIndex && order <= timeline.toIndex,
+      ),
+    )
+    .sort((left, right) => left - right);
+}
+
 function ordersOf(mapIds: readonly number[], timeline: BlueTimeline): number[] {
-  return unique(mapIds.flatMap((mapId) => timeline.mapOrders.get(mapId) ?? [])).sort(
-    (left, right) => left - right,
-  );
+  // Only sections inside this book count as a learning window; a guide section after `toSection`
+  // matters only as evidence that the place can be revisited later (task 119).
+  return unique(mapIds.flatMap((mapId) => timeline.mapOrders.get(mapId) ?? []))
+    .filter((order) => order >= timeline.fromIndex && order <= timeline.toIndex)
+    .sort((left, right) => left - right);
 }
 
 /** "第1节 Prologue(192–194)、第5节 ..."; contiguous runs of three or more become a range. */
@@ -2272,7 +2803,7 @@ function returnCheck(
   if (mapIds.some((mapId) => connectsToWorldMap(mapId, ctx))) {
     return {
       verdict: "yes",
-      basis: `地图记录里 ${mapRanges(mapIds)} 通世界地图,拿到职业后能回去`,
+      basis: `地图记录里 ${mapRanges(mapIds)} 通世界地图,以后能回去`,
     };
   }
   const laterLink = mapIds.find((mapId) =>
@@ -2313,7 +2844,7 @@ function connectsToWorldMap(mapId: number, ctx: BuildContext): boolean {
 
 function isWorldMap(mapId: number, ctx: BuildContext): boolean {
   const name = normalizeName(`${mapName(ctx, mapId)} ${mapAreaName(mapId, ctx) ?? ""}`);
-  return /worldmap|worldmap|overworld|ワールドマップ|世界地図|世界地图/u.test(name);
+  return /worldmap|overworld|ワールドマップ|世界地図|世界地图/u.test(name);
 }
 
 function laterMention(
@@ -2326,136 +2857,218 @@ function laterMention(
       ...areaKeys(ctx.knowledge.guide, mapName(ctx, mapId)),
       ...areaKeys(ctx.knowledge.guide, mapAreaName(mapId, ctx) ?? ""),
     ]),
-  ).filter((key) => Array.from(key).length >= 3);
+  ).filter(atLeastTwo);
   if (keys.length === 0) return null;
-  for (let index = timeline.availableIndex + 1; index < timeline.sections.length; index += 1) {
-    const section = timeline.sections[index];
-    if (section === undefined) continue;
-    const haystack = [section.title, ...section.places, ...section.steps.map((step) => step.text)];
-    if (haystack.some((value) => matchesAnyKey(value, keys, ctx))) return section.title;
-  }
-  return null;
+  const order = firstMentionOrder(keys, timeline.availableIndex, ctx.mention);
+  return order === null ? null : (timeline.sections[order]?.title ?? null);
 }
 
-/** Task 119: add the "回头学" block to the section that unlocks the Blue Mage. */
+/**
+ * Task 119: blue spells missed before the unlock go at the end of the unlock section; missable
+ * bestiary rows go at the next section after their last appearance, whatever the jobs are.
+ */
 function insertRevisit(sections: RouteSection[], timeline: BlueTimeline, ctx: BuildContext): void {
-  if (timeline.hasBlueMageNow === true) return;
-  if (timeline.unlockIndex < timeline.fromIndex || timeline.unlockIndex > timeline.toIndex) return;
-  const index = timeline.unlockIndex - timeline.fromIndex;
-  const target = sections[index];
-  if (target === undefined) return;
-  const revisit = buildRevisit(sections, timeline, ctx);
-  if (revisit !== null) sections[index] = { ...target, revisit };
+  const targets = new Set<number>();
+  if (
+    timeline.hasBlueMageNow !== true &&
+    timeline.unlockIndex >= timeline.fromIndex &&
+    timeline.unlockIndex <= timeline.toIndex
+  ) {
+    targets.add(timeline.unlockIndex);
+  }
+  for (const monster of missedBestiary(sections, timeline, ctx)) {
+    const last = ordersOf(monster.mapIds, timeline).at(-1);
+    if (last === undefined || last >= timeline.toIndex) continue;
+    targets.add(last + 1);
+  }
+  for (const targetIndex of [...targets].sort((left, right) => left - right)) {
+    const includeBlue = timeline.hasBlueMageNow !== true && targetIndex === timeline.unlockIndex;
+    const revisit = buildRevisit(sections, timeline, ctx, targetIndex, includeBlue);
+    if (revisit === null) continue;
+    const at = targetIndex - timeline.fromIndex;
+    const section = sections[at];
+    if (section !== undefined) sections[at] = { ...section, revisit };
+  }
+}
+
+interface MissedBestiary {
+  readonly monster: RouteMonster;
+  readonly mapIds: readonly number[];
+  readonly check: ReturnCheck;
+}
+
+function missedBestiary(
+  sections: readonly RouteSection[],
+  timeline: BlueTimeline,
+  ctx: BuildContext,
+): MissedBestiary[] {
+  const out: MissedBestiary[] = [];
+  const seen = new Set<number>();
+  for (const section of sections) {
+    for (const monster of [...section.monsters, ...section.bosses]) {
+      if (!monster.missable || monster.registered !== false) continue;
+      if (monster.bookId === null || seen.has(monster.bookId)) continue;
+      const mapIds = routeMapsOf(
+        allMapsForSourceMonster(monster.bookId, monster.name, ctx),
+        timeline,
+      );
+      if (mapIds.length === 0) continue;
+      const check = returnCheck(mapIds, timeline, ctx);
+      if (check.verdict !== "yes") continue;
+      seen.add(monster.bookId);
+      out.push({ monster, mapIds, check });
+    }
+  }
+  return out;
 }
 
 function buildRevisit(
   sections: readonly RouteSection[],
   timeline: BlueTimeline,
   ctx: BuildContext,
+  targetIndex: number,
+  includeBlue: boolean,
 ): RouteRevisit | null {
   const stations: RouteStation[] = [];
   const grind: RouteGrind[] = [];
   const usedMaps = new Set<number>();
-  const seenSpells = new Set<string>();
-  for (const section of sections) {
-    for (const spell of section.blueMagic) {
-      if (spell.learned === true) continue;
-      const key = normalizeName(spell.name);
-      if (seenSpells.has(key)) continue;
-      const mapIds = unique(spell.teachers.flatMap((teacher) => teacher.allMaps)).sort(
-        (left, right) => left - right,
-      );
-      const orders = ordersOf(mapIds, timeline);
-      if (orders.length === 0 || orders.some((order) => order >= timeline.availableIndex)) {
-        continue;
+  if (includeBlue) {
+    const seenSpells = new Set<string>();
+    for (const section of sections) {
+      for (const spell of section.blueMagic) {
+        if (spell.learned === true) continue;
+        const key = normalizeName(spell.name);
+        if (seenSpells.has(key)) continue;
+        const mapIds = routeMapsOf(
+          unique(spell.teachers.flatMap((teacher) => teacher.allMaps)),
+          timeline,
+        );
+        const orders = ordersOf(mapIds, timeline);
+        if (orders.length === 0 || orders.some((order) => order >= timeline.availableIndex)) {
+          continue;
+        }
+        const check = returnCheck(mapIds, timeline, ctx);
+        if (check.verdict !== "yes") continue;
+        const teacher = spell.teachers.find(
+          (item) => bestSpot(mapIds, item.bookId, item.monster, ctx) !== null,
+        );
+        if (teacher === undefined) continue;
+        const best = bestSpot(mapIds, teacher.bookId, teacher.monster, ctx);
+        if (best === null) continue;
+        seenSpells.add(key);
+        for (const mapId of mapIds) usedMaps.add(mapId);
+        grind.push({
+          what: spell.name,
+          monster: teacher.monster,
+          mapId: best.mapId,
+          weight: best.weight,
+          chance: best.chance,
+          reason: `青魔法;${check.basis}`,
+          until: { blueMagic: spell.name },
+        });
+        stations.push(
+          revisitStation(
+            stations.length,
+            best.mapId,
+            {
+              action: `回头学 ${spell.name}`,
+              text: `到 ${areaLabel(mapIds, ctx)}(${mapRanges(mapIds)}) 刷 ${teacher.monster},直到学会 ${spell.name}`,
+              basis: check.basis,
+            },
+            {
+              blueMagic: spell.name,
+              bestiary: null,
+              skipReason: blueSkipReason(spell),
+            },
+          ),
+        );
       }
-      const check = returnCheck(mapIds, timeline, ctx);
-      if (check.verdict !== "yes") continue;
-      const teacher = spell.teachers.find(
-        (item) => bestSpot(item.allMaps, item.bookId, item.monster, ctx) !== null,
-      );
-      if (teacher === undefined) continue;
-      const best = bestSpot(teacher.allMaps, teacher.bookId, teacher.monster, ctx);
-      if (best === null) continue;
-      seenSpells.add(key);
-      for (const mapId of mapIds) usedMaps.add(mapId);
-      grind.push({
-        what: spell.name,
-        monster: teacher.monster,
-        mapId: best.mapId,
-        weight: best.weight,
-        chance: best.chance,
-        reason: `青魔法;${check.basis}`,
-        until: { blueMagic: spell.name },
-      });
-      stations.push({
-        index: -(stations.length + 1),
-        where: "回头学青魔法",
-        kind: "note",
-        mapId: best.mapId,
-        cell: null,
-        action: `回头学 ${spell.name}`,
-        text: `到 ${areaLabel(mapIds, ctx)}(${mapRanges(mapIds)}) 刷 ${teacher.monster},直到学会 ${spell.name}`,
-        basis: check.basis,
-        chest: null,
-        pointCandidate: null,
-      });
     }
   }
-  const seenMonsters = new Set<number>();
-  for (const section of sections) {
-    for (const monster of [...section.monsters, ...section.bosses]) {
-      if (!monster.missable || monster.registered !== false) continue;
-      if (monster.bookId === null || seenMonsters.has(monster.bookId)) continue;
-      const mapIds = allMapsForSourceMonster(monster.bookId, monster.name, ctx);
-      const orders = ordersOf(mapIds, timeline);
-      if (orders.length === 0 || orders.some((order) => order >= timeline.availableIndex)) {
-        continue;
-      }
-      const check = returnCheck(mapIds, timeline, ctx);
-      if (check.verdict !== "yes") continue;
-      const best = bestSpot(mapIds, monster.bookId, monster.name, ctx);
-      if (best === null) continue;
-      seenMonsters.add(monster.bookId);
-      for (const mapId of mapIds) usedMaps.add(mapId);
-      grind.push({
-        what: monster.name,
-        monster: monster.name,
-        mapId: best.mapId,
-        weight: best.weight,
-        chance: best.chance,
-        reason: `图鉴;${check.basis}`,
-        until: { blueMagic: null },
-      });
-      stations.push({
-        index: -(stations.length + 1),
-        where: "回头学青魔法",
-        kind: "note",
-        mapId: best.mapId,
-        cell: null,
-        action: `回头补图鉴 ${monster.name}`,
-        text: `到 ${areaLabel(mapIds, ctx)}(${mapRanges(mapIds)}) 刷 ${monster.name},直到登记`,
-        basis: check.basis,
-        chest: null,
-        pointCandidate: null,
-      });
-    }
+  for (const missed of missedBestiary(sections, timeline, ctx)) {
+    const orders = ordersOf(missed.mapIds, timeline);
+    if (orders.at(-1) !== targetIndex - 1) continue;
+    const best = bestSpot(missed.mapIds, missed.monster.bookId, missed.monster.name, ctx);
+    if (best === null) continue;
+    for (const mapId of missed.mapIds) usedMaps.add(mapId);
+    grind.push({
+      what: missed.monster.name,
+      monster: missed.monster.name,
+      mapId: best.mapId,
+      weight: best.weight,
+      chance: best.chance,
+      reason: `图鉴;${missed.check.basis}`,
+      until: { blueMagic: null },
+    });
+    stations.push(
+      revisitStation(
+        stations.length,
+        best.mapId,
+        {
+          action: `回头补图鉴 ${missed.monster.name}`,
+          text: `到 ${areaLabel(missed.mapIds, ctx)}(${mapRanges(missed.mapIds)}) 刷 ${missed.monster.name},直到登记`,
+          basis: missed.check.basis,
+        },
+        {
+          blueMagic: null,
+          bestiary: missed.monster.bookId ?? missed.monster.name,
+          skipReason: null,
+        },
+      ),
+    );
   }
   if (stations.length === 0) return null;
   const mapIds = [...usedMaps].sort((left, right) => left - right);
   const unlockTitle = timeline.sections[timeline.availableIndex]?.title ?? "后面";
+  const title = includeBlue ? "回头学青魔法" : "回头补图鉴";
   return {
-    title: "回头学青魔法",
-    note: `青魔导士要到「${unlockTitle}」才有;这些怪只在之前的段出现,拿到职业后回头补。`,
+    title,
+    note: includeBlue
+      ? `青魔导士要到「${unlockTitle}」才有;这些怪只在之前的段出现,拿到职业后回头补。`
+      : "这些“错过就没了”的怪在前面没刷到,能回去时补上。",
     maps: mapIds.map((mapId) => ({
       mapId,
       name: mapName(ctx, mapId),
       areaName: mapAreaName(mapId, ctx),
-      reasons: ["青魔导士来之前去过,拿到职业后能回去"],
+      reasons: [includeBlue ? "青魔导士来之前去过,拿到职业后能回去" : "前面没刷到,能回去补"],
     })),
     stations,
     grind: dedupeGrind(grind),
   };
+}
+
+function revisitStation(
+  index: number,
+  mapId: number,
+  text: { readonly action: string; readonly text: string; readonly basis: string },
+  grind: RouteStationGrind,
+): RouteStation {
+  return {
+    index: -(index + 1),
+    where: "回头学",
+    kind: "note",
+    mapId,
+    cell: null,
+    action: text.action,
+    text: text.text,
+    basis: text.basis,
+    chest: null,
+    pointCandidate: null,
+    grind,
+  };
+}
+
+/**
+ * Task 122: a "回头学" stop only runs when this save really has not learned the spell and the
+ * party really has a Blue Mage. An unreadable job or save state is skipped with its reason
+ * instead of guessing; the book still shows the stop.
+ */
+function blueSkipReason(spell: RouteBlueMagic): string | null {
+  if (spell.learned) return "本档已经学会";
+  if (spell.learned === null) return "不知道本档学没学";
+  if (spell.hasBlueMage === null) return "不知道队里有没有青魔导士";
+  if (!spell.hasBlueMage) return "队里没有青魔导士";
+  return null;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2503,6 +3116,53 @@ function buildGrind(
   return dedupeGrind(out);
 }
 
+interface PrunedGrind {
+  readonly grind: RouteGrind[];
+  readonly mismatches: string[];
+}
+
+/**
+ * Task 126, 11-11: a grind stop only runs on one of this section's maps, and only for a monster
+ * that really turns up there. The alignment already builds rows that way, but a polluted table
+ * (book 001 also covering an all-questions-mark row) once put 453/454 into the Prologue; drop
+ * anything that still slipped through and say so in the book's "对不上" list.
+ */
+function pruneGrind(
+  grind: readonly RouteGrind[],
+  sectionMapIds: ReadonlySet<number>,
+  ctx: BuildContext,
+): PrunedGrind {
+  const kept: RouteGrind[] = [];
+  const mismatches: string[] = [];
+  for (const row of grind) {
+    if (!sectionMapIds.has(row.mapId)) {
+      mismatches.push(`刷怪站 ${row.mapId} ${row.what}:不在本节地图里,已丢掉`);
+      continue;
+    }
+    if (!monsterNamesOn(row.mapId, ctx).has(normalizeName(row.monster))) {
+      mismatches.push(`刷怪站 ${row.mapId} ${row.what}:这张图遇不到 ${row.monster},已丢掉`);
+      continue;
+    }
+    kept.push(row);
+  }
+  return { grind: kept, mismatches };
+}
+
+/** Normalized monsters the knowledge module's encounter rows place on one map. */
+function monsterNamesOn(mapId: number, ctx: BuildContext): ReadonlySet<string> {
+  const cached = ctx.cache.monsterNamesByMap.get(mapId);
+  if (cached !== undefined) return cached;
+  const names = new Set<string>();
+  for (const monster of ctx.knowledge.monsters) {
+    if (!monster.encounters.some((encounter) => encounterMapIds(encounter).includes(mapId))) {
+      continue;
+    }
+    names.add(normalizeName(monster.name));
+  }
+  ctx.cache.monsterNamesByMap.set(mapId, names);
+  return names;
+}
+
 function bestSpot(
   mapIds: readonly number[],
   bookId: number | null,
@@ -2514,12 +3174,11 @@ function bestSpot(
     const found = monstersIn(ctx.knowledge, { mapIds: [mapId] }).find((monster) =>
       monsterIdentityMatches(monster, bookId, name),
     );
-    if (found === undefined) continue;
-    const candidate = {
-      mapId,
-      weight: found.encounterWeight,
-      chance: found.encounterChance,
-    };
+    const candidate =
+      found === undefined
+        ? areaScopedSpot(mapId, bookId, name, ctx)
+        : { mapId, weight: found.encounterWeight, chance: found.encounterChance };
+    if (candidate === null) continue;
     if (
       best === null ||
       (candidate.weight ?? -1) > (best.weight ?? -1) ||
@@ -2529,6 +3188,35 @@ function bestSpot(
     }
   }
   return best;
+}
+
+/**
+ * `monstersIn` selects encounters by map id, so an area-scoped encounter has no map row even
+ * though the monster does appear there. Fall back to the monster's own encounter rows.
+ */
+function areaScopedSpot(
+  mapId: number,
+  bookId: number | null,
+  name: string,
+  ctx: BuildContext,
+): { mapId: number; weight: number | null; chance: number | null } | null {
+  const monster = ctx.knowledge.monsters.find(
+    (item) =>
+      monsterIdentityMatches(item, bookId, name) &&
+      item.encounters.some((encounter) => encounterMapIds(encounter).includes(mapId)),
+  );
+  if (monster === undefined) return null;
+  const groups = monster.encounters.filter((encounter) =>
+    encounterMapIds(encounter).includes(mapId),
+  );
+  let weight: number | null = 0;
+  for (const group of groups)
+    weight = weight === null || group.weight === null ? null : weight + group.weight;
+  const total = ctx.knowledge.encounters
+    .filter((encounter) => encounterMapIds(encounter).includes(mapId))
+    .reduce((sum, encounter) => sum + (encounter.weight ?? 0), 0);
+  const chance = weight === null || total <= 0 ? null : weight / total;
+  return { mapId, weight, chance };
 }
 
 function monsterIdentityMatches(
@@ -2655,15 +3343,15 @@ export { renderRouteBook } from "./route-book-render.ts";
 // ---------------------------------------------------------------------------------------------
 // Small shared helpers
 
-function encounterMapIds(
-  encounter: { readonly mapId: number | null; readonly areaId: number | null },
-  ctx: BuildContext,
-): number[] {
-  if (encounter.mapId !== null) return [encounter.mapId];
-  if (encounter.areaId === null) return [];
-  return ctx.knowledge.maps.flatMap((map) =>
-    map.id !== null && map.areaId === encounter.areaId ? [map.id] : [],
-  );
+// 11-11: the knowledge module (task 121) already resolves every encounter row to the maps it
+// covers. Deriving maps from `areaId` here scanned all 643 maps per row (102 s of a 110 s build
+// on real data) and repeated the old mix-up of encounter areas with map areas.
+function encounterMapIds(encounter: {
+  readonly mapId: number | null;
+  readonly mapIds?: readonly number[];
+}): number[] {
+  if (encounter.mapIds !== undefined && encounter.mapIds.length > 0) return [...encounter.mapIds];
+  return encounter.mapId === null ? [] : [encounter.mapId];
 }
 
 function padBook(bookId: number): string {

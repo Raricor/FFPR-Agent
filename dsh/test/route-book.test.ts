@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, readFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import { Atlas } from "../src/engine/atlas.ts";
@@ -14,13 +14,18 @@ import {
   type StaticData,
   type TreasuresRow,
 } from "../src/engine/knowledge/index.ts";
+import { Guide } from "../src/engine/guide/kb.ts";
 import { parseWalkthrough } from "../src/engine/stage/guide-steps.ts";
 import type { GuideSection, GuideStep, GuideStepKind } from "../src/engine/stage/guide-types.ts";
 import {
   buildRouteBook,
+  buildRouteBookAsync,
   type RouteBook,
+  type RouteBookFiles,
   type RouteBookInput,
 } from "../src/engine/stage/route-book.ts";
+import { loadRouteBook, readVisitOrder } from "../src/engine/stage/route-book-load.ts";
+import { routeFromBookSection } from "../src/engine/stage/book-plan.ts";
 import { renderRouteBook } from "../src/engine/stage/route-book-render.ts";
 import { isRecord } from "../src/engine/values.ts";
 
@@ -96,7 +101,7 @@ interface KnowledgeSpec {
   readonly magic?: readonly MagicRow[];
 }
 
-function makeKnowledge(spec: KnowledgeSpec): Knowledge {
+function makeKnowledge(spec: KnowledgeSpec, guide: Guide | null = null): Knowledge {
   const data: StaticData = {
     game: "ff5",
     build: null,
@@ -114,7 +119,7 @@ function makeKnowledge(spec: KnowledgeSpec): Knowledge {
   };
   return buildKnowledge({
     static: data,
-    guide: null,
+    guide,
     atlas: null,
     collisions: null,
     profile: null,
@@ -183,6 +188,7 @@ function input(
     blueMagic?: readonly string[] | null;
     jobs?: readonly string[] | null;
     openedChests?: ReadonlySet<string> | null;
+    files?: RouteBookFiles | null;
   } = {},
 ): RouteBookInput {
   return {
@@ -199,6 +205,7 @@ function input(
       jobs: options.jobs ?? null,
       openedChests: options.openedChests ?? null,
     },
+    ...(options.files === undefined ? {} : { files: options.files }),
   };
 }
 
@@ -707,6 +714,45 @@ void test("a monster only in this section is marked missable and gets a grind sp
   assert.equal(grind.weight, 100);
 });
 
+void test("a bestiary row from another area never pulls its map or grind stop into this section", () => {
+  const knowledge = makeKnowledge({
+    maps: [mapRow(10, "试验迷宫", "试验迷宫"), mapRow(99, "别处高塔", "别处高塔")],
+    monsters: [monsterRow(8, 8, "黑哥布林"), monsterRow(9, 9, "别处怪")],
+    encounters: [encounter(10, 8, 100), encounter(99, 9, 100)],
+  });
+  const atlas = makeAtlas({
+    10: { name: "试验迷宫 １层" },
+    99: { name: "别处高塔 １层" },
+  });
+  const book = buildRouteBook(
+    input(
+      [
+        section(
+          "试验迷宫",
+          ["试验迷宫"],
+          [step(0, "move", null, "Walk.")],
+          [
+            { id: 8, name: "Black Goblin", blueMagic: null, where: "试验迷宫" },
+            { id: 9, name: "Elsewhere", blueMagic: null, where: "试验迷宫" },
+          ],
+        ),
+      ],
+      knowledge,
+      atlas,
+      { bestiary: new Set<number>() },
+    ),
+  );
+  const result = first(book);
+  assert.deepEqual(
+    result.maps.map((map) => map.mapId),
+    [10],
+  );
+  assert.equal(
+    result.grind.some((grind) => grind.mapId === 99),
+    false,
+  );
+});
+
 void test("without a Blue Mage the spell says nobody can learn it and where else it appears", () => {
   const knowledge = makeKnowledge({
     maps: [mapRow(10, "试验迷宫", "试验迷宫")],
@@ -737,6 +783,8 @@ void test("without a Blue Mage the spell says nobody can learn it and where else
   assert.equal(spell.hasBlueMage, false);
   assert.match(spell.note, /现在没人能学/u);
   assert.match(spell.note, /只在这里/u);
+  assert.equal(spell.timing, "unknown");
+  assert.match(spell.when, /青魔导士什么时候有不确定/u);
 });
 
 void test("blue magic before the Blue Mage is marked missed and gets a return trip", () => {
@@ -762,11 +810,15 @@ void test("blue magic before the Blue Mage is marked missed and gets a return tr
           [{ id: 2, name: "Steel Bat", blueMagic: "Vampire", where: null }],
         ),
         section("中途镇", [], [step(0, "shop", null, "Buy things.")]),
-        section("风之神殿", ["Crystal Room"], [
-          step(0, "note", "Crystal Room", "Jobs unlocked:"),
-          step(1, "note", "Crystal Room", "Knight"),
-          step(2, "note", "Crystal Room", "Blue Mage"),
-        ]),
+        section(
+          "风之神殿",
+          ["Crystal Room"],
+          [
+            step(0, "note", "Crystal Room", "Jobs unlocked:"),
+            step(1, "note", "Crystal Room", "Knight"),
+            step(2, "note", "Crystal Room", "Blue Mage"),
+          ],
+        ),
       ],
       knowledge,
       atlas,
@@ -811,11 +863,15 @@ void test("blue magic before the Blue Mage with no way back is marked unreachabl
           [{ id: 2, name: "Steel Bat", blueMagic: "Vampire", where: null }],
         ),
         section("中途镇", [], [step(0, "shop", null, "Buy things.")]),
-        section("风之神殿", ["Crystal Room"], [
-          step(0, "note", "Crystal Room", "Jobs unlocked:"),
-          step(1, "note", "Crystal Room", "Knight"),
-          step(2, "note", "Crystal Room", "Blue Mage"),
-        ]),
+        section(
+          "风之神殿",
+          ["Crystal Room"],
+          [
+            step(0, "note", "Crystal Room", "Jobs unlocked:"),
+            step(1, "note", "Crystal Room", "Knight"),
+            step(2, "note", "Crystal Room", "Blue Mage"),
+          ],
+        ),
       ],
       knowledge,
       atlas,
@@ -847,11 +903,15 @@ void test("with a Blue Mage in this save the spell can be learned now", () => {
           [step(0, "move", null, "Walk.")],
           [{ id: 2, name: "Steel Bat", blueMagic: "Vampire", where: null }],
         ),
-        section("风之神殿", ["Crystal Room"], [
-          step(0, "note", "Crystal Room", "Jobs unlocked:"),
-          step(1, "note", "Crystal Room", "Knight"),
-          step(2, "note", "Crystal Room", "Blue Mage"),
-        ]),
+        section(
+          "风之神殿",
+          ["Crystal Room"],
+          [
+            step(0, "note", "Crystal Room", "Jobs unlocked:"),
+            step(1, "note", "Crystal Room", "Knight"),
+            step(2, "note", "Crystal Room", "Blue Mage"),
+          ],
+        ),
       ],
       knowledge,
       atlas,
@@ -864,6 +924,161 @@ void test("with a Blue Mage in this save the spell can be learned now", () => {
   assert.equal(spell.timing, "now");
   assert.equal(spell.when, "现在就有");
   assert.equal(book.sections[1]?.revisit, null);
+});
+
+void test("a missed missable monster gets a bestiary return trip even without blue magic", () => {
+  const knowledge = makeKnowledge({
+    maps: [mapRow(10, "洞窟 １层", "洞窟"), mapRow(20, "下一站", "下一站")],
+    monsters: [monsterRow(9, 9, "恶魔蟹")],
+    encounters: [encounter(10, 9, 100)],
+  });
+  const atlas = makeAtlas({
+    10: { name: "洞窟 １层", exits: [{ cell: [1, 1], to: 1, name: "世界地图" }] },
+    20: { name: "下一站" },
+  });
+  const book = buildRouteBook(
+    input(
+      [
+        section(
+          "洞窟",
+          [],
+          [step(0, "move", null, "Walk.")],
+          [{ id: 9, name: "Devil Crab", blueMagic: null, where: null }],
+        ),
+        section("下一站", [], [step(0, "move", null, "Next.")]),
+      ],
+      knowledge,
+      atlas,
+      { bestiary: new Set<number>(), jobs: ["Blue Mage"] },
+    ),
+  );
+  const revisit = book.sections[1]?.revisit;
+  assert.ok(revisit !== null && revisit !== undefined);
+  assert.equal(revisit.title, "回头补图鉴");
+  assert.match(revisit.stations[0]?.action ?? "", /回头补图鉴 恶魔蟹/u);
+  assert.equal(revisit.grind[0]?.until.blueMagic, null);
+});
+
+void test("story stations take event-number-ordered triggers and dialog stations take an NPC", () => {
+  const knowledge = makeKnowledge({ maps: [mapRow(10, "试验洞窟", "试验洞窟")] });
+  const atlas = makeAtlas({ 10: { name: "试验洞窟" } });
+  const files: RouteBookFiles = {
+    events: [
+      {
+        mapId: 10,
+        file: "ev_e_0030.json",
+        name: "sc_e_0030:后来发生的",
+        cell: [9, 9],
+        rect: { x1: 9, y1: 9, x2: 9, y2: 9 },
+        scriptId: 30,
+      },
+      {
+        mapId: 10,
+        file: "ev_e_0021.json",
+        name: "sc_e_0021:测试之家前",
+        cell: [5, 5],
+        rect: { x1: 5, y1: 5, x2: 5, y2: 5 },
+        scriptId: 21,
+      },
+    ],
+    npcs: [
+      {
+        mapId: 10,
+        name: "受付",
+        cell: [7, 8],
+        names: { en: "Receptionist", zhc: "接待员" },
+      },
+    ],
+  };
+  const book = buildRouteBook(
+    input(
+      [
+        section(
+          "试验洞窟",
+          [],
+          [
+            step(0, "cutscene", null, "Watch the first scene."),
+            step(1, "cutscene", null, "Watch the second scene."),
+            step(2, "talk", null, "Speak to the receptionist and answer yes."),
+            step(3, "switch", null, "Pull the lever."),
+          ],
+        ),
+      ],
+      knowledge,
+      atlas,
+      { files },
+    ),
+  );
+  const result = first(book);
+  const [firstScene, secondScene, receptionist, lever] = result.stations;
+  assert.ok(
+    firstScene !== undefined &&
+      secondScene !== undefined &&
+      receptionist !== undefined &&
+      lever !== undefined,
+  );
+  assert.deepEqual(firstScene.cell, [5, 5]);
+  assert.match(firstScene.basis, /游戏文件：事件 sc_e_0021\(测试之家前\)/u);
+  assert.deepEqual(secondScene.cell, [9, 9]);
+  assert.match(secondScene.basis, /游戏文件：事件 sc_e_0030/u);
+  assert.deepEqual(receptionist.cell, [7, 8]);
+  assert.match(receptionist.basis, /游戏文件：NPC 受付/u);
+  assert.equal(lever.cell, null);
+  assert.doesNotMatch(lever.basis, /游戏文件/u);
+  const text = renderRouteBook(book);
+  assert.match(text, /\| 剧情站有坐标 \|/u);
+  assert.match(text, /\| 3\/4 \|/u);
+});
+
+void test("a save point and a spring use the knowledge module's real cells", () => {
+  const base = makeKnowledge({ maps: [mapRow(10, "试验洞窟 １层", "试验洞窟")] });
+  const point = (
+    cell: readonly [number, number],
+    name: string,
+  ): Knowledge["savePoints"][number] => ({
+    mapId: 10,
+    mapName: "试验洞窟 １层",
+    areaId: 1,
+    areaName: "试验洞窟",
+    cell,
+    name,
+    sources: [],
+  });
+  const knowledge: Knowledge = {
+    ...base,
+    savePoints: [point([6, 7], "セーブポイント")],
+    restorePoints: [point([10, 22], "回復の壺"), point([12, 12], "泉")],
+  };
+  const atlas = makeAtlas({ 10: { name: "试验洞窟 １层" } });
+  const book = buildRouteBook(
+    input(
+      [
+        section(
+          "试验洞窟",
+          [],
+          [
+            step(0, "save", null, "Use the consecrated circle to save."),
+            step(1, "heal", null, "Heal at the spring."),
+            step(2, "heal", null, "Drink from the healing pot."),
+          ],
+        ),
+      ],
+      knowledge,
+      atlas,
+    ),
+  );
+  const result = first(book);
+  const [savePoint, spring, pot] = result.stations;
+  assert.ok(savePoint !== undefined && spring !== undefined && pot !== undefined);
+  assert.deepEqual(savePoint.cell, [6, 7]);
+  assert.match(savePoint.basis, /游戏文件：存档点/u);
+  assert.deepEqual(spring.cell, [10, 22]);
+  assert.match(spring.basis, /游戏文件：回复点/u);
+  assert.deepEqual(pot.cell, [12, 12]);
+  assert.deepEqual(
+    result.notes.filter((note) => note.pointCandidate !== null),
+    [],
+  );
 });
 
 void test("render has a total table and every section's tables", () => {
@@ -1035,4 +1250,198 @@ void test("real FF5 data: sub-place names split Cave Entrance, Pirate Ship and C
     "Vampire",
   );
   assert.match(renderRouteBook(book), /钢蝠/u);
+});
+
+void test("real FF5 data: a Prologue plan for cave 194 starts at the cave, not 189/453/454", async (t) => {
+  if (!(await hasRealData())) {
+    t.skip("没有本机 .deps 的 FF5 地图记录或知识导出");
+    return;
+  }
+  const knowledge = await loadKnowledge({
+    game: "ff5",
+    home: REAL_HOME,
+    atlas: null,
+    collisions: null,
+    bestiarySave: null,
+    atlasSave: null,
+  });
+  const atlas = await Atlas.load(REAL_ATLAS);
+  const raw: unknown = JSON.parse(await readFile(join(REAL_HOME, "guide.json"), "utf8"));
+  if (!isRecord(raw)) assert.fail("真实 guide.json 不是对象");
+  const runtime = await loadRouteBook({
+    game: "ff5",
+    sections: parseWalkthrough(raw.walkthrough),
+    knowledge,
+    atlas,
+    visitOrder: await readVisitOrder("ff5"),
+    save: {
+      bestiary: new Set(knowledge.progress.bestiary),
+      blueMagic: null,
+      jobs: null,
+      openedChests: new Set<string>(),
+    },
+    fromSection: "Prologue",
+    preferredSection: "Prologue",
+    preferredMapId: 194,
+    mapId: 1,
+    aheadSections: 1,
+    timeBudgetMs: 120_000,
+  });
+  assert.ok(runtime !== null);
+  const route = routeFromBookSection(runtime.section, { grindMinutes: 8 });
+  assert.ok(route.length > 0);
+  assert.match(route[0]?.to ?? "", /^19[12](?::|$)/u);
+  assert.equal(
+    route.some((stop) => /^(189|453|454)(?::|$)/u.test(stop.to)),
+    false,
+  );
+  const bestiary = route.flatMap((stop) => stop.until?.bestiary ?? []);
+  assert.equal(new Set(bestiary.map(String)).size, bestiary.length);
+});
+
+void test("the async build yields between sections and keeps the part built before the budget", async () => {
+  const maps = Array.from({ length: 12 }, (_, index) =>
+    mapRow(500 + index, `测试 ${index}`, `测试 ${index}`),
+  );
+  const sections = maps.map((map) =>
+    section(String(map.name), [], [step(0, "move", null, `Walk around ${map.name}.`)]),
+  );
+  const knowledge = makeKnowledge({ maps });
+  const atlas = makeAtlas({});
+  let ticks = 0;
+  const timer = setInterval(() => {
+    ticks += 1;
+  }, 0);
+  try {
+    const outcome = await buildRouteBookAsync(input(sections, knowledge, atlas), 5_000);
+    assert.equal(outcome.timedOut, false);
+    assert.equal(outcome.book.sections.length, sections.length);
+    assert.ok(ticks > 0, "构建期间事件循环没有让出");
+  } finally {
+    clearInterval(timer);
+  }
+  const stopped = await buildRouteBookAsync(input(sections, knowledge, atlas), 0);
+  assert.equal(stopped.timedOut, true);
+  assert.equal(stopped.book.sections.length, 0);
+});
+
+void test("synthetic 80 sections × 30 steps × 20 monsters build in under a second", () => {
+  const maps = [];
+  const monsters = [];
+  const encounters = [];
+  const sections: GuideSection[] = [];
+  const atlas = new Atlas();
+  for (let s = 0; s < 80; s += 1) {
+    const mapId = 1000 + s;
+    const area = `合成区域 ${s}`;
+    maps.push(mapRow(mapId, `${area} １层`, area, mapId));
+    atlas.maps.set(String(mapId), {
+      name: `${area} １层`,
+      exits: s + 1 < 80 ? [{ cell: [1, 1], to: 1001 + s, name: "GotoMap" }] : [],
+      chests: [],
+    });
+    for (let m = 0; m < 20; m += 1) {
+      const id = 10_000 + s * 20 + m;
+      monsters.push(
+        monsterRow(id, 1 + s * 20 + m, `合成怪物 ${1 + s * 20 + m}`, {
+          blue: m === 0 ? "合成青魔法" : null,
+        }),
+      );
+      encounters.push(encounter(mapId, id));
+    }
+    const places = [`${area} - 1F`, `${area} - 2F`, `${area} - 3F`];
+    const steps = Array.from({ length: 30 }, (_, index) =>
+      step(
+        index,
+        index % 6 === 0 ? "chest" : "move",
+        places[index % 3] ?? null,
+        `走 ${index} 步。`,
+      ),
+    );
+    sections.push({
+      title: area,
+      order: s,
+      places,
+      steps,
+      monsters: Array.from({ length: 20 }, (_, m) => ({
+        id: 1 + s * 20 + m,
+        name: `合成怪物 ${1 + s * 20 + m}`,
+        blueMagic: m === 0 ? "合成青魔法" : null,
+        where: places[m % 3] ?? null,
+      })),
+    });
+  }
+  const knowledge = makeKnowledge({ maps, monsters, encounters }, new Guide([], new Map()));
+  const started = performance.now();
+  const book = buildRouteBook(input(sections, knowledge, atlas));
+  const elapsed = performance.now() - started;
+  assert.equal(book.sections.length, 80);
+  assert.ok(elapsed < 1_000, `80 节用了 ${elapsed.toFixed(0)}ms`);
+});
+
+void test("real FF5 data: building all 77 sections stays under three seconds", async (t) => {
+  if (!(await hasRealData())) {
+    t.skip("没有本机 .deps 的 FF5 地图记录或知识导出");
+    return;
+  }
+  const knowledge = await loadKnowledge({
+    game: "ff5",
+    home: REAL_HOME,
+    atlas: null,
+    collisions: null,
+    bestiarySave: null,
+    atlasSave: null,
+  });
+  const atlas = await Atlas.load(REAL_ATLAS);
+  const raw: unknown = JSON.parse(await readFile(join(REAL_HOME, "guide.json"), "utf8"));
+  if (!isRecord(raw)) assert.fail("真实 guide.json 不是对象");
+  const sections = parseWalkthrough(raw.walkthrough);
+  const first = sections[0]?.title;
+  const last = sections.at(-1)?.title;
+  assert.ok(first !== undefined && last !== undefined);
+  const started = performance.now();
+  const book = buildRouteBook(input(sections, knowledge, atlas, { from: first, to: last }));
+  const elapsed = performance.now() - started;
+  t.diagnostic(`真实攻略 ${book.sections.length} 节构建用了 ${elapsed.toFixed(0)}ms`);
+  assert.equal(book.sections.length, sections.length);
+  assert.ok(elapsed < 3_000, `整本 ${sections.length} 节用了 ${elapsed.toFixed(0)}ms`);
+});
+
+void test("real FF5 data: a three-section book matches the baseline under .deps/tests", async (t) => {
+  if (!(await hasRealData())) {
+    t.skip("没有本机 .deps 的 FF5 地图记录或知识导出");
+    return;
+  }
+  const knowledge = await loadKnowledge({
+    game: "ff5",
+    home: REAL_HOME,
+    atlas: null,
+    collisions: null,
+    bestiarySave: null,
+    atlasSave: null,
+  });
+  const atlas = await Atlas.load(REAL_ATLAS);
+  const raw: unknown = JSON.parse(await readFile(join(REAL_HOME, "guide.json"), "utf8"));
+  if (!isRecord(raw)) assert.fail("真实 guide.json 不是对象");
+  const sections = parseWalkthrough(raw.walkthrough);
+  const from = sections[0]?.title;
+  const to = sections[2]?.title;
+  if (from === undefined || to === undefined) {
+    t.skip("真实攻略不足 3 节");
+    return;
+  }
+  const book = buildRouteBook(input(sections, knowledge, atlas, { from, to }));
+  assert.equal(book.sections.length, 3);
+  const baselineDir = join(REAL_DEPS, "tests");
+  const baseline = join(baselineDir, "route-book-3-sections.json");
+  try {
+    await access(baseline);
+  } catch {
+    await mkdir(baselineDir, { recursive: true });
+    await writeFile(baseline, `${JSON.stringify(book, null, 2)}\n`, "utf8");
+    t.diagnostic(`第一次运行，已把 3 节路线书写进 ${baseline}`);
+    return;
+  }
+  const expected: unknown = JSON.parse(await readFile(baseline, "utf8"));
+  assert.deepEqual(book, expected);
 });
