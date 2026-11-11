@@ -314,6 +314,7 @@ interface FakeTools {
   restrictions: number;
   register(definition: { readonly name: string }): () => void;
   restrict(filter: unknown): () => void;
+  guard(guard: unknown): () => void;
   schemas(): readonly { readonly name: string }[];
 }
 
@@ -381,6 +382,7 @@ function makeHarness(): Harness {
         service.restrictions += 1;
         return () => undefined;
       },
+      guard: () => () => undefined,
       schemas: () => [...names].map((name) => ({ name })),
     };
     toolSets.set(preset, service);
@@ -462,7 +464,10 @@ function makeHarness(): Harness {
       const agentContext = {} as Record<string, unknown>;
       const agent = {
         id: sessionId,
-        session: { id: sessionId, header: origin === undefined ? {} : { origin } },
+        session: {
+          id: sessionId,
+          header: origin === undefined ? {} : { origin },
+        },
         ctx: agentContext,
       } as unknown as Agent;
       contextIds.set(agentContext, sessionId);
@@ -515,7 +520,7 @@ async function checkCreatedUnderFF3(switchFirst: boolean): Promise<void> {
   harness.plugin("ff5");
   const { agent, personas } = harness.agent("session-1", "ffpr-ff3");
   await runCreated(ff3, agent, switchFirst);
-  assert.deepEqual(personas, [buildSystemPrompt("ff5", 20, true)]);
+  assert.deepEqual(personas, [buildSystemPrompt("ff5", 20, true, true)]);
   assert.equal(harness.tools("ffpr-ff3").size, 0);
   assert.ok(harness.tools("ffpr").size > 0);
 }
@@ -587,7 +592,7 @@ void test("agent/created switches to FF5 and mounts FF5 before any pre-step", as
   // Real machine 11-02: select commits, but the new preset's plugin never hears the event.
   await harness.runSilent(() => switching({ agent, source: "startup" }));
   assert.equal(harness.tools("ffpr-ff3").size, 0);
-  assert.deepEqual(personas, [buildSystemPrompt("ff5", 20, true)]);
+  assert.deepEqual(personas, [buildSystemPrompt("ff5", 20, true, true)]);
   assert.ok(harness.tools("ffpr").size > 0);
   assert.ok(harness.restrictions("ffpr") > 0);
 });
