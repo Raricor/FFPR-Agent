@@ -44,7 +44,14 @@ const SNAPSHOT: BattleSnapshot = {
       immune: ["雷"],
       boss: true,
     },
-    { name: "弗扎", id: 283, hp: 100, maxHp: 100, status: ["反射"], weak: ["圣"] },
+    {
+      name: "弗扎",
+      id: 283,
+      hp: 100,
+      maxHp: 100,
+      status: ["反射"],
+      weak: ["圣"],
+    },
     { name: "小怪", id: 1, hp: 0, maxHp: 10 },
   ],
   items: { 不死鸟之尾: 2, 回音草: 1 },
@@ -231,7 +238,16 @@ void test("resolveTarget handles every target spelling", () => {
 });
 
 void test("enemy.all and ally.all resolve to the whole side", () => {
-  assert.deepEqual(resolveTarget("enemy.all", SNAPSHOT), { kind: "all", side: "enemy" });
-  assert.deepEqual(resolveTarget("ally.all", SNAPSHOT), { kind: "all", side: "ally" });
-  assert.deepEqual(resolveTarget("enemy", SNAPSHOT), { kind: "all", side: "enemy" });
+  assert.deepEqual(resolveTarget("enemy.all", SNAPSHOT), {
+    kind: "all",
+    side: "enemy",
+  });
+  assert.deepEqual(resolveTarget("ally.all", SNAPSHOT), {
+    kind: "all",
+    side: "ally",
+  });
+  assert.deepEqual(resolveTarget("enemy", SNAPSHOT), {
+    kind: "all",
+    side: "enemy",
+  });
 });

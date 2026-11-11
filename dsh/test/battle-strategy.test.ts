@@ -14,7 +14,12 @@ import type { FightTurn } from "../src/engine/skills/battle.ts";
 import { FakePilot } from "./fake-pilot.ts";
 import { FakeBattle, startRows } from "./fake-battle.ts";
 
-const LAPTOP: Laptop = { host: "laptop", user: "player", key: "/tmp/key", root: "C:/ffpr" };
+const LAPTOP: Laptop = {
+  host: "laptop",
+  user: "player",
+  key: "/tmp/key",
+  root: "C:/ffpr",
+};
 
 async function fixture(name: string): Promise<Strategy> {
   const text = await readFile(join(import.meta.dirname, "fixtures", "strategy", name), "utf8");
@@ -45,7 +50,14 @@ void test("the giant bird is defended against at id 282 and attacked at 281", as
   ] as const) {
     const sim = new FakeBattle({
       party: [
-        { name: "蕾娜", hp: 100, maxHp: 100, mp: 20, status: [], spells: ["治疗"] },
+        {
+          name: "蕾娜",
+          hp: 100,
+          maxHp: 100,
+          mp: 20,
+          status: [],
+          spells: ["治疗"],
+        },
         { name: "加拉夫", hp: 100, maxHp: 100, mp: 10, status: [] },
         { name: "法利斯", hp: 100, maxHp: 100, mp: 10, status: [] },
       ],
@@ -66,7 +78,14 @@ void test("Magissa's reactions revive first and then shield the unsheltered ally
   const events = [magicEvent()];
   const sim = new FakeBattle({
     party: [
-      { name: "蕾娜", hp: 80, maxHp: 100, mp: 20, status: [], spells: ["治疗", "魔法护盾"] },
+      {
+        name: "蕾娜",
+        hp: 80,
+        maxHp: 100,
+        mp: 20,
+        status: [],
+        spells: ["治疗", "魔法护盾"],
+      },
       { name: "加拉夫", hp: 70, maxHp: 90, mp: 10, status: [] },
       {
         name: "巴兹",
@@ -228,7 +247,9 @@ void test("a rule skipped twice for a missing item becomes a gap in the record",
     phases: [],
     rules: [],
   };
-  const result = await fight(sim.pilot, strategy, 30, () => undefined, null, { record: session });
+  const result = await fight(sim.pilot, strategy, 30, () => undefined, null, {
+    record: session,
+  });
   assert.equal(result.ok, true);
   assert.deepEqual(result.gaps, [{ item: "不死鸟之尾", held: 0, basis: "对策 1", skips: 2 }]);
   assert.match(gapText(result.gaps), /缺口:不死鸟之尾 0 个,对策 1 跳过了 2 次/);
@@ -257,7 +278,12 @@ void test("set_tactics accepts a version 2 strategy and still checks it", async 
       reactions: [],
       phases: [],
       rules: [
-        { who: "蕾娜", if: "ally.any(hp_pct < 60)", do: "白魔法:治疗", to: "ally.lowest(hp_pct)" },
+        {
+          who: "蕾娜",
+          if: "ally.any(hp_pct < 60)",
+          do: "白魔法:治疗",
+          to: "ally.lowest(hp_pct)",
+        },
         { who: "all", do: "攻击" },
       ],
     };
@@ -272,7 +298,10 @@ void test("set_tactics accepts a version 2 strategy and still checks it", async 
     assert.match(good.text, /已为地图 64 设好 1 套战斗策略/);
     assert.deepEqual(game.tactics.current(64), strategy);
     const bad = await tools.toolSetTactics(
-      { tables: [{ version: 2, roles: {}, reactions: [], phases: [], rules: [] }], map: 64 },
+      {
+        tables: [{ version: 2, roles: {}, reactions: [], phases: [], rules: [] }],
+        map: 64,
+      },
       pilot,
     );
     assert.match(bad.text, /策略里没有规则/);

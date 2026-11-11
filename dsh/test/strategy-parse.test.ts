@@ -32,7 +32,14 @@ void test("a strategy with only flat rules parses", () => {
     version: 2,
     summary: "测试",
     roles: { 蕾娜: "治疗" },
-    rules: [{ who: "蕾娜", if: "ally.any(hp_pct < 50)", do: "白魔法:治疗", to: "self" }],
+    rules: [
+      {
+        who: "蕾娜",
+        if: "ally.any(hp_pct < 50)",
+        do: "白魔法:治疗",
+        to: "self",
+      },
+    ],
   });
   assert.equal(strategy.version, 2);
   assert.equal(strategy.summary, "测试");
@@ -119,10 +126,19 @@ void test("do accepts the commands, items and abilities with or without an abili
   assert.deepEqual(parseAction("防御"), { command: "防御", ability: "" });
   assert.deepEqual(parseAction("换列"), { command: "换列", ability: "" });
   assert.deepEqual(parseAction("逃跑"), { command: "逃跑", ability: "" });
-  assert.deepEqual(parseAction("道具:不死鸟之尾"), { command: "道具", ability: "不死鸟之尾" });
-  assert.deepEqual(parseAction("白魔法:治疗+"), { command: "白魔法", ability: "治疗+" });
+  assert.deepEqual(parseAction("道具:不死鸟之尾"), {
+    command: "道具",
+    ability: "不死鸟之尾",
+  });
+  assert.deepEqual(parseAction("白魔法:治疗+"), {
+    command: "白魔法",
+    ability: "治疗+",
+  });
   assert.deepEqual(parseAction("召唤"), { command: "召唤", ability: "" });
-  assert.deepEqual(parseAction("黑魔法:最强"), { command: "黑魔法", ability: "最强" });
+  assert.deepEqual(parseAction("黑魔法:最强"), {
+    command: "黑魔法",
+    ability: "最强",
+  });
   assert.equal(parseAction("道具"), null);
   assert.equal(parseAction("道具:"), null);
   assert.equal(parseAction(":"), null);

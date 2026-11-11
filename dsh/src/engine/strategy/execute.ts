@@ -375,7 +375,12 @@ export class StrategyRuntime {
     let entry = this.gapCounts.get(key);
     if (entry === undefined) {
       entry = {
-        gap: { item, held: itemCount(snapshot, item), basis: step.basis, skips: 0 },
+        gap: {
+          item,
+          held: itemCount(snapshot, item),
+          basis: step.basis,
+          skips: 0,
+        },
         seen: false,
       };
       this.gapCounts.set(key, entry);

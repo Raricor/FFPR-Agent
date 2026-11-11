@@ -179,7 +179,12 @@ function parsePhase(raw: unknown, index: number, errors: string[]): StrategyPhas
     }
   }
   if (name === undefined || name === "") return null;
-  const phase: { name: string; when?: string; note?: string; rules: StrategyRule[] } = {
+  const phase: {
+    name: string;
+    when?: string;
+    note?: string;
+    rules: StrategyRule[];
+  } = {
     name,
     rules,
   };

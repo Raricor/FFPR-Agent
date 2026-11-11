@@ -100,8 +100,16 @@ export type Expression =
   | { readonly kind: "string"; readonly value: string }
   | { readonly kind: "boolean"; readonly value: boolean }
   | { readonly kind: "not"; readonly operand: Expression }
-  | { readonly kind: "and"; readonly left: Expression; readonly right: Expression }
-  | { readonly kind: "or"; readonly left: Expression; readonly right: Expression }
+  | {
+      readonly kind: "and";
+      readonly left: Expression;
+      readonly right: Expression;
+    }
+  | {
+      readonly kind: "or";
+      readonly left: Expression;
+      readonly right: Expression;
+    }
   | {
       readonly kind: "compare";
       readonly op: CompareOp;
@@ -129,7 +137,11 @@ type Token =
   | { readonly kind: "word"; readonly value: string; readonly offset: number }
   | { readonly kind: "number"; readonly value: number; readonly offset: number }
   | { readonly kind: "string"; readonly value: string; readonly offset: number }
-  | { readonly kind: "punct"; readonly value: "." | "(" | ")" | ","; readonly offset: number }
+  | {
+      readonly kind: "punct";
+      readonly value: "." | "(" | ")" | ",";
+      readonly offset: number;
+    }
   | { readonly kind: "op"; readonly value: CompareOp; readonly offset: number }
   | { readonly kind: "eof"; readonly offset: number };
 
@@ -234,7 +246,11 @@ function tokenize(source: string): Token[] {
         if (current === undefined || !WORD_CHAR.test(current)) break;
         index++;
       }
-      tokens.push({ kind: "word", value: source.slice(start, index), offset: start });
+      tokens.push({
+        kind: "word",
+        value: source.slice(start, index),
+        offset: start,
+      });
       continue;
     }
     fail(index, `不认识的符号「${char}」`);
@@ -542,7 +558,11 @@ class Parser {
         return { member: { kind: "property", name }, type: "all" };
       }
       return {
-        member: { kind: "predicate", name: "all", predicate: this.parsePredicate() },
+        member: {
+          kind: "predicate",
+          name: "all",
+          predicate: this.parsePredicate(),
+        },
         type: "boolean",
       };
     }
@@ -567,7 +587,11 @@ class Parser {
       }
       this.expectPunct(")");
       return {
-        member: { kind: "rank", name, attribute: attribute.value as NumericAttribute },
+        member: {
+          kind: "rank",
+          name,
+          attribute: attribute.value as NumericAttribute,
+        },
         type: "unit",
       };
     }
@@ -586,7 +610,10 @@ class Parser {
         }
         argument = element;
       }
-      return { member: { kind: "unitMethod", name, argument }, type: "boolean" };
+      return {
+        member: { kind: "unitMethod", name, argument },
+        type: "boolean",
+      };
     }
     if (name === "used") {
       return { member: this.parseUsed(), type: "boolean" };
@@ -1030,7 +1057,11 @@ function applySetMember(
   if (member.kind === "predicate") {
     const units = unitsOf(snapshot, set.side);
     const holds = (unit: SnapshotUnit): boolean =>
-      truthiness(evalNode(member.predicate, snapshot, { predicate: unitValue(set.side, unit) }));
+      truthiness(
+        evalNode(member.predicate, snapshot, {
+          predicate: unitValue(set.side, unit),
+        }),
+      );
     if (member.name === "any") return units.some(holds);
     if (member.name === "all") return units.every(holds);
     if (member.name === "count") return units.filter(holds).length;

@@ -16,14 +16,25 @@ import { isRecord } from "../src/engine/values.ts";
 const LEGACY = {
   蕾娜: [
     { if: "ally.hp_pct < 50", do: "白魔法:治疗", target: "hp最低的同伴" },
-    { if: "ally.dead >= 1 and item.不死鸟之尾 > 0", do: "道具:不死鸟之尾", target: "倒下的同伴" },
+    {
+      if: "ally.dead >= 1 and item.不死鸟之尾 > 0",
+      do: "道具:不死鸟之尾",
+      target: "倒下的同伴",
+    },
     { if: "enemy.name.喧嚣鬼 >= 2", do: "攻击", target: "敌人:喧嚣鬼" },
     { if: "enemy.id.282 >= 1", do: "防御" },
     { if: "ally.status.毒 >= 1", do: "白魔法:解毒", target: "状态:毒" },
     { if: "party.alive > 0 and enemy.count > 0 and self.hp < 30", do: "攻击" },
     { if: "enemy.weak.冰 > 0", do: "黑魔法:冰结", target: "敌人:弱冰" },
-    { if: "enemy.absorbs.火 > 0 and self.status.沉默 >= 1 and turn >= 2", do: "攻击" },
-    { if: "enemy.hp_pct < 20 and enemy.boss", do: "攻击", target: "敌人:hp最低" },
+    {
+      if: "enemy.absorbs.火 > 0 and self.status.沉默 >= 1 and turn >= 2",
+      do: "攻击",
+    },
+    {
+      if: "enemy.hp_pct < 20 and enemy.boss",
+      do: "攻击",
+      target: "敌人:hp最低",
+    },
     { do: "攻击", target: "自己" },
   ],
 };
@@ -73,7 +84,9 @@ void test("every old vocabulary word and target converts", () => {
 });
 
 void test("the old {battle: …} wrapper and one-command plans still convert", () => {
-  const wrapped = fromLegacy({ battle: { 蕾娜: [{ if: "self.mp >= 4", do: "黑魔法:闪雷" }] } });
+  const wrapped = fromLegacy({
+    battle: { 蕾娜: [{ if: "self.mp >= 4", do: "黑魔法:闪雷" }] },
+  });
   assert.equal(wrapped.rules.length, 1);
   const plan = fromLegacy({ 蕾娜: "攻击" });
   assert.equal(plan.rules.length, 1);

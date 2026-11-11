@@ -59,25 +59,43 @@ function legacyTerm(name: string): LegacyTerm {
   }
   if (name.startsWith("enemy.name.")) {
     const wanted = name.slice("enemy.name.".length);
-    return { expr: `enemy.count(name == ${JSON.stringify(wanted)})`, boolean: false };
+    return {
+      expr: `enemy.count(name == ${JSON.stringify(wanted)})`,
+      boolean: false,
+    };
   }
   if (name.startsWith("enemy.id.")) {
-    return { expr: `enemy(${name.slice("enemy.id.".length)}).alive`, boolean: true };
+    return {
+      expr: `enemy(${name.slice("enemy.id.".length)}).alive`,
+      boolean: true,
+    };
   }
   if (name.startsWith("enemy.weak.")) {
-    return { expr: `enemy.count(weak(${name.slice("enemy.weak.".length)}))`, boolean: false };
+    return {
+      expr: `enemy.count(weak(${name.slice("enemy.weak.".length)}))`,
+      boolean: false,
+    };
   }
   if (name.startsWith("enemy.absorbs.")) {
-    return { expr: `enemy.count(absorbs(${name.slice("enemy.absorbs.".length)}))`, boolean: false };
+    return {
+      expr: `enemy.count(absorbs(${name.slice("enemy.absorbs.".length)}))`,
+      boolean: false,
+    };
   }
   if (name.startsWith("item.")) {
     return { expr: `item(${name.slice("item.".length)})`, boolean: false };
   }
   if (name.startsWith("ally.status.")) {
-    return { expr: `ally.count(has(${name.slice("ally.status.".length)}))`, boolean: false };
+    return {
+      expr: `ally.count(has(${name.slice("ally.status.".length)}))`,
+      boolean: false,
+    };
   }
   if (name.startsWith("self.status.")) {
-    return { expr: `self.has(${name.slice("self.status.".length)})`, boolean: true };
+    return {
+      expr: `self.has(${name.slice("self.status.".length)})`,
+      boolean: true,
+    };
   }
   throw new StrategyError(`旧条件里没有「${name}」这个词`);
 }
