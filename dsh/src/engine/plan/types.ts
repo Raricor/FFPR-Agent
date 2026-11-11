@@ -20,7 +20,8 @@ export type PlanStationAction =
   | "story" // step on a story trigger
   | "choose" // answer a dialog choice with `choose`
   | "grind"
-  | "boss";
+  | "boss"
+  | "buy"; // task 151/152: walk to a town shop and buy `items` (then code re-optimizes gear)
 
 export interface PlanStation {
   /** `"map:x,y"` or `"map"` (anywhere on that map), the spelling the route tool accepts. */
@@ -32,6 +33,8 @@ export interface PlanStation {
   readonly choose?: number | string;
   /** `grind`: when to stop (bestiary entries, blue magic, battles, minutes). */
   readonly until?: GrindUntil;
+  /** `buy`: what to buy here, in this order (code buys what the gil allows). */
+  readonly items?: readonly { readonly item: string; readonly count: number }[];
   /** Code may skip it when it cannot be reached (heal/save default to optional). */
   readonly optional?: boolean;
   /** Where the station came from in the route book, when it did. */
@@ -48,7 +51,10 @@ export interface PlanPrep {
   /** `optimize` = let code pick the strongest gear for everyone. */
   readonly equip: "optimize" | "keep";
   readonly buy: readonly { readonly item: string; readonly count: number }[];
-  readonly rows: readonly { readonly member: string; readonly row: "front" | "back" }[];
+  readonly rows: readonly {
+    readonly member: string;
+    readonly row: "front" | "back";
+  }[];
 }
 
 /** Normal-battle rule tables, the same format as `set_tactics`/`fight`. */

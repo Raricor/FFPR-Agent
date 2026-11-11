@@ -100,7 +100,10 @@ const STATION_SCHEMA = {
       description: "do: choose 时的选项序号(0 开始)或选项文字",
     },
     until: UNTIL_SCHEMA,
-    optional: { type: "boolean", description: "走不到时可以跳过(回复/存档默认可选)" },
+    optional: {
+      type: "boolean",
+      description: "走不到时可以跳过(回复/存档默认可选)",
+    },
     book: BOOK_SCHEMA,
   },
   required: ["to", "do"],
@@ -151,7 +154,11 @@ const PREP_SCHEMA = {
         type: "object",
         properties: {
           member: { type: "string", description: "队伍里的成员名" },
-          row: { type: "string", enum: ["front", "back"], description: "前排或后排" },
+          row: {
+            type: "string",
+            enum: ["front", "back"],
+            description: "前排或后排",
+          },
         },
         required: ["member", "row"],
         additionalProperties: false,
@@ -237,7 +244,10 @@ const DROPPED_SCHEMA = {
   items: {
     type: "object",
     properties: {
-      to: { type: "string", description: "地图号或「地图号:x,y」,和站点写法一样" },
+      to: {
+        type: "string",
+        description: "地图号或「地图号:x,y」,和站点写法一样",
+      },
       do: {
         type: "string",
         enum: [

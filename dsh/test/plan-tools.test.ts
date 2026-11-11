@@ -181,7 +181,10 @@ function report(overrides: Partial<SegmentReport> = {}): SegmentReport {
 void test("submit_plan keeps the undone stations of an exception report or takes a reason", async () => {
   const previous: PlanRevision = { plan: draft(), report: report() };
   const missing: Calls = { sections: [], saved: [], previous };
-  const rejected = await handleSubmitPlan(ports(missing), { ...draft(), stations: [] });
+  const rejected = await handleSubmitPlan(ports(missing), {
+    ...draft(),
+    stations: [],
+  });
   assert.equal(rejected.accepted, false);
   assert.match(rejected.text, /还没做的站要留着/u);
   assert.match(rejected.text, /第 1 站 open 10:1,1/u);
