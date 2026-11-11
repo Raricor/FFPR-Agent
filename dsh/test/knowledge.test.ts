@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  areaKeys,
   blueMagicSources,
   bossMapIds,
   chestsIn,
@@ -13,6 +14,7 @@ import {
   shopsNear,
   statusThreats,
 } from "../src/engine/knowledge/index.ts";
+import { Guide } from "../src/engine/guide/kb.ts";
 import { guideContent } from "../src/engine/knowledge/merge.ts";
 
 const HOME = join(import.meta.dirname, "fixtures", "knowledge");
@@ -236,4 +238,27 @@ void test("a boss's maps come from its encounter rows and the areas those rows n
   assert.deepEqual(bossMapIds(knowledge, { name: "水精灵" }), [1, 2]);
   assert.deepEqual(bossMapIds(knowledge, { bookId: 8 }), [1, 2]);
   assert.deepEqual(bossMapIds(knowledge, { name: "没有这个首领" }), []);
+});
+
+void test("areaKeys and the guide's place matching are cached per guide instance", () => {
+  class CountingGuide extends Guide {
+    calls = 0;
+    constructor() {
+      super([], new Map());
+    }
+    override areasFor(query: string): string[] {
+      this.calls += 1;
+      return super.areasFor(query);
+    }
+  }
+  const guide = new CountingGuide();
+  const first = areaKeys(guide, "Wind Shrine");
+  const second = areaKeys(guide, "Wind Shrine");
+  assert.deepEqual(second, first);
+  assert.equal(guide.calls, 1);
+  assert.deepEqual(first, ["windshrine"]);
+  const other = new CountingGuide();
+  assert.deepEqual(areaKeys(other, "Wind Shrine"), first);
+  assert.equal(other.calls, 1);
+  assert.equal(guide.calls, 1);
 });
