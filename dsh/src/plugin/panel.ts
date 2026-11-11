@@ -41,9 +41,11 @@ import { isRecord, num, record, records, text, truthy } from "../engine/values.t
 import { walkDisplay } from "../engine/walk-view.ts";
 import { currentGame, readAchievementView, type CommandPilotFactory } from "./commands.ts";
 import { defaultPlanFiles, planRoute, type PlanFilesOf } from "./plan-panel.ts";
+import { chapterRoute, defaultChapterFiles, type ChapterFilesOf } from "./chapter-panel.ts";
+import { chapterRouteDataRoute, chapterRouteMapRoute } from "./route-view.ts";
 import { currentRoute, readCurrent, type CurrentSource } from "./current.ts";
 import { gameDefaults } from "./config.ts";
-import type { PlayerEngine } from "./player.ts";
+import { chapterRunnerFor, type PlayerEngine } from "./player.ts";
 
 export const ACHIEVEMENTS_ROUTE = "/api/ffpr/achievements";
 export const TACTICS_ROUTE = "/api/ffpr/tactics";
@@ -53,6 +55,30 @@ export const TACTICIAN_ROUTE = "/api/ffpr/tactician";
 export const WALK_ROUTE = "/api/ffpr/walk";
 export const BOOK_ROUTE = "/api/ffpr/book";
 export { PLAN_ROUTE, defaultPlanFiles, planRoute, readPlanPanel } from "./plan-panel.ts";
+export {
+  CHAPTER_ROUTE,
+  chapterRoute,
+  defaultChapterFiles,
+  readChapterPanel,
+} from "./chapter-panel.ts";
+export {
+  CHAPTER_ROUTE_DATA,
+  CHAPTER_ROUTE_MAP,
+  chapterRouteDataRoute,
+  chapterRouteMapRoute,
+  clearChapterRouteCache,
+  readChapterRoute,
+  readChapterRouteMap,
+} from "./route-view.ts";
+export type { ChapterRouteMapView, ChapterRouteOptions, ChapterRouteView } from "./route-view.ts";
+export type {
+  ChapterFiles,
+  ChapterFilesOf,
+  ChapterPanelView,
+  ChapterSegmentRowView,
+  ChapterSkippedRowView,
+  ChapterView,
+} from "./chapter-panel.ts";
 export type {
   PlanBattleGroupView,
   PlanBossView,
@@ -325,7 +351,11 @@ export function battlesRoute(
       try {
         battles = engine?.game.battles ?? (await storedBattles(choice.game));
       } catch (error) {
-        return json({ ok: false, error: `读不了战斗记录:${describeError(error)}`, at });
+        return json({
+          ok: false,
+          error: `读不了战斗记录:${describeError(error)}`,
+          at,
+        });
       }
       const raw = new URL(request.url).searchParams.get("id");
       if (raw !== null && raw.trim() !== "") {
@@ -408,7 +438,11 @@ export function playerRoute(
           view: await readPlayerPanel(choice.game, engineFor(choice.game.key)),
         });
       } catch (error) {
-        return json({ ok: false, error: `读不了玩家记录:${describeError(error)}`, at });
+        return json({
+          ok: false,
+          error: `读不了玩家记录:${describeError(error)}`,
+          at,
+        });
       }
     },
   };
@@ -473,7 +507,11 @@ export function tacticianRoute(
           view: await readTacticianPanel(choice.game, engineFor(choice.game.key)),
         });
       } catch (error) {
-        return json({ ok: false, error: `读不了战术官记录:${describeError(error)}`, at });
+        return json({
+          ok: false,
+          error: `读不了战术官记录:${describeError(error)}`,
+          at,
+        });
       }
     },
   };
@@ -734,13 +772,19 @@ async function readJson(path: string, label: string, signal?: AbortSignal): Prom
   } catch (error) {
     signal?.throwIfAborted();
     if (isMissingFile(error)) return { state: "missing" };
-    return { state: "error", message: `读不了${label}:${describeError(error)}` };
+    return {
+      state: "error",
+      message: `读不了${label}:${describeError(error)}`,
+    };
   }
   try {
     return { state: "ok", value: JSON.parse(body) };
   } catch (error) {
     signal?.throwIfAborted();
-    return { state: "error", message: `读不懂${label}:${describeError(error)}` };
+    return {
+      state: "error",
+      message: `读不懂${label}:${describeError(error)}`,
+    };
   }
 }
 
@@ -848,14 +892,23 @@ export async function readBookPanel(
   try {
     book = readBook(bookRead.value);
   } catch (error) {
-    return { ...base, status: "路线书读不了", message: `读不懂路线书:${describeError(error)}` };
+    return {
+      ...base,
+      status: "路线书读不了",
+      message: `读不懂路线书:${describeError(error)}`,
+    };
   }
   const totals = totalsView(book.totals);
   if (progressRead.state === "missing") {
     return { ...base, status: "还没开始执行", message: "还没开始执行", totals };
   }
   if (progressRead.state === "error") {
-    return { ...base, status: "进度读不了", message: progressRead.message, totals };
+    return {
+      ...base,
+      status: "进度读不了",
+      message: progressRead.message,
+      totals,
+    };
   }
   let progress: ProgressSummary;
   try {
@@ -907,7 +960,68 @@ export function bookRoute(
         });
       } catch (error) {
         request.signal.throwIfAborted();
-        return json({ ok: false, error: `读不了路线书:${describeError(error)}`, at });
+        return json({
+          ok: false,
+          error: `读不了路线书:${describeError(error)}`,
+          at,
+        });
+      }
+    },
+  };
+}
+
+export const CHAPTER_RESUME_ROUTE = "/api/ffpr/chapter/resume";
+
+/** Task 155: the operator's resume/abandon route; authentication is the connection's cookie. */
+export function chapterResumeRoute(
+  current?: CurrentSource,
+  runnerFor: (game: string) => ReturnType<typeof chapterRunnerFor> = chapterRunnerFor,
+): ConnectionFetchRoute {
+  return {
+    path: CHAPTER_RESUME_ROUTE,
+    methods: ["POST"],
+    requestBody: "buffered",
+    fetch: async (request) => {
+      const at = new Date().toISOString();
+      let action = new URL(request.url).searchParams.get("action") ?? "resume";
+      try {
+        const body: unknown = await request.json();
+        if (isRecord(body) && typeof body.action === "string") action = body.action;
+      } catch {
+        // An empty body means the default action.
+      }
+      if (action !== "resume" && action !== "abandon") {
+        return json({ ok: false, error: `不认识的 action:${action}`, at });
+      }
+      let choice: GameChoice;
+      try {
+        choice = await requestedGame(request, current);
+      } catch (error) {
+        request.signal.throwIfAborted();
+        return json({ ok: false, error: describeError(error), at });
+      }
+      if (!choice.ok) return json({ ok: false, error: choice.error, at });
+      const runner = runnerFor(choice.game.key);
+      if (runner === undefined) {
+        return json({
+          ok: false,
+          error: `${choice.game.label} 的玩家插件没加载,没有章执行器`,
+          at,
+        });
+      }
+      try {
+        const text =
+          action === "abandon"
+            ? await runner.abandon(request.signal)
+            : (await runner.resume(request.signal)).text;
+        return json({ ok: true, at, action, text });
+      } catch (error) {
+        request.signal.throwIfAborted();
+        return json({
+          ok: false,
+          error: `章${action === "abandon" ? "放弃" : "续跑"}失败:${describeError(error)}`,
+          at,
+        });
       }
     },
   };
@@ -926,6 +1040,8 @@ export function installPanel(
   current?: CurrentSource,
   bookFilesFor: BookFilesOf = defaultBookFiles,
   planFilesFor: PlanFilesOf = defaultPlanFiles,
+  chapterFilesFor: ChapterFilesOf = defaultChapterFiles,
+  chapterMode = true,
 ): void {
   ctx.inject(["connection"], (connectionCtx) => {
     if (current !== undefined) {
@@ -958,6 +1074,20 @@ export function installPanel(
     );
     connectionCtx.effect(() =>
       connectionCtx.connection.fetch.register(planRoute(current, planFilesFor)),
+    );
+    connectionCtx.effect(() =>
+      connectionCtx.connection.fetch.register(
+        chapterRoute(current, chapterFilesFor, chapterMode ? "chapter" : "plan"),
+      ),
+    );
+    connectionCtx.effect(() =>
+      connectionCtx.connection.fetch.register(chapterRouteDataRoute(current, chapterFilesFor)),
+    );
+    connectionCtx.effect(() =>
+      connectionCtx.connection.fetch.register(chapterRouteMapRoute(current, chapterFilesFor)),
+    );
+    connectionCtx.effect(() =>
+      connectionCtx.connection.fetch.register(chapterResumeRoute(current)),
     );
   });
 }

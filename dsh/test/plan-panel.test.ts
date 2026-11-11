@@ -158,7 +158,12 @@ function planOf(view: PlanPanelView): PlanView {
 
 void test("the whole plan, its progress and the last report are shown in Chinese", async () => {
   await withFiles(
-    { plan: planFile(plan()), progress: progress(), report: report(), atlas: atlas() },
+    {
+      plan: planFile(plan()),
+      progress: progress(),
+      report: report(),
+      atlas: atlas(),
+    },
     async (paths) => {
       const view = await readPlanPanel(paths);
       assert.equal(view.title, "段计划");
@@ -308,7 +313,12 @@ void test("a plan without dropped stations has no dropped table", async () => {
 
 void test("a broken report file keeps the plan and names the report problem", async () => {
   await withFiles(
-    { plan: planFile(plan()), progress: progress(), report: "{not json", atlas: atlas() },
+    {
+      plan: planFile(plan()),
+      progress: progress(),
+      report: "{not json",
+      atlas: atlas(),
+    },
     async (paths) => {
       const view = await readPlanPanel(paths);
       assert.equal(view.status, "执行中");
@@ -321,7 +331,12 @@ void test("a broken report file keeps the plan and names the report problem", as
 
 void test("without a readable atlas the map column falls back to the bare number", async () => {
   await withFiles(
-    { plan: planFile(plan()), progress: progress(), report: report(), atlas: "{not json" },
+    {
+      plan: planFile(plan()),
+      progress: progress(),
+      report: report(),
+      atlas: "{not json",
+    },
     async (paths) => {
       const view = await readPlanPanel(paths);
       assert.equal(planOf(view).stations[0]?.mapText, "12");
@@ -378,7 +393,12 @@ void test("a previous plan's station count does not mark a new plan's stations",
 
 void test("the plan route returns the rendered view over HTTP", async () => {
   await withFiles(
-    { plan: planFile(plan()), progress: progress(), report: report(), atlas: atlas() },
+    {
+      plan: planFile(plan()),
+      progress: progress(),
+      report: report(),
+      atlas: atlas(),
+    },
     async (paths) => {
       const route = planRoute(undefined, () => paths);
       assert.equal(route.path, PLAN_ROUTE);

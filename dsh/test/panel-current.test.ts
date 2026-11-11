@@ -5,6 +5,10 @@ import type { ConnectionFetchRoute } from "@deepseek-ai/dsh-client-connection";
 import { CURRENT_ROUTE, currentRoute, type CurrentSource } from "../src/plugin/current.ts";
 import {
   BOOK_ROUTE,
+  CHAPTER_RESUME_ROUTE,
+  CHAPTER_ROUTE,
+  CHAPTER_ROUTE_DATA,
+  CHAPTER_ROUTE_MAP,
   PLAN_ROUTE,
   PLAYER_ROUTE,
   TACTICIAN_ROUTE,
@@ -43,7 +47,11 @@ function fakeContext(): FakeServer {
 
 const SOURCE: CurrentSource = {
   detection: {
-    peek: () => ({ result: { ok: true, running: ["ff5"] }, fresh: true, pending: false }),
+    peek: () => ({
+      result: { ok: true, running: ["ff5"] },
+      fresh: true,
+      pending: false,
+    }),
   },
   engines: () => [],
 };
@@ -77,7 +85,7 @@ void test("player and tactician routes answer from files when their engine is no
   assert.match(String(view.status), /没在运行/u);
 });
 
-void test("installPanel registers the eight read routes", () => {
+void test("installPanel registers the eleven read routes and the resume route", () => {
   const server = fakeContext();
   installPanel(server.ctx, () => undefined);
   assert.deepEqual(
@@ -91,6 +99,10 @@ void test("installPanel registers the eight read routes", () => {
       WALK_ROUTE,
       BOOK_ROUTE,
       PLAN_ROUTE,
+      CHAPTER_ROUTE,
+      CHAPTER_ROUTE_DATA,
+      CHAPTER_ROUTE_MAP,
+      CHAPTER_RESUME_ROUTE,
     ],
   );
 });

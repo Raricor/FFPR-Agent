@@ -32,7 +32,10 @@ function linkWith(product = "FINAL FANTASY V"): BridgeLink {
 }
 
 function engine(): PlayerEngine {
-  return { bridge: linkWith(), game: { game: "ff5" } } as unknown as PlayerEngine;
+  return {
+    bridge: linkWith(),
+    game: { game: "ff5" },
+  } as unknown as PlayerEngine;
 }
 
 function tacticsEngine(
@@ -168,7 +171,9 @@ void test("the tactics route returns the current map from the sample", async () 
       },
     })
     .on("pos", { pos: { state: "Player", battle: false } })
-    .onQuery("items", { items: { normal: [{ name: "恢复药", count: 2 }], important: [] } });
+    .onQuery("items", {
+      items: { normal: [{ name: "恢复药", count: 2 }], important: [] },
+    });
   installPanel(
     server.ctx,
     () => tacticsEngine(tacticsWithMap()),
@@ -232,7 +237,10 @@ void test("the tactics route caches the bestiary areas across requests", async (
 void test("the tactics route still returns stored maps when the bridge is down", async () => {
   const server = fakeContext(true);
   // A default parameter turns an explicit undefined into its default, so set the field itself.
-  const engine: PlayerEngine = { ...tacticsEngine(tacticsWithMap()), bridge: undefined };
+  const engine: PlayerEngine = {
+    ...tacticsEngine(tacticsWithMap()),
+    bridge: undefined,
+  };
   installPanel(server.ctx, () => engine);
   const route = server.routes.find((item) => item.path === TACTICS_ROUTE);
   assert.ok(route);
@@ -251,7 +259,10 @@ void test("the tactics route still returns stored maps when the bridge is down",
 });
 
 function engineForGame(game: string, product: string): PlayerEngine {
-  return { bridge: linkWith(product), game: { game } } as unknown as PlayerEngine;
+  return {
+    bridge: linkWith(product),
+    game: { game },
+  } as unknown as PlayerEngine;
 }
 
 function bodyOf(value: unknown): Record<string, unknown> {

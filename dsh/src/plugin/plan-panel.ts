@@ -141,6 +141,7 @@ const ACTION_LABELS: Readonly<Record<PlanStationAction, string>> = {
   choose: "选项",
   grind: "刷怪",
   boss: "首领",
+  buy: "买东西",
 };
 
 const STATION_STATUS: Readonly<
@@ -170,7 +171,10 @@ interface ProgressSummary {
     number,
     { readonly status: ProgressStatus; readonly note: string }
   >;
-  readonly previousException: { readonly kind: string; readonly detail: string } | null;
+  readonly previousException: {
+    readonly kind: string;
+    readonly detail: string;
+  } | null;
 }
 
 interface ReportSummary {
@@ -209,13 +213,19 @@ async function readJson(path: string, label: string, signal?: AbortSignal): Prom
   } catch (error) {
     signal?.throwIfAborted();
     if (isMissingFile(error)) return { state: "missing" };
-    return { state: "error", message: `读不了${label}:${describeError(error)}` };
+    return {
+      state: "error",
+      message: `读不了${label}:${describeError(error)}`,
+    };
   }
   try {
     return { state: "ok", value: JSON.parse(body) };
   } catch (error) {
     signal?.throwIfAborted();
-    return { state: "error", message: `读不懂${label}:${describeError(error)}` };
+    return {
+      state: "error",
+      message: `读不懂${label}:${describeError(error)}`,
+    };
   }
 }
 
@@ -407,12 +417,20 @@ function actionText(value: unknown): string {
 function statusView(
   status: ProgressStatus | null,
   started: boolean,
-): { readonly symbol: string; readonly text: string; readonly current: boolean } {
+): {
+  readonly symbol: string;
+  readonly text: string;
+  readonly current: boolean;
+} {
   if (status === null) {
     return { symbol: "·", text: started ? "待做" : "未开始", current: false };
   }
   const fixed = STATION_STATUS[status];
-  return { symbol: fixed.symbol, text: fixed.label, current: status === "current" };
+  return {
+    symbol: fixed.symbol,
+    text: fixed.label,
+    current: status === "current",
+  };
 }
 
 function stationView(
@@ -813,7 +831,11 @@ export function planRoute(
         });
       } catch (error) {
         request.signal.throwIfAborted();
-        return json({ ok: false, error: `读不了段计划：${describeError(error)}`, at });
+        return json({
+          ok: false,
+          error: `读不了段计划：${describeError(error)}`,
+          at,
+        });
       }
     },
   };
