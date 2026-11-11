@@ -109,17 +109,23 @@ export class BridgeLink {
     let state: SocketState;
     try {
       state = createSocketState(
-        new WebSocket(url, { headers: { Authorization: `Bearer ${this.token}` } }),
+        new WebSocket(url, {
+          headers: { Authorization: `Bearer ${this.token}` },
+        }),
       );
     } catch (error) {
-      throw new LinkError(`连不上 ${url}:${describeError(error)}`, { cause: error });
+      throw new LinkError(`连不上 ${url}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     try {
       try {
         await waitForOpen(state.ws, CONNECT_TIMEOUT_MS, signal);
       } catch (error) {
         signal.throwIfAborted();
-        throw new LinkError(`连不上 ${url}:${describeError(error)}`, { cause: error });
+        throw new LinkError(`连不上 ${url}:${describeError(error)}`, {
+          cause: error,
+        });
       }
       for (;;) {
         // No per-message timeout: records arrive as the game writes them.
@@ -149,14 +155,18 @@ export class BridgeLink {
       });
     } catch (error) {
       signal.throwIfAborted();
-      throw new LinkError(`连不上 ${url}:${describeError(error)}`, { cause: error });
+      throw new LinkError(`连不上 ${url}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     if (response.status !== 200) throw new LinkError(`/v1/health 返回 ${response.status}`);
     try {
       const body: unknown = await response.json();
       return body;
     } catch (error) {
-      throw new LinkError(`读不懂 /v1/health 的回复:${describeError(error)}`, { cause: error });
+      throw new LinkError(`读不懂 /v1/health 的回复:${describeError(error)}`, {
+        cause: error,
+      });
     }
   }
 
@@ -182,7 +192,9 @@ export class BridgeLink {
           failure = error;
         }
       }
-      throw new LinkError(`${path} ${op} 失败:${describeError(failure)}`, { cause: failure });
+      throw new LinkError(`${path} ${op} 失败:${describeError(failure)}`, {
+        cause: failure,
+      });
     });
   }
 
@@ -218,10 +230,14 @@ export class BridgeLink {
     let state: SocketState;
     try {
       state = createSocketState(
-        new WebSocket(url, { headers: { Authorization: `Bearer ${this.token}` } }),
+        new WebSocket(url, {
+          headers: { Authorization: `Bearer ${this.token}` },
+        }),
       );
     } catch (error) {
-      throw new LinkError(`连不上 ${url}:${describeError(error)}`, { cause: error });
+      throw new LinkError(`连不上 ${url}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     this.sockets.set(path, state);
     try {
@@ -231,7 +247,9 @@ export class BridgeLink {
     } catch (error) {
       this.closeSocket(path);
       signal.throwIfAborted();
-      throw new LinkError(`连不上 ${url}:${describeError(error)}`, { cause: error });
+      throw new LinkError(`连不上 ${url}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     return state;
   }

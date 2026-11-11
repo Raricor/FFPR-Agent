@@ -127,9 +127,17 @@ void test("query reconnects once after the socket drops", async () => {
   await server.start();
   const link = await makeLink(server);
   try {
-    server.setReplyFactory((request) => ({ type: "reply", re: request.id, ok: true }));
+    server.setReplyFactory((request) => ({
+      type: "reply",
+      re: request.id,
+      ok: true,
+    }));
     server.dropNextQueries(1);
-    assert.deepEqual(await link.query("pos", {}, SIGNAL), { type: "reply", re: 2, ok: true });
+    assert.deepEqual(await link.query("pos", {}, SIGNAL), {
+      type: "reply",
+      re: 2,
+      ok: true,
+    });
     assert.equal(server.queries.length, 2);
   } finally {
     link.close();
@@ -289,7 +297,11 @@ void test("command shares the query lock and keeps its own socket", async () => 
   const link = await makeLink(server);
   try {
     server.setReplyDelay(40);
-    server.setCommandReplyFactory((request) => ({ type: "reply", re: request.id, ok: true }));
+    server.setCommandReplyFactory((request) => ({
+      type: "reply",
+      re: request.id,
+      ok: true,
+    }));
     await Promise.all([
       link.command("keys", { keys: ["Enter"] }, SIGNAL),
       link.query("pos", {}, SIGNAL),
@@ -337,7 +349,11 @@ void test("stream yields the hello record and every later record", async () => {
     assert.equal(first.done, false);
     assert.deepEqual(first.value, { type: "hello" });
     const second = await stream.next();
-    assert.deepEqual(second.value, { seq: 1, type: "sample", scene: { name: "Field" } });
+    assert.deepEqual(second.value, {
+      seq: 1,
+      type: "sample",
+      scene: { name: "Field" },
+    });
     const third = await stream.next();
     assert.deepEqual(third.value, { seq: 2, type: "sysmsg", text: "消息" });
     await stream.return(undefined);

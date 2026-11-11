@@ -33,11 +33,17 @@ void test("the title screen / a loading save is not an error", () => {
 
 void test("an old bridge's unknown op asks for the entity fallback, not an error", () => {
   assert.deepEqual(
-    parseTreasureFlags({ ok: false, error: "bridge_error:未知的 op:treasureflags" }),
+    parseTreasureFlags({
+      ok: false,
+      error: "bridge_error:未知的 op:treasureflags",
+    }),
     { kind: "unsupported" },
   );
   assert.deepEqual(
-    parseTreasureFlags({ ok: false, error: "bridge_error:Unknown op:treasureflags" }),
+    parseTreasureFlags({
+      ok: false,
+      error: "bridge_error:Unknown op:treasureflags",
+    }),
     {
       kind: "unsupported",
     },
