@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 // ask.mjs is a node-run script, not a typed module; only its pure turn helpers are tested.
-import { promptTurn, turnEnded } from "../scripts/ask.mjs";
+import { promptTurn, stillRunningLine, turnEnded, waitForTurnEnd } from "../scripts/ask.mjs";
 
 interface FakeEvent {
   readonly seq: number;
@@ -56,4 +56,48 @@ void test("a log without the RPC identity still finds the prompt by its text", (
   const prompt = promptTurn(all, "missing-rpc-id", 1, "继续");
   assert.deepEqual(prompt, { turn: 2, seq: 3 });
   assert.equal(turnEnded(all, prompt), true);
+});
+
+void test("a run past the deadline returns without throwing and names session and turn", async () => {
+  let now = 0;
+  const all: FakeEvent[] = [
+    { seq: 4, type: "turn/start", data: { turn: 2 } },
+    message(5, "new", "继续"),
+  ];
+  const outcome = await waitForTurnEnd("s1", "new", "继续", 3, {
+    timeoutMs: 4000,
+    events: () => all,
+    now: () => now,
+    sleep: (ms: number) => {
+      now += ms;
+      return Promise.resolve();
+    },
+  });
+  assert.equal(outcome.ended, false);
+  assert.equal(outcome.turn, 2);
+  assert.equal(stillRunningLine("s1", outcome.turn), "还在跑，ask.mjs 不再等(会话 s1、轮次 2)");
+});
+
+void test("a deadline before the prompt appears still exits cleanly with turn ?", async () => {
+  const outcome = await waitForTurnEnd("s2", "new", "继续", 0, {
+    timeoutMs: 0,
+    events: () => [],
+  });
+  assert.equal(outcome.ended, false);
+  assert.equal(outcome.turn, null);
+  assert.equal(stillRunningLine("s2", outcome.turn), "还在跑，ask.mjs 不再等(会话 s2、轮次 ?)");
+});
+
+void test("the wait returns as soon as this prompt's turn ends", async () => {
+  const all: FakeEvent[] = [
+    { seq: 4, type: "turn/start", data: { turn: 2 } },
+    message(5, "new", "继续"),
+    { seq: 6, type: "turn/end", data: { turn: 2, reason: "completed" } },
+  ];
+  const outcome = await waitForTurnEnd("s3", "new", "继续", 3, {
+    timeoutMs: 60_000,
+    events: () => all,
+  });
+  assert.equal(outcome.ended, true);
+  assert.equal(outcome.turn, 2);
 });

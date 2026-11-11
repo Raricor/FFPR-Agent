@@ -7,8 +7,11 @@
 //   node scripts/ask.mjs --brief <id>               tool calls, results and replies, one line each
 //   node scripts/ask.mjs --cancel <id>              stop that session's running turn
 //   node scripts/ask.mjs --command "/ach"           new session, run one slash command, print it
+//   node scripts/ask.mjs --wait-forever "…"         wait for the turn without a deadline
 //   FFPR_PRESET=ffpr-ff6 node scripts/ask.mjs "…"   the same with another game's player
 //
+// A turn that runs past FFPR_ASK_MINUTES (default 60) is not an error: print one line with the
+// session and turn, then exit 0. The turn itself keeps running in dsh.
 // It talks to the web API the way a browser does (dsh-client-connection): GET /connect with the
 // startup token from ~/.dsh/logs/web-ffpr.log for an API cookie, then unary POST /api/<endpoint>
 // with {type: "client-request", rpcId, method, payload: {args}}. Session logs are append-only
@@ -28,8 +31,11 @@ const CWD = resolve(import.meta.dirname, "..", "..");
 const CLIP = 600; // characters of each event shown
 // Which player preset new sessions use: ffpr is FF5, ffpr-ffN the others (task 21).
 const PRESET = process.env.FFPR_PRESET || "ffpr";
-// Play runs take hours; quick checks a few minutes. FFPR_ASK_MINUTES sets how long to wait.
-const TURN_TIMEOUT_MS = Number(process.env.FFPR_ASK_MINUTES || 15) * 60 * 1000;
+// Play runs take hours; quick checks a few minutes. FFPR_ASK_MINUTES sets how long to wait
+// (default 60); an invalid value falls back to the default instead of spinning with NaN.
+const ASK_MINUTES = Number(process.env.FFPR_ASK_MINUTES);
+const TURN_TIMEOUT_MS =
+  (Number.isFinite(ASK_MINUTES) && ASK_MINUTES > 0 ? ASK_MINUTES : 60) * 60_000;
 const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
 
 const base = `http://127.0.0.1:${PORT}`;
@@ -173,19 +179,38 @@ export function turnEnded(all, prompt) {
   );
 }
 
-async function waitForTurnEnd(sessionId, requestId, promptText, afterSeq) {
-  const deadline = Date.now() + TURN_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    const all = events(sessionId);
-    const prompt = promptTurn(all, requestId, afterSeq, promptText);
-    if (prompt !== null && turnEnded(all, prompt)) return;
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+/** The one line printed when the deadline passes while the turn is still running. */
+export function stillRunningLine(sessionId, turn) {
+  return `还在跑，ask.mjs 不再等(会话 ${sessionId}、轮次 ${turn ?? "?"})`;
+}
+
+/**
+ * Wait for this prompt's own turn to end. Task 132: a play turn often runs past a few minutes,
+ * so a deadline is only when this script stops waiting (it returns `ended: false`), not a
+ * failed turn. `options` lets the test drive a fake log and clock.
+ */
+export async function waitForTurnEnd(sessionId, requestId, promptText, afterSeq, options = {}) {
+  const timeoutMs = options.timeoutMs ?? TURN_TIMEOUT_MS;
+  const read = options.events ?? events;
+  const now = options.now ?? Date.now;
+  const sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const deadline = now() + timeoutMs;
+  let prompt;
+  for (;;) {
+    const all = read(sessionId);
+    prompt = promptTurn(all, requestId, afterSeq, promptText);
+    if (prompt !== null && turnEnded(all, prompt)) return { ended: true, turn: prompt.turn };
+    const left = deadline - now();
+    if (left <= 0) break;
+    await sleep(Math.min(2000, left));
   }
-  throw new Error(`no turn/end within ${TURN_TIMEOUT_MS / 60000} minutes`);
+  return { ended: false, turn: prompt?.turn ?? null };
 }
 
 async function main() {
-  const argv = process.argv.slice(2);
+  const raw = process.argv.slice(2);
+  const waitForever = raw.includes("--wait-forever");
+  const argv = raw.filter((arg) => arg !== "--wait-forever");
   if (argv[0] === "--show") {
     show(argv[1]);
   } else if (argv[0] === "--brief") {
@@ -214,7 +239,7 @@ async function main() {
     let sessionId = argv[0] === "--session" ? argv[1] : undefined;
     const prompt = argv.at(-1);
     if (!prompt || prompt.startsWith("--"))
-      throw new Error("usage: ask.mjs [--session <id>] <prompt>");
+      throw new Error("usage: ask.mjs [--session <id>] [--wait-forever] <prompt>");
     const cookie = await connect();
     sessionId ??= (
       await call(cookie, "session/create", { request: { cwd: CWD, agentPreset: PRESET } })
@@ -230,7 +255,13 @@ async function main() {
       },
     });
     console.log(`session ${sessionId}`);
-    await waitForTurnEnd(sessionId, requestId, prompt, before);
+    const outcome = await waitForTurnEnd(sessionId, requestId, prompt, before, {
+      ...(waitForever ? { timeoutMs: Number.POSITIVE_INFINITY } : {}),
+    });
+    if (!outcome.ended) {
+      console.log(stillRunningLine(sessionId, outcome.turn));
+      return;
+    }
     show(sessionId, before + 1);
   }
 }
