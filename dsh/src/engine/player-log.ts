@@ -260,7 +260,10 @@ export function playerView(
   }
   // Calls still running are decisions too; the page says so instead of hiding them.
   for (const call of calls.values()) {
-    decisions.push({ said: call.said, line: decisionLine(call.at, call.name, call.args, null) });
+    decisions.push({
+      said: call.said,
+      line: decisionLine(call.at, call.name, call.args, null),
+    });
   }
   const recent = decisions.slice(-15).reverse();
   return {

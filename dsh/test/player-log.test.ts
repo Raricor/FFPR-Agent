@@ -26,7 +26,11 @@ void test("user text, assistant text and tool call/result become the first-layer
     recordSessionEvent(
       journal,
       event("assistant/message", Date.parse("2026-11-03T10:00:10Z"), {
-        source: { kind: "model", provider: "deepseek", model: "deepseek-flash" },
+        source: {
+          kind: "model",
+          provider: "deepseek",
+          model: "deepseek-flash",
+        },
         message: {
           content: [
             { type: "reasoning", text: "想一下" },
