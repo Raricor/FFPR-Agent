@@ -7,9 +7,10 @@
  * only when every new edge exists and every `after` constraint still holds, because the map
  * graph is directed and a legal order is not necessarily legal backwards.
  *
- * The DP maximises the number of waypoints first and travel minutes second. That is how a
- * waypoint whose direction cannot be reached from the others is dropped (and reported by the
- * caller) instead of making the whole route fail.
+ * The DP maximises the number of waypoints first, then whether the end can still be appended,
+ * then travel minutes. That is how a waypoint whose direction cannot be reached from the
+ * others is dropped (and reported by the caller) instead of making the whole route fail; an
+ * unreachable end keeps the waypoints and reports endUsed false.
  */
 
 /** Exact ordering is cheap up to this many waypoints (2^13 × 13 states). */
@@ -169,22 +170,26 @@ function exactOrder(
       const cost = dp[mask * width + last] ?? Infinity;
       if (!Number.isFinite(cost)) continue;
       const tail = endIndex === null ? 0 : edge(last + 1, endIndex);
-      if (tail === null) continue;
-      const total = cost + tail;
-      const better = visited > bestCount || (visited === bestCount && total < bestCost);
+      // 11-11: an unreachable end must not throw away every waypoint. The DP ranks by
+      // waypoint count first, then by whether this order can still append the end, then by
+      // minutes. Only when no order can reach the end does it return endUsed false; the
+      // caller then warns instead of the whole route becoming empty.
+      const endOk = endIndex === null || tail !== null;
+      const total = cost + (tail ?? 0);
+      const better =
+        visited > bestCount ||
+        (visited === bestCount && (endOk !== bestEnd || (endOk === bestEnd && total < bestCost)));
       if (!better) continue;
       bestCount = visited;
       bestCost = total;
       bestMask = mask;
       bestLast = last;
-      bestEnd = endIndex !== null;
+      bestEnd = endOk;
     }
   }
-  if (endIndex !== null) {
+  if (endIndex !== null && bestLast < 0) {
     const direct = edge(0, endIndex);
-    if (direct !== null && (0 > bestCount || (0 === bestCount && direct < bestCost))) {
-      return { order: [], cost: direct, endUsed: true, blocked };
-    }
+    if (direct !== null) return { order: [], cost: direct, endUsed: true, blocked };
   }
   if (bestLast < 0) return { order: [], cost: 0, endUsed: false, blocked };
   return {

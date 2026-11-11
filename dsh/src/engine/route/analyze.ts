@@ -229,6 +229,24 @@ export function analyzeRoute(input: RouteInput, givenWorld: RouteWorld): RoutePl
     }
   } else if (end !== null) {
     warnings.add("终点走不到，计划停在最后一个路标");
+    // 11-11: the stage plan's last stop may itself be a bad grind (453/454). The DP now keeps
+    // the reachable waypoints, but `buildRoute` still wants an end leg. Make the documented
+    // "stop at the last waypoint" real, as a zero-length end leg, so those waypoints execute
+    // and the warning travels with the plan instead of the tool refusing the whole route.
+    const last = points[current] ?? pointOf(input.start.map, input.start.cell);
+    if (legs.length > 0) {
+      legs.push(
+        legOf(
+          last,
+          last,
+          "end",
+          "end",
+          "终点（停在最后一个路标）",
+          { maps: [last.map], hops: 0, cells: 0, minutes: 0 },
+          0,
+        ),
+      );
+    }
   }
 
   const unreachable: UnreachableWaypoint[] = waypoints.flatMap((waypoint, index) => {
