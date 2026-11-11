@@ -252,7 +252,12 @@ export async function throughLink(
     // "from" is the bridge 0.12.0 keys record; older bridges ignore the unknown field.
     const reply = await link.command(
       "keys",
-      { keys: fields.keys, gap: "gap" in fields ? fields.gap : 120, via: "game", from: sender },
+      {
+        keys: fields.keys,
+        gap: "gap" in fields ? fields.gap : 120,
+        via: "game",
+        from: sender,
+      },
       signal,
       waitMs,
     );
@@ -302,7 +307,10 @@ export async function throughLink(
     }
     return { ok: true, reply };
   }
-  const defaults: Record<string, Fields> = { cells: { r: 8 }, entities: { max: 200 } };
+  const defaults: Record<string, Fields> = {
+    cells: { r: 8 },
+    entities: { max: 200 },
+  };
   const merged = { ...defaults[op], ...fields };
   const reply = asReply(await link.query(op, merged, signal));
   if (!truthy(reply.ok)) {
@@ -413,7 +421,9 @@ async function runAbortScript(
 ): Promise<void> {
   try {
     // Not the tool call's signal: that one is already aborted, and this write must still run.
-    await runPs(laptop, script, { signal: AbortSignal.timeout(ABORT_WRITE_TIMEOUT_MS) });
+    await runPs(laptop, script, {
+      signal: AbortSignal.timeout(ABORT_WRITE_TIMEOUT_MS),
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const write = log ?? ((line: string) => process.stderr.write(`${line}\n`));

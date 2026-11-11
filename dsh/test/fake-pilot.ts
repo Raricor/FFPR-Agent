@@ -19,7 +19,12 @@ interface Slot {
 }
 
 export type Call =
-  | { readonly kind: "send"; readonly op: string; readonly fields: Fields; readonly waitMs: number }
+  | {
+      readonly kind: "send";
+      readonly op: string;
+      readonly fields: Fields;
+      readonly waitMs: number;
+    }
   | { readonly kind: "query"; readonly q: string; readonly fields: Fields };
 
 function slotFor(answer: Answer): Slot {
@@ -30,7 +35,11 @@ function slotFor(answer: Answer): Slot {
 export class FakePilot implements Pilot {
   readonly calls: Call[] = [];
   private readonly answers = new Map<string, Slot>();
-  private readonly matched: { op: string; when: (fields: Fields) => boolean; answer: Reply }[] = [];
+  private readonly matched: {
+    op: string;
+    when: (fields: Fields) => boolean;
+    answer: Reply;
+  }[] = [];
   private readonly queries = new Map<string, Slot>();
   private runPsAnswer: (() => string | Promise<string>) | null = null;
   private clock = 0;
@@ -143,7 +152,12 @@ export function scriptReplies(pilot: FakePilot, transcript: readonly TranscriptE
 export function recordedCalls(pilot: FakePilot): unknown[] {
   return pilot.calls.map((call) =>
     call.kind === "send"
-      ? { kind: call.kind, op: call.op, fields: call.fields, wait: call.waitMs / 1000 }
+      ? {
+          kind: call.kind,
+          op: call.op,
+          fields: call.fields,
+          wait: call.waitMs / 1000,
+        }
       : call,
   );
 }

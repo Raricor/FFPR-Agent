@@ -126,7 +126,10 @@ void test("keys commands say who pressed the keys", async () => {
     timingFile: "/dev/null",
     game: "ff3",
   });
-  assert.deepEqual(await pilot.send("keys", { keys: ["Enter"] }), { ok: true, sent: 1 });
+  assert.deepEqual(await pilot.send("keys", { keys: ["Enter"] }), {
+    ok: true,
+    sent: 1,
+  });
   const call = link.calls[0];
   assert.ok(call);
   assert.equal(call.op, "keys");
@@ -144,9 +147,17 @@ void test("hold and stop go over the LAN command socket", async () => {
   });
   assert.deepEqual(await pilot.send("stop"), { ok: true });
   assert.deepEqual(
-    link.calls.map((call) => ({ method: call.method, op: call.op, fields: call.fields })),
+    link.calls.map((call) => ({
+      method: call.method,
+      op: call.op,
+      fields: call.fields,
+    })),
     [
-      { method: "command", op: "hold", fields: { key: "PadL1", down: true, ms: 2500 } },
+      {
+        method: "command",
+        op: "hold",
+        fields: { key: "PadL1", down: true, ms: 2500 },
+      },
       { method: "command", op: "stop", fields: {} },
     ],
   );
@@ -191,10 +202,16 @@ void test("createPilot falls back to SSH and rests the link after a LinkError", 
       { stdout: '{"ok":true,"pos":{"map":3}}' },
     ]);
     const machine = laptop();
-    const first = createPilot(machine, link, SIGNAL, { timingFile: timing, game: "ff5" });
+    const first = createPilot(machine, link, SIGNAL, {
+      timingFile: timing,
+      game: "ff5",
+    });
     assert.deepEqual(await first.send("pos"), { ok: true, pos: { map: 2 } });
     // Each tool call gets its own Pilot; the 30 second rest is shared per laptop.
-    const second = createPilot(machine, link, SIGNAL, { timingFile: timing, game: "ff5" });
+    const second = createPilot(machine, link, SIGNAL, {
+      timingFile: timing,
+      game: "ff5",
+    });
     assert.deepEqual(await second.send("pos"), { ok: true, pos: { map: 3 } });
     assert.equal(link.calls.length, 1, "the second call must skip the resting link");
     assert.equal((await readSshLog(log)).length, 2);
@@ -227,7 +244,10 @@ void test("FFPR_LINK=off sends everything over SSH", async () => {
 
 void test("pilot.query passes the bridge reply through and defaults to {}", async () => {
   const link = new FakeLink({ ok: true, pos: { map: 238 } });
-  const pilot = createPilot(laptop(), link, SIGNAL, { timingFile: "/dev/null", game: "ff5" });
+  const pilot = createPilot(laptop(), link, SIGNAL, {
+    timingFile: "/dev/null",
+    game: "ff5",
+  });
   assert.deepEqual(await pilot.query("pos"), { ok: true, pos: { map: 238 } });
   link.reply = {};
   assert.deepEqual(await pilot.query("pos"), {});
@@ -424,7 +444,10 @@ void test("a busy agent that still does not answer is reported without a second 
   }
 });
 
-const AGENT_GONE = { stderr: "试玩助手没有运行:先运行 ffpr-pilot start", code: 1 };
+const AGENT_GONE = {
+  stderr: "试玩助手没有运行:先运行 ffpr-pilot start",
+  code: 1,
+};
 
 void test("a send that finds the agent gone restarts it once and retries", async () => {
   const directory = await mkdtemp(join(tmpdir(), "ffpr-pilot-"));
@@ -681,12 +704,18 @@ void test("an old bridge says unknown op once; the same link is not asked again"
     ],
     timeoutMs: 10_000,
   };
-  const first = createPilot(laptop(), link, SIGNAL, { timingFile: "/dev/null", game: "ff5" });
+  const first = createPilot(laptop(), link, SIGNAL, {
+    timingFile: "/dev/null",
+    game: "ff5",
+  });
   assert.deepEqual(await first.send("walkpath", fields), {
     ok: false,
     error: "walkpath_unsupported",
   });
-  const second = createPilot(laptop(), link, SIGNAL, { timingFile: "/dev/null", game: "ff5" });
+  const second = createPilot(laptop(), link, SIGNAL, {
+    timingFile: "/dev/null",
+    game: "ff5",
+  });
   assert.deepEqual(await second.send("walkpath", fields), {
     ok: false,
     error: "walkpath_unsupported",
