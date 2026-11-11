@@ -90,7 +90,11 @@ function installCastMenu(pilot: FakePilot, mp: number, abilities: readonly CastA
   });
   pilot.onQuery("sample", () => ({ sample: { party: members } }));
   pilot.onQuery("menu", () => {
-    const top = { open: true, commands: [{ id: "Magic", name: "魔法" }], cursor: topCursor };
+    const top = {
+      open: true,
+      commands: [{ id: "Magic", name: "魔法" }],
+      cursor: topCursor,
+    };
     if (stage === "top") return { menu: top };
     if (stage === "types") {
       return {
@@ -263,7 +267,12 @@ void test("useItem reaches the last row of an odd-length grid", async () => {
     count: 1,
   }));
   items.push({ name: "眼药", count: 1 });
-  const menu = new FakeItemMenu({ items, members: PARTY, target: "蕾娜", targetStatus: "Blind" });
+  const menu = new FakeItemMenu({
+    items,
+    members: PARTY,
+    target: "蕾娜",
+    targetStatus: "Blind",
+  });
   menu.install(pilot);
   assert.deepEqual(await useItem(pilot, "眼药", "蕾娜"), [
     true,

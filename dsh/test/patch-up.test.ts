@@ -183,7 +183,16 @@ void test("with only the MP reserve left no spell is cast; a 35% member gets a p
   const pilot = new FakePilot();
   const menu = new FakeItemMenu({
     items: [{ name: "恢复药", count: 2 }],
-    members: [{ name: "蕾娜", hp: 35, maxHp: 100, mp: 3, maxMp: 10, jobName: "白魔法师" }],
+    members: [
+      {
+        name: "蕾娜",
+        hp: 35,
+        maxHp: 100,
+        mp: 3,
+        maxMp: 10,
+        jobName: "白魔法师",
+      },
+    ],
     target: "蕾娜",
   });
   // MP 3 of 10 is the 30% reserve, so even 治疗's 4 MP is not allowed.
@@ -197,7 +206,16 @@ void test("with only the reserve left a 45% member is left alone (items wait for
   const pilot = new FakePilot();
   const menu = new FakeItemMenu({
     items: [{ name: "恢复药", count: 2 }],
-    members: [{ name: "蕾娜", hp: 45, maxHp: 100, mp: 3, maxMp: 10, jobName: "白魔法师" }],
+    members: [
+      {
+        name: "蕾娜",
+        hp: 45,
+        maxHp: 100,
+        mp: 3,
+        maxMp: 10,
+        jobName: "白魔法师",
+      },
+    ],
     target: "蕾娜",
   });
   menu.install(pilot);

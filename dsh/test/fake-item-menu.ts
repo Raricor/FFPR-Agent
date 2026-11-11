@@ -109,7 +109,10 @@ export class FakeItemMenu {
     }));
     pilot.onQuery("items", () => ({
       items: {
-        normal: this.items.map((item) => ({ name: `${this.icon}${item.name}`, count: item.count })),
+        normal: this.items.map((item) => ({
+          name: `${this.icon}${item.name}`,
+          count: item.count,
+        })),
         important: [],
       },
     }));
@@ -178,6 +181,9 @@ export class FakeItemMenu {
     if (member !== undefined && this.targetStatus !== undefined) {
       member.status = (member.status ?? []).filter((status) => status !== this.targetStatus);
     }
+    if (item !== undefined && /不死鸟|凤凰|Phoenix|フェニックス/i.test(item.name)) {
+      if (member !== undefined) member.hp = member.maxHp;
+    }
     if (item !== undefined && /恢复药|Potion/i.test(item.name)) {
       for (const target of this.members) {
         target.hp = Math.min(target.maxHp, target.hp + 50);
@@ -212,7 +218,11 @@ export class FakeItemMenu {
           { id: "Item", name: "道具" },
         ],
         cursor: this.topCursor,
-        item: { state: "CommandSelect", commandCursor: this.commandCursor, rows: [] },
+        item: {
+          state: "CommandSelect",
+          commandCursor: this.commandCursor,
+          rows: [],
+        },
       }),
       list: () => ({
         open: true,

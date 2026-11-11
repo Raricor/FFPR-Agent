@@ -20,7 +20,10 @@ export function pick(names: readonly (string | null | undefined)[], wanted: stri
 export async function moveCursor(pilot: Pilot, at: number, to: number): Promise<void> {
   if (to !== at) {
     const key = to > at ? "Down" : "Up";
-    await pilot.send("keys", { keys: [`${key}*${Math.abs(to - at)}`], gap: 110 });
+    await pilot.send("keys", {
+      keys: [`${key}*${Math.abs(to - at)}`],
+      gap: 110,
+    });
   }
 }
 
