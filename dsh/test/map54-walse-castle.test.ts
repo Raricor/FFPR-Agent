@@ -30,12 +30,19 @@ interface RecordedEntity {
 
 interface Fixture {
   readonly pos: { readonly map: number; readonly cell: Cell };
-  readonly cells: { readonly center: Cell; readonly origin: Cell; readonly attr: number[][] };
+  readonly cells: {
+    readonly center: Cell;
+    readonly origin: Cell;
+    readonly attr: number[][];
+  };
   readonly entities: { readonly entities: RecordedEntity[] };
   readonly collision: {
     readonly searchLayer: number;
     readonly playerCell: Cell;
-    readonly layers: readonly { readonly name: string; readonly rows: string[] }[];
+    readonly layers: readonly {
+      readonly name: string;
+      readonly rows: string[];
+    }[];
   };
 }
 
@@ -109,7 +116,11 @@ function castlePilot(here: () => Cell, layer: () => number): FakePilot {
   pilot.on("cells", () => {
     const cell = here();
     return {
-      cells: { ...map54.cells, center: [cell[0], cell[1]], at: [cell[0], cell[1]] },
+      cells: {
+        ...map54.cells,
+        center: [cell[0], cell[1]],
+        at: [cell[0], cell[1]],
+      },
     };
   });
   pilot.on("collision", () => ({
@@ -127,7 +138,10 @@ function castlePilot(here: () => Cell, layer: () => number): FakePilot {
   });
   pilot.on("route", { route: {} });
   pilot.on("walkpath", { ok: false, error: "walkpath_unsupported" });
-  pilot.on("walk", () => ({ ok: true, pos: { map: 54, cell: [here()[0], here()[1]] } }));
+  pilot.on("walk", () => ({
+    ok: true,
+    pos: { map: 54, cell: [here()[0], here()[1]] },
+  }));
   return pilot;
 }
 
@@ -142,7 +156,10 @@ void test("map 54's plan keeps off the water currents when another way exists", 
   // around it; the recording's water cells at myLayer 11 are on Upper (height 2).
   const dangers = map54.entities.entities
     .filter((entity) => entity.kind === "Event" && (entity.name ?? "").includes("流される"))
-    .map((entity) => ({ cell: entity.cell, layer: entityLayer(entity.myLayer) }));
+    .map((entity) => ({
+      cell: entity.cell,
+      layer: entityLayer(entity.myLayer),
+    }));
   const grid = layeredGrid(map54.collision, [], [], [], dangers);
   assert.ok(grid);
   const route = layeredRouteAvoiding({ ...grid, center: [36, 9], z: 2 }, [36, 43]);
@@ -295,7 +312,9 @@ function openRows(size: number): string[] {
 
 function pilotForWorld(world: CastleWorld): FakePilot {
   const pilot = new FakePilot();
-  pilot.on("pos", () => ({ pos: { map: world.map, cell: [world.cell[0], world.cell[1]] } }));
+  pilot.on("pos", () => ({
+    pos: { map: world.map, cell: [world.cell[0], world.cell[1]] },
+  }));
   pilot.on("cells", () => {
     if (world.map === 54) {
       return {
@@ -353,7 +372,10 @@ function pilotForWorld(world: CastleWorld): FakePilot {
       world.cell = exit.entry;
       world.layer = exit.layer;
     }
-    return { ok: true, pos: { map: world.map, cell: [world.cell[0], world.cell[1]] } };
+    return {
+      ok: true,
+      pos: { map: world.map, cell: [world.cell[0], world.cell[1]] },
+    };
   });
   pilot.on("wait", { ok: true });
   return pilot;

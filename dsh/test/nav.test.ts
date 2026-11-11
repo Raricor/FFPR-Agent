@@ -50,7 +50,10 @@ interface IndoorCase {
   readonly collision: unknown;
   readonly blocked: [number, number][];
   readonly grid: RawCells;
-  readonly paths: readonly { readonly goal: [number, number]; readonly path: [number, number][] }[];
+  readonly paths: readonly {
+    readonly goal: [number, number];
+    readonly path: [number, number][];
+  }[];
 }
 
 interface IndoorFixture {
@@ -82,7 +85,10 @@ interface LayeredCase {
     z: number;
     blocked: string[];
   };
-  readonly paths: readonly { readonly goal: [number, number]; readonly path: [number, number][] }[];
+  readonly paths: readonly {
+    readonly goal: [number, number];
+    readonly path: [number, number][];
+  }[];
   readonly view: { center: [number, number]; rows: string[] } | null;
 }
 
@@ -201,7 +207,11 @@ void test("a ship path crosses the sea and walking cannot", () => {
 });
 
 void test("pathToward stops at the nearest reachable cell", () => {
-  const cells: CellGrid = { origin: [0, 0], center: [0, 0], attr: [[16, 16, 16, 19, 3]] };
+  const cells: CellGrid = {
+    origin: [0, 0],
+    center: [0, 0],
+    attr: [[16, 16, 16, 19, 3]],
+  };
   assert.deepEqual(pathToward(cells, [4, 0], terrainRule(true)), [
     [0, 0],
     [1, 0],
@@ -376,7 +386,11 @@ void test("renderCells labels the columns and rows", () => {
 
 void test("the layered view names the top and bottom half-walls", () => {
   const grid = layeredGrid(
-    { playerCell: [1, 0], searchLayer: 0, layers: [{ name: "GroundCollision", rows: ["124"] }] },
+    {
+      playerCell: [1, 0],
+      searchLayer: 0,
+      layers: [{ name: "GroundCollision", rows: ["124"] }],
+    },
     [],
   );
   assert.ok(grid);
@@ -405,7 +419,11 @@ void test("a 2, 3, 4 or 5 cell is walkable but its walled side is not crossed", 
   // closes the top edge, 4 the bottom; y grows downwards, so 4 can be entered from above.
   const path = (rows: string[], start: [number, number], goal: [number, number]) => {
     const grid = layeredGrid(
-      { playerCell: start, searchLayer: 0, layers: [{ name: "GroundCollision", rows }] },
+      {
+        playerCell: start,
+        searchLayer: 0,
+        layers: [{ name: "GroundCollision", rows }],
+      },
       [],
     );
     assert.ok(grid);

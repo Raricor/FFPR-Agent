@@ -26,7 +26,10 @@ interface RecordedEntity {
 
 interface Map261 {
   readonly pos: { readonly map: number; readonly cell: [number, number] };
-  readonly cells: { readonly center: [number, number]; readonly attr: number[][] };
+  readonly cells: {
+    readonly center: [number, number];
+    readonly attr: number[][];
+  };
   readonly collision: unknown;
   readonly entities: { readonly entities: RecordedEntity[] };
 }
@@ -243,7 +246,14 @@ void test("a walked conveyor becomes a directed edge over the wall", () => {
     playerCell: [0, 0],
     layers: [{ name: "GroundCollision", rows: ["000", "111", "000"] }],
   };
-  const moves = [{ from: [0, 0] as Cell, to: [0, 2] as Cell, how: "传送带", kind: "conveyor" }];
+  const moves = [
+    {
+      from: [0, 0] as Cell,
+      to: [0, 2] as Cell,
+      how: "传送带",
+      kind: "conveyor",
+    },
+  ];
   const walked = layeredGrid(collision, [], [], moves);
   assert.ok(walked);
   assert.deepEqual(layeredRoute(walked, [0, 2]), [
@@ -396,7 +406,12 @@ void test("a layer change walked through is kept in the atlas", async () => {
     layer = 2;
     return { ok: true, pos: { map: 261, cell: [1, 1] } };
   });
-  const links: { from: number[]; to: number[]; how: string; detail?: unknown }[] = [];
+  const links: {
+    from: number[];
+    to: number[];
+    how: string;
+    detail?: unknown;
+  }[] = [];
   const state: MoveState = {
     drake: null,
     link: (_map, from, to, how, detail) => {

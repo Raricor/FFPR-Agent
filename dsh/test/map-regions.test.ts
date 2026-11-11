@@ -84,7 +84,12 @@ const LIFTS: Record<number, { readonly from: Cell; readonly to: number; readonly
   260: { from: [3, 6], to: 635, land: [4, 6] },
 };
 
-const LAPTOP: Laptop = { host: "laptop", user: "player", key: "/tmp/key", root: "C:/ffpr" };
+const LAPTOP: Laptop = {
+  host: "laptop",
+  user: "player",
+  key: "/tmp/key",
+  root: "C:/ffpr",
+};
 
 const fixture = JSON.parse(
   await readFile(
@@ -170,7 +175,10 @@ function pilotFor(world: World): FakePilot {
     },
   }));
   pilot.on("collision", () => ({
-    collision: { ...collisionFor(world.map), playerCell: [world.cell[0], world.cell[1]] },
+    collision: {
+      ...collisionFor(world.map),
+      playerCell: [world.cell[0], world.cell[1]],
+    },
   }));
   pilot.on("entities", () => ({ entities: { total: 0, entities: [] } }));
   pilot.on("route", { route: {} });
@@ -370,7 +378,12 @@ void test("a plan blocked by a region says which map lacks collision and that th
     // Map 11's landing (1,1) is on the left of a solid column; its exit (3,1) is on the right.
     await store.remember(11, {
       searchLayer: 1,
-      layers: [{ name: "GroundCollision", rows: ["00100", "00100", "00100", "00100", "00100"] }],
+      layers: [
+        {
+          name: "GroundCollision",
+          rows: ["00100", "00100", "00100", "00100", "00100"],
+        },
+      ],
     });
     const atlas = new Atlas();
     atlas.maps.set("10", {
@@ -414,7 +427,9 @@ void test("charting an indoor map writes its collision beside the atlas", async 
     const pilot = new FakePilot();
     pilot.on("pos", { pos: { map: 255, state: "Player", cell: [6, 7] } });
     pilot.on("entities", { entities: { total: 0, entities: [] } });
-    pilot.onQuery("sample", { sample: { user: { areaText: "火力船", locationText: "" } } });
+    pilot.onQuery("sample", {
+      sample: { user: { areaText: "火力船", locationText: "" } },
+    });
     pilot.on("collision", { collision: collisionFor(255) });
     assert.equal(await game.chart(pilot), 255);
     const store = await CollisionStore.load(join(dir, "collision-ff5"));

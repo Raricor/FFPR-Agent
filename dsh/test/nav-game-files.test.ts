@@ -82,7 +82,10 @@ async function writeMap(
     readonly hiddenPassages?: readonly FileValueLayer[];
     readonly exits?: readonly FileExit[];
     readonly world?: FileWorld;
-    readonly worldExits?: readonly { readonly to: number; readonly point: number }[];
+    readonly worldExits?: readonly {
+      readonly to: number;
+      readonly point: number;
+    }[];
   },
 ): Promise<void> {
   await mkdir(dir, { recursive: true });
@@ -158,7 +161,9 @@ void test("mapPath crosses maps that exist only in the game files and uses their
         { cell: [4, 4], toMap: 42, toPoint: 1 },
       ],
     });
-    await writeMap(game, 42, { collision: [{ name: "GroundCollision", rows: openRows(6) }] });
+    await writeMap(game, 42, {
+      collision: [{ name: "GroundCollision", rows: openRows(6) }],
+    });
     const store = await CollisionStore.load(undefined, undefined, game);
     const atlas = new Atlas();
     atlas.maps.set("30", {
@@ -252,7 +257,9 @@ void test("an observed exit at a cell wins over the game file's exit there", asy
         { cell: [5, 5], toMap: 41, toPoint: 1 },
       ],
     });
-    await writeMap(game, 41, { collision: [{ name: "GroundCollision", rows: openRows(6) }] });
+    await writeMap(game, 41, {
+      collision: [{ name: "GroundCollision", rows: openRows(6) }],
+    });
     const store = await CollisionStore.load(undefined, undefined, game);
     const atlas = new Atlas();
     atlas.maps.set("40", {
@@ -285,7 +292,10 @@ void test("a damage floor splits the safe block but joins the risky one", async 
     assert.ok(region !== undefined);
     const from = region.blocksAt([0, 1], 1);
     assert.ok(from.length > 0);
-    assert.deepEqual(region.reachable(from, [2, 1], 1), { ok: true, risky: true });
+    assert.deepEqual(region.reachable(from, [2, 1], 1), {
+      ok: true,
+      risky: true,
+    });
   } finally {
     await rm(game, { recursive: true, force: true });
   }
@@ -343,7 +353,10 @@ void test("a live collision still takes its damage floors from the game files", 
     assert.ok(region !== undefined);
     const from = region.blocksAt([0, 1], 1);
     assert.ok(from.length > 0);
-    assert.deepEqual(region.reachable(from, [2, 1], 1), { ok: true, risky: true });
+    assert.deepEqual(region.reachable(from, [2, 1], 1), {
+      ok: true,
+      risky: true,
+    });
   } finally {
     await rm(game, { recursive: true, force: true });
     await rm(cache, { recursive: true, force: true });
@@ -370,7 +383,12 @@ void test("an 调查后跳 link joins map 189 north to south one way only", asyn
   const game = await tempDir("ffpr-gamefiles-");
   try {
     await writeMap(game, 189, {
-      collision: [{ name: "GroundCollision", rows: ["00000", "11111", "00000", "11111", "00000"] }],
+      collision: [
+        {
+          name: "GroundCollision",
+          rows: ["00000", "11111", "00000", "11111", "00000"],
+        },
+      ],
       exits: [{ cell: [2, 2], toMap: 190 }],
     });
     const store = await CollisionStore.load(undefined, undefined, game);
@@ -404,7 +422,9 @@ void test(
   },
   async () => {
     const store = await CollisionStore.load(undefined, undefined, REAL_MAPS);
-    const path = mapPath(await realAtlas(), 30, 202, new Set(), true, { collisions: store });
+    const path = mapPath(await realAtlas(), 30, 202, new Set(), true, {
+      collisions: store,
+    });
     assert.ok(path !== null, "no route 30 → 202");
     assert.ok(
       path.some((hop) => hop.to === 1),
@@ -420,7 +440,9 @@ void test(
   },
   async () => {
     const store = await CollisionStore.load(undefined, undefined, REAL_MAPS);
-    const path = mapPath(await realAtlas(), 191, 198, new Set(), true, { collisions: store });
+    const path = mapPath(await realAtlas(), 191, 198, new Set(), true, {
+      collisions: store,
+    });
     assert.ok(path !== null, "no route 191 → 198");
     assert.equal(path[0]?.from, 191);
     assert.equal(path.at(-1)?.to, 198);

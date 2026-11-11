@@ -19,6 +19,7 @@ import { num, record, records, text } from "../values.ts";
 import {
   RegionIndex,
   SURFACE_WORLD_MODES,
+  refreshLiveCollision,
   type CollisionStore,
   type RegionBlock,
   type WorldMode,
@@ -356,7 +357,7 @@ function routeNodeKey(
   return world === undefined ? nodeKey(mapId, blocks) : `${mapId}@world:${world.zone}`;
 }
 
-/** Whether this block of the map can walk to or ride from the cell. */
+/** Whether this block of the map can walk, jump or ride to the cell (task 149 adds jumps). */
 function blockReaches(
   regions: RegionIndex | undefined,
   mapId: number,
@@ -373,7 +374,8 @@ function blockReaches(
 /**
  * Task 148: whether a plan from a map to a cell on the same map must leave the map first.
  * The old "same map means already there" is kept for an unknown start/goal cell, a map
- * without cached collision, or a goal the start block can already walk to.
+ * without cached collision, or a goal the start block can already walk to. Task 149's exported
+ * jumps are part of that block graph, so a jump is as good as a walk here.
  */
 function sameMapNeedsDetour(
   regions: RegionIndex | undefined,
@@ -674,7 +676,7 @@ async function readLandingLayer(
   if (store === undefined || isWorldMap(mapId)) return null;
   try {
     const collision = record((await pilot.send("collision")).collision);
-    await store.remember(mapId, collision);
+    await store.rememberLive(mapId, collision);
     return regions.setLive(mapId, collision, cell)?.layer ?? null;
   } catch {
     return null;
@@ -1072,6 +1074,9 @@ async function worldRide(pilot: Pilot): Promise<WorldRide> {
   if (airborne) return { flying: true, stop: null, vehicle: null };
   const state = await rideState(pilot);
   if (state === "Ship") return { flying: false, stop: null, vehicle: "Ship" };
+  // 11-11 (new game): the opening starts on Boko. The yellow chocobo crosses the same land as
+  // walking and the game dismounts it at a town or dungeon entrance, so route it as walking.
+  if (state === "Chocobo") return { flying: false, stop: null, vehicle: null };
   const label = RIDES.get(state);
   if (label === undefined) return { flying: false, stop: null, vehicle: null };
   const name = label.split("(", 1)[0] ?? label;
@@ -1367,7 +1372,7 @@ export async function travelToMap(
   if (current !== null && !isWorldMap(current) && cell !== null && context.collisions) {
     try {
       const collision = record((await pilot.send("collision")).collision);
-      await context.collisions.remember(current, collision);
+      await context.collisions.rememberLive(current, collision);
       layer = regions.setLive(current, collision, cell)?.layer ?? null;
     } catch {
       layer = regions.region(current)?.layer ?? null;
@@ -1378,6 +1383,7 @@ export async function travelToMap(
   const hops: TravelHop[] = [];
   const blocked: string[] = [];
   const unavailable = new Set<string>();
+  const refreshedMaps = new Set<number>();
   // Task 74: landings observed for exit edges in this call, so a map entered before can be
   // judged from the region it was actually entered at.
   const landings = new Map<string, ObservedLanding>();
@@ -1432,16 +1438,36 @@ export async function travelToMap(
     const worldModes = isWorldMap(current)
       ? await worldModesFor(pilot, current, vehicles)
       : undefined;
-    const path = mapPath(atlas, current, target, unavailable, true, {
-      start: cell,
-      startLayer: layer,
-      landings,
-      regions,
-      collisions: context.collisions,
-      ...(options.toCell === undefined ? {} : { toCell: options.toCell }),
-      ...(options.toLayer === undefined ? {} : { toLayer: options.toLayer }),
-      ...(worldModes === undefined ? {} : { worldModes }),
-    });
+    const fromMap = current;
+    const planPath = (): ReturnType<typeof mapPath> =>
+      mapPath(atlas, fromMap, target, unavailable, true, {
+        start: cell,
+        startLayer: layer,
+        landings,
+        regions,
+        collisions: context.collisions,
+        ...(options.toCell === undefined ? {} : { toCell: options.toCell }),
+        ...(options.toLayer === undefined ? {} : { toLayer: options.toLayer }),
+        ...(worldModes === undefined ? {} : { worldModes }),
+      });
+    let path = planPath();
+    // Task 149 follow-up: a switch/story may have opened a wall the cached grid still calls
+    // solid. Re-read this map once before reporting the route unreachable.
+    if (path === null && cell !== null && !isWorldMap(current)) {
+      const refreshed = await refreshLiveCollision(
+        pilot,
+        context.collisions,
+        regions,
+        fromMap,
+        cell,
+        refreshedMaps,
+      );
+      if (refreshed !== null) {
+        context.say?.(refreshed.text);
+        say(refreshed.text);
+        path = planPath();
+      }
+    }
     if (path === null) {
       const hint = explainNoPath(
         atlas,

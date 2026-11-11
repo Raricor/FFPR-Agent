@@ -61,7 +61,11 @@ async function setUp(dir: string): Promise<{
   const atlas = atlasWithTwoEntrances();
   const store = await CollisionStore.load(dir);
   for (const map of [10, 11, 12]) await store.remember(map, collisionFor(map));
-  return { atlas, collisions: store, regions: RegionIndex.create(atlas, store) };
+  return {
+    atlas,
+    collisions: store,
+    regions: RegionIndex.create(atlas, store),
+  };
 }
 
 void test("a goal in block B picks the entrance that lands in B, not the first entrance", async () => {

@@ -86,7 +86,11 @@ async function atlasWithRides(): Promise<Atlas> {
   for (const [key, map] of Object.entries(MAPS)) {
     atlas.maps.set(key, {
       name: map.name,
-      exits: map.exits.map((exit) => ({ cell: exit.cell, to: exit.to, name: "GotoMap" })),
+      exits: map.exits.map((exit) => ({
+        cell: exit.cell,
+        to: exit.to,
+        name: "GotoMap",
+      })),
       chests: [],
     });
   }

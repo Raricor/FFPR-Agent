@@ -479,7 +479,13 @@
           [16, -56, 0],
           [16, -72, 0]
         ],
-        "tries": { "theirs": 0, "simple": 3, "used": "simple", "ours": 0, "entity": 3 },
+        "tries": {
+          "theirs": 0,
+          "simple": 3,
+          "used": "simple",
+          "ours": 0,
+          "entity": 3
+        },
         "limit": [64, 64]
       },
       "ok": true
@@ -503,7 +509,13 @@
           [-48, -88, 349],
           [-48, -72, 349]
         ],
-        "tries": { "theirs": 8, "used": "theirs", "simple": 5, "ours": 8, "entity": 4 },
+        "tries": {
+          "theirs": 8,
+          "used": "theirs",
+          "simple": 5,
+          "ours": 8,
+          "entity": 4
+        },
         "limit": [64, 64]
       },
       "ok": true
@@ -528,7 +540,13 @@
           [-32, -120, 349],
           [-48, -120, 349]
         ],
-        "tries": { "theirs": 9, "used": "theirs", "simple": 8, "ours": 9, "entity": 6 },
+        "tries": {
+          "theirs": 9,
+          "used": "theirs",
+          "simple": 8,
+          "ours": 9,
+          "entity": 6
+        },
         "limit": [64, 64]
       },
       "ok": true

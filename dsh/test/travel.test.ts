@@ -27,7 +27,11 @@ import { FakePilot } from "./fake-pilot.ts";
 
 interface MapRecord {
   readonly name: string;
-  readonly exits: readonly { readonly cell: Cell; readonly to: number; readonly name?: string }[];
+  readonly exits: readonly {
+    readonly cell: Cell;
+    readonly to: number;
+    readonly name?: string;
+  }[];
 }
 
 function atlasOf(records: Record<number, MapRecord>): Atlas {
@@ -35,7 +39,11 @@ function atlasOf(records: Record<number, MapRecord>): Atlas {
   for (const [key, record] of Object.entries(records)) {
     atlas.maps.set(key, {
       name: record.name,
-      exits: record.exits.map((exit) => ({ cell: exit.cell, to: exit.to, name: exit.name ?? "" })),
+      exits: record.exits.map((exit) => ({
+        cell: exit.cell,
+        to: exit.to,
+        name: exit.name ?? "",
+      })),
       chests: [],
     });
   }
@@ -108,7 +116,12 @@ function pilotFor(world: World, onWalk?: (from: Cell, to: Cell) => void): FakePi
     collision: {
       searchLayer: 1,
       playerCell: [world.cell[0], world.cell[1]],
-      layers: [{ name: "GroundCollision", rows: Array.from({ length: 20 }, () => "0".repeat(20)) }],
+      layers: [
+        {
+          name: "GroundCollision",
+          rows: Array.from({ length: 20 }, () => "0".repeat(20)),
+        },
+      ],
     },
   }));
   pilot.on("entities", () => ({ entities: { total: 0, entities: [] } }));
@@ -153,7 +166,9 @@ function terrainPilot(
       attr: Array.from({ length: 40 }, () => Array.from({ length: 40 }, () => 4)),
     },
   }));
-  pilot.onQuery("sample", () => ({ sample: { field: { moveState: ride.state } } }));
+  pilot.onQuery("sample", () => ({
+    sample: { field: { moveState: ride.state } },
+  }));
   return pilot;
 }
 
@@ -232,7 +247,11 @@ void test("a transit map without completion stops the route with guardLeave's te
     {
       guard: (_pilot, _goal, origin) =>
         Promise.resolve(
-          origin ? null : { text: "「运河」还没完成：宝箱 1/2。要离开就带 leave_incomplete。" },
+          origin
+            ? null
+            : {
+                text: "「运河」还没完成：宝箱 1/2。要离开就带 leave_incomplete。",
+              },
         ),
     },
   );
@@ -436,7 +455,7 @@ void test("go to the map the party is already on is 0 hops and says 已经在地
   assert.match(result.text, /跳数:0\(已经在地图 30「图尔村」\)/);
 });
 
-void test("on a chocobo go says 到不了 and why instead of only 跳数:0", async () => {
+void test("on a chocobo go walks like on foot (11-11: the game dismounts at the entrance)", async () => {
   const atlas = atlasOf({
     1: { name: "世界地图", exits: [{ cell: [7, 7], to: 32 }] },
     32: { name: "终点", exits: [] },
@@ -449,11 +468,9 @@ void test("on a chocobo go says 到不了 and why instead of only 跳数:0", asy
     { atlas, moveState: { drake: null } },
     32,
   );
-  assert.equal(result.reached, false);
-  assert.equal(world.map, 1);
-  assert.match(result.text, /^到不了地图 32/m);
-  assert.match(result.text, /现在在骑陆行鸟上,go 只会步行和骑飞龙/);
-  assert.doesNotMatch(result.text, /跳数:0/);
+  assert.doesNotMatch(result.text, /现在在骑陆行鸟上/);
+  assert.equal(result.reached, true);
+  assert.equal(world.map, 32);
 });
 
 void test("a map name shared by two maps is listed and nothing moves", () => {
@@ -531,7 +548,10 @@ void test("explore treats a map recorded by an older save as not visited", async
   });
   atlas.visitedNow.add("30");
   const world = worldFor(atlas);
-  const result = await explore(pilotFor(world), { atlas, moveState: { drake: null } });
+  const result = await explore(pilotFor(world), {
+    atlas,
+    moveState: { drake: null },
+  });
   assert.equal(result.found, true);
   assert.equal(world.map, 31);
   assert.match(result.text, /进了地图 31/);
@@ -545,7 +565,10 @@ void test("explore says every exit this save visited is done", async () => {
   atlas.visitedNow.add("30");
   atlas.visitedNow.add("31");
   const world = worldFor(atlas);
-  const result = await explore(pilotFor(world), { atlas, moveState: { drake: null } });
+  const result = await explore(pilotFor(world), {
+    atlas,
+    moveState: { drake: null },
+  });
   assert.equal(result.found, false);
   assert.equal(world.map, 30);
   assert.match(result.text, /都去过了/);
@@ -576,7 +599,12 @@ void test("the world map is map 1 and is never a route hop", () => {
   assert.notEqual(mapPath(atlas, 30, 32, new Set(), true), null);
 });
 
-const LAPTOP: Laptop = { host: "laptop", user: "player", key: "/tmp/key", root: "C:/ffpr" };
+const LAPTOP: Laptop = {
+  host: "laptop",
+  user: "player",
+  key: "/tmp/key",
+  root: "C:/ffpr",
+};
 
 /** Task 45's completion replies for map 71, so go's origin guard can be exercised. */
 function completionWorld(): { world: World; pilot: FakePilot } {
@@ -619,7 +647,13 @@ function completionWorld(): { world: World; pilot: FakePilot } {
   const entities: Reply[] = [
     { kind: "TresureBox", cell: [4, 7], contentName: "以太", opened: false },
     { kind: "TresureBox", cell: [5, 7], contentName: "金针", opened: true },
-    { kind: "TresureBox", cell: [6, 7], contentName: "精灵披风", hidden: true, opened: true },
+    {
+      kind: "TresureBox",
+      cell: [6, 7],
+      contentName: "精灵披风",
+      hidden: true,
+      opened: true,
+    },
     { kind: "GotoMap", cell: [1, 5], toMap: 72 },
   ];
   pilot.on("entities", (fields) => ({
@@ -639,7 +673,10 @@ function completionWorld(): { world: World; pilot: FakePilot } {
   pilot.onQuery("items", { items: { normal: [], important: [] } });
   pilot.onQuery("sample", () => ({
     sample: {
-      user: { mapId: world.map, areaText: world.map === 71 ? "沃尔斯塔" : "沃尔斯塔 地下" },
+      user: {
+        mapId: world.map,
+        areaText: world.map === 71 ? "沃尔斯塔" : "沃尔斯塔 地下",
+      },
       party: [],
       field: { moveState: "Walk" },
     },
@@ -724,7 +761,10 @@ function playablePilot(world: World, ride = "Walk"): FakePilot {
   pilot.onQuery("items", { items: { normal: [], important: [] } });
   pilot.onQuery("sample", () => ({
     sample: {
-      user: { mapId: world.map, areaText: world.map === 1 ? "世界地图" : `地图 ${world.map}` },
+      user: {
+        mapId: world.map,
+        areaText: world.map === 1 ? "世界地图" : `地图 ${world.map}`,
+      },
       party: [],
       field: { moveState: ride },
     },
@@ -745,7 +785,13 @@ function playablePilot(world: World, ride = "Walk"): FakePilot {
     },
   });
   pilot.onQuery("encounters", {
-    encounters: { monsterSet: null, parties: [], region: null, regions: [], enabled: false },
+    encounters: {
+      monsterSet: null,
+      parties: [],
+      region: null,
+      regions: [],
+      enabled: false,
+    },
   });
   return pilot;
 }
@@ -928,7 +974,9 @@ void test("a world-map exit name finds the map it leads to", () => {
 });
 
 void test("a route's last hop may enter a map the atlas never recorded", async () => {
-  const atlas = atlasOf({ 30: { name: "起点", exits: [{ cell: [1, 5], to: 40 }] } });
+  const atlas = atlasOf({
+    30: { name: "起点", exits: [{ cell: [1, 5], to: 40 }] },
+  });
   const world = worldFor(atlas);
   world.map = 30;
   const result = await travelToMap(pilotFor(world), { atlas, moveState: { drake: null } }, 40);
@@ -1211,7 +1259,10 @@ void test("a ship sails to the coast and walks into the town", async () => {
       JSON.stringify({
         id: 30,
         collision: [
-          { name: "GroundCollision", rows: Array.from({ length: 8 }, () => "0".repeat(8)) },
+          {
+            name: "GroundCollision",
+            rows: Array.from({ length: 8 }, () => "0".repeat(8)),
+          },
         ],
         exits: [],
       }),
@@ -1236,7 +1287,9 @@ void test("a ship sails to the coast and walks into the town", async () => {
         attr: walk.map((row) => Array.from(row, (value) => (value === "1" ? 4 : 16))),
       },
     }));
-    pilot.onQuery("sample", () => ({ sample: { field: { moveState: "Ship" } } }));
+    pilot.onQuery("sample", () => ({
+      sample: { field: { moveState: "Ship" } },
+    }));
     const result = await travelToMap(
       pilot,
       { atlas, moveState: { drake: null }, collisions: store },

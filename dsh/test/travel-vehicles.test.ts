@@ -71,7 +71,12 @@ function pilotFor(world: World, vehicles: boolean): FakePilot {
     collision: {
       searchLayer: 1,
       playerCell: [world.cell[0], world.cell[1]],
-      layers: [{ name: "GroundCollision", rows: Array.from({ length: 20 }, () => "0".repeat(20)) }],
+      layers: [
+        {
+          name: "GroundCollision",
+          rows: Array.from({ length: 20 }, () => "0".repeat(20)),
+        },
+      ],
     },
   }));
   pilot.on("entities", () => ({ entities: { total: 0, entities: [] } }));
@@ -96,7 +101,9 @@ function pilotFor(world: World, vehicles: boolean): FakePilot {
     return { ok: true, ...position(world) };
   });
   pilot.on("wait", { ok: true });
-  pilot.onQuery("sample", () => ({ sample: { field: { moveState: world.state } } }));
+  pilot.onQuery("sample", () => ({
+    sample: { field: { moveState: world.state } },
+  }));
   if (vehicles) {
     pilot.onQuery("vehicles", () => ({
       vehicles: {

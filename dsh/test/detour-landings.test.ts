@@ -26,7 +26,10 @@ interface Entity {
 interface Collision {
   readonly searchLayer: number;
   readonly playerCell: Cell;
-  readonly layers: readonly { readonly name: string; readonly rows: readonly string[] }[];
+  readonly layers: readonly {
+    readonly name: string;
+    readonly rows: readonly string[];
+  }[];
 }
 
 interface Fixture {
@@ -103,7 +106,13 @@ async function cacheFor(): Promise<{ dir: string; store: CollisionStore }> {
 }
 
 function position(world: World): Reply {
-  return { pos: { state: "Player", map: world.map, cell: [world.cell[0], world.cell[1]] } };
+  return {
+    pos: {
+      state: "Player",
+      map: world.map,
+      cell: [world.cell[0], world.cell[1]],
+    },
+  };
 }
 
 function collisionFor(world: World): Collision {
@@ -170,7 +179,10 @@ void test("an entrance landing in another block is not suggested or walked", asy
   try {
     // Map 300's exit back into 255 lands at (6,7), the north block the party is already in.
     const atlas = atlasFor([
-      { id: 300, exits: [{ cell: [1, 1], to: 255, land: [6, 7], landLayer: 2 }] },
+      {
+        id: 300,
+        exits: [{ cell: [1, 1], to: 255, land: [6, 7], landLayer: 2 }],
+      },
     ]);
     const { pilot, world, walks } = harness();
     const text = await detourToCell(
@@ -193,7 +205,10 @@ void test("an entrance with no recorded landing is listed but not walked", async
   const { dir, store } = await cacheFor();
   try {
     const atlas = atlasFor([
-      { id: 300, exits: [{ cell: [1, 1], to: 255, land: [6, 7], landLayer: 2 }] },
+      {
+        id: 300,
+        exits: [{ cell: [1, 1], to: 255, land: [6, 7], landLayer: 2 }],
+      },
       { id: 301, exits: [{ cell: [1, 1], to: 255 }] },
     ]);
     const { pilot, world, walks } = harness();

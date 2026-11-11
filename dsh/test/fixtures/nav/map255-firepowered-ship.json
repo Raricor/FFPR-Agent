@@ -793,7 +793,13 @@
           [-96, -152, 0],
           [-96, -168, 0]
         ],
-        "tries": { "theirs": 0, "simple": 19, "used": "simple", "ours": 0, "entity": 20 },
+        "tries": {
+          "theirs": 0,
+          "simple": 19,
+          "used": "simple",
+          "ours": 0,
+          "entity": 20
+        },
         "limit": [64, 64]
       },
       "ok": true
@@ -835,7 +841,13 @@
           [112, -56, 0],
           [112, -72, 0]
         ],
-        "tries": { "theirs": 0, "simple": 26, "used": "simple", "ours": 0, "entity": 14 },
+        "tries": {
+          "theirs": 0,
+          "simple": 26,
+          "used": "simple",
+          "ours": 0,
+          "entity": 14
+        },
         "limit": [64, 64]
       },
       "ok": true

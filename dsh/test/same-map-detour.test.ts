@@ -36,12 +36,20 @@ function collisionFor(map: number): {
     readonly rows: readonly string[];
   }[];
 } {
-  return { searchLayer: 1, layers: [{ name: "GroundCollision", rows: rowsFor(map) }] };
+  return {
+    searchLayer: 1,
+    layers: [{ name: "GroundCollision", rows: rowsFor(map) }],
+  };
 }
 
 function atlasWith(returnLanding: Cell | null): Atlas {
   const atlas = new Atlas();
-  const leftDoor: ExitDef = { cell: [2, 3], to: 41, land: [2, 3], landLayer: 1 };
+  const leftDoor: ExitDef = {
+    cell: [2, 3],
+    to: 41,
+    land: [2, 3],
+    landLayer: 1,
+  };
   atlas.maps.set("40", {
     name: "被墙分开的图",
     exits: [leftDoor],

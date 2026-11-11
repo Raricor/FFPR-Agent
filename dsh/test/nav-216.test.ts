@@ -17,7 +17,10 @@ interface RecordedEntity {
 
 interface Map216 {
   readonly pos: { readonly map: number; readonly cell: [number, number] };
-  readonly cells: { readonly center: [number, number]; readonly attr: number[][] };
+  readonly cells: {
+    readonly center: [number, number];
+    readonly attr: number[][];
+  };
   readonly collision: unknown;
   readonly entities: { readonly entities: RecordedEntity[] };
   readonly routes: Record<string, { readonly route: Reply }>;

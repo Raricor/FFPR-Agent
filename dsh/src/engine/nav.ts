@@ -886,7 +886,11 @@ export function layeredRouteAvoiding(
   const through = layeredRoute(grid, goal, cut, layerCut, false, true);
   const throughEnd = through.at(-1);
   if (throughEnd?.[0] === goal[0] && throughEnd[1] === goal[1]) {
-    return { path: through, danger: [], passage: passageNodes(grid, through, goal) };
+    return {
+      path: through,
+      danger: [],
+      passage: passageNodes(grid, through, goal),
+    };
   }
   const risky = layeredRoute(grid, goal, cut, layerCut, true, true);
   const riskyEnd = risky.at(-1);
@@ -943,7 +947,10 @@ export const OPEN: ReadonlySet<string> = new Set(["0", "2", "3", "4", "5"]);
  * and (17,23)→(18,23); those are the walled sides of 5 and 3, so the view names the side
  * instead of pretending every half-wall is a stair or a whole wall.
  */
-export function layeredView(grid: LayeredGrid): { center: Cell; rows: string[] } {
+export function layeredView(grid: LayeredGrid): {
+  center: Cell;
+  rows: string[];
+} {
   let height = 0;
   let width = 0;
   for (const rows of grid.heights.values()) {

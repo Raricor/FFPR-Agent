@@ -27,7 +27,10 @@ interface Fixture {
   readonly collision: {
     readonly searchLayer: number;
     readonly playerCell: Cell;
-    readonly layers: readonly { readonly name: string; readonly rows: string[] }[];
+    readonly layers: readonly {
+      readonly name: string;
+      readonly rows: string[];
+    }[];
   };
 }
 
@@ -75,7 +78,11 @@ function shipPilot(here: () => Cell, rows?: readonly string[]): FakePilot {
   });
   pilot.on("pos", position);
   pilot.on("cells", (fields) => ({
-    cells: { ...map252.cells, center: [here()[0], here()[1]], at: fields.at ?? here() },
+    cells: {
+      ...map252.cells,
+      center: [here()[0], here()[1]],
+      at: fields.at ?? here(),
+    },
   }));
   pilot.on("collision", () => ({ collision: collisionAt(here(), rows) }));
   pilot.on("entities", (fields) => {
@@ -155,7 +162,11 @@ void test("go from map 252's (9,12) plans and walks to (9,3)", async () => {
       const last = path[path.length - 1];
       assert.ok(last);
       world.cell = [last[0], last[1]];
-      return { ok: true, reason: "arrived", pos: { map: MAP, cell: world.cell } };
+      return {
+        ok: true,
+        reason: "arrived",
+        pos: { map: MAP, cell: world.cell },
+      };
     });
     const result = await game.run("go", { to: [GOAL[0], GOAL[1]] }, pilot);
     assert.deepEqual(world.cell, GOAL);
@@ -192,7 +203,11 @@ void test("an old blocked (9,13)→(9,14) record is re-walked and forgotten when
       const last = path[path.length - 1];
       assert.ok(last);
       world.cell = [last[0], last[1]];
-      return { ok: true, reason: "arrived", pos: { map: MAP, cell: world.cell } };
+      return {
+        ok: true,
+        reason: "arrived",
+        pos: { map: MAP, cell: world.cell },
+      };
     });
     const result = await game.run("go", { to: [GOAL[0], GOAL[1]] }, pilot);
     assert.match(result, /到达 \(9, 3\)/);
@@ -270,7 +285,13 @@ void test("a blocked record counted 3 times is a wall and is not re-walked", asy
           exits: [],
           chests: [],
           links: [
-            { from: [9, 13], to: [9, 14], how: "走不过去", at: "2026-11-09T00:00:00Z", count: 3 },
+            {
+              from: [9, 13],
+              to: [9, 14],
+              how: "走不过去",
+              at: "2026-11-09T00:00:00Z",
+              count: 3,
+            },
           ],
         },
       }),
@@ -318,7 +339,12 @@ void test("canReach still says no when the grid really separates the goal", asyn
   const pilot = new FakePilot();
   pilot.on("pos", { pos: { map: MAP, state: "Player", cell: [0, 0] } });
   pilot.on("cells", {
-    cells: { center: [0, 0], at: [0, 0], origin: [0, 0], attr: [[0, 0, 0, 0, 0]] },
+    cells: {
+      center: [0, 0],
+      at: [0, 0],
+      origin: [0, 0],
+      attr: [[0, 0, 0, 0, 0]],
+    },
   });
   pilot.on("collision", {
     collision: {
@@ -331,7 +357,12 @@ void test("canReach still says no when the grid really separates the goal", asyn
   assert.equal(await canReach(pilot, [4, 0], NO_MOVES, MAP), false);
 });
 
-const LAPTOP: Laptop = { host: "laptop", user: "player", key: "/tmp/key", root: "C:/ffpr" };
+const LAPTOP: Laptop = {
+  host: "laptop",
+  user: "player",
+  key: "/tmp/key",
+  root: "C:/ffpr",
+};
 
 /** A Game whose atlas is the file the test wrote, with the post-tool reads kept quiet. */
 async function gameWithAtlas(directory: string, atlasFile: string): Promise<Game> {
@@ -418,7 +449,13 @@ function playablePilot(world: World): FakePilot {
     },
   });
   pilot.onQuery("encounters", {
-    encounters: { monsterSet: null, parties: [], region: null, regions: [], enabled: false },
+    encounters: {
+      monsterSet: null,
+      parties: [],
+      region: null,
+      regions: [],
+      enabled: false,
+    },
   });
   return pilot;
 }

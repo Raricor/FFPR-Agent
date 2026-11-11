@@ -32,17 +32,20 @@ import {
   layeredGrid,
   type Cell,
   type DangerCell,
+  type LayerChange,
   type LayeredGrid,
   type ObservedMove,
   type PassageCell,
 } from "./nav.ts";
 import { isMissingFile } from "./errors.ts";
+import type { Pilot } from "./pilot.ts";
 import { BLOCKED_TRUST_COUNT } from "./skills/move.ts";
 import { isRecord, records, text, type Json } from "./values.ts";
 import {
   JUMP_DELTAS,
   isJumpMove,
   jumpMoves,
+  jumpsFromObserved,
   type MapJump,
   type PassageFeatures,
 } from "./knowledge/jumps.ts";
@@ -51,7 +54,14 @@ import {
 export interface CollisionSnapshot {
   readonly name?: string;
   readonly searchLayer?: number;
-  readonly layers: readonly { readonly name: string; readonly rows: readonly string[] }[];
+  readonly layers: readonly {
+    readonly name: string;
+    readonly rows: readonly string[];
+  }[];
+  /** Where this snapshot came from, when it was remembered as live. */
+  readonly source?: string;
+  /** ISO time of the live read. */
+  readonly at?: string;
   /** Task 129: hidden-passage cells from the game files, attached to every source. */
   readonly passages?: readonly PassageCell[];
 }
@@ -73,6 +83,8 @@ export function collisionSnapshot(value: unknown): CollisionSnapshot | null {
     ...(typeof value.searchLayer === "number"
       ? { searchLayer: Math.trunc(value.searchLayer) }
       : {}),
+    ...(typeof value.source === "string" ? { source: value.source } : {}),
+    ...(typeof value.at === "string" ? { at: value.at } : {}),
     layers,
   };
 }
@@ -162,6 +174,11 @@ interface GameMapFile {
   readonly exits: readonly GameMapExit[];
   readonly points: readonly GameMapPoint[];
   readonly events: readonly GameMapEvent[];
+  /** Game-file ToLayer cells, so a multi-floor map the save never visited stays walkable. */
+  readonly toLayers: readonly {
+    readonly cell: Cell;
+    readonly layer: number | null;
+  }[];
   /** Task 149: script-moved jumps from the map export. */
   readonly jumps: readonly MapJump[];
   readonly world?: GameWorldMap;
@@ -215,7 +232,12 @@ function gameExits(value: unknown): GameMapExit[] {
     const cell = readCell(exit.cell);
     const to = integer(exit.toMap);
     if (cell === null || to === null || to <= 0) continue;
-    exits.push({ cell, to, toPoint: integer(exit.toPoint), name: text(exit.name) ?? "" });
+    exits.push({
+      cell,
+      to,
+      toPoint: integer(exit.toPoint),
+      name: text(exit.name) ?? "",
+    });
   }
   return exits;
 }
@@ -295,6 +317,17 @@ function gameWorldExits(value: unknown): GameWorldExit[] {
   return exits;
 }
 
+function gameToLayers(value: unknown): { readonly cell: Cell; readonly layer: number | null }[] {
+  const cells: { cell: Cell; layer: number | null }[] = [];
+  for (const entry of records(value)) {
+    const cell = readCell(entry.cell);
+    if (cell === null) continue;
+    const layer = integer(entry.layer);
+    cells.push({ cell, layer });
+  }
+  return cells;
+}
+
 function gameJumps(value: unknown): MapJump[] {
   const jumps: MapJump[] = [];
   for (const entry of records(value)) {
@@ -312,7 +345,13 @@ function gameJumps(value: unknown): MapJump[] {
     ) {
       continue;
     }
-    jumps.push({ cell, land, kind, facing: facing as keyof typeof JUMP_DELTAS, script });
+    jumps.push({
+      cell,
+      land,
+      kind,
+      facing: facing as keyof typeof JUMP_DELTAS,
+      script,
+    });
   }
   return jumps;
 }
@@ -330,6 +369,7 @@ function gameMapFile(value: unknown, fallbackId: number): GameMapFile | null {
     exits: gameExits(value.exits),
     points: gamePoints(value),
     events: gameEvents(value.events),
+    toLayers: gameToLayers(value.toLayers),
     jumps: gameJumps(value.jumps),
     ...(world === undefined ? {} : { world }),
     worldExits: gameWorldExits(value.worldExits),
@@ -400,7 +440,10 @@ function passageCells(file: GameMapFile): PassageCell[] {
 
 function snapshotFromFile(file: GameMapFile): CollisionSnapshot | null {
   if (file.collision.length === 0) return null;
-  const layers = file.collision.map((layer) => ({ name: layer.name, rows: [...layer.rows] }));
+  const layers = file.collision.map((layer) => ({
+    name: layer.name,
+    rows: [...layer.rows],
+  }));
   openHiddenPassages(layers, file.hiddenPassages);
   const passages = passageCells(file);
   return {
@@ -605,7 +648,9 @@ export class CollisionStore {
       entries = await readdir(this.dir, { withFileTypes: true });
     } catch (error) {
       if (isMissingFile(error)) return;
-      throw new Error(`读不了碰撞缓存目录 ${this.dir}:${describe(error)}`, { cause: error });
+      throw new Error(`读不了碰撞缓存目录 ${this.dir}:${describe(error)}`, {
+        cause: error,
+      });
     }
     for (const entry of entries) {
       if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
@@ -614,7 +659,10 @@ export class CollisionStore {
       let parsed: unknown;
       try {
         parsed = JSON.parse(
-          await readFile(join(this.dir, entry.name), { encoding: "utf8", signal }),
+          await readFile(join(this.dir, entry.name), {
+            encoding: "utf8",
+            signal,
+          }),
         );
       } catch {
         signal?.throwIfAborted();
@@ -632,7 +680,9 @@ export class CollisionStore {
       entries = await readdir(this.gameDir, { withFileTypes: true });
     } catch (error) {
       if (isMissingFile(error)) return; // other games and tests have no export
-      throw new Error(`读不了游戏文件目录 ${this.gameDir}:${describe(error)}`, { cause: error });
+      throw new Error(`读不了游戏文件目录 ${this.gameDir}:${describe(error)}`, {
+        cause: error,
+      });
     }
     for (const entry of entries) {
       if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
@@ -641,7 +691,10 @@ export class CollisionStore {
       let parsed: unknown;
       try {
         parsed = JSON.parse(
-          await readFile(join(this.gameDir, entry.name), { encoding: "utf8", signal }),
+          await readFile(join(this.gameDir, entry.name), {
+            encoding: "utf8",
+            signal,
+          }),
         );
       } catch {
         signal?.throwIfAborted();
@@ -739,6 +792,11 @@ export class CollisionStore {
     return this.files.get(mapId)?.exits ?? [];
   }
 
+  /** Game-file ToLayer cells (task 149's real-route check needs 217's ship stairs). */
+  toLayers(mapId: number): readonly { readonly cell: Cell; readonly layer: number | null }[] {
+    return this.files.get(mapId)?.toLayers ?? [];
+  }
+
   /** Task 149: script-moved jumps from the map export (empty without one). */
   jumps(mapId: number): readonly MapJump[] {
     return this.files.get(mapId)?.jumps ?? [];
@@ -762,7 +820,9 @@ export class CollisionStore {
     const cells = file === undefined ? [] : passageCells(file);
     // Task 149: the walk receives the map's jumps through this same callback. It is the one
     // game-file hook game.ts already wires into MoveState, so no new hook is needed.
-    const features = Object.assign(cells, { jumps: this.jumps(mapId) }) as PassageFeatures;
+    const features = Object.assign(cells, {
+      jumps: this.jumps(mapId),
+    }) as PassageFeatures;
     this.passageCache.set(mapId, features);
     return features;
   }
@@ -826,6 +886,71 @@ export class CollisionStore {
     }
     return true;
   }
+
+  /**
+   * Task 149 follow-up: remember a live collision reply, marking it as 实时 with the read time.
+   * Returns how many cells changed, or null when the reply has no usable layer.
+   */
+  async rememberLive(
+    mapId: number,
+    collision: unknown,
+  ): Promise<{
+    readonly changed: number;
+    readonly snapshot: CollisionSnapshot;
+  } | null> {
+    const parsed = collisionSnapshot(collision);
+    if (parsed === null) return null;
+    const before = this.snapshots.get(mapId);
+    const changed = changedCollisionCells(before, parsed);
+    const snapshot: CollisionSnapshot = {
+      ...parsed,
+      source: "实时",
+      at: new Date().toISOString(),
+    };
+    this.snapshots.set(mapId, snapshot);
+    if (this.dir !== undefined && changed > 0) {
+      try {
+        await mkdir(this.dir, { recursive: true });
+        await writeFile(join(this.dir, `${mapId}.json`), JSON.stringify(snapshot, null, 1), "utf8");
+      } catch (error) {
+        throw new Error(`写不了碰撞缓存 ${join(this.dir, `${mapId}.json`)}:${describe(error)}`, {
+          cause: error,
+        });
+      }
+    }
+    return { changed, snapshot };
+  }
+}
+
+/** Cells whose character differs between two snapshots, summed over their layers. */
+function changedCollisionCells(
+  before: CollisionSnapshot | undefined,
+  after: CollisionSnapshot,
+): number {
+  if (before === undefined) {
+    return after.layers.reduce(
+      (sum, layer) => sum + layer.rows.length * (layer.rows[0]?.length ?? 0),
+      0,
+    );
+  }
+  let changed = 0;
+  for (const layer of after.layers) {
+    const old = before.layers.find((candidate) => candidate.name === layer.name);
+    if (old === undefined) {
+      changed += layer.rows.reduce((sum, row) => sum + row.length, 0);
+      continue;
+    }
+    const height = Math.max(old.rows.length, layer.rows.length);
+    for (let y = 0; y < height; y += 1) {
+      const left = old.rows[y] ?? "";
+      const right = layer.rows[y] ?? "";
+      const width = Math.max(left.length, right.length);
+      for (let x = 0; x < width; x += 1) {
+        if (left[x] !== right[x]) changed += 1;
+      }
+    }
+  }
+  return changed;
 }
 
 /**
@@ -866,7 +991,11 @@ export interface MapRegion {
     from: readonly RegionBlock[],
     cell: Cell,
     layer: number | null,
-  ): { readonly ok: boolean; readonly risky: boolean; readonly passage?: boolean };
+  ): {
+    readonly ok: boolean;
+    readonly risky: boolean;
+    readonly passage?: boolean;
+  };
 }
 
 /** Cells that can carry the party away, from the moves the atlas recorded (task 70). */
@@ -1027,7 +1156,11 @@ class Region implements MapRegion {
     from: readonly RegionBlock[],
     cell: Cell,
     layer: number | null,
-  ): { readonly ok: boolean; readonly risky: boolean; readonly passage?: boolean } {
+  ): {
+    readonly ok: boolean;
+    readonly risky: boolean;
+    readonly passage?: boolean;
+  } {
     const target = this.blocksAt(cell, layer);
     // A cell the cached grid does not cover (an off-grid door, an older cache) is not evidence
     // of a wall; keep the optimistic "try it and see" of the old planner.
@@ -1072,25 +1205,33 @@ function buildRegion(
   dangers: readonly DangerCell[] = [],
   eventCells: ReadonlySet<string> = EMPTY_EVENT_CELLS,
   jumps: readonly MapJump[] = [],
+  transitions: readonly LayerChange[] = [],
 ): Region | null {
   const reply: Json = {
     ...collision,
     playerCell: [center[0], center[1]],
-    layers: collision.layers.map((layer) => ({ name: layer.name, rows: [...layer.rows] })),
+    layers: collision.layers.map((layer) => ({
+      name: layer.name,
+      rows: [...layer.rows],
+    })),
   };
   // Task 123: damage floors from the game files join the walked hazards (task 70). A
   // "调查后跳" link is directed, so it must not merge two components; it is added as a
   // directed component edge instead, or the jump would look walkable both ways.
   const hazards = [...hazardCells(moves), ...dangers];
-  const allMoves = [...moves, ...jumpMoves(jumps)];
-  const jumpLinks = allMoves.filter(isJumpMove);
-  const walkMoves = allMoves.filter((move) => !isJumpMove(move));
-  const grid = layeredGrid(reply, [], [], walkMoves, hazards, eventCells);
+  const jumpSeeds = moves.filter((move) => move.kind !== "jump" && move.how.includes("调查后跳"));
+  const walkMoves = moves.filter((move) => !isJumpMove(move));
+  const grid = layeredGrid(reply, [], transitions, walkMoves, hazards, eventCells);
   if (grid === null) return null;
   const cuts = trustedCuts(moves, grid, trust, eventCells);
   const safe = layeredComponents(grid, new Set(), cuts, false, false);
   const passage = layeredComponents(grid, new Set(), cuts, false, true);
   const risky = layeredComponents(grid, new Set(), cuts, true, true);
+  const heights = [...grid.heights.keys()];
+  const atlasJumps = jumpsFromObserved(jumpSeeds, (cell) =>
+    heights.some((z) => safe.has(nodeKey(cell[0], cell[1], z))),
+  );
+  const jumpLinks = [...jumpMoves(jumps), ...jumpMoves(atlasJumps)];
   return new Region(mapId, grid, safe, passage, risky, jumpLinks);
 }
 
@@ -1137,6 +1278,7 @@ export class RegionIndex {
       this.source?.dangers(mapId) ?? [],
       this.source?.eventCells(mapId) ?? EMPTY_EVENT_CELLS,
       this.source?.jumps(mapId) ?? [],
+      this.source?.toLayers(mapId).map((item) => ({ cell: item.cell, to: item.layer })) ?? [],
     );
     if (region !== null) this.regions.set(mapId, region);
     return region ?? undefined;
@@ -1156,10 +1298,48 @@ export class RegionIndex {
       this.source?.dangers(mapId) ?? [],
       this.source?.eventCells(mapId) ?? EMPTY_EVENT_CELLS,
       this.source?.jumps(mapId) ?? [],
+      this.source?.toLayers(mapId).map((item) => ({ cell: item.cell, to: item.layer })) ?? [],
     );
     if (region === null) return this.regions.get(mapId) ?? null;
     this.regions.set(mapId, region);
     return region;
+  }
+}
+
+/** One live collision refresh: how many cells changed and the activity-log line. */
+export interface LiveCollisionRefresh {
+  readonly changed: number;
+  readonly text: string;
+}
+
+/**
+ * Task 149 follow-up: re-read the current map's collision from the bridge. A switch/story can
+ * open a wall the cached grid still calls solid. `tried` keeps this to once per map per
+ * execution; a failed read is not retried. The caller logs `text`.
+ */
+export async function refreshLiveCollision(
+  pilot: Pilot,
+  store: CollisionStore | undefined,
+  regions: RegionIndex | undefined,
+  mapId: number,
+  center: Cell,
+  tried: Set<number>,
+): Promise<LiveCollisionRefresh | null> {
+  if (tried.has(mapId)) return null;
+  tried.add(mapId);
+  if (store === undefined) return null;
+  try {
+    const reply = await pilot.send("collision");
+    const collision = isRecord(reply) && isRecord(reply.collision) ? reply.collision : reply;
+    const remembered = await store.rememberLive(mapId, collision);
+    if (remembered === null) return null;
+    regions?.setLive(mapId, collision, center);
+    return {
+      changed: remembered.changed,
+      text: `重读了地图 ${mapId} 的实时碰撞：变了 ${remembered.changed} 格`,
+    };
+  } catch {
+    return null;
   }
 }
 

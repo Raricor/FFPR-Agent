@@ -127,7 +127,12 @@ function simpleCollision(world: World): Json {
   return {
     searchLayer: 1,
     playerCell: [world.cell[0], world.cell[1]],
-    layers: [{ name: "GroundCollision", rows: Array.from({ length: 20 }, () => "0".repeat(20)) }],
+    layers: [
+      {
+        name: "GroundCollision",
+        rows: Array.from({ length: 20 }, () => "0".repeat(20)),
+      },
+    ],
   };
 }
 

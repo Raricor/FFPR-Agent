@@ -1924,7 +1924,13 @@
           [-40, -24, 0],
           [-56, -24, 0]
         ],
-        "tries": { "theirs": 0, "simple": 8, "used": "simple", "ours": 0, "entity": 9 },
+        "tries": {
+          "theirs": 0,
+          "simple": 8,
+          "used": "simple",
+          "ours": 0,
+          "entity": 9
+        },
         "limit": [64, 64]
       },
       "ok": true
@@ -1969,7 +1975,13 @@
           [-56, -344, 0],
           [-56, -360, 0]
         ],
-        "tries": { "theirs": 0, "simple": 29, "used": "simple", "ours": 0, "entity": 22 },
+        "tries": {
+          "theirs": 0,
+          "simple": 29,
+          "used": "simple",
+          "ours": 0,
+          "entity": 22
+        },
         "limit": [64, 64]
       },
       "ok": true
@@ -2034,7 +2046,13 @@
           [72, -168, 149],
           [72, -184, 149]
         ],
-        "tries": { "theirs": 49, "used": "theirs", "simple": 10, "ours": 0, "entity": 11 },
+        "tries": {
+          "theirs": 49,
+          "used": "theirs",
+          "simple": 10,
+          "ours": 0,
+          "entity": 11
+        },
         "limit": [64, 64]
       },
       "ok": true
