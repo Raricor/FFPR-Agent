@@ -29,6 +29,20 @@ export interface StageStats {
   readonly planStage: number;
   readonly stops: number;
   readonly finishedAt?: string;
+  /** Task 133: working time, without idle gaps longer than ten minutes. */
+  readonly activeMs?: number;
+  /** Task 133: when the last counted tool call ended. */
+  readonly lastToolAt?: string;
+}
+
+/** Task 131: which book section a plan came from, and the data/code version it was built for. */
+export interface StageBookPlan {
+  readonly section: string;
+  readonly order: number;
+  /** Missing on plans written before task 131; such a plan is stale by definition. */
+  readonly version?: number;
+  /** Digest of the section's save-independent station data (see book-version.ts). */
+  readonly digest?: string;
 }
 
 export interface StagePlanRecord {
@@ -49,7 +63,7 @@ export interface StagePlanRecord {
   /** Task 106: why no boss table was written; the plan still exists and can be walked. */
   readonly bossError?: string;
   /** Task 117: this plan's route came from the route book's section, not the officer. */
-  readonly book?: { readonly section: string; readonly order: number };
+  readonly book?: StageBookPlan;
 }
 
 function targetOf(value: unknown): StageTarget {
@@ -130,6 +144,8 @@ function statsOf(value: unknown): StageStats | undefined {
     planStage: count(value.planStage),
     stops: count(value.stops),
     ...(finishedAt === undefined || finishedAt === "" ? {} : { finishedAt }),
+    ...(value.activeMs === undefined ? {} : { activeMs: count(value.activeMs) }),
+    ...(text(value.lastToolAt) === undefined ? {} : { lastToolAt: text(value.lastToolAt) }),
   };
 }
 
@@ -144,6 +160,8 @@ export function readStageRecord(value: unknown): StagePlanRecord {
   const stats = statsOf(value.stats);
   const bookSection = isRecord(value.book) ? text(value.book.section) : undefined;
   const bookOrder = isRecord(value.book) ? num(value.book.order) : undefined;
+  const bookVersion = isRecord(value.book) ? num(value.book.version) : undefined;
+  const bookDigest = isRecord(value.book) ? text(value.book.digest) : undefined;
   return {
     target: targetOf(value.target),
     plan: readStagePlan(value.plan),
@@ -155,7 +173,14 @@ export function readStageRecord(value: unknown): StagePlanRecord {
     ...(bossError === undefined || bossError === "" ? {} : { bossError }),
     ...(bookSection === undefined || bookSection.trim() === ""
       ? {}
-      : { book: { section: bookSection, order: Math.trunc(bookOrder ?? 0) } }),
+      : {
+          book: {
+            section: bookSection,
+            order: Math.trunc(bookOrder ?? 0),
+            ...(bookVersion === undefined ? {} : { version: Math.trunc(bookVersion) }),
+            ...(bookDigest === undefined || bookDigest === "" ? {} : { digest: bookDigest }),
+          },
+        }),
     ...(stats === undefined ? {} : { stats }),
   };
 }
