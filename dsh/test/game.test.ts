@@ -12,7 +12,12 @@ import { TOOLS } from "../src/engine/prompt.ts";
 import { records, type Json } from "../src/engine/values.ts";
 import { FakePilot } from "./fake-pilot.ts";
 
-const LAPTOP: Laptop = { host: "laptop", user: "player", key: "/tmp/key", root: "C:/ffpr" };
+const LAPTOP: Laptop = {
+  host: "laptop",
+  user: "player",
+  key: "/tmp/key",
+  root: "C:/ffpr",
+};
 
 async function temporaryGame(notesFile?: string): Promise<Game> {
   const directory = await mkdtemp(join(tmpdir(), "ffpr-game-"));
@@ -122,7 +127,14 @@ void test("an interact that changes the map records the lift ride, not a same-ma
   await game.noteJump(pilot, message, 257, [3, 6]);
   await game.noteJump(pilot, message, 257, [3, 6]);
   assert.deepEqual(game.atlas.rides(257), [
-    { cell: [4, 6], press: [3, 6], dir: "Left", to: 634, land: [4, 5], how: "坐一趟" },
+    {
+      cell: [4, 6],
+      press: [3, 6],
+      dir: "Left",
+      to: 634,
+      land: [4, 5],
+      how: "坐一趟",
+    },
   ]);
   assert.deepEqual(game.atlas.moves(257), []);
 });
@@ -130,8 +142,20 @@ void test("an interact that changes the map records the lift ride, not a same-ma
 void test("the floor map marks doors, conveyors and landing spots", async () => {
   const game = await temporaryGame();
   const entities: Json[] = [
-    { kind: "Event", name: "流される①", cell: [1, 2], active: true, script: 1038 },
-    { kind: "OpenTrigger", cell: [1, 1], active: true, linkObjectId: 10, script: 0 },
+    {
+      kind: "Event",
+      name: "流される①",
+      cell: [1, 2],
+      active: true,
+      script: 1038,
+    },
+    {
+      kind: "OpenTrigger",
+      cell: [1, 1],
+      active: true,
+      linkObjectId: 10,
+      script: 0,
+    },
     { kind: "TileAnimRegion", id: 10, cell: [1, 1], active: true },
     { kind: "PointIn", name: "落下点", cell: [3, 3], active: true },
     { kind: "PointIn", name: "PointIn", cell: [3, 1], active: true },
@@ -141,7 +165,12 @@ void test("the floor map marks doors, conveyors and landing spots", async () => 
     collision: {
       searchLayer: 1,
       playerCell: [2, 2],
-      layers: [{ name: "GroundCollision", rows: ["00000", "00000", "00000", "00000", "00000"] }],
+      layers: [
+        {
+          name: "GroundCollision",
+          rows: ["00000", "00000", "00000", "00000", "00000"],
+        },
+      ],
     },
   });
   pilot.on("entities", (fields) => ({
@@ -223,7 +252,13 @@ void test("the opening carries the window and a tool result carries the news", a
     () => at(30),
     () => clock,
   );
-  events.feed(record(1, 0, "hello", { product: "FF5", gameVersion: "1.2.0", plugin: "0.5.2" }));
+  events.feed(
+    record(1, 0, "hello", {
+      product: "FF5",
+      gameVersion: "1.2.0",
+      plugin: "0.5.2",
+    }),
+  );
   events.feed(sample(2, 1500, ["巴兹", "蕾娜", "加拉夫", "法利斯"]));
   events.feed(sample(3, 1501, ["巴兹", "蕾娜", "加拉夫"]));
 
@@ -268,7 +303,13 @@ void test("the simple tools answer through the pilot, one after another", async 
     () => at(30),
     () => 1000,
   );
-  events.feed(record(1, 0, "hello", { product: "FF5", gameVersion: "1.2.0", plugin: "0.7.2" }));
+  events.feed(
+    record(1, 0, "hello", {
+      product: "FF5",
+      gameVersion: "1.2.0",
+      plugin: "0.7.2",
+    }),
+  );
   events.feed(sample(2, 60, ["巴兹", "蕾娜"]));
   const game = await Game.create({
     laptop: LAPTOP,
@@ -287,7 +328,15 @@ void test("the simple tools answer through the pilot, one after another", async 
       return {
         entities: {
           total: 1,
-          entities: [{ kind: "GotoMap", cell: [3, 4], toMap: 2, name: "出口", active: true }],
+          entities: [
+            {
+              kind: "GotoMap",
+              cell: [3, 4],
+              toMap: 2,
+              name: "出口",
+              active: true,
+            },
+          ],
         },
       };
     }
@@ -311,13 +360,23 @@ void test("the simple tools answer through the pilot, one after another", async 
           total: 2,
           entities: [
             { kind: "Npc", cell: [3, 7], name: "老人（紫）", active: true },
-            { kind: "Npc", cell: [10, 13], name: "帽子を被った男性（緑）", active: true },
+            {
+              kind: "Npc",
+              cell: [10, 13],
+              name: "帽子を被った男性（緑）",
+              active: true,
+            },
           ],
         },
       };
     }
     if (fields.kind === "RelayInteraction") {
-      return { entities: { total: 1, entities: [{ kind: "RelayInteraction", cell: [3, 8] }] } };
+      return {
+        entities: {
+          total: 1,
+          entities: [{ kind: "RelayInteraction", cell: [3, 8] }],
+        },
+      };
     }
     return { entities: { total: 0, entities: [] } };
   });
@@ -446,7 +505,12 @@ void test("charting keeps the bridge's chest content, flag and localized name", 
 void test("an older bridge's chests keep only cell and name", async () => {
   const game = await temporaryGame();
   const chests = await chartChests(game, [
-    { kind: "TresureBox", cell: [9, 6], name: "フェニックスのお", active: true },
+    {
+      kind: "TresureBox",
+      cell: [9, 6],
+      name: "フェニックスのお",
+      active: true,
+    },
     { kind: "TresureBox", cell: [10, 7], name: "150ギル", active: true },
   ]);
   assert.deepEqual(chests, [
@@ -500,7 +564,13 @@ void test("the guide's English item names find the Chinese cure item", () => {
           {
             where: "Carwen - Pub",
             kind: "道具",
-            goods: [{ name: "Eye Drops", cost: 20, note: "Cures an ally of darkness." }],
+            goods: [
+              {
+                name: "Eye Drops",
+                cost: 20,
+                note: "Cures an ally of darkness.",
+              },
+            ],
           },
         ],
       },
@@ -513,7 +583,11 @@ void test("the guide's English item names find the Chinese cure item", () => {
 
 void test("a bridge with game buttons is ready unfocused and never pulls the game to the front", async () => {
   const game = await temporaryGame();
-  const pilot = new FakePilot().on("status", { ok: true, focused: false, gameButtons: true });
+  const pilot = new FakePilot().on("status", {
+    ok: true,
+    focused: false,
+    gameButtons: true,
+  });
   assert.equal(await game.ready(pilot), null);
   assert.equal(
     pilot.calls.some((call) => call.kind === "send" && call.op === "focus"),

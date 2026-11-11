@@ -72,7 +72,18 @@ export async function apply(ctx: Context, config: ConfigValue): Promise<void> {
       activities: latestActivities,
       fallback: config.game,
     };
-    installPanel(ctx, engineFor, undefined, new MonsterCache(), new BestiaryAreaCache(), current);
+    installPanel(
+      ctx,
+      engineFor,
+      undefined,
+      new MonsterCache(),
+      new BestiaryAreaCache(),
+      current,
+      undefined,
+      undefined,
+      undefined,
+      config.chapterMode,
+    );
     installOverview(ctx, engineFor, slotFor, detection, log, current);
     return;
   }

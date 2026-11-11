@@ -50,7 +50,7 @@ import { parseTreasureFlags } from "./treasure-flags.ts";
 import { profileFor } from "./profiles/index.ts";
 import { Atlas } from "./atlas.ts";
 import { AtlasSave } from "./atlas-save.ts";
-import { CollisionStore } from "./regions.ts";
+import { CollisionStore, RegionIndex } from "./regions.ts";
 import {
   BattleLog,
   battleUnits,
@@ -78,7 +78,7 @@ import { cleanName } from "./icons.ts";
 import { KeyEvents } from "./events.ts";
 import { Guide } from "./guide/kb.ts";
 import { MAX_NOTES, loadNotes } from "./notes.ts";
-import type { Pilot } from "./pilot.ts";
+import type { Fields, Pilot, Reply } from "./pilot.ts";
 import { describeBattle, FLOOR_MARKS, renderFloor, renderTerrain } from "./prompt.ts";
 import { placeName } from "./status.ts";
 import { Tactics } from "./tactics.ts";
@@ -177,7 +177,35 @@ import { purchaseList, type ShopHere } from "./stage/purchase.ts";
 import { describeStagePlan } from "./stage/report.ts";
 import type { StageOfficerRunner } from "./stage/runner.ts";
 import { StagePlanStore, type StagePlanRecord, type StageStats } from "./stage/store.ts";
-import { executeSegmentPlan } from "./plan/execute.ts";
+import { RunLogger } from "./run-log.ts";
+import { bossNameKey, executeSegmentPlan } from "./plan/execute.ts";
+import {
+  describeChapterResume,
+  executeChapterPlan,
+  chapterResumeFrom,
+  type ExecuteChapterOptions,
+} from "./plan/chapter-execute.ts";
+import { buildChapterFactsFromDisk, chapterFactsText } from "./plan/chapter-facts.ts";
+import { ChapterDraftStore, ChapterPlanStore } from "./plan/chapter-store.ts";
+import {
+  handleChapterDraftMeta,
+  handleChapterDraftSegment,
+  handleChapterFacts,
+  handleChapterStatus,
+  handleReadGuide,
+  handleSubmitChapterPlan,
+  type ChapterToolPorts,
+  type ChapterToolResult,
+} from "./plan/chapter-tools.ts";
+import { chapterByNumber, chapterForSection, chapterGuideText } from "./plan/chapters.ts";
+import { dryRunChapter, type DryRunResult } from "./plan/dry-run.ts";
+import type {
+  ChapterFactsData,
+  ChapterPlan,
+  ChapterProgress,
+  ChapterRange,
+  ChapterReport,
+} from "./plan/chapter-types.ts";
 import {
   chooseDefaultSection,
   segmentFacts,
@@ -195,12 +223,14 @@ import type {
   SegmentReport,
 } from "./plan/types.ts";
 import type {
+  ExecutePorts,
   PlanActionResult,
   PlanBossResult,
   PlanBuyResult,
   PlanObservation,
   PlanPortMember,
   PlanProgressStatus,
+  PlanRestorePoint,
   PlanShop,
   PlanStationResult,
 } from "./plan/execute.ts";
@@ -212,7 +242,9 @@ import type {
   StageTarget,
 } from "./stage/types.ts";
 import {
+  guideSectionForMap,
   loadRouteBook,
+  readGuideSections,
   readLearnedPoints,
   readRouteBookFiles,
   readVisitOrder,
@@ -286,6 +318,33 @@ export type SegmentExecutor = (
   signal: AbortSignal | undefined,
 ) => Promise<SegmentReport>;
 
+/** Task 145 follow-up 4: one entity's comparable state at an action station. */
+interface PlanEntityState {
+  readonly key: string;
+  readonly cell: Cell | null;
+  readonly kind: string;
+  readonly name: string;
+  readonly state: string;
+}
+
+/** What an action station saw before and after pressing: position, entities, bag and events. */
+interface PlanActionSnapshot {
+  readonly pos: { readonly map: number; readonly cell: Cell } | null;
+  readonly entities: ReadonlyMap<string, PlanEntityState>;
+  readonly items: Readonly<Record<string, number>> | null;
+  readonly events: number;
+}
+
+/** Task 155: the internal handler the plugin uses for the background/operator run. */
+export const INTERNAL_CHAPTER_RUN = "__chapter_run";
+
+/** Task 153: one `execute_chapter` run; tests substitute one that records the resume options. */
+export type ChapterExecutor = (
+  plan: ChapterPlan,
+  ports: ExecutePorts,
+  options: ExecuteChapterOptions,
+) => Promise<ChapterReport>;
+
 /** One Chinese summary of a plan, used by plan_status and the report header. */
 function describeSegmentPlan(plan: SegmentPlan): string {
   const bosses = plan.bosses.map((boss) => boss.name).join("、");
@@ -336,6 +395,42 @@ function describeSegmentReport(report: SegmentReport): string {
     lines.push(`还没做的站:${report.remaining.map((index) => index + 1).join("、")}`);
   }
   lines.push(`队伍:${report.party}`);
+  return lines.join("\n");
+}
+
+/** Task 153: one Chinese chapter-report summary; the JSON follows it in the tool result. */
+export function describeChapterReport(report: ChapterReport): string {
+  const status =
+    report.status === "done"
+      ? "完成"
+      : report.status === "aborted"
+        ? "中止"
+        : report.status === "blocked"
+          ? "等待修复"
+          : "出例外";
+  const lines = [
+    `章报告:第 ${report.chapter} 章 — ${status};跑了 ${report.segments.length} 节,` +
+      `用时 ${report.minutes} 分钟,模型调用 ${report.modelCalls} 次`,
+  ];
+  if (report.blockedText !== undefined) {
+    lines.push(report.blockedText);
+  } else if (report.exception !== undefined) {
+    const where = report.exception.station === null ? "" : `第 ${report.exception.station + 1} 站`;
+    lines.push(
+      `例外(${report.exception.kind})第 ${report.exception.segment + 1} 节${where}:` +
+        report.exception.detail,
+    );
+  }
+  if (report.fallbacks.length > 0) {
+    lines.push(`兜底 ${report.fallbacks.length} 次:`);
+    for (const line of report.fallbacks) lines.push(`- ${line}`);
+  }
+  for (const segment of report.segments) {
+    lines.push(
+      `- ${segment.section}:${segment.status};完成 ${segment.done.stations} 站,` +
+        `战斗 ${segment.done.battles} 场,首领 ${segment.done.bossesWon.join("、") || "无"}`,
+    );
+  }
   return lines.join("\n");
 }
 
@@ -447,6 +542,8 @@ export interface GameOptions {
   readonly saveTimerMinSeconds?: number;
   /** Task 91: stop a wait after this many seconds with no screen change (Config). */
   readonly storyStuckSeconds?: number;
+  /** Task 162: how many minutes a story station may explore for its trigger (Config). */
+  readonly storyExploreMinutes?: number;
   /** Task 97: the one stage plan file per game (Config). */
   readonly stagePlanFile?: string;
   /** Task 97: let the code call the stage officer on a town-to-dungeon move (Config). */
@@ -491,6 +588,15 @@ export interface GameOptions {
   readonly segmentProgressFile?: string;
   /** Task 139: a substitute executor for tests/previews (the real one needs the bridge). */
   readonly segmentExecutor?: SegmentExecutor;
+  /** Task 153: the chapter draft/plan/progress/report files (defaults beside the segment plan). */
+  readonly chapterDraftFile?: string;
+  readonly chapterPlanFile?: string;
+  readonly chapterProgressFile?: string;
+  readonly chapterReportFile?: string;
+  /** Task 158: the structured execution log (defaults beside the chapter files). */
+  readonly runLogFile?: string;
+  /** Task 153: a substitute chapter executor; tests use it to inspect the resume point. */
+  readonly chapterExecutor?: ChapterExecutor;
 }
 
 interface HandlerResult {
@@ -555,6 +661,137 @@ function cellOf(value: unknown): Cell | null {
 
 function matchesCell(left: Cell, right: Cell): boolean {
   return left[0] === right[0] && left[1] === right[1];
+}
+
+/** Task 156: a cell written in a station/boss note, used to rank fallback trigger entities. */
+function hintAnchor(value: string): Cell | null {
+  const match = /(?:地图\s*)?(\d+)\s*[:：]\s*(\d+)\s*,\s*(\d+)/u.exec(value);
+  if (match === null) return null;
+  return [Number(match[2]), Number(match[3])];
+}
+
+/** Task 156 follow-up: the monster-id fields task 150's boss-object export may carry. */
+const BOSS_OBJECT_MONSTER_FIELDS = [
+  "monsterIds",
+  "monster_ids",
+  "monsterId",
+  "monster_id",
+  "monsters",
+  "monster",
+  "enemies",
+  "enemyIds",
+  "enemy_ids",
+] as const;
+
+/** Collect positive integer ids from a number, an array, or `{id}`-like objects. */
+function collectMonsterIds(value: unknown, out: Set<number>): void {
+  if (typeof value === "number") {
+    if (Number.isInteger(value) && value > 0) out.add(value);
+    return;
+  }
+  if (typeof value === "string" && /^\d+$/u.test(value.trim())) {
+    const id = Number(value.trim());
+    if (Number.isInteger(id) && id > 0) out.add(id);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectMonsterIds(item, out);
+    return;
+  }
+  if (!isRecord(value)) return;
+  for (const key of ["id", "monsterId", "monster_id"] as const) {
+    if (value[key] !== undefined) collectMonsterIds(value[key], out);
+  }
+}
+
+/** Monster ids one exported boss object names, if it names any. */
+function bossObjectMonsterIds(value: unknown): readonly number[] {
+  if (!isRecord(value)) return [];
+  const out = new Set<number>();
+  for (const key of BOSS_OBJECT_MONSTER_FIELDS) {
+    if (value[key] !== undefined) collectMonsterIds(value[key], out);
+  }
+  return [...out];
+}
+
+function bossObjectCell(value: unknown): Cell | null {
+  if (!isRecord(value)) return null;
+  return cellOf(value.cell) ?? cellOf(value.position);
+}
+
+function storyScriptNumber(name: string): number | null {
+  const match = /(?:sc_e_|ev_e_)(\d+)/iu.exec(name);
+  if (match === null) return null;
+  const value = Number(match[1]);
+  return Number.isInteger(value) ? value : null;
+}
+
+/**
+ * Task 161: character names are not a knowledge table of their own. The trilingual item names
+ * carry them ("加拉夫的手镯" / "ガラフの腕輪"), so a hint containing one token (加拉夫) also
+ * yields the Japanese token (ガラフ). This is the same normalization as boss names.
+ */
+function storyAliasKeys(knowledge: Knowledge | null, hint: string): ReadonlySet<string> {
+  const keys = new Set<string>();
+  const hintKey = bossNameKey(hint);
+  if (hintKey === "" || knowledge === null) return keys;
+  for (const item of knowledge.contentItems) {
+    const names = [item.names.zhc, item.names.en, item.names.ja].filter(
+      (name): name is string => typeof name === "string" && name.trim() !== "",
+    );
+    const tokens = new Set<string>();
+    for (const name of names) {
+      tokens.add(name);
+      for (const token of name.split(/[の的'’\s・･·,，、:：()（）]+/u)) {
+        if (token.trim() !== "") tokens.add(token.trim());
+      }
+    }
+    if (
+      ![...tokens].some((token) => {
+        const key = bossNameKey(token);
+        return key.length >= 2 && hintKey.includes(key);
+      })
+    ) {
+      continue;
+    }
+    for (const token of tokens) {
+      const key = bossNameKey(token);
+      if (key.length >= 2) keys.add(key);
+    }
+  }
+  return keys;
+}
+
+function storyNameMatches(name: string, hint: string, aliases: ReadonlySet<string>): boolean {
+  const key = bossNameKey(name);
+  if (key === "") return false;
+  const hintKey = bossNameKey(hint);
+  if (hintKey !== "" && (key.includes(hintKey) || hintKey.includes(key))) return true;
+  return [...aliases].some((alias) => key.includes(alias) || alias.includes(key));
+}
+
+/** Task 162: a Chinese direction word as one grid step. */
+function directionVector(direction: string): { readonly dx: number; readonly dy: number } | null {
+  switch (direction.trim()) {
+    case "北":
+      return { dx: 0, dy: -1 };
+    case "南":
+      return { dx: 0, dy: 1 };
+    case "东":
+      return { dx: 1, dy: 0 };
+    case "西":
+      return { dx: -1, dy: 0 };
+    case "东北":
+      return { dx: 1, dy: -1 };
+    case "西北":
+      return { dx: -1, dy: -1 };
+    case "东南":
+      return { dx: 1, dy: 1 };
+    case "西南":
+      return { dx: -1, dy: 1 };
+    default:
+      return null;
+  }
 }
 
 /**
@@ -712,7 +949,15 @@ export class Game {
   /** The plugin's activity log sink for an incident (task 45); unset in tests. */
   onIncident: ((message: string) => void) | undefined;
   /** Task 101: a non-error activity line (a planned-coordinate go allowed with a reason). */
-  onActivity: ((message: string, kind?: "event" | "plan") => void) | undefined;
+  onActivity: ((message: string, kind?: "event" | "plan" | "warn") => void) | undefined;
+  /**
+   * Task 155: the plugin's handoff after `submit_chapter_plan` passes. The plugin disarms the
+   * goal round driver and starts the background chapter run; leaving it unset keeps the raw
+   * submit result for direct engine tests.
+   */
+  onChapterAccepted: ((plan: ChapterPlan) => void | Promise<void>) | undefined;
+  /** Task 155: the raw report of the last run, so the plugin knows done/blocked. */
+  lastChapterReport: ChapterReport | null = null;
   readonly advised = new Set<string>();
   readonly moveState: MoveState = { drake: null };
   readonly hooks: BattleHooks;
@@ -807,6 +1052,13 @@ export class Game {
   private readonly planLeaveLog: string[] = [];
   private lastSegmentReport: SegmentReport | null;
   private readonly segmentExecutor: SegmentExecutor | undefined;
+  /** Task 153: the accepted chapter plan and the files the chapter tools/panel share. */
+  readonly chapterPlans: ChapterPlanStore;
+  readonly chapterDraftFile: string | undefined;
+  readonly chapterProgressFile: string | undefined;
+  readonly chapterReportFile: string | undefined;
+  readonly runLogFile: string | undefined;
+  private readonly chapterExecutor: ChapterExecutor | undefined;
   /** Task 97: the one stage plan, its gate settings and the lazily loaded knowledge. */
   readonly stagePlans: StagePlanStore;
   private stageOfficer: StageOfficerRunner | undefined;
@@ -856,6 +1108,8 @@ export class Game {
   } | null = null;
   /** Task 117: remember the guide sections by title for progress restarts. */
   private bookSectionsByTitle = new Map<string, RouteSection>();
+  /** Task 153 follow-up: one built route book per chapter, independent of where the party is. */
+  private readonly chapterBooks = new Map<number, RouteBook>();
   private readonly knowledgeOption: Knowledge | undefined;
   private knowledge: Knowledge | null = null;
   private knowledgeLoading: Promise<Knowledge> | null = null;
@@ -880,6 +1134,8 @@ export class Game {
   readonly healFullPercent: number;
   readonly saveTimerMinSeconds: number;
   readonly storyStuckSeconds: number;
+  /** Task 162: direction exploration cap for a story station, in minutes. */
+  readonly storyExploreMinutes: number;
   /** The map/cell/state read by chart, so the save-point check needs no extra pos query. */
   private lastCell: Cell | null = null;
   private lastState = "";
@@ -941,11 +1197,18 @@ export class Game {
     healFullPercent: number,
     saveTimerMinSeconds: number,
     storyStuckSeconds: number,
+    storyExploreMinutes: number,
     segmentPlans: SegmentPlanStore,
     segmentReportFile: string | undefined,
     segmentProgressFile: string | undefined,
     lastSegmentReport: SegmentReport | null,
     segmentExecutor: SegmentExecutor | undefined,
+    chapterPlans: ChapterPlanStore,
+    chapterDraftFile: string | undefined,
+    chapterProgressFile: string | undefined,
+    chapterReportFile: string | undefined,
+    runLogFile: string | undefined,
+    chapterExecutor: ChapterExecutor | undefined,
   ) {
     this.laptop = laptop;
     this.game = game;
@@ -1001,11 +1264,18 @@ export class Game {
     this.healFullPercent = healFullPercent;
     this.saveTimerMinSeconds = saveTimerMinSeconds;
     this.storyStuckSeconds = storyStuckSeconds;
+    this.storyExploreMinutes = storyExploreMinutes;
     this.segmentPlans = segmentPlans;
     this.segmentReportFile = segmentReportFile;
     this.segmentProgressFile = segmentProgressFile;
     this.lastSegmentReport = lastSegmentReport;
     this.segmentExecutor = segmentExecutor;
+    this.chapterPlans = chapterPlans;
+    this.chapterDraftFile = chapterDraftFile;
+    this.chapterProgressFile = chapterProgressFile;
+    this.chapterReportFile = chapterReportFile;
+    this.runLogFile = runLogFile;
+    this.chapterExecutor = chapterExecutor;
     // Task 42: a `battle.ai` push says a script exists; the body is queried later by `ensure`.
     this.events?.onRecord((record) => {
       if (record.type === "battle.ai") this.monsterAi.recordEvent(record);
@@ -1050,7 +1320,11 @@ export class Game {
         },
         goalMap,
         say,
-        { maxHops: this.travelMaxHops, maxMinutes: this.travelMaxMinutes, toCell: goal },
+        {
+          maxHops: this.travelMaxHops,
+          maxMinutes: this.travelMaxMinutes,
+          toCell: goal,
+        },
       );
       if (!result.reached) return [false, result.text];
       return await move.navigate(pilot, goal, false, say, 8, this.moveState, budget);
@@ -1066,6 +1340,29 @@ export class Game {
       ["submit_plan", (args, pilot, signal) => this.toolSubmitPlan(args, pilot, signal)],
       ["execute_plan", (args, pilot, signal) => this.toolExecutePlan(args, pilot, signal)],
       ["plan_status", () => Promise.resolve(this.toolPlanStatus())],
+      // Task 153: the chapter tools and the one executor; the model never acts directly here.
+      ["chapter_facts", (args, pilot, signal) => this.toolChapterFacts(args, pilot, signal)],
+      ["read_guide", (args, pilot, signal) => this.toolReadGuide(args, pilot, signal)],
+      [
+        "chapter_draft_segment",
+        (args, pilot, signal) => this.toolChapterDraftSegment(args, pilot, signal),
+      ],
+      [
+        "chapter_draft_meta",
+        (args, pilot, signal) => this.toolChapterDraftMeta(args, pilot, signal),
+      ],
+      [
+        "submit_chapter_plan",
+        (args, pilot, signal) => this.toolSubmitChapterPlan(args, pilot, signal),
+      ],
+      ["chapter_status", (args, pilot, signal) => this.toolChapterStatus(args, pilot, signal)],
+      ["execute_chapter", (args, pilot, signal) => this.toolExecuteChapter(args, pilot, signal)],
+      // Task 155: the operator/background path. The model never sees this name; it is the same
+      // executor with the blocked state written for the sidebar.
+      [
+        INTERNAL_CHAPTER_RUN,
+        (args, pilot, signal) => this.toolExecuteChapter(args, pilot, signal, true),
+      ],
       ["scout", (args, pilot, signal) => this.toolScout(args, pilot, signal)],
       ["terrain", (args, pilot) => this.toolTerrain(args, pilot)],
       ["entrances", (_args, pilot) => this.toolEntrances(pilot)],
@@ -1156,6 +1453,19 @@ export class Game {
     const stagePlans = await StagePlanStore.load(options.stagePlanFile, signal);
     const segmentPlans = await SegmentPlanStore.load(game, options.segmentPlanFile, signal);
     const segmentReport = await loadSegmentReport(options.segmentReportFile, signal);
+    // Task 153: the chapter files sit beside the segment plan unless the caller names them.
+    const chapterDir =
+      options.segmentPlanFile === undefined ? join(DEPS, "ds") : dirname(options.segmentPlanFile);
+    const chapterDraftFile =
+      options.chapterDraftFile ?? join(chapterDir, `chapter-draft-${game}.json`);
+    const chapterPlanFile =
+      options.chapterPlanFile ?? join(chapterDir, `chapter-plan-${game}.json`);
+    const chapterProgressFile =
+      options.chapterProgressFile ?? join(chapterDir, `chapter-progress-${game}.json`);
+    const chapterReportFile =
+      options.chapterReportFile ?? join(chapterDir, `chapter-report-${game}.json`);
+    const runLogFile = options.runLogFile ?? join(chapterDir, `run-${game}.jsonl`);
+    const chapterPlans = await ChapterPlanStore.load(game, chapterPlanFile, signal);
     const created = new Game(
       options.laptop,
       game,
@@ -1212,6 +1522,7 @@ export class Game {
       options.healFullPercent ?? 95,
       options.saveTimerMinSeconds ?? 300,
       options.storyStuckSeconds ?? 60,
+      options.storyExploreMinutes ?? 3,
       segmentPlans,
       options.segmentReportFile,
       options.segmentProgressFile ??
@@ -1220,6 +1531,12 @@ export class Game {
           : join(dirname(options.segmentReportFile), `segment-progress-${game}.json`)),
       segmentReport,
       options.segmentExecutor,
+      chapterPlans,
+      chapterDraftFile,
+      chapterProgressFile,
+      chapterReportFile,
+      runLogFile,
+      options.chapterExecutor,
     );
     created.moveState.walkpathTimeoutMs = options.walkpathTimeoutMs;
     created.moveState.walkpathBlockedMs = options.walkpathBlockedMs;
@@ -4266,8 +4583,10 @@ export class Game {
   /** Task 145: the plan walk only records what a map still lacks, never refuses the leave. */
   private planTravelOptions(): travel.TravelOptions {
     return {
-      guard: async (runner) => {
-        await this.planLeaveNote(runner);
+      guard: async (runner, _goal, origin) => {
+        // Task 145 follow-up 8: the guard also runs after entering the destination; only the
+        // map this call starts from is the one being left.
+        if (origin) await this.planLeaveNote(runner);
         return null;
       },
       maxHops: this.travelMaxHops,
@@ -5564,7 +5883,10 @@ export class Game {
   }
 
   private stageFinishStats(stats: StageStats, at = new Date()): StageStats {
-    return { ...this.stageAdvanceStats(stats, at), finishedAt: at.toISOString() };
+    return {
+      ...this.stageAdvanceStats(stats, at),
+      finishedAt: at.toISOString(),
+    };
   }
 
   /** Task 113: count one model tool call while the active plan is on the road. */
@@ -7151,6 +7473,192 @@ export class Game {
     return { map, cell: [cell[0], cell[1]] };
   }
 
+  /** Task 145 follow-up 3: the game files' story/event trigger at a cell. */
+  async planEventAt(pilot: Pilot, map: number, cell: Cell): Promise<boolean> {
+    if (this.collisions.eventCells(map).has(nav.cellKey(cell[0], cell[1]))) return true;
+    try {
+      const found = records((await pilot.send("entities", { kind: "Event", max: 300 })).entities);
+      return found.some((entity) => {
+        const at = cellOf(entity.cell);
+        return at !== null && at[0] === cell[0] && at[1] === cell[1];
+      });
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Task 145 follow-up 5 / task 161: story-trigger cells on one map. With several active
+   * entities the station's why/goal picks the one whose character name matches (Chinese hint
+   * to Japanese entity through the knowledge item names), then scene number, then cell order.
+   */
+  async planStoryTrigger(
+    pilot: Pilot,
+    map: number,
+    hint = "",
+  ): Promise<{
+    readonly cell: Cell | null;
+    readonly name: string;
+    readonly count: number;
+    readonly candidates: readonly {
+      readonly cell: Cell;
+      readonly name: string;
+      readonly script: number | null;
+      readonly kind: "npc" | "event";
+      readonly matched: boolean;
+    }[];
+  }> {
+    let knowledge: Knowledge | null = null;
+    try {
+      knowledge = await this.ensureStageKnowledge();
+    } catch {
+      // Without knowledge only direct name matching is left.
+    }
+    const aliases = storyAliasKeys(knowledge, hint);
+    const found = new Map<
+      string,
+      { cell: Cell; name: string; script: number | null; kind: "npc" | "event"; matched: boolean }
+    >();
+    try {
+      const entities = records(
+        record((await pilot.send("entities", { kind: "Event", max: 300 })).entities).entities,
+      );
+      for (const entity of entities) {
+        const name = cleanName(text(entity.name) ?? "");
+        const at = cellOf(entity.cell);
+        if (at === null || name === "" || entity.active === false) continue;
+        if (!isStoryEventName(name)) continue;
+        const kind = (text(entity.kind) ?? "").toLowerCase() === "npc" ? "npc" : "event";
+        found.set(`${at[0]},${at[1]}`, {
+          cell: at,
+          name,
+          script: storyScriptNumber(name),
+          kind,
+          matched: storyNameMatches(name, hint, aliases),
+        });
+      }
+    } catch {
+      // The game-file event cells below are the fallback.
+    }
+    if (found.size === 0) {
+      for (const key of this.collisions.eventCells(map)) {
+        const parts = key.split(",");
+        const x = Number.parseInt(parts[0] ?? "", 10);
+        const y = Number.parseInt(parts[1] ?? "", 10);
+        if (Number.isInteger(x) && Number.isInteger(y)) {
+          found.set(key, {
+            cell: [x, y],
+            name: "",
+            script: null,
+            kind: "event",
+            matched: false,
+          });
+        }
+      }
+    }
+    const candidates = [...found.values()].sort(
+      (left, right) =>
+        Number(right.matched) - Number(left.matched) ||
+        (left.script ?? Number.MAX_SAFE_INTEGER) - (right.script ?? Number.MAX_SAFE_INTEGER) ||
+        left.cell[1] - right.cell[1] ||
+        left.cell[0] - right.cell[0],
+    );
+    return {
+      cell: candidates.length === 1 ? (candidates[0]?.cell ?? null) : null,
+      name: candidates.length === 1 ? (candidates[0]?.name ?? "") : "",
+      count: candidates.length,
+      candidates,
+    };
+  }
+
+  /**
+   * Task 162: walk one safe step toward a direction inside the current connected block. The
+   * executor calls this repeatedly and checks for story evidence after every step; the block
+   * membership comes from the same RegionIndex the route planner uses, so a wall or a different
+   * island is never entered. Without a cached region it only tries the exact neighbour.
+   */
+  async planExploreStoryStep(
+    pilot: Pilot,
+    map: number,
+    direction: string,
+  ): Promise<{
+    readonly map: number;
+    readonly cell: Cell;
+    readonly moved: boolean;
+    readonly reason: string;
+  }> {
+    const vector = directionVector(direction);
+    const here = await this.planPosition(pilot);
+    if (vector === null || here === null) {
+      return {
+        map: here?.map ?? map,
+        cell: here?.cell ?? [0, 0],
+        moved: false,
+        reason: "方向读不懂或位置读不到",
+      };
+    }
+    if (here.map !== map) {
+      return { map: here.map, cell: here.cell, moved: false, reason: "已经不在这一张图" };
+    }
+    const regions = RegionIndex.create(this.atlas, this.collisions);
+    const region = regions.region(map);
+    const layer = region?.layer ?? null;
+    const blocks = region?.blocksAt(here.cell, layer) ?? [];
+    const candidates: { readonly cell: Cell; readonly score: number }[] = [];
+    for (let dy = -1; dy <= 1; dy += 1) {
+      for (let dx = -1; dx <= 1; dx += 1) {
+        if (dx === 0 && dy === 0) continue;
+        const score = dx * vector.dx + dy * vector.dy;
+        if (score <= 0) continue;
+        const cell: Cell = [here.cell[0] + dx, here.cell[1] + dy];
+        if (region !== undefined && blocks.length > 0) {
+          if (region.blocksAt(cell, layer).length === 0) continue;
+          if (!region.reachable(blocks, cell, layer).ok) continue;
+        } else if (dx !== vector.dx || dy !== vector.dy) {
+          continue;
+        }
+        candidates.push({ cell, score });
+      }
+    }
+    candidates.sort((left, right) => right.score - left.score);
+    const chosen = candidates[0];
+    if (chosen === undefined) {
+      return {
+        map: here.map,
+        cell: here.cell,
+        moved: false,
+        reason: `朝${direction}没有能走的格`,
+      };
+    }
+    const walked = await this.goCell(
+      { to: [chosen.cell[0], chosen.cell[1]], flee: false },
+      pilot,
+      chosen.cell,
+      true,
+    );
+    const after = await this.planPosition(pilot);
+    return {
+      map: after?.map ?? here.map,
+      cell: after?.cell ?? here.cell,
+      moved: after !== null && (after.map !== here.map || !matchesCell(after.cell, here.cell)),
+      reason: walked.text,
+    };
+  }
+
+  /** Task 145 follow-up 3: an open station on a chest already marked open skips the walk. */
+  async planChestAlreadyOpen(pilot: Pilot, map: number, cell: Cell): Promise<boolean> {
+    const chest = await this.planChestAt(map, cell);
+    if (chest === null) return false;
+    const flag = chest.flag;
+    if (flag === null) return false;
+    try {
+      await this.syncTreasureFlags(pilot, map, null, true);
+    } catch {
+      return false;
+    }
+    return this.treasureFlags.get(flag) === true;
+  }
+
   /** Task 145 follow-up: the map must be in the map records before a route is planned to it. */
   async planMapKnown(map: number): Promise<boolean> {
     if (map === this.mapId || this.atlas.maps.has(String(map))) return true;
@@ -7160,6 +7668,50 @@ export class Game {
       return knowledge.maps.some((entry) => entry.id === map);
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Task 152: inns and recovery points from the knowledge module, for the chapter's low-HP
+   * fallback. A game file without those points is an empty list, not an error.
+   */
+  async planRestorePoints(): Promise<readonly PlanRestorePoint[]> {
+    try {
+      const knowledge = await this.ensureStageKnowledge();
+      const out: PlanRestorePoint[] = [];
+      const seen = new Set<string>();
+      for (const point of knowledge.restorePoints) {
+        if (point.mapId === null) continue;
+        const key = `${point.mapId}:${point.cell[0]},${point.cell[1]}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const label = cleanName(point.name) || point.areaName || "回复点";
+        out.push({
+          map: point.mapId,
+          cell: [point.cell[0], point.cell[1]],
+          name: label,
+          // Task 156: FF5's springs/pots revive ("从无法战斗状态中复活了！", Wind Shrine 1F);
+          // only a real-device test that proves otherwise may store `revive: false`.
+          revive: !/不能复活|无法复活/u.test(`${label} ${point.areaName ?? ""}`),
+        });
+      }
+      // Some towns put the inn's counter in the shop data instead of a map restore point.
+      for (const shop of await this.planShops()) {
+        if (!/宿屋|旅店|旅馆|inn/iu.test(`${shop.kind} ${shop.area}`)) continue;
+        const key = `${shop.map}:${shop.cell[0]},${shop.cell[1]}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({
+          map: shop.map,
+          cell: [shop.cell[0], shop.cell[1]],
+          name: cleanName(shop.area) || "旅店",
+          revive: true,
+        });
+      }
+      return out;
+    } catch {
+      // Without knowledge the chapter still tries a field heal before calling the model.
+      return [];
     }
   }
 
@@ -7207,6 +7759,7 @@ export class Game {
     }
     let members: PlanPortMember[] = [];
     let items: Record<string, number> = {};
+    let gil: number | null = null;
     try {
       const sample = record((await pilot.query("sample")).sample);
       members = readParty(sample).map((member) => ({
@@ -7220,6 +7773,7 @@ export class Game {
         status: [...member.status],
         abilities: member.abilities.map((ability) => ability.name),
       }));
+      gil = num(record(sample.user).gil) ?? null;
       items = await this.planItems(pilot);
     } catch {
       // An old bridge without sample still gets the map and treasure count.
@@ -7251,6 +7805,7 @@ export class Game {
       ...(area === null ? {} : { area }),
       members,
       items,
+      gil,
       bestiary,
       blueMagic,
       chestsOpened: opened,
@@ -7286,7 +7841,9 @@ export class Game {
       files = await readdir(dir);
     } catch (error) {
       if (isMissingFile(error)) return [];
-      throw new Error(`读不了游戏文件地图目录 ${dir}:${describeError(error)}`, { cause: error });
+      throw new Error(`读不了游戏文件地图目录 ${dir}:${describeError(error)}`, {
+        cause: error,
+      });
     }
     const spots = new Map<number, { readonly map: number; readonly cell: Cell }[]>();
     for (const name of files.filter((entry) => entry.endsWith(".json"))) {
@@ -7422,7 +7979,12 @@ export class Game {
       };
     }
     const [ok, detail] = await shop.buy(pilot, item, Math.max(1, Math.trunc(count)));
-    return { ok, atShop: true, bought: ok ? Math.max(1, Math.trunc(count)) : 0, text: detail };
+    return {
+      ok,
+      atShop: true,
+      bought: ok ? Math.max(1, Math.trunc(count)) : 0,
+      text: detail,
+    };
   }
 
   /**
@@ -7441,6 +8003,18 @@ export class Game {
     // Task 145: a plan is the model's decision; the old "this map is not finished" leave guard
     // must not stop it. Missing chests/bestiary are logged and put in the report instead.
     return this.routePorts(pilot, { flee: false }, true);
+  }
+
+  /** Task 149 follow-up: re-read the current map's live collision after a switch/story. */
+  private async planRefreshCollision(pilot: Pilot, mapId: number): Promise<string | null> {
+    try {
+      const collision = record((await pilot.send("collision")).collision);
+      const remembered = await this.collisions.rememberLive(mapId, collision);
+      if (remembered === null) return null;
+      return `重读了地图 ${mapId} 的实时碰撞：变了 ${remembered.changed} 格`;
+    } catch {
+      return null;
+    }
   }
 
   /** Task 138: analyse one station's walk with the same atlas/collision data as `route`. */
@@ -7475,7 +8049,10 @@ export class Game {
   private async planChestAt(
     mapId: number,
     cell: Cell,
-  ): Promise<{ readonly flag: number | null; readonly item: string | null } | null> {
+  ): Promise<{
+    readonly flag: number | null;
+    readonly item: string | null;
+  } | null> {
     try {
       const knowledge = await this.ensureStageKnowledge();
       const chest = knowledge.chests.find(
@@ -7538,67 +8115,483 @@ export class Game {
     return fresh.some((entry) => entry.type === "chest");
   }
 
-  async planInteract(pilot: Pilot, cell: Cell): Promise<PlanStationResult> {
-    // Task 145: a plan is followed as written; the manual interact path keeps its leave guard.
-    const beforePos = await this.planPosition(pilot);
-    const chest = beforePos === null ? null : await this.planChestAt(beforePos.map, cell);
-    let beforeItems: Record<string, number> | null = null;
-    if (chest !== null) {
-      try {
-        beforeItems = await this.planItems(pilot);
-      } catch {
-        beforeItems = null;
+  /** Task 145 follow-up 4: all entities on the map, with the fields a switch can change. */
+  private async planEntitySnapshot(pilot: Pilot): Promise<Map<string, PlanEntityState>> {
+    const out = new Map<string, PlanEntityState>();
+    let entities: readonly Json[];
+    try {
+      entities = records(
+        record((await pilot.send("entities", { kind: "All", max: 600 })).entities).entities,
+      );
+    } catch {
+      return out;
+    }
+    for (const entity of entities) {
+      const kind = cleanName(text(entity.kind) ?? "");
+      const name = cleanName(text(entity.name) ?? "");
+      const id = num(entity.id);
+      const at = cellOf(entity.cell);
+      const state = [
+        at === null ? "-" : `${at[0]},${at[1]}`,
+        String(truthy(entity.active)),
+        text(entity.animation) ?? text(entity.anim) ?? text(entity.motion) ?? "",
+        JSON.stringify(entity.position ?? entity.pos ?? null),
+      ].join("|");
+      const key =
+        id !== undefined
+          ? `id:${id}`
+          : `${kind}|${name}|${at === null ? "?" : `${at[0]},${at[1]}`}`;
+      out.set(key, { key, cell: at, kind, name, state });
+    }
+    return out;
+  }
+
+  private async planActionSnapshot(pilot: Pilot): Promise<PlanActionSnapshot> {
+    const pos = await this.planPosition(pilot);
+    const entities = await this.planEntitySnapshot(pilot);
+    let items: Record<string, number> | null;
+    try {
+      items = await this.planItems(pilot);
+    } catch {
+      items = null;
+    }
+    return { pos, entities, items, events: this.events?.entries.length ?? 0 };
+  }
+
+  private static near(left: Cell | null, right: Cell, distance: number): boolean {
+    return left !== null && Math.abs(left[0] - right[0]) + Math.abs(left[1] - right[1]) <= distance;
+  }
+
+  /** Entity changes within `distance` of the pressed cell, as short Chinese notes. */
+  private planEntityChanges(
+    before: ReadonlyMap<string, PlanEntityState>,
+    after: ReadonlyMap<string, PlanEntityState>,
+    cell: Cell,
+    distance: number,
+  ): string[] {
+    const out: string[] = [];
+    const keys = new Set([...before.keys(), ...after.keys()]);
+    for (const key of keys) {
+      const first = before.get(key);
+      const second = after.get(key);
+      if (first?.state === second?.state) continue;
+      if (
+        !Game.near(first?.cell ?? null, cell, distance) &&
+        !Game.near(second?.cell ?? null, cell, distance)
+      ) {
+        continue;
+      }
+      const name = second?.name || first?.name || second?.kind || first?.kind || key;
+      out.push(name);
+    }
+    return [...new Set(out)];
+  }
+
+  /** Interactive entities one step from a cell, for the "nothing happened" hint. */
+  private planNearbyInteractives(
+    snapshot: ReadonlyMap<string, PlanEntityState>,
+    cell: Cell,
+  ): string[] {
+    const out: string[] = [];
+    for (const entity of snapshot.values()) {
+      if (entity.cell === null) continue;
+      if (Math.abs(entity.cell[0] - cell[0]) + Math.abs(entity.cell[1] - cell[1]) !== 1) continue;
+      const interactive =
+        ["RunScript", "Npc", "TresureBox"].includes(entity.kind) ||
+        /^(?:sc_e_|ev_e_)/u.test(entity.name) ||
+        entity.name.includes("扉") ||
+        entity.name.includes("スイッチ");
+      if (!interactive) continue;
+      const label = entity.name || entity.kind;
+      out.push(`(${entity.cell[0]},${entity.cell[1]}) ${label}`);
+    }
+    return [...new Set(out)];
+  }
+
+  /** What an action visibly changed; empty means nothing happened. */
+  private planActionEffects(
+    before: PlanActionSnapshot,
+    after: PlanActionSnapshot,
+    cell: Cell,
+    pages: string | undefined,
+    battle: boolean,
+  ): string[] {
+    const out: string[] = [];
+    if (pages !== undefined && pages !== "0") out.push(`翻了 ${pages} 页对话`);
+    const changed = this.planEntityChanges(before.entities, after.entities, cell, 3);
+    if (changed.length > 0) out.push(`附近实体变化:${changed.join("、")}`);
+    if (battle) out.push("开始了战斗");
+    if (before.items !== null && after.items !== null) {
+      const gained = Object.entries(after.items)
+        .filter(([item, count]) => count > (before.items?.[item] ?? 0))
+        .map(([item, count]) => `${item}×${count - (before.items?.[item] ?? 0)}`);
+      if (gained.length > 0) out.push(`得到道具:${gained.join("、")}`);
+    }
+    if (before.pos !== null && after.pos !== null) {
+      if (
+        before.pos.map !== after.pos.map ||
+        before.pos.cell[0] !== after.pos.cell[0] ||
+        before.pos.cell[1] !== after.pos.cell[1]
+      ) {
+        out.push(`位置变到 地图 ${after.pos.map} (${after.pos.cell[0]},${after.pos.cell[1]})`);
       }
     }
-    const beforeEvents = this.events?.entries.length ?? 0;
-    const acted = await this.toolInteract({ x: cell[0], y: cell[1] }, pilot, false);
+    return out;
+  }
+
+  /** Task 145 follow-up 9: press the direction, wait until `pos.dir` matches, then confirm. */
+  private planKeyPilot(pilot: Pilot): Pilot {
+    return {
+      send: async (op: string, fields: Fields = {}, waitMs?: number): Promise<Reply> => {
+        if (op !== "keys" || !Array.isArray(fields.keys)) {
+          return await pilot.send(op, fields, waitMs);
+        }
+        const keys = fields.keys.filter((key): key is string => typeof key === "string");
+        const direction = keys.find((key) => /^(?:Up|Down|Left|Right)(?::\d+)?$/u.test(key));
+        if (direction === undefined || !keys.includes("Enter")) {
+          return await pilot.send(op, fields, waitMs);
+        }
+        const facing = direction.split(":")[0] ?? direction;
+        await pilot.send(op, { ...fields, keys: keys.filter((key) => key !== "Enter") }, waitMs);
+        const deadline = performance.now() + 1500;
+        for (;;) {
+          const pos = record((await pilot.send("pos")).pos);
+          if (text(pos.dir) === facing) break;
+          if (performance.now() >= deadline) break;
+          await pilot.sleep(100);
+        }
+        await pilot.sleep(300);
+        return await pilot.send(op, { ...fields, keys: ["Enter"] }, waitMs);
+      },
+      query: async (q, fields = {}) => await pilot.query(q, fields),
+      runPs: async (script) => await pilot.runPs(script),
+      sleep: async (ms) => {
+        await pilot.sleep(ms);
+      },
+      now: () => pilot.now(),
+    };
+  }
+
+  /** Task 145 follow-up 9: a second confirm in place, after the animation has settled. */
+  private async planConfirmAgain(pilot: Pilot): Promise<void> {
+    await pilot.sleep(300);
+    await pilot.send("keys", { keys: ["Enter"], gap: 200 });
+    await pilot.sleep(300);
+  }
+
+  async planInteract(pilot: Pilot, cell: Cell): Promise<PlanStationResult> {
+    // Task 145 follow-up 9: a leftover dialog (e.g. a restore pot's message) would swallow the
+    // confirm meant for the chest. Page it away before the snapshot and the key sequence.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const scene = await this.planScene(pilot);
+      if (!scene.dialog && scene.state !== "Event" && scene.state !== "Dialog") break;
+      const advanced = await this.planStory(pilot);
+      if (advanced.decision !== undefined && advanced.decision.trim() !== "") {
+        return {
+          ok: false,
+          done: false,
+          text: advanced.text,
+          decision: advanced.decision,
+        };
+      }
+    }
+    // Task 145: a plan is followed as written; the manual interact path keeps its leave guard.
+    const before = await this.planActionSnapshot(pilot);
+    const chest = before.pos === null ? null : await this.planChestAt(before.pos.map, cell);
+    const acted = await this.toolInteract(
+      { x: cell[0], y: cell[1] },
+      this.planKeyPilot(pilot),
+      false,
+    );
+    const scene = await this.planScene(pilot);
     const decision = await this.storyDecision(pilot);
-    if (decision !== null) {
+    if (decision !== null && !scene.battle) {
       return { ok: false, done: false, text: acted.text, decision };
     }
     if (acted.early === true) {
       return { ok: false, done: false, text: acted.text, decision: acted.text };
     }
     if (interactionFailed(acted.text)) return { ok: false, done: false, text: acted.text };
-    if (chest !== null && beforePos !== null) {
+    if (chest !== null && before.pos !== null) {
       const opened = await this.planChestOpened(
         pilot,
-        beforePos.map,
+        before.pos.map,
         chest.flag,
-        beforeItems,
-        beforeEvents,
+        before.items,
+        before.events,
       );
       if (!opened) {
+        await this.planConfirmAgain(pilot);
+        const second = await this.planChestOpened(
+          pilot,
+          before.pos.map,
+          chest.flag,
+          before.items,
+          before.events,
+        );
+        if (second) {
+          return {
+            ok: true,
+            done: true,
+            evidence: ["宝箱打开了", "第 2 次按确认才有效果"],
+            text: `开了宝箱 (${cell[0]},${cell[1]})${chest.item === null ? "" : `「${chest.item}」`}；${acted.text}\n备注:第 2 次按确认才有效果`,
+          };
+        }
         return {
           ok: false,
           done: false,
-          text: `宝箱没有打开（${chest.item ?? "内容读不到"}；${acted.text}）`,
+          text: `宝箱没有打开（${chest.item ?? "内容读不到"}；${acted.text}；再按一次也没有效果）`,
         };
       }
       return {
         ok: true,
         done: true,
+        evidence: ["宝箱打开了"],
         text: `开了宝箱 (${cell[0]},${cell[1]})${chest.item === null ? "" : `「${chest.item}」`}；${acted.text}`,
       };
     }
-    const afterPos = await this.planPosition(pilot);
+    const after = await this.planActionSnapshot(pilot);
     const pages = /翻了\s*(\d+)\s*页/u.exec(acted.text)?.[1];
-    const moved =
-      beforePos !== null &&
-      afterPos !== null &&
-      (beforePos.map !== afterPos.map ||
-        beforePos.cell[0] !== afterPos.cell[0] ||
-        beforePos.cell[1] !== afterPos.cell[1]);
-    const movedTo = afterPos ?? beforePos;
-    const where =
-      moved && movedTo !== null
-        ? `地图 ${movedTo.map} (${movedTo.cell[0]},${movedTo.cell[1]})`
-        : "位置没变";
+    const effects = this.planActionEffects(before, after, cell, pages, scene.battle);
+    if (effects.length === 0) {
+      await this.planConfirmAgain(pilot);
+      const secondAfter = await this.planActionSnapshot(pilot);
+      const secondScene = await this.planScene(pilot);
+      const second = this.planActionEffects(
+        after,
+        secondAfter,
+        cell,
+        undefined,
+        secondScene.battle,
+      );
+      if (second.length > 0) {
+        return {
+          ok: true,
+          done: true,
+          evidence: [...second, "第 2 次按确认才有效果"],
+          text: `${acted.text}\n备注:第 2 次按确认才有效果；${second.join("；")}`,
+        };
+      }
+      const nearby = this.planNearbyInteractives(before.entities, cell);
+      const hint = nearby.length === 0 ? "" : `；附近有 ${nearby.join("、")}`;
+      return {
+        ok: false,
+        done: false,
+        fatal: true,
+        text: `调查 (${cell[0]},${cell[1]}) 后什么也没发生(没有对话、附近实体没变)${hint}`,
+      };
+    }
     return {
       ok: true,
       done: true,
-      text: `${acted.text}\n备注:按了确认；${pages === undefined ? "对话页数读不到" : pages === "0" ? "没有对话" : `翻了 ${pages} 页对话`}；${where}`,
+      evidence: effects,
+      text: `${acted.text}\n备注:${effects.join("；")}`,
     };
+  }
+
+  /** Task 145 follow-up 7: the labels of an open dialog choice, for the exception text. */
+  async planChoiceOptions(pilot: Pilot): Promise<readonly string[]> {
+    try {
+      const sample = record((await pilot.query("sample")).sample);
+      const open = Object.values(record(sample.choice)).find(
+        (value): value is Json => isRecord(value) && truthy(value.open),
+      );
+      if (open === undefined) return [];
+      return list(truthy(open.options) ? open.options : open.labels)
+        .map((value) => show(value).trim())
+        .filter((label) => label !== "");
+    } catch {
+      return [];
+    }
+  }
+
+  /** Task 145 follow-up 8: whether a cell is a knowledge restore point or save point. */
+  async planPointAt(map: number, cell: Cell): Promise<"restore" | "save" | null> {
+    try {
+      const knowledge = await this.ensureStageKnowledge();
+      const at = (point: {
+        readonly mapId: number | null;
+        readonly cell: readonly [number, number];
+      }) => point.mapId === map && point.cell[0] === cell[0] && point.cell[1] === cell[1];
+      if (knowledge.restorePoints.some(at)) return "restore";
+      if (knowledge.savePoints.some(at)) return "save";
+    } catch {
+      // No knowledge: the ordinary walk/action path still applies.
+    }
+    return null;
+  }
+
+  /** Task 159: known save-point cells on one map, for a save station's fallback. */
+  async planSavePoints(map: number): Promise<readonly Cell[]> {
+    const out: Cell[] = [];
+    const seen = new Set<string>();
+    const add = (cell: readonly [number, number]): void => {
+      const key = `${cell[0]},${cell[1]}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push([cell[0], cell[1]]);
+    };
+    try {
+      const knowledge = await this.ensureStageKnowledge();
+      for (const point of knowledge.savePoints) {
+        if (point.mapId === map) add(point.cell);
+      }
+      for (const file of knowledge.mapFiles ?? []) {
+        if (file.id !== map) continue;
+        for (const point of file.savePoints) add(point.cell);
+      }
+    } catch {
+      // Without knowledge the executor skips the station instead of claiming a save.
+    }
+    return out;
+  }
+
+  /** Task 145 follow-up 8: party HP/MP as one comparable line. */
+  private async planVitals(pilot: Pilot): Promise<string> {
+    try {
+      const sample = record((await pilot.query("sample")).sample);
+      return records(sample.party)
+        .map((member) => {
+          const name = text(member.name) ?? "?";
+          return `${name}:${num(member.hp) ?? 0}/${num(member.maxHp) ?? 0}:${num(member.mp) ?? 0}/${num(member.maxMp) ?? 0}`;
+        })
+        .join("|");
+    } catch {
+      return "";
+    }
+  }
+
+  /**
+   * Task 145 follow-up 8: a restore/save point object is not walkable. Stand beside it, face
+   * it and press confirm (the same path as talk), then require HP/MP movement or an opened
+   * save menu before the station may count as done.
+   */
+  async planUsePoint(
+    pilot: Pilot,
+    cell: Cell,
+    kind: "restore" | "save",
+  ): Promise<PlanStationResult> {
+    const before = await this.planVitals(pilot);
+    const acted = await this.toolInteract(
+      { x: cell[0], y: cell[1] },
+      this.planKeyPilot(pilot),
+      false,
+    );
+    if (interactionFailed(acted.text)) return { ok: false, done: false, text: acted.text };
+    let after = await this.planVitals(pilot);
+    let secondPressed = false;
+    if (kind === "restore" && before === after) {
+      secondPressed = true;
+      await this.planConfirmAgain(pilot);
+      after = await this.planVitals(pilot);
+    }
+    if (kind === "restore") {
+      if (before !== "" && after !== "" && before !== after) {
+        return {
+          ok: true,
+          done: true,
+          evidence: ["HP/MP 变化", ...(secondPressed ? ["第 2 次按确认才有效果"] : [])],
+          text: `${acted.text}\n备注:回复后 HP/MP 变化${secondPressed ? "；第 2 次按确认才有效果" : ""}`,
+        };
+      }
+      return {
+        ok: false,
+        done: false,
+        fatal: true,
+        text: `按了回复点 (${cell[0]},${cell[1]})，但 HP/MP 没有变化`,
+      };
+    }
+    let pos = record((await pilot.send("pos")).pos);
+    let menuOpen =
+      pos.state === "Menu" || (await this.storyDecision(pilot))?.includes("菜单") === true;
+    let saveSecond = false;
+    if (!menuOpen) {
+      saveSecond = true;
+      await this.planConfirmAgain(pilot);
+      pos = record((await pilot.send("pos")).pos);
+      menuOpen =
+        pos.state === "Menu" || (await this.storyDecision(pilot))?.includes("菜单") === true;
+    }
+    if (!menuOpen) {
+      return {
+        ok: false,
+        done: false,
+        fatal: true,
+        text: `按了存档点 (${cell[0]},${cell[1]})，但存档菜单没有打开`,
+      };
+    }
+    try {
+      await menu.leaveMenu(pilot);
+    } catch {
+      // saveGame opens the menu again itself; a failed close is only a note.
+    }
+    const saved = await this.planSave(pilot);
+    if (!saved.ok) return { ok: false, done: false, text: saved.text };
+    return {
+      ok: true,
+      done: true,
+      evidence: [
+        "存档菜单打开",
+        ...(saved.evidence ?? []),
+        ...(saveSecond ? ["第 2 次按确认才有效果"] : []),
+      ],
+      text: `${acted.text}\n备注:存档菜单打开${saveSecond ? "；第 2 次按确认才有效果" : ""}；${saved.text}`,
+    };
+  }
+
+  /** Task 145 follow-up 7: vehicle positions/state in Chinese, for a world-map route failure. */
+  async planVehicleStatus(pilot: Pilot): Promise<string> {
+    try {
+      const reply = await pilot.query("vehicles");
+      const nested = reply.vehicles;
+      const top = record(reply);
+      const body = record(nested ?? top);
+      const envelope =
+        nested !== undefined ||
+        Array.isArray(top.list) ||
+        Array.isArray(top.vehicles) ||
+        typeof top.ready === "boolean";
+      if (!envelope) return "";
+      if (body.ready === false) return "交通工具还没读出来";
+      const raw = Array.isArray(body.list)
+        ? body.list
+        : Array.isArray(body.vehicles)
+          ? body.vehicles
+          : Array.isArray(nested)
+            ? nested
+            : Array.isArray(top.vehicles)
+              ? top.vehicles
+              : [];
+      const lines: string[] = [];
+      for (const entry of raw) {
+        const row = record(entry);
+        const name =
+          cleanName(text(row.typeName) ?? text(row.name) ?? text(row.type) ?? "") || "交通工具";
+        const map = num(row.map) ?? num(row.mapId);
+        const at = cellOf(row.cell) ?? cellOf(row.position) ?? cellOf(row.pos);
+        const enabled =
+          typeof row.enabled === "boolean"
+            ? row.enabled
+            : typeof row.enable === "boolean"
+              ? row.enable
+              : null;
+        const riding =
+          typeof row.riding === "boolean"
+            ? row.riding
+            : typeof row.current === "boolean"
+              ? row.current
+              : null;
+        const where =
+          map === undefined && at === null
+            ? "位置读不到"
+            : `地图 ${map ?? "?"}${at === null ? "" : ` (${at[0]},${at[1]})`}`;
+        const state = riding === true ? "正骑着" : enabled === false ? "不能用" : "可用";
+        lines.push(`${name} ${where} ${state}`);
+      }
+      return lines.join("；");
+    } catch {
+      return "";
+    }
   }
 
   /** Task 138: page the story/dialog once more, as `advance_story` would. */
@@ -7607,7 +8600,8 @@ export class Game {
   }
 
   /** Task 138: answer an open dialog choice with the plan's number or text. */
-  async planChoose(pilot: Pilot, option: number | string): Promise<PlanActionResult> {
+  async planChoose(pilot: Pilot, option: number | string, cell?: Cell): Promise<PlanActionResult> {
+    const before = cell === undefined ? null : await this.planActionSnapshot(pilot);
     const sample = record((await pilot.query("sample")).sample);
     const open = Object.values(record(sample.choice)).find(
       (value): value is Json => isRecord(value) && truthy(value.open),
@@ -7632,62 +8626,154 @@ export class Game {
       }
     }
     if (index < 0 || index >= Math.max(1, labels.length)) {
-      return { ok: false, text: `选项号 ${index} 不在 0–${Math.max(0, labels.length - 1)} 之间` };
+      return {
+        ok: false,
+        text: `选项号 ${index} 不在 0–${Math.max(0, labels.length - 1)} 之间`,
+      };
     }
     const cursor = num(open.cursor) ?? 0;
     const step = index >= cursor ? "Down" : "Up";
     const keys = [...Array.from({ length: Math.abs(index - cursor) }, () => step), "Enter"];
     const result = await pilot.send("keys", { keys, gap: 250 });
+    if (!truthy(result.ok)) {
+      return { ok: false, text: `没选成:${show(result.error)}` };
+    }
+    if (cell === undefined || before === null) {
+      return { ok: true, text: `选了「${labels[index] ?? index}」` };
+    }
+    const after = await this.planActionSnapshot(pilot);
+    const scene = await this.planScene(pilot);
+    const effects = this.planActionEffects(before, after, cell, undefined, scene.battle);
+    if (effects.length === 0) {
+      return {
+        ok: false,
+        fatal: true,
+        text: `选择「${labels[index] ?? index}」后什么也没发生(没有对话、附近实体没变)`,
+      };
+    }
     return {
-      ok: truthy(result.ok),
-      text: truthy(result.ok)
-        ? `选了「${labels[index] ?? index}」`
-        : `没选成:${show(result.error)}`,
+      ok: true,
+      evidence: effects,
+      text: `选了「${labels[index] ?? index}」\n备注:${effects.join("；")}`,
     };
   }
 
   /** Task 138: save to the user's slot and snapshot the bestiary, as `save_game` does. */
   async planSave(pilot: Pilot): Promise<PlanActionResult> {
+    const before = await this.planSaveCount(pilot);
     const [ok, detail] = await save.saveGame(pilot, this.saveSlot, this.saveTimerMinSeconds);
+    let evidence: string[] = [];
     if (ok) {
       await this.captureBestiary(pilot);
       this.lastBookSaveAt = Date.now();
       this.bookDirty = false;
+      const after = await this.planSaveCount(pilot);
+      if (before !== null && after !== null && after > before) {
+        evidence = [`pos.saves ${before}→${after}`];
+      } else {
+        evidence = ["存档返回成功"];
+      }
     }
-    return { ok, text: detail };
+    return { ok, text: detail, ...(evidence.length === 0 ? {} : { evidence }) };
+  }
+
+  /** The bridge's `pos.saves` save counter, the hard evidence a save really happened. */
+  private async planSaveCount(pilot: Pilot): Promise<number | null> {
+    try {
+      return num(record((await pilot.send("pos")).pos).saves) ?? null;
+    } catch {
+      return null;
+    }
   }
 
   /**
-   * Task 138: heal to the pre-boss threshold; task 145 says why nothing happened instead of
-   * claiming a full party. HP above the threshold is not "full", and a low party without any
-   * spell/item/inn is a different fact from a full one.
+   * Task 138/152: field recovery for the plan executor. Revive the fallen first (Phoenix Down
+   * or a revival spell), then heal with magic/items, use a tent/cottage at a save point or inn,
+   * and cure ailments. `belowPct` is the chapter's own threshold, so an item is spent when the
+   * chapter would otherwise walk back to town; the default keeps the old pre-boss behaviour.
+   * `ok: false` means someone is still down or the lowest HP is still below that threshold —
+   * the chapter then goes to a place that can revive.
    */
-  async planHeal(pilot: Pilot): Promise<PlanActionResult> {
-    const healedText = await this.restoreBeforeBoss(pilot);
-    if (healedText !== "") return { ok: true, text: healedText };
+  async planHeal(pilot: Pilot, belowPct = 30): Promise<PlanActionResult> {
+    const threshold = Math.max(1, Math.min(100, Math.trunc(belowPct)));
+    const lines: string[] = [];
     const sample = record((await pilot.query("sample")).sample);
     const party = records(sample.party);
     if (party.length === 0) return { ok: false, text: "读不到队伍，没回复" };
-    const rows = party.map((member) => {
-      const hp = num(member.hp) ?? 0;
+    const nameOf = (member: Json): string => text(member.name) ?? "?";
+    const hpOf = (member: Json): number => num(member.hp) ?? 0;
+    const abilitiesOf = (member: Json): string[] =>
+      records(member.abilities)
+        .map((ability) => cleanName(text(ability.name) ?? ""))
+        .filter((name) => name !== "");
+    let bag: Record<string, number> = {};
+    try {
+      bag = await this.planItems(pilot);
+    } catch {
+      // Without a readable bag only revival magic is left; the rest of the method still runs.
+    }
+    const reviveNames = Object.keys(bag).filter((name) =>
+      /不死鸟|凤凰|phoenix|フェニックス/iu.test(name),
+    );
+    for (const member of party) {
+      if (hpOf(member) > 0) continue;
+      const dead = nameOf(member);
+      let revived = false;
+      for (const item of reviveNames) {
+        if ((bag[item] ?? 0) <= 0) continue;
+        const [ok, message] = await menu.useItem(pilot, item, dead);
+        lines.push(message);
+        if (!ok) continue;
+        bag[item] = (bag[item] ?? 0) - 1;
+        revived = true;
+        break;
+      }
+      if (revived) continue;
+      const caster = party.find(
+        (member) =>
+          hpOf(member) > 0 && abilitiesOf(member).some((ability) => ability.includes("复活")),
+      );
+      if (caster !== undefined) {
+        const [ok, message] = await menu.cast(pilot, nameOf(caster), "复活", dead);
+        lines.push(message);
+        if (ok) revived = true;
+      }
+      if (!revived) lines.push(`${dead} 倒下了，野外没有复活手段`);
+    }
+    const healed = await battle.patchUp(pilot, () => undefined, 8, undefined, {
+      hpTarget: Math.max(this.healFullPercent, threshold),
+      mpReservePercent: 0,
+      itemHpPercent: threshold,
+      allowTent: this.atSavePoint() || this.innHere,
+    });
+    lines.push(...healed);
+    const after = records(record((await pilot.query("sample")).sample).party);
+    if (after.length === 0) return { ok: false, text: [...lines, "读不到队伍状态"].join("；") };
+    const rows = after.map((member) => {
+      const hp = hpOf(member);
       const maxHp = num(member.maxHp) ?? 0;
       return {
-        name: text(member.name) ?? "?",
+        name: nameOf(member),
         hp,
         maxHp,
-        mp: num(member.mp) ?? 0,
         pct: maxHp > 0 ? Math.floor((100 * hp) / maxHp) : 100,
-        abilities: records(member.abilities)
-          .map((ability) => text(ability.name) ?? "")
-          .map((name) => cleanName(name))
-          .filter((name) => name !== ""),
       };
     });
-    if (rows.every((row) => row.hp >= row.maxHp)) {
-      return { ok: true, text: "队伍 HP 已经是满的" };
+    const dead = rows.filter((row) => row.hp <= 0);
+    if (dead.length > 0) {
+      return {
+        ok: false,
+        text: [
+          ...lines,
+          `还有 ${dead.length} 人倒下(${dead.map((row) => row.name).join("、")})，野外救不起来`,
+        ].join("；"),
+      };
     }
     const lowest = rows.reduce((left, right) => (right.pct < left.pct ? right : left));
-    if (lowest.pct >= this.healFullPercent) {
+    if (lines.length === 0 && rows.every((row) => row.hp >= row.maxHp)) {
+      return { ok: true, text: "队伍 HP 已经是满的" };
+    }
+    if (lines.length === 0 && lowest.pct >= this.healFullPercent) {
       return {
         ok: true,
         text:
@@ -7695,35 +8781,78 @@ export class Game {
           `（最低 ${lowest.name} ${lowest.pct}%，${lowest.hp}/${lowest.maxHp}）`,
       };
     }
-    const reasons: string[] = [];
-    if (!this.innHere && !this.atSavePoint()) reasons.push("不在旅店/回复点");
-    const healers = rows.filter(
-      (row) =>
-        row.hp > 0 &&
-        row.mp > 0 &&
-        row.abilities.some((ability) =>
-          battle.HEAL_SPELLS.some((spell) => ability.includes(spell)),
-        ),
-    );
-    if (healers.length === 0) reasons.push("没人会回复魔法");
-    let hasItem = false;
-    try {
-      const held = await battle.heldItems(pilot);
-      hasItem = Object.entries(held).some(
+    if (lowest.pct < threshold) {
+      return {
+        ok: false,
+        text: [
+          ...lines,
+          `野外回复后最低 ${lowest.name} HP ${lowest.pct}%(${lowest.hp}/${lowest.maxHp})，` +
+            `仍低于 ${threshold}%`,
+        ].join("；"),
+      };
+    }
+    if (lines.length === 0) {
+      const reasons: string[] = [];
+      if (!this.innHere && !this.atSavePoint()) reasons.push("不在旅店/回复点");
+      const healers = after.filter(
+        (member) =>
+          hpOf(member) > 0 &&
+          (num(member.mp) ?? 0) > 0 &&
+          abilitiesOf(member).some((ability) =>
+            battle.HEAL_SPELLS.some((spell) => ability.includes(spell)),
+          ),
+      );
+      if (healers.length === 0) reasons.push("没人会回复魔法");
+      const hasItem = Object.entries(bag).some(
         ([name, count]) =>
           count > 0 && battle.HEAL_ITEMS.some((item) => name.includes(item) || item.includes(name)),
       );
-    } catch {
-      // An unreadable bag is reported as "no item" only when the rest says so.
+      if (!hasItem) reasons.push("没有回复道具");
+      const why =
+        reasons.length === 0 ? "有回复手段，但没有回复成功" : `没有回复手段(${reasons.join("、")})`;
+      return {
+        ok: true,
+        text:
+          `${why}；队伍 HP 低于 ${this.healFullPercent}%` +
+          `（最低 ${lowest.name} ${lowest.pct}%，${lowest.hp}/${lowest.maxHp}）`,
+      };
     }
-    if (!hasItem) reasons.push("没有回复道具");
-    const why =
-      reasons.length === 0 ? "有回复手段，但没有回复成功" : `没有回复手段(${reasons.join("、")})`;
+    return { ok: true, text: lines.join("；") };
+  }
+
+  /**
+   * Task 152 follow-up: use a restore point the chapter has walked to. An inn is slept in
+   * directly (the fallen are revived); a mere rest spot/save circle is interacted with and the
+   * field recovery is attempted there (a tent works on a save circle).
+   */
+  async planRestAt(pilot: Pilot, point: PlanRestorePoint): Promise<PlanActionResult> {
+    const lines: string[] = [];
+    if (point.revive === true) {
+      try {
+        const slept = await grind.sleepAtInn(pilot, this.grindContext().moveState);
+        lines.push(slept.detail);
+        if (slept.ok) return { ok: true, text: lines.join("；") };
+      } catch (error) {
+        lines.push(`住店出错:${describeError(error)}`);
+      }
+    }
+    try {
+      const acted = await this.planInteract(pilot, point.cell);
+      if (acted.text.trim() !== "") lines.push(acted.text);
+      if (acted.decision !== undefined && acted.decision.trim() !== "") {
+        const chosen = await this.planChoose(pilot, "是");
+        lines.push(chosen.text);
+      }
+      const story = await this.planStory(pilot);
+      if (story.text.trim() !== "") lines.push(story.text);
+    } catch (error) {
+      lines.push(`使用回复点出错:${describeError(error)}`);
+    }
+    const healed = await this.planHeal(pilot, 100);
+    lines.push(healed.text);
     return {
-      ok: true,
-      text:
-        `${why}；队伍 HP 低于 ${this.healFullPercent}%` +
-        `（最低 ${lowest.name} ${lowest.pct}%，${lowest.hp}/${lowest.maxHp}）`,
+      ok: healed.ok,
+      text: lines.filter((line) => line !== "").join("；"),
     };
   }
 
@@ -7743,7 +8872,11 @@ export class Game {
   async planFightBoss(pilot: Pilot, boss: PlanBoss): Promise<PlanBossResult> {
     const table = boss.tables[0];
     if (table === undefined) {
-      return { won: false, text: "首领没有规则表", summary: "首领没有规则表,没有开打" };
+      return {
+        won: false,
+        text: "首领没有规则表",
+        summary: "首领没有规则表,没有开打",
+      };
     }
     const sample = record((await pilot.query("sample")).sample);
     const fight = record(sample.battle);
@@ -7813,7 +8946,11 @@ export class Game {
     const fight = record(sample.battle);
     const enemies = records(fight.enemies);
     if (!truthy(fight.active) && !truthy(fight.boss) && enemies.length === 0) {
-      return { won: false, text: "战斗没有开始", summary: "站末没有战斗，没有按键" };
+      return {
+        won: false,
+        text: "战斗没有开始",
+        summary: "站末没有战斗，没有按键",
+      };
     }
     const mapId = num(record(sample.user).mapId) ?? this.mapId ?? null;
     const raw = this.battleTableFor(mapId) ?? tables[0];
@@ -7977,6 +9114,115 @@ export class Game {
     return [...aliases];
   }
 
+  /**
+   * Task 156: fallback boss trigger cells when the station wrote only a map. The chapter facts
+   * (task 146) are tried by the executor first; this method supplies the next sources: the
+   * exported boss objects whose monster ids name this boss, the game files' event/NPC names,
+   * then live script/battle entities on the current map, ranked by any coordinate in the
+   * station/guide text. Kana variants and long vowels are ignored in every name match.
+   */
+  async planBossTriggerCandidates(
+    pilot: Pilot,
+    map: number,
+    boss: PlanBoss,
+    hint: string,
+  ): Promise<readonly Cell[]> {
+    const out: Cell[] = [];
+    const seen = new Set<string>();
+    const add = (cell: Cell | null): void => {
+      if (cell === null) return;
+      const key = `${cell[0]},${cell[1]}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(cell);
+    };
+    const aliases = [boss.name, ...(await this.planBossAliases(boss.name))];
+    const nameKeys = [
+      ...new Set(aliases.map((name) => bossNameKey(name)).filter((name) => name !== "")),
+    ];
+    const matchesName = (value: string): boolean => {
+      const key = bossNameKey(value);
+      if (key === "") return false;
+      return nameKeys.some((name) => key.includes(name) || name.includes(key));
+    };
+    let knowledge: Knowledge | null = null;
+    try {
+      knowledge = await this.ensureStageKnowledge();
+    } catch {
+      // Without knowledge only the live entities below are left.
+    }
+    if (knowledge !== null) {
+      const bossMonsterIds = new Set<number>();
+      for (const monster of knowledge.monsters) {
+        if (!matchesName(monster.name)) continue;
+        if (monster.id !== null) bossMonsterIds.add(monster.id);
+        if (monster.bookId !== null) bossMonsterIds.add(monster.bookId);
+      }
+      // Task 156 follow-up (10-29 live, Wind Shrine 205): the exported boss object's monster
+      // ids are authoritative; its Japanese name may not be one of the plan's aliases.
+      const mapFile = knowledge.mapFiles?.find((entry) => entry.id === map) as
+        { readonly bossObjects?: readonly unknown[] } | undefined;
+      for (const object of mapFile?.bossObjects ?? []) {
+        const ids = bossObjectMonsterIds(object);
+        const objectName = isRecord(object) ? (text(object.name) ?? "") : "";
+        if (!ids.some((id) => bossMonsterIds.has(id)) && !matchesName(objectName)) continue;
+        add(bossObjectCell(object));
+      }
+      try {
+        const files = await readRouteBookFiles(this.game, knowledge.filesDir);
+        if (files !== null) {
+          for (const event of files.events) {
+            if (event.mapId !== map || !matchesName(event.name)) continue;
+            const rect = event.rect;
+            add(event.cell ?? (rect === null ? null : [rect.x1, rect.y1]));
+          }
+          for (const npc of files.npcs) {
+            if (npc.mapId !== map) continue;
+            const names = [npc.name, npc.names?.ja, npc.names?.en, npc.names?.zhc].filter(
+              (name): name is string => typeof name === "string" && name.trim() !== "",
+            );
+            if (!names.some((name) => matchesName(name))) continue;
+            add(npc.cell);
+          }
+        }
+      } catch {
+        // Without map files the live entities below are still worth a try.
+      }
+    }
+    try {
+      const here = await this.planPosition(pilot);
+      if (here?.map === map) {
+        const entities = records(
+          record((await pilot.send("entities", { kind: "Event", max: 200 })).entities).entities,
+        );
+        const anchor = hintAnchor(hint);
+        const live: { readonly cell: Cell; readonly distance: number }[] = [];
+        for (const entity of entities) {
+          const kind = cleanName(text(entity.kind) ?? "");
+          const name = cleanName(text(entity.name) ?? "");
+          const scripts =
+            kind === "RunScript" ||
+            /^(?:sc_e_|ev_e_)/u.test(name) ||
+            /boss|首领|ボス/iu.test(name) ||
+            matchesName(name);
+          if (!scripts) continue;
+          const cell = cellOf(entity.cell);
+          if (cell === null) continue;
+          live.push({
+            cell,
+            distance:
+              anchor === null ? 0 : Math.abs(cell[0] - anchor[0]) + Math.abs(cell[1] - anchor[1]),
+          });
+        }
+        live.sort((left, right) => left.distance - right.distance);
+        for (const entry of live) add(entry.cell);
+      }
+    } catch {
+      // An old bridge or a failed entity read loses only this last fallback.
+    }
+    return out;
+  }
+
   /** Task 145 follow-up: model calls observed while this plan ran; the report carries it. */
   planModelCalls(): number {
     return this.planModelCallCount;
@@ -8029,7 +9275,10 @@ export class Game {
     try {
       const report = await loadSegmentReport(this.segmentReportFile);
       if (report?.section === section && report.status === "exception" && report.exception) {
-        previousException = { kind: report.exception.kind, detail: report.exception.detail };
+        previousException = {
+          kind: report.exception.kind,
+          detail: report.exception.detail,
+        };
       }
     } catch {
       // A broken report only loses the reason line.
@@ -8044,7 +9293,11 @@ export class Game {
       updatedAt: at.toISOString(),
       finishedAt: null,
       status: "running",
-      stations: labels.map((label, index) => ({ index, status: "pending", note: label })),
+      stations: labels.map((label, index) => ({
+        index,
+        status: "pending",
+        note: label,
+      })),
       previousException,
     };
     await this.saveSegmentProgress();
@@ -8097,7 +9350,9 @@ export class Game {
       runtime = picked.runtime;
       reason = picked.reason;
     } else {
-      runtime = await this.buildBookRuntime(pilot, signal, { preferredSection: section });
+      runtime = await this.buildBookRuntime(pilot, signal, {
+        preferredSection: section,
+      });
       if (runtime !== null && runtime.section.title !== section) {
         throw new Error(`路线书里没有「${section}」这一节;最接近的是「${runtime.section.title}」`);
       }
@@ -8247,10 +9502,27 @@ export class Game {
     pilot: Pilot,
     signal: AbortSignal | undefined,
   ): Promise<SegmentReport> {
-    return await executeSegmentPlan(plan, gamePlanPorts(this, pilot), {
-      signal,
-      log: (line) => this.onActivity?.(line, "plan"),
-    });
+    const ports = gamePlanPorts(this, pilot);
+    ports.refreshCollision = (mapId) => this.planRefreshCollision(pilot, mapId);
+    const runLog =
+      this.runLogFile === undefined
+        ? undefined
+        : new RunLogger({
+            game: this.game,
+            file: this.runLogFile,
+            warn: (message) => this.onActivity?.(message, "warn"),
+          });
+    try {
+      return await executeSegmentPlan(plan, ports, {
+        signal,
+        log: (line) => this.onActivity?.(line, "plan"),
+        healFullPercent: this.healFullPercent,
+        storyExploreBudgetMs: this.storyExploreMinutes * 60_000,
+        ...(runLog === undefined ? {} : { runLog }),
+      });
+    } finally {
+      await runLog?.flush();
+    }
   }
 
   private async toolExecutePlan(
@@ -8313,8 +9585,676 @@ export class Game {
     try {
       await writeFile(path, `${JSON.stringify(report, null, 2)}\n`, "utf8");
     } catch (error) {
-      throw new Error(`写不了段报告 ${path}:${describeError(error)}`, { cause: error });
+      throw new Error(`写不了段报告 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
     }
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // Task 153: the chapter tools. The model reads one chapter's facts, drafts each section and
+  // submits one plan; `execute_chapter` then runs it with `executeChapterPlan` and the same plan
+  // ports the segment executor uses. The panel reads the same four files.
+
+  /**
+   * Task 153 follow-up: build the chapter's own sections directly from the guide indexes.
+   * `ensureBook` returns null when the current map is not covered (task 131), which is exactly
+   * the case on a story map; a chapter is a fixed guide range and does not depend on position.
+   */
+  private async chapterBookFor(
+    range: ChapterRange,
+    pilot: Pilot,
+    signal?: AbortSignal,
+  ): Promise<RouteBook> {
+    const cached = this.chapterBooks.get(range.chapter);
+    if (cached !== undefined) return cached;
+    if (this.routeBookOption !== undefined) {
+      this.chapterBooks.set(range.chapter, this.routeBookOption);
+      return this.routeBookOption;
+    }
+    const sections = await readGuideSections(this.game, this.routeBookGuideFile, signal);
+    if (sections === null || sections.length === 0) {
+      throw new Error("读不到攻略,取不了章事实;确认 .deps/knowledge 里有本作的 guide.json");
+    }
+    const from = sections[range.from];
+    const to = sections[range.to];
+    if (from === undefined || to === undefined) {
+      throw new Error(
+        `第 ${range.chapter} 章的攻略第 ${range.from}–${range.to} 节不存在;` +
+          `攻略只有 ${sections.length} 节`,
+      );
+    }
+    const knowledge = await this.ensureStageKnowledge(signal);
+    const visitOrder = await readVisitOrder(this.game, undefined, signal);
+    const learned = await readLearnedPoints(this.game, this.routeBookLearnedFile, signal);
+    const runtime = await loadRouteBook(
+      {
+        game: this.game,
+        knowledge,
+        atlas: this.atlas,
+        visitOrder,
+        save: await this.liveBookSave(pilot),
+        sections,
+        fromSection: from.title,
+        toSection: to.title,
+        // Null: this book is the chapter's whole range; do not trim it to where the party is.
+        mapId: null,
+        learned,
+        aheadSections: range.to - range.from + 1,
+        timeBudgetMs: this.routeBookTimeBudgetMs,
+        onWarning: (message) => this.onActivity?.(message),
+      },
+      signal,
+    );
+    if (runtime === null) {
+      throw new Error(`路线书没有生成第 ${range.chapter} 章(攻略第 ${range.from}–${range.to} 节)`);
+    }
+    this.chapterBooks.set(range.chapter, runtime.book);
+    return runtime.book;
+  }
+
+  /**
+   * The chapter named by `chapter`; without one, first the section covering the current map,
+   * then the last chapter/segment plan's section, then the route-book progress's section. A
+   * story map or the world map is not in any guide section, so those fallbacks matter.
+   */
+  private async chapterRangeFor(
+    pilot: Pilot,
+    signal: AbortSignal | undefined,
+    chapter?: number,
+  ): Promise<ChapterRange> {
+    if (chapter !== undefined) {
+      const range = chapterByNumber(chapter);
+      if (range === null) throw new Error(`没有第 ${chapter} 章;章号是 1–23`);
+      return range;
+    }
+    const sections = await readGuideSections(this.game, this.routeBookGuideFile, signal);
+    if (sections === null || sections.length === 0) {
+      throw new Error("读不到攻略,找不到当前这一章;可以带 chapter 指定第几章(1–23)");
+    }
+    const position = await this.stagePosition(pilot);
+    if (position.map !== null) {
+      const knowledge = await this.ensureStageKnowledge(signal);
+      const hit = guideSectionForMap(sections, knowledge, position.map);
+      const fromMap = hit === null ? null : chapterForSection(hit.index);
+      if (fromMap !== null) return fromMap;
+    }
+    const titles = [
+      this.chapterPlans.current?.segments[0]?.section,
+      this.segmentPlans.current?.section,
+      this.bookProgress.current?.section,
+    ];
+    for (const title of titles) {
+      if (title === undefined || title.trim() === "") continue;
+      const index = sections.findIndex((section) => section.title === title.trim());
+      const range = index < 0 ? null : chapterForSection(index);
+      if (range !== null) return range;
+    }
+    throw new Error(
+      "找不到当前这一章:当前地图不在攻略任何小节里,也没有上一份章计划、段计划或路线书进度;" +
+        "可以带 chapter 指定第几章(1–23)",
+    );
+  }
+
+  /** `chapter_facts`: the chapter sheet built from the route book, knowledge and game files. */
+  private async chapterFactsFor(
+    pilot: Pilot,
+    signal: AbortSignal | undefined,
+    chapter?: number,
+  ): Promise<{ readonly data: ChapterFactsData; readonly text: string }> {
+    const range = await this.chapterRangeFor(pilot, signal, chapter);
+    const book = await this.chapterBookFor(range, pilot, signal);
+    const knowledge = await this.ensureStageKnowledge(signal);
+    const state = await this.stageTravelState(pilot);
+    const save = await this.liveBookSave(pilot);
+    const position = await this.stagePosition(pilot);
+    const filesDir = knowledge.filesDir ?? join(DEPS, "knowledge", this.game, "files");
+    const data = await buildChapterFactsFromDisk(
+      {
+        chapter: range,
+        sections: book.sections,
+        knowledge,
+        save,
+        party: state.party,
+        bag: state.bag,
+        gil: state.gil,
+        currentMapId: position.map,
+        guide: this.guide,
+      },
+      filesDir,
+      signal,
+    );
+    return { data, text: chapterFactsText(data) };
+  }
+
+  /** One guide section's original text, by guide index or title ("### 第 N 节 标题"). */
+  private chapterGuideSection(section: string | number): string {
+    const guide = this.guide;
+    if (guide === null) throw new Error("没有本作的攻略数据(.deps/knowledge/ff5/guide.json)");
+    let index: number | undefined;
+    if (typeof section === "number") {
+      index = section;
+    } else {
+      const needle = section.trim();
+      if (/^\d+$/u.test(needle)) index = Number(needle);
+      else {
+        const lowered = needle.toLowerCase();
+        index = guide.walkthrough.findIndex((entry) => entry.title.toLowerCase() === lowered);
+        if (index < 0) {
+          index = guide.walkthrough.findIndex((entry) =>
+            entry.title.toLowerCase().includes(lowered),
+          );
+        }
+      }
+    }
+    if (!Number.isInteger(index) || index < 0 || index >= guide.walkthrough.length) {
+      throw new Error(
+        `攻略里没有「${String(section)}」这一节;可以写小节名或 0–${guide.walkthrough.length - 1} 的序号`,
+      );
+    }
+    const text = chapterGuideText(
+      {
+        chapter: chapterForSection(index)?.chapter ?? 0,
+        from: index,
+        to: index,
+      },
+      guide,
+    );
+    if (text === "")
+      throw new Error(`攻略里没有第 ${index} 节;一共 ${guide.walkthrough.length} 节`);
+    return text;
+  }
+
+  /**
+   * Task 154: walk the accepted-for-now chapter plan offline. Same current position, atlas,
+   * cached collision, regions and learned jumps as `planRoute`/the executor use; the dry run
+   * never talks to the game. An unreadable position is a warning, not a rejected plan.
+   */
+  private async chapterDryRun(pilot: Pilot, plan: ChapterPlan): Promise<DryRunResult> {
+    const here = await this.planPosition(pilot);
+    if (here === null) {
+      return {
+        problems: [],
+        warnings: ["读不到当前位置，试走没做"],
+        timedOut: false,
+      };
+    }
+    return dryRunChapter(
+      plan,
+      { map: here.map, cell: here.cell },
+      {
+        atlas: this.atlas,
+        collisions: this.collisions,
+        regions: RegionIndex.create(this.atlas, this.collisions),
+      },
+    );
+  }
+
+  private chapterToolPorts(pilot: Pilot, signal: AbortSignal | undefined): ChapterToolPorts {
+    return {
+      facts: (chapter) => this.chapterFactsFor(pilot, signal, chapter),
+      guide: (section) => Promise.resolve(this.chapterGuideSection(section)),
+      draft: () => ChapterDraftStore.load(this.game, this.chapterDraftFile, signal),
+      savePlan: (plan) => this.chapterPlans.save(plan),
+      currentPlan: () => Promise.resolve(this.chapterPlans.current),
+      dryRun: (plan) => this.chapterDryRun(pilot, plan),
+    };
+  }
+
+  private async chapterToolAnswer(
+    handler: (ports: ChapterToolPorts, args: unknown) => Promise<ChapterToolResult>,
+    args: Json,
+    pilot: Pilot,
+    signal: AbortSignal | undefined,
+  ): Promise<HandlerResult> {
+    const answer = await handler(this.chapterToolPorts(pilot, signal), args);
+    return { text: answer.text, early: true };
+  }
+
+  private async toolChapterFacts(
+    args: Json,
+    pilot: Pilot,
+    signal: AbortSignal | undefined,
+  ): Promise<HandlerResult> {
+    return await this.chapterToolAnswer(handleChapterFacts, args, pilot, signal);
+  }
+
+  private async toolReadGuide(
+    args: Json,
+    pilot: Pilot,
+    signal: AbortSignal | undefined,
+  ): Promise<HandlerResult> {
+    return await this.chapterToolAnswer(handleReadGuide, args, pilot, signal);
+  }
+
+  private async toolChapterDraftSegment(
+    args: Json,
+    pilot: Pilot,
+    signal: AbortSignal | undefined,
+  ): Promise<HandlerResult> {
+    return await this.chapterToolAnswer(handleChapterDraftSegment, args, pilot, signal);
+  }
+
+  private async toolChapterDraftMeta(
+    args: Json,
+    pilot: Pilot,
+    signal: AbortSignal | undefined,
+  ): Promise<HandlerResult> {
+    return await this.chapterToolAnswer(handleChapterDraftMeta, args, pilot, signal);
+  }
+
+  private async toolSubmitChapterPlan(
+    args: Json,
+    pilot: Pilot,
+    signal: AbortSignal | undefined,
+  ): Promise<HandlerResult> {
+    const answer = await handleSubmitChapterPlan(this.chapterToolPorts(pilot, signal), args);
+    if (answer.accepted === true && answer.plan !== undefined && this.onChapterAccepted) {
+      const plan = answer.plan;
+      let note = "";
+      try {
+        await this.onChapterAccepted(plan);
+      } catch (error) {
+        signal?.throwIfAborted();
+        note = `\n后台执行没有启动:${describeError(error)};请用续跑命令从章进度接着跑`;
+      }
+      return {
+        text:
+          `${answer.text}\n\n规则文件已定稿,执行器接管第 ${plan.chapter} 章,本轮结束;` +
+          `本章跑完会再叫你规划下一章。${note}`,
+        early: true,
+      };
+    }
+    return { text: answer.text, early: true };
+  }
+
+  private async toolChapterStatus(
+    args: Json,
+    pilot: Pilot,
+    signal: AbortSignal | undefined,
+  ): Promise<HandlerResult> {
+    return await this.chapterToolAnswer(handleChapterStatus, args, pilot, signal);
+  }
+
+  /** Read the chapter progress file; a missing file is "no resume", not an error. */
+  private async loadChapterProgress(signal?: AbortSignal): Promise<ChapterProgress | null> {
+    const path = this.chapterProgressFile;
+    if (path === undefined) return null;
+    let body: string;
+    try {
+      body = await readFile(path, { encoding: "utf8", signal });
+    } catch (error) {
+      if (isMissingFile(error)) return null;
+      signal?.throwIfAborted();
+      throw new Error(`读不了章进度 ${path}:${describeError(error)}`, {
+        cause: error,
+      });
+    }
+    const parsed: unknown = JSON.parse(body);
+    if (!isRecord(parsed) || !Array.isArray(parsed.segments)) {
+      throw new Error(`章进度 ${path} 的形状不对`);
+    }
+    return parsed as unknown as ChapterProgress;
+  }
+
+  /** Read the last chapter report, for the previous exception line; bad files are ignored. */
+  private async loadChapterReport(signal?: AbortSignal): Promise<ChapterReport | null> {
+    const path = this.chapterReportFile;
+    if (path === undefined) return null;
+    try {
+      const body = await readFile(path, { encoding: "utf8", signal });
+      const parsed: unknown = JSON.parse(body);
+      if (!isRecord(parsed) || typeof parsed.chapter !== "number") return null;
+      return parsed as unknown as ChapterReport;
+    } catch (error) {
+      if (isMissingFile(error)) return null;
+      signal?.throwIfAborted();
+      return null;
+    }
+  }
+
+  /**
+   * `execute_chapter`: run the accepted plan from where `chapter-progress` stopped. Completed
+   * segments and stations are skipped through `executeChapterPlan`'s `startAt`/`skipStations`;
+   * a run without a usable progress file starts at the first station.
+   */
+  private async toolExecuteChapter(
+    _args: Json,
+    pilot: Pilot,
+    signal: AbortSignal | undefined,
+    markBlocked = false,
+  ): Promise<HandlerResult> {
+    const plan = this.chapterPlans.current;
+    if (plan === null) {
+      return {
+        text: "还没有存盘的章计划。先 chapter_facts,逐节写段,再 submit_chapter_plan。",
+        early: true,
+      };
+    }
+    let progress: ChapterProgress | null = null;
+    let progressNote = "";
+    try {
+      progress = await this.loadChapterProgress(signal);
+    } catch (error) {
+      signal?.throwIfAborted();
+      progressNote = `(章进度读不了,从头执行:${describeError(error)})`;
+    }
+    const resume = progress === null ? null : chapterResumeFrom(plan, progress);
+    let previousException: ChapterProgress["previousException"] =
+      progress?.previousException ?? null;
+    try {
+      const previous = await this.loadChapterReport(signal);
+      if (
+        previous?.chapter === plan.chapter &&
+        previous.status === "exception" &&
+        previous.exception
+      ) {
+        previousException = {
+          kind: previous.exception.kind,
+          detail: previous.exception.detail,
+        };
+      }
+    } catch {
+      signal?.throwIfAborted();
+    }
+    const sameRun = progress !== null && progress.chapter === plan.chapter;
+    // Task 156: only a boss station that wrote just its map needs the chapter facts; loading
+    // them when no such station exists would repeat the submit-time file work for nothing.
+    const needsBossFacts = plan.segments.some((segment) =>
+      segment.stations.some((station) => station.do === "boss" && !station.to.includes(":")),
+    );
+    let facts: ChapterFactsData | undefined;
+    if (needsBossFacts) {
+      try {
+        facts = (await this.chapterFactsFor(pilot, signal, plan.chapter)).data;
+      } catch {
+        signal?.throwIfAborted();
+        facts = undefined;
+      }
+    }
+    const runLog =
+      this.runLogFile === undefined
+        ? undefined
+        : new RunLogger({
+            game: this.game,
+            file: this.runLogFile,
+            warn: (message) => this.onActivity?.(message, "warn"),
+          });
+    const options: ExecuteChapterOptions = {
+      game: this.game,
+      ...(this.chapterProgressFile === undefined ? {} : { progressPath: this.chapterProgressFile }),
+      ...(this.chapterReportFile === undefined ? {} : { reportPath: this.chapterReportFile }),
+      revision: sameRun && progress !== null ? Math.max(1, progress.revision + 1) : 1,
+      ...(previousException === null ? {} : { previousException }),
+      ...(signal === undefined ? {} : { signal }),
+      log: (line) => this.onActivity?.(line, "plan"),
+      healFullPercent: this.healFullPercent,
+      storyExploreBudgetMs: this.storyExploreMinutes * 60_000,
+      ...(facts === undefined ? {} : { facts }),
+      ...(progress === null ? {} : { priorProgress: progress }),
+      ...(resume === null ? {} : { startAt: resume.startAt, skipStations: resume.skipStations }),
+      ...(runLog === undefined ? {} : { runLog }),
+    };
+    const execute = this.chapterExecutor ?? executeChapterPlan;
+    let report: ChapterReport;
+    try {
+      const ports = gamePlanPorts(this, pilot);
+      ports.refreshCollision = (mapId) => this.planRefreshCollision(pilot, mapId);
+      report = await execute(plan, ports, options);
+    } catch (error) {
+      signal?.throwIfAborted();
+      const message = describeError(error);
+      if (markBlocked) {
+        const synthetic: ChapterReport = {
+          chapter: plan.chapter,
+          status: "exception",
+          segments: [],
+          fallbacks: [],
+          exception: {
+            kind: "other",
+            segment: progress?.segment ?? 0,
+            station: null,
+            detail: `执行器出错:${message}`,
+          },
+          minutes: 0,
+          modelCalls: 0,
+        };
+        this.lastChapterReport = synthetic;
+        const blocked = await this.markChapterBlocked(plan, synthetic, progress);
+        await runLog?.flush();
+        return { text: `${blocked}\n\n执行章计划失败:${message}`, early: true };
+      }
+      await runLog?.flush();
+      return { text: `执行章计划失败:${message}`, early: true };
+    }
+    this.lastChapterReport = report;
+    let savedNote = "";
+    if (this.chapterReportFile !== undefined) {
+      try {
+        await mkdir(dirname(this.chapterReportFile), { recursive: true });
+        const savedReport =
+          resume === null ? report : { ...report, resume: describeChapterResume(plan, resume) };
+        await writeFile(
+          this.chapterReportFile,
+          `${JSON.stringify(savedReport, null, 2)}\n`,
+          "utf8",
+        );
+      } catch (error) {
+        savedNote = `\n(章报告没存盘:${describeError(error)})`;
+      }
+    }
+    const resumeText = resume === null ? "" : `${describeChapterResume(plan, resume)}\n`;
+    if (markBlocked && report.status === "exception") {
+      const blockedText = await this.markChapterBlocked(plan, report, progress);
+      const blockedReport: ChapterReport = {
+        ...report,
+        status: "blocked",
+        blockedText,
+      };
+      await runLog?.flush();
+      return {
+        text:
+          `${blockedText}\n${progressNote}${savedNote}${resumeText}` +
+          `${describeChapterReport(blockedReport)}\n\n` +
+          "### 结构化报告(JSON)\n" +
+          "```json\n" +
+          `${JSON.stringify(blockedReport, null, 2)}\n\`\`\``,
+        early: true,
+      };
+    }
+    await runLog?.flush();
+    return {
+      text:
+        `${progressNote}${resumeText}${describeChapterReport(report)}${savedNote}\n\n` +
+        "### 结构化报告(JSON)\n" +
+        "```json\n" +
+        `${JSON.stringify(report, null, 2)}\n\`\`\``,
+      early: true,
+    };
+  }
+
+  /**
+   * Task 155: the executor's own fallbacks failed. Persist `blocked` and the operator-facing
+   * line in the progress and report files, and put the same line in the activity log. The
+   * panel reads these files; the plugin must not call the model for this run.
+   */
+  private async markChapterBlocked(
+    plan: ChapterPlan,
+    report: ChapterReport,
+    progress: ChapterProgress | null,
+  ): Promise<string> {
+    const exception = report.exception;
+    const segment = Math.max(0, exception?.segment ?? progress?.segment ?? 0);
+    const station = exception?.station ?? null;
+    const section = plan.segments[segment]?.section ?? progress?.segments[segment]?.section ?? "";
+    const detail = exception?.detail ?? report.blockedText ?? "执行器停下,原因没有写";
+    const where =
+      station === null ? `第 ${segment + 1} 节` : `第 ${segment + 1} 节第 ${station + 1} 站`;
+    const blockedText = `等待修复：${where}：${detail}`;
+    this.lastChapterReport = { ...report, status: "blocked", blockedText };
+    this.onActivity?.(blockedText, "plan");
+    let problem = "";
+    if (this.chapterProgressFile !== undefined) {
+      const now = new Date().toISOString();
+      try {
+        let saved: Record<string, unknown> = {
+          game: this.game,
+          chapter: plan.chapter,
+          goal: plan.goal,
+          revision: 1,
+          startedAt: now,
+          segments: plan.segments.map((entry) => ({
+            section: entry.section,
+            stations: entry.stations.map((_station, index) => ({
+              index,
+              status: "pending",
+              note: "",
+            })),
+          })),
+          fallbacks: [...report.fallbacks],
+          previousException: progress?.previousException ?? null,
+        };
+        try {
+          const body = await readFile(this.chapterProgressFile, "utf8");
+          const parsed: unknown = JSON.parse(body);
+          if (isRecord(parsed)) saved = parsed;
+        } catch {
+          // The substitute executor in tests writes no progress; a blocked table from the plan
+          // is still what the panel needs. The real executor always writes one.
+        }
+        await writeFile(
+          this.chapterProgressFile,
+          `${JSON.stringify(
+            {
+              ...saved,
+              status: "blocked",
+              ...(section === "" ? {} : { section }),
+              blockedText,
+              updatedAt: now,
+              finishedAt: saved.finishedAt ?? now,
+            },
+            null,
+            2,
+          )}\n`,
+          "utf8",
+        );
+      } catch (error) {
+        problem += `(章进度没写成等待修复:${describeError(error)})`;
+      }
+    }
+    if (this.chapterReportFile !== undefined) {
+      try {
+        let saved: Record<string, unknown> = { ...report };
+        try {
+          const body = await readFile(this.chapterReportFile, "utf8");
+          const parsed: unknown = JSON.parse(body);
+          if (isRecord(parsed)) saved = { ...parsed };
+        } catch {
+          // A missing report is fine; the run just wrote one, and the shape below is enough.
+        }
+        await writeFile(
+          this.chapterReportFile,
+          `${JSON.stringify({ ...saved, ...report, status: "blocked", blockedText }, null, 2)}\n`,
+          "utf8",
+        );
+      } catch (error) {
+        problem += `(章报告没写成等待修复:${describeError(error)})`;
+      }
+    }
+    return problem === "" ? blockedText : `${blockedText}${problem}`;
+  }
+
+  /**
+   * Task 155: `scripts/chapter-resume.mjs --abandon`. Stop treating this chapter as the
+   * executor's; the progress/report say so and the plugin may hand planning back to the model.
+   */
+  async abandonChapter(reason: string): Promise<string> {
+    const plan = this.chapterPlans.current;
+    if (plan === null) throw new Error("没有存盘的章计划,没有可放弃的章");
+    const now = new Date().toISOString();
+    const text = `${reason};第 ${plan.chapter} 章的执行已结束,规则文件可以重新提交`;
+    this.lastChapterReport = {
+      chapter: plan.chapter,
+      status: "aborted",
+      segments: [],
+      fallbacks: [],
+      minutes: 0,
+      modelCalls: 0,
+      blockedText: text,
+    };
+    this.onActivity?.(text, "plan");
+    if (this.chapterProgressFile !== undefined) {
+      try {
+        let progress: Record<string, unknown> = {
+          game: this.game,
+          chapter: plan.chapter,
+          goal: plan.goal,
+          revision: 1,
+          startedAt: now,
+          segments: plan.segments.map((segment) => ({
+            section: segment.section,
+            stations: segment.stations.map((_station, index) => ({
+              index,
+              status: "pending",
+              note: "",
+            })),
+          })),
+          fallbacks: [],
+          previousException: null,
+        };
+        try {
+          const body = await readFile(this.chapterProgressFile, "utf8");
+          const parsed: unknown = JSON.parse(body);
+          if (isRecord(parsed)) progress = parsed;
+        } catch {
+          // No progress file yet: the minimal pending table above is still readable by the panel.
+        }
+        await writeFile(
+          this.chapterProgressFile,
+          `${JSON.stringify(
+            {
+              ...progress,
+              status: "aborted",
+              blockedText: text,
+              updatedAt: now,
+              finishedAt: now,
+            },
+            null,
+            2,
+          )}\n`,
+          "utf8",
+        );
+      } catch (error) {
+        return `${text};(章进度没写成中止:${describeError(error)})`;
+      }
+    }
+    if (this.chapterReportFile !== undefined) {
+      try {
+        let report: Record<string, unknown> = {
+          chapter: plan.chapter,
+          status: "aborted",
+          segments: [],
+          fallbacks: [],
+          minutes: 0,
+          modelCalls: 0,
+        };
+        try {
+          const body = await readFile(this.chapterReportFile, "utf8");
+          const parsed: unknown = JSON.parse(body);
+          if (isRecord(parsed)) report = parsed;
+        } catch {
+          // A chapter that never ran has no report; write the one above.
+        }
+        await writeFile(
+          this.chapterReportFile,
+          `${JSON.stringify({ ...report, status: "aborted", blockedText: text }, null, 2)}\n`,
+          "utf8",
+        );
+      } catch (error) {
+        return `${text};(章报告没写成中止:${describeError(error)})`;
+      }
+    }
+    return text;
   }
 
   private async routeWatch(pilot: Pilot): Promise<RouteWatch> {
@@ -9133,6 +11073,8 @@ export class Game {
       ...(targets.length > 0 || blueTargets.size > 0 || until.battles !== undefined
         ? { untilBestiary: true }
         : {}),
+      ...(until.level === undefined ? {} : { untilLevel: until.level }),
+      ...(until.gil === undefined ? {} : { untilGold: until.gil }),
       maxMinutes,
       restHpPct: 40,
       restMpPct: 25,
@@ -9169,13 +11111,20 @@ export class Game {
     const gotBestiary = targets.length > 0 && leftBestiary === 0;
     const battleDone = until.battles !== undefined && battles >= until.battles;
     const learnedNames = [...wantedBlue].map((name) => name);
+    const levelDone =
+      until.level !== undefined && report.minLevel !== null && report.minLevel >= until.level;
+    const goldDone = until.gil !== undefined && report.gold >= until.gil;
     const stopReason = gotBlue
       ? `青魔法已学会${learnedNames.length === 0 ? "" : `:${learnedNames.join("、")}`}`
       : gotBestiary
         ? `图鉴已登记:${targets.map(String).join("、")}`
         : battleDone
           ? `打满 ${until.battles ?? 0} 场`
-          : report.stop;
+          : levelDone
+            ? `全队最低等级到了 ${report.minLevel}/${until.level}`
+            : goldDone
+              ? `钱够了(${report.gold}/${until.gil ?? "?"})`
+              : report.stop;
     const parts = [
       `刷了 ${report.battles} 场`,
       report.bestiary.length === 0 ? "没有新登记" : `登记了 ${report.bestiary.join("、")}`,
