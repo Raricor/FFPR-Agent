@@ -1561,8 +1561,8 @@ export function judgePlayers(party: readonly Reply[]): [string, string] {
 /** Task 91: how much HP a spell is expected to restore per MP, for choosing 治疗 or 救疗. */
 const HEAL_PER_MP = 12;
 const DEFAULT_HEAL_COST: Readonly<Record<string, number>> = { 治疗: 4, 救疗: 8 };
-const HEAL_SPELLS: readonly string[] = ["治疗", "救疗"];
-const HEAL_ITEMS: readonly string[] = ["恢复药", "高级恢复药", "Potion", "Hi-Potion"];
+export const HEAL_SPELLS: readonly string[] = ["治疗", "救疗"];
+export const HEAL_ITEMS: readonly string[] = ["恢复药", "高级恢复药", "Potion", "Hi-Potion"];
 const TENT_ITEMS: readonly string[] = ["帐篷", "小屋", "Tent", "Cottage"];
 
 /** Task 91's after-battle and pre-boss healing knobs (Config; the defaults are the request's). */
