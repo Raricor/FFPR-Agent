@@ -12,8 +12,16 @@ interface SecretsFixture {
     readonly text: string;
     readonly expected: Record<string, string>;
   }[];
-  readonly env_wins: { readonly a: string; readonly b: string; readonly has_c: boolean };
-  readonly missing: { readonly name: string; readonly path: string; readonly text: string };
+  readonly env_wins: {
+    readonly a: string;
+    readonly b: string;
+    readonly has_c: boolean;
+  };
+  readonly missing: {
+    readonly name: string;
+    readonly path: string;
+    readonly text: string;
+  };
   readonly warning: readonly {
     readonly mentions_file: boolean;
     readonly mentions_chmod: boolean;
