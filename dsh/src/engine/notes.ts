@@ -15,13 +15,17 @@ export async function loadNotes(path: string, signal?: AbortSignal): Promise<str
   } catch (error) {
     if (isMissingFile(error)) return [];
     signal?.throwIfAborted();
-    throw new Error(`读不了笔记文件 ${path}:${describeError(error)}`, { cause: error });
+    throw new Error(`读不了笔记文件 ${path}:${describeError(error)}`, {
+      cause: error,
+    });
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch (error) {
-    throw new Error(`读不懂笔记文件 ${path}:${describeError(error)}`, { cause: error });
+    throw new Error(`读不懂笔记文件 ${path}:${describeError(error)}`, {
+      cause: error,
+    });
   }
   if (!Array.isArray(parsed)) throw new Error(`笔记文件 ${path} 不是 JSON 字符串数组`);
   const notes: string[] = [];

@@ -36,7 +36,11 @@ void test("the notes context is required and keeps text literal", () => {
 void test("the tactician's notes and advice read like the notes block", () => {
   assert.equal(formatTactician(null), "");
   assert.equal(
-    formatTactician({ mapId: 260, walkerNotes: "先开左边的开关", askUp: "缺眼药" }),
+    formatTactician({
+      mapId: 260,
+      walkerNotes: "先开左边的开关",
+      askUp: "缺眼药",
+    }),
     "战术官(地图 260):先开左边的开关\n战术官建议:缺眼药",
   );
   assert.equal(
